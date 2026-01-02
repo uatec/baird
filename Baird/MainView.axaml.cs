@@ -37,26 +37,17 @@ namespace Baird
         private async void InitializeMediaProvider()
         {
             // Switch to TvHeadendService
-            _mediaProvider = new TvHeadendService();
-            // _mediaProvider = new JellyfinService(); // Easy to switch back
+            // _mediaProvider = new TvHeadendService();
+            _mediaProvider = new JellyfinService(); // Easy to switch back
             
             var statusBlock = this.FindControl<TextBlock>("StatusTextBlock");
             if (statusBlock != null) statusBlock.Text = "Loading configuration...";
 
-            // Simple .env loader
-            LoadEnv();
-
-            // Default TVHeadend Config
-            string url = Environment.GetEnvironmentVariable("TVH_URL") ?? "http://localhost:9981";
-            string user = Environment.GetEnvironmentVariable("TVH_USER") ?? "unknown"; // TVHeadend often uses alphanumeric user/pass
-            string pass = Environment.GetEnvironmentVariable("TVH_PASS") ?? "unknown";
-
-            Console.WriteLine($"Attempting connection to: {url} as {user}");
-            if (statusBlock != null) statusBlock.Text = $"Connecting to {url}...";
+            // LoadEnv() call removed, services now handle their own .env/config loading internally
 
             try 
             {
-                await _mediaProvider.InitializeAsync(url, user, pass);
+                await _mediaProvider.InitializeAsync();
                 
                 if (statusBlock != null) statusBlock.Text = "Fetching channels...";
                 var items = await _mediaProvider.GetListingAsync();

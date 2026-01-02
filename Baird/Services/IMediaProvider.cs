@@ -5,7 +5,7 @@ namespace Baird.Services
 {
     public interface IMediaProvider
     {
-        Task InitializeAsync(string serverUrl, string username, string password);
+        Task InitializeAsync();
         Task<IEnumerable<MediaItem>> GetListingAsync();
         string GetStreamUrl(string itemId);
     }

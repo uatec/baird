@@ -16,22 +16,46 @@ namespace Baird.Services
         private string _username;
         private string _password;
 
-        public Task InitializeAsync(string serverUrl, string username, string password)
+        public async Task InitializeAsync()
         {
+            // Load configuration locally
+            string serverUrl = Environment.GetEnvironmentVariable("TVH_URL") ?? "http://localhost:9981";
+            string username = Environment.GetEnvironmentVariable("TVH_USER") ?? "unknown";
+            string password = Environment.GetEnvironmentVariable("TVH_PASS") ?? "unknown";
+
+            // Support .env file if present
+            if (System.IO.File.Exists(".env"))
+            {
+                foreach (var line in System.IO.File.ReadAllLines(".env"))
+                {
+                    var parts = line.Split('=', 2);
+                    if (parts.Length != 2) continue;
+                    var key = parts[0].Trim();
+                    var val = parts[1].Trim();
+                    
+                    if (key == "TVH_URL") serverUrl = val;
+                    if (key == "TVH_USER") username = val;
+                    if (key == "TVH_PASS") password = val;
+                }
+            }
+
             _serverUrl = serverUrl.TrimEnd('/');
             _username = username;
             _password = password;
 
-            var handler = new HttpClientHandler
-            {
-                Credentials = new System.Net.NetworkCredential(_username, _password)
-            };
-            
-            _httpClient = new HttpClient(handler);
-            _httpClient.BaseAddress = new Uri(_serverUrl + "/");
+            Console.WriteLine($"Attempting connection to: {_serverUrl} as {_username}");
 
+            // Configure Handler with Credentials for Digest/Basic Auth
+            var handler = new HttpClientHandler 
+            { 
+                Credentials = new System.Net.NetworkCredential(_username, _password),
+                PreAuthenticate = true // Helpful for Basic, but Digest requires challenge
+            };
+
+            _httpClient = new HttpClient(handler) { BaseAddress = new Uri(_serverUrl + "/") };
+            
             Console.WriteLine($"Initialized TVHeadend Service at {_serverUrl} with Digest/Basic Auth support");
-            return Task.CompletedTask;
+            await Task.CompletedTask;
         }
 
         public async Task<IEnumerable<MediaItem>> GetListingAsync()
@@ -86,7 +110,7 @@ namespace Baird.Services
             var port = uri.Port;
             var scheme = uri.Scheme;
             
-            return $"{scheme}://{_username}:{_password}@{host}:{port}/stream/channel/{itemId}";
+            return $"ffmpeg://{scheme}://{host}:{port}/stream/channel/{itemId}?auth={_username}:{_password}";
         }
     }
 

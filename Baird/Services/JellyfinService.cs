@@ -16,15 +16,41 @@ namespace Baird.Services
         private JellyfinApiClient _client;
         private string _accessToken;
         private string _userId; // Changed to string for flexibility
+        private string _username;
+        private string _password;
         private string _serverUrl;
         private HttpClient _httpClient;
         private HttpClientRequestAdapter _requestAdapter;
 
         public bool IsAuthenticated => !string.IsNullOrEmpty(_accessToken);
 
-        public async Task InitializeAsync(string serverUrl, string username, string password)
+        public async Task InitializeAsync()
         {
+            // Load configuration locally
+            string serverUrl = Environment.GetEnvironmentVariable("JELLYFIN_URL") ?? "http://localhost:8096";
+            string username = Environment.GetEnvironmentVariable("JELLYFIN_USER") ?? "unknown";
+            string password = Environment.GetEnvironmentVariable("JELLYFIN_PASS") ?? "unknown";
+
+            // Support .env file if present
+            if (System.IO.File.Exists(".env"))
+            {
+                foreach (var line in System.IO.File.ReadAllLines(".env"))
+                {
+                    var parts = line.Split('=', 2);
+                    if (parts.Length != 2) continue;
+                    var key = parts[0].Trim();
+                    var val = parts[1].Trim();
+                    
+                    if (key == "JELLYFIN_URL") serverUrl = val;
+                    if (key == "JELLYFIN_USER") username = val;
+                    if (key == "JELLYFIN_PASS") password = val;
+                }
+            }
+
             _serverUrl = serverUrl.TrimEnd('/');
+            _username = username;
+            _userId = ""; // Will be set after auth
+            // Password not stored permanently unless needed for re-auth
             
             // 1. Setup Request Adapter with Debug Logging
             var authProvider = new AnonymousAuthenticationProvider();
@@ -51,44 +77,8 @@ namespace Baird.Services
             // 2. Authenticate (Manual Implementation)
             try 
             {
-                Console.WriteLine("Authenticating via manual HTTP request...");
-                
-                var authUrl = $"{_serverUrl}/Users/AuthenticateByName";
-                // Use Source Generated serialization to support AOT/Trimming
-                var authBody = new AuthRequest { Username = username, Pw = password };
-                var jsonBody = JsonSerializer.Serialize(authBody, AppJsonContext.Default.AuthRequest);
-                
-                var request = new HttpRequestMessage(HttpMethod.Post, authUrl);
-                request.Content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json"); 
-                // Header is already in default headers, but adding it explicitly to request is fine if not duplicative or if overriding.
-                // Best to rely on DefaultRequestHeaders if set, but let's leave it as is for safety.
-                
-                var response = await _httpClient.SendAsync(request);
-                response.EnsureSuccessStatusCode();
-                
-                var respContent = await response.Content.ReadAsStringAsync();
-                
-                // Parse manually
-                using var doc = JsonDocument.Parse(respContent);
-                var root = doc.RootElement;
-                
-                if (root.TryGetProperty("AccessToken", out var tokenProp))
-                {
-                    _accessToken = tokenProp.GetString();
-                }
-                
-                if (root.TryGetProperty("User", out var userProp) && userProp.TryGetProperty("Id", out var idProp))
-                {
-                    _userId = idProp.GetString();
-                }
-                
-                Console.WriteLine($"Auth Success. Token: {_accessToken?.Substring(0, 5)}... User: {_userId}");
-
-                // 3. Update Headers with Token
-                _httpClient.DefaultRequestHeaders.Remove("X-Emby-Authorization");
-                var authHeaderWithToken = $"{authHeader}, Token=\"{_accessToken}\"";
-                _httpClient.DefaultRequestHeaders.Add("X-Emby-Authorization", authHeaderWithToken);
-                _httpClient.DefaultRequestHeaders.Add("X-Emby-Token", _accessToken); // Authorization header usually enough, but this helps some endpoints
+                await AuthenticateAsync(username, password);
+                Console.WriteLine($"Initialized Jellyfin Service at {_serverUrl}");
             }
             catch (Exception ex)
             {
@@ -96,6 +86,48 @@ namespace Baird.Services
                 Console.WriteLine($"Stack Trace: {ex.StackTrace}");
                 throw; 
             }
+        }
+
+        private async Task AuthenticateAsync(string username, string password)
+        {
+             Console.WriteLine("Authenticating via manual HTTP request...");
+                
+             var authUrl = $"{_serverUrl}/Users/AuthenticateByName";
+             // Use Source Generated serialization to support AOT/Trimming
+             var authBody = new AuthRequest { Username = username, Pw = password };
+             var jsonBody = JsonSerializer.Serialize(authBody, AppJsonContext.Default.AuthRequest);
+             
+             var request = new HttpRequestMessage(HttpMethod.Post, authUrl);
+             request.Content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json"); 
+             
+             var response = await _httpClient.SendAsync(request);
+             response.EnsureSuccessStatusCode();
+             
+             var respContent = await response.Content.ReadAsStringAsync();
+             
+             // Parse manually
+             using var doc = JsonDocument.Parse(respContent);
+             var root = doc.RootElement;
+             
+             if (root.TryGetProperty("AccessToken", out var tokenProp))
+             {
+                 _accessToken = tokenProp.GetString();
+             }
+             
+             if (root.TryGetProperty("User", out var userProp) && userProp.TryGetProperty("Id", out var idProp))
+             {
+                 _userId = idProp.GetString();
+             }
+             
+             Console.WriteLine($"Auth Success. Token: {_accessToken?.Substring(0, 5)}... User: {_userId}");
+
+             // 3. Update Headers with Token
+             _httpClient.DefaultRequestHeaders.Remove("X-Emby-Authorization");
+             // Set default client headers for Jellyfin (required for Auth)
+             var authHeader = $"MediaBrowser Client=\"Baird Media Player\", Device=\"Baird Device\", DeviceId=\"{Guid.NewGuid()}\", Version=\"1.0.0\"";
+             var authHeaderWithToken = $"{authHeader}, Token=\"{_accessToken}\"";
+             _httpClient.DefaultRequestHeaders.Add("X-Emby-Authorization", authHeaderWithToken);
+             _httpClient.DefaultRequestHeaders.Add("X-Emby-Token", _accessToken);
         }
 
         public async Task<IEnumerable<MediaItem>> GetListingAsync()
