@@ -1,7 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Baird.Services;
 using System;
+using System.Linq;
 
 namespace Baird
 {
@@ -9,6 +11,7 @@ namespace Baird
     {
         private DispatcherTimer _timer;
         private TextBlock? _clockBlock;
+        private JellyfinService _jellyfinService;
 
         public MainView()
         {
@@ -26,10 +29,104 @@ namespace Baird
 
             this.AttachedToVisualTree += (s, e) =>
             {
-                 // Auto-play on startup
-                 var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
-                 player?.Play("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4");
+                 // Initialize Jellyfin Service
+                 InitializeJellyfin();
+                 
+                 // Auto-play default (optional, can be removed if specific movie selected)
+                 // var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
+                 // player?.Play("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4");
             };
+        }
+        
+        private async void InitializeJellyfin()
+        {
+            _jellyfinService = new JellyfinService();
+            var statusBlock = this.FindControl<TextBlock>("StatusTextBlock");
+            if (statusBlock != null) statusBlock.Text = "Loading .env...";
+
+            // Simple .env loader
+            LoadEnv();
+
+            // Use Environment Variables or Defaults
+            string url = Environment.GetEnvironmentVariable("JELLYFIN_URL") ?? "http://demo.jellyfin.org/stable";
+            string user = Environment.GetEnvironmentVariable("JELLYFIN_USER") ?? "demo";
+            string pass = Environment.GetEnvironmentVariable("JELLYFIN_PASS") ?? "";
+
+            Console.WriteLine($"Attempting connection to: {url} as {user}");
+            if (statusBlock != null) statusBlock.Text = $"Connecting to {url}...";
+
+            try 
+            {
+                await _jellyfinService.InitializeAsync(url, user, pass);
+                
+                if (statusBlock != null) statusBlock.Text = "Fetching movies...";
+                var movies = await _jellyfinService.GetMoviesAsync();
+                
+                var movieList = this.FindControl<ListBox>("MovieList");
+                if (movieList != null)
+                {
+                    var items = movies.ToList();
+                    Console.WriteLine($"Found {items.Count} movies.");
+                    movieList.ItemsSource = items;
+                    movieList.SelectionChanged += OnMovieSelected;
+
+                    if (items.Count == 0) 
+                    {
+                        if (statusBlock != null) statusBlock.Text = "No movies found.";
+                    }
+                    else
+                    {
+                         if (statusBlock != null) statusBlock.Text = ""; // Clear status on success
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Jellyfin Init Error: {ex}");
+                if (statusBlock != null) statusBlock.Text = $"Error: {ex.Message}";
+            }
+        }
+
+        private void LoadEnv()
+        {
+            try {
+                var path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".env");
+                // Attempt to find .env in project root if running from bin
+                if (!System.IO.File.Exists(path))
+                {
+                     path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "../../../../../.env");
+                }
+                
+                if (System.IO.File.Exists(path))
+                {
+                    foreach (var line in System.IO.File.ReadAllLines(path))
+                    {
+                        var parts = line.Split('=', 2);
+                        if (parts.Length == 2)
+                        {
+                            Environment.SetEnvironmentVariable(parts[0].Trim(), parts[1].Trim());
+                        }
+                    }
+                    Console.WriteLine("Loaded .env file");
+                }
+                else
+                {
+                    Console.WriteLine("No .env file found");
+                }
+            } catch { /* ignore */ }
+        }
+        
+        private void OnMovieSelected(object? sender, SelectionChangedEventArgs e)
+        {
+            var movieList = sender as ListBox;
+            if (movieList?.SelectedItem is MovieItem movie)
+            {
+                var url = _jellyfinService.GetStreamUrl(movie.Id);
+                Console.WriteLine($"Playing Movie: {movie.Name} at {url}");
+                
+                var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
+                player?.Play(url);
+            }
         }
 
         private void Timer_Tick(object? sender, EventArgs e)

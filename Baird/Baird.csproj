@@ -13,6 +13,7 @@
     <PackageReference Include="Avalonia.LinuxFramebuffer" Version="11.3.10" />
     <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.8" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.10" />
+    <PackageReference Include="Jellyfin.Sdk" Version="2025.10.21" />
   </ItemGroup>
 
 </Project>
