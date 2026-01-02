@@ -53,14 +53,16 @@ namespace Baird.Services
                 
                 if (grid?.Entries != null)
                 {
-                    return grid.Entries.Select(c => new MediaItem 
-                    {
-                        Id = c.Uuid,
-                        Name = c.Name,
-                        Details = c.Number.ToString(),
-                        // TVHeadend icon URL: /imagecache/{id}
-                        ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}"
-                    });
+                    return grid.Entries
+                        .Select(c => new MediaItem 
+                        {
+                            Id = c.Uuid,
+                            Name = c.Name,
+                            Details = c.Number.ToString(),
+                            // TVHeadend icon URL: /imagecache/{id}
+                            ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}"
+                        })
+                        .OrderBy(c => c.Name);
                 }
                 
                 return Enumerable.Empty<MediaItem>();
