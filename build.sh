@@ -18,6 +18,9 @@ dotnet publish Baird/Baird.csproj \
     -p:PublishTrimmed=true \
     -o "$OUTPUT_DIR/linux-arm64"
 
+cp 99-baird.rules "$OUTPUT_DIR/"
+cp install_deps.sh "$OUTPUT_DIR/"
+
 echo "Building for Virtual Machine (linux-x64)..."
 dotnet publish Baird/Baird.csproj \
     -c Release \
