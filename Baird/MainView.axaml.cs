@@ -23,6 +23,13 @@ namespace Baird
 
             // Initial update
             UpdateClock();
+
+            this.AttachedToVisualTree += (s, e) =>
+            {
+                 // Auto-play on startup
+                 var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
+                 player?.Play("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4");
+            };
         }
 
         private void Timer_Tick(object? sender, EventArgs e)
@@ -36,6 +43,32 @@ namespace Baird
              {
                  _clockBlock.Text = DateTime.Now.ToString("HH:mm:ss");
              }
+             
+             var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
+             var debugBlock = this.FindControl<TextBlock>("DebugInfo");
+             
+             if (player != null && debugBlock != null)
+             {
+                 debugBlock.Text = $"State: {player.GetState()}\nURL: {player.GetCurrentPath()}\nMPV Paused: {player.IsMpvPaused}\nPos: {player.GetTimePos()} / {player.GetDuration()}";
+             }
+        }
+
+        public void OnPlayClick(object sender, RoutedEventArgs e)
+        {
+            var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
+            player?.Play("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4");
+        }
+
+        public void OnPauseClick(object sender, RoutedEventArgs e)
+        {
+             var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
+             player?.Pause();
+        }
+
+        public void OnStopClick(object sender, RoutedEventArgs e)
+        {
+             var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
+             player?.Stop();
         }
 
         public void OnExitClick(object sender, RoutedEventArgs e)

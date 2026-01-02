@@ -16,6 +16,8 @@ apt-get install -y \
     libglapi-mesa \
     libgl1-mesa-dri \
     libegl-mesa0 \
-    libegl1
+    libegl1 \
+    libmpv1 \
+    libmpv-dev
 
 echo "Dependencies installed."

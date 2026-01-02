@@ -2,13 +2,25 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:c="using:Baird.Controls"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Baird.MainView">
-    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="20">
-        <TextBlock Text="Hello World" FontSize="30" HorizontalAlignment="Center"/>
+    <Grid RowDefinitions="*,Auto,Auto">
+        <!-- Video Player hosted in GL control with Debug Background -->
+        <Border Grid.Row="0" Background="Maroon" BorderBrush="Red" BorderThickness="2">
+             <c:VideoPlayer Name="Player" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        </Border>
         
-        <TextBlock Name="ClockBlock" FontSize="20" HorizontalAlignment="Center"/>
+        <!-- Debug Info Overlay -->
+        <TextBlock Name="DebugInfo" Grid.Row="0" Foreground="Yellow" FontSize="16" Margin="10" VerticalAlignment="Top" HorizontalAlignment="Right" Text="Debug Loading..."/>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="20" Margin="20">
+             <Button Content="Play Test" Click="OnPlayClick"/>
+             <Button Content="Pause" Click="OnPauseClick"/>
+             <Button Content="Stop" Click="OnStopClick"/>
+             <Button Content="Exit" Click="OnExitClick"/>
+        </StackPanel>
         
-        <Button Content="Exit" HorizontalAlignment="Center" Click="OnExitClick"/>
-    </StackPanel>
+        <TextBlock Name="ClockBlock" Grid.Row="2" FontSize="20" HorizontalAlignment="Center" Margin="10"/>
+    </Grid>
 </UserControl>
