@@ -6,7 +6,7 @@ OUTPUT_DIR="./publish"
 mkdir -p "$OUTPUT_DIR"
 
 echo "Cleaning previous builds..."
-dotnet clean
+dotnet clean Baird/Baird.csproj
 rm -rf "$OUTPUT_DIR"
 
 echo "Building for Raspberry Pi (linux-arm64)..."

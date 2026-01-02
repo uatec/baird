@@ -5,6 +5,30 @@ An Avalonia UI application for Linux Framebuffer (Raspberry Pi).
 ## Prerequisites
 - [.NET 8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
 
+## Testing on macOS
+While the production environment runs on Linux as a fullscreen framebuffer application, you can test the application on macOS in desktop mode.
+
+### Setup for macOS Testing
+1. **Install Homebrew** (if not already installed):
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+
+2. **Install Dependencies:**
+   ```bash
+   chmod +x install_deps.sh
+   ./install_deps.sh
+   ```
+   This will automatically detect macOS and install libmpv via Homebrew.
+
+3. **Run Application:**
+   ```bash
+   dotnet run --project Baird/Baird.csproj
+   ```
+   The application will automatically run in desktop mode on macOS.
+
+**Note:** The application uses platform-specific libmpv bindings (`libmpv.2.dylib` on macOS, `libmpv.so.2` on Linux), so the same codebase works for both testing and production.
+
 ## Building for Deployment
 Run the build script to create self-contained binaries for Raspberry Pi (Linux ARM64) and Generic Linux (x64):
 ```bash

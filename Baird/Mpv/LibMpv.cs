@@ -1,11 +1,62 @@
 using System;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace Baird.Mpv
 {
     public static class LibMpv
     {
-        private const string MpvLibrary = "libmpv.so.2";
+        private const string MpvLibrary = "mpv";
+
+        static LibMpv()
+        {
+            NativeLibrary.SetDllImportResolver(typeof(LibMpv).Assembly, DllImportResolver);
+        }
+
+        private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+        {
+            if (libraryName == MpvLibrary)
+            {
+                string platformLibrary;
+                if (OperatingSystem.IsMacOS())
+                {
+                    platformLibrary = "libmpv.2.dylib";
+                    
+                    // Try Homebrew paths first on macOS
+                    string[] homebrewPaths = new[]
+                    {
+                        "/opt/homebrew/lib/libmpv.2.dylib",  // Apple Silicon
+                        "/usr/local/lib/libmpv.2.dylib",      // Intel Mac
+                        "/opt/homebrew/lib/libmpv.dylib",
+                        "/usr/local/lib/libmpv.dylib"
+                    };
+                    
+                    foreach (var path in homebrewPaths)
+                    {
+                        if (File.Exists(path) && NativeLibrary.TryLoad(path, out IntPtr handle))
+                        {
+                            return handle;
+                        }
+                    }
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+                    platformLibrary = "libmpv.so.2";
+                }
+                else
+                {
+                    platformLibrary = "libmpv";
+                }
+
+                // Fall back to default resolution
+                if (NativeLibrary.TryLoad(platformLibrary, assembly, searchPath, out IntPtr defaultHandle))
+                {
+                    return defaultHandle;
+                }
+            }
+
+            return IntPtr.Zero;
+        }
 
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr mpv_create();
