@@ -16,7 +16,7 @@
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="20" Margin="20">
              <Button Content="Play Test" Click="OnPlayClick"/>
-             <Button Content="Pause" Click="OnPauseClick"/>
+             <Button Name="PauseButton" Content="Pause" Click="OnPauseClick"/>
              <Button Content="Stop" Click="OnStopClick"/>
              <Button Content="Exit" Click="OnExitClick"/>
         </StackPanel>

@@ -50,6 +50,13 @@ namespace Baird
              if (player != null && debugBlock != null)
              {
                  debugBlock.Text = $"State: {player.GetState()}\nURL: {player.GetCurrentPath()}\nMPV Paused: {player.IsMpvPaused}\nPos: {player.GetTimePos()} / {player.GetDuration()}";
+                 
+                 // Update Pause Button Text
+                 var pauseBtn = this.FindControl<Button>("PauseButton");
+                 if (pauseBtn != null)
+                 {
+                     pauseBtn.Content = player.IsMpvPaused ? "Resume" : "Pause";
+                 }
              }
         }
 
@@ -62,7 +69,13 @@ namespace Baird
         public void OnPauseClick(object sender, RoutedEventArgs e)
         {
              var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
-             player?.Pause();
+             if (player != null)
+             {
+                 if (player.IsMpvPaused)
+                    player.Resume();
+                 else
+                    player.Pause();
+             }
         }
 
         public void OnStopClick(object sender, RoutedEventArgs e)

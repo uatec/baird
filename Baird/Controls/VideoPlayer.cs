@@ -22,6 +22,7 @@ namespace Baird.Controls
 
         public void Play(string url) => _player.Play(url);
         public void Pause() => _player.Pause();
+        public void Resume() => _player.Resume();
         public void Seek(double s) => _player.Seek(s);
         public void Stop() => _player.Stop();
         

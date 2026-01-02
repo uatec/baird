@@ -58,19 +58,19 @@ namespace Baird.Mpv
         public void Play(string url)
         {
             Command("loadfile", url);
-            SetPropertyDouble("pause", 0);
+            SetPropertyString("pause", "no");
             State = PlaybackState.Playing;
         }
 
         public void Pause()
         {
-            SetPropertyDouble("pause", 1);
+            SetPropertyString("pause", "yes");
             State = PlaybackState.Paused;
         }
         
         public void Resume()
         {
-             SetPropertyDouble("pause", 0);
+             SetPropertyString("pause", "no");
              State = PlaybackState.Playing;
         }
 
