@@ -106,8 +106,9 @@ namespace Baird.Controls
         {
             if (_mpvRenderContext == IntPtr.Zero) return;
 
-            int w = (int)Bounds.Width;
-            int h = (int)Bounds.Height;
+            var scaling = VisualRoot?.RenderScaling ?? 1.0;
+            int w = (int)(Bounds.Width * scaling);
+            int h = (int)(Bounds.Height * scaling);
             
             // FBO param
             var fbo = new LibMpv.MpvOpenglFbo { Fbo = fb, W = w, H = h, InternalFormat = 0 };

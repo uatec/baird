@@ -24,15 +24,21 @@ namespace Baird.Mpv
             if (_mpvHandle == IntPtr.Zero)
                 throw new Exception("Failed to create mpv context");
 
-            // Hardware acceleration configuration for Raspberry Pi
-            // Try generic v4l2m2m-copy first as requested
-             var hwdec = "v4l2m2m-copy"; // Fallback to "auto" if this specific one isn't available or generally works
+            // Hardware acceleration configuration
+            // Use "auto" to let mpv pick the best available (videotoolbox on macOS, vaapi/nvdec/v4l2m2m on Linux)
+             var hwdec = "auto"; 
             SetPropertyString("hwdec", hwdec);
             
             // Generic Options
             SetPropertyString("terminal", "yes");
             SetPropertyString("msg-level", "all=v");
             
+            // Critical for embedding: Force libmpv VO to prevent detached window
+            SetPropertyString("vo", "libmpv");
+
+            // Maintain aspect ratio (will center with black bars if needed)
+            SetPropertyString("keepaspect", "yes");
+
             var res = LibMpv.mpv_initialize(_mpvHandle);
             if (res < 0)
                 throw new Exception($"Failed to initialize mpv: {res}");
