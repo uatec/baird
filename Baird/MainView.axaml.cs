@@ -11,7 +11,7 @@ namespace Baird
     {
         private DispatcherTimer _timer;
         private TextBlock? _clockBlock;
-        private JellyfinService _jellyfinService;
+        private IMediaProvider _mediaProvider;
 
         public MainView()
         {
@@ -29,50 +29,49 @@ namespace Baird
 
             this.AttachedToVisualTree += (s, e) =>
             {
-                 // Initialize Jellyfin Service
-                 InitializeJellyfin();
-                 
-                 // Auto-play default (optional, can be removed if specific movie selected)
-                 // var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
-                 // player?.Play("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4");
+                 // Initialize Media Service (TVHeadend)
+                 InitializeMediaProvider();
             };
         }
         
-        private async void InitializeJellyfin()
+        private async void InitializeMediaProvider()
         {
-            _jellyfinService = new JellyfinService();
+            // Switch to TvHeadendService
+            _mediaProvider = new TvHeadendService();
+            // _mediaProvider = new JellyfinService(); // Easy to switch back
+            
             var statusBlock = this.FindControl<TextBlock>("StatusTextBlock");
-            if (statusBlock != null) statusBlock.Text = "Loading .env...";
+            if (statusBlock != null) statusBlock.Text = "Loading configuration...";
 
             // Simple .env loader
             LoadEnv();
 
-            // Use Environment Variables or Defaults
-            string url = Environment.GetEnvironmentVariable("JELLYFIN_URL") ?? "http://demo.jellyfin.org/stable";
-            string user = Environment.GetEnvironmentVariable("JELLYFIN_USER") ?? "demo";
-            string pass = Environment.GetEnvironmentVariable("JELLYFIN_PASS") ?? "";
+            // Default TVHeadend Config
+            string url = Environment.GetEnvironmentVariable("TVH_URL") ?? "http://localhost:9981";
+            string user = Environment.GetEnvironmentVariable("TVH_USER") ?? "unknown"; // TVHeadend often uses alphanumeric user/pass
+            string pass = Environment.GetEnvironmentVariable("TVH_PASS") ?? "unknown";
 
             Console.WriteLine($"Attempting connection to: {url} as {user}");
             if (statusBlock != null) statusBlock.Text = $"Connecting to {url}...";
 
             try 
             {
-                await _jellyfinService.InitializeAsync(url, user, pass);
+                await _mediaProvider.InitializeAsync(url, user, pass);
                 
-                if (statusBlock != null) statusBlock.Text = "Fetching movies...";
-                var movies = await _jellyfinService.GetMoviesAsync();
+                if (statusBlock != null) statusBlock.Text = "Fetching channels...";
+                var items = await _mediaProvider.GetListingAsync();
                 
                 var movieList = this.FindControl<ListBox>("MovieList");
                 if (movieList != null)
                 {
-                    var items = movies.ToList();
-                    Console.WriteLine($"Found {items.Count} movies.");
-                    movieList.ItemsSource = items;
-                    movieList.SelectionChanged += OnMovieSelected;
+                    var itemList = items.ToList();
+                    Console.WriteLine($"Found {itemList.Count} channels.");
+                    movieList.ItemsSource = itemList;
+                    movieList.SelectionChanged += OnItemSelected;
 
-                    if (items.Count == 0) 
+                    if (itemList.Count == 0) 
                     {
-                        if (statusBlock != null) statusBlock.Text = "No movies found.";
+                        if (statusBlock != null) statusBlock.Text = "No channels found.";
                     }
                     else
                     {
@@ -82,7 +81,7 @@ namespace Baird
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Jellyfin Init Error: {ex}");
+                Console.WriteLine($"Media Init Error: {ex}");
                 if (statusBlock != null) statusBlock.Text = $"Error: {ex.Message}";
             }
         }
@@ -116,13 +115,13 @@ namespace Baird
             } catch { /* ignore */ }
         }
         
-        private void OnMovieSelected(object? sender, SelectionChangedEventArgs e)
+        private void OnItemSelected(object? sender, SelectionChangedEventArgs e)
         {
-            var movieList = sender as ListBox;
-            if (movieList?.SelectedItem is MovieItem movie)
+            var listBox = sender as ListBox;
+            if (listBox?.SelectedItem is MediaItem item)
             {
-                var url = _jellyfinService.GetStreamUrl(movie.Id);
-                Console.WriteLine($"Playing Movie: {movie.Name} at {url}");
+                var url = _mediaProvider.GetStreamUrl(item.Id);
+                Console.WriteLine($"Playing Channel: {item.Name} at {url}");
                 
                 var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
                 player?.Play(url);

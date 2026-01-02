@@ -11,7 +11,7 @@ using Jellyfin.Sdk; // Keeping for now if minimal types needed, but trying to av
 
 namespace Baird.Services
 {
-    public class JellyfinService
+    public class JellyfinService : IMediaProvider
     {
         private JellyfinApiClient _client;
         private string _accessToken;
@@ -98,9 +98,9 @@ namespace Baird.Services
             }
         }
 
-        public async Task<IEnumerable<MovieItem>> GetMoviesAsync()
+        public async Task<IEnumerable<MediaItem>> GetListingAsync()
         {
-            if (!IsAuthenticated) return Enumerable.Empty<MovieItem>();
+            if (!IsAuthenticated) return Enumerable.Empty<MediaItem>();
 
             try
             {
@@ -118,15 +118,20 @@ namespace Baird.Services
                 
                 if (result?.Items != null)
                 {
-                    return result.Items;
+                    return result.Items.Select(m => new MediaItem 
+                    {
+                        Id = m.Id,
+                        Name = m.Name,
+                        Details = m.ProductionYear?.ToString() ?? "Unknown Year"
+                    });
                 }
-                return Enumerable.Empty<MovieItem>();
+                return Enumerable.Empty<MediaItem>();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Failed to fetch movies: {ex.Message}");
                 Console.WriteLine(ex.StackTrace);
-                return Enumerable.Empty<MovieItem>();
+                return Enumerable.Empty<MediaItem>();
             }
         }
 
