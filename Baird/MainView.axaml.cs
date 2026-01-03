@@ -118,7 +118,12 @@ namespace Baird
              
              if (player != null && debugBlock != null)
              {
-                 debugBlock.Text = $"State: {player.GetState()}\nURL: {player.GetCurrentPath()}\nMPV Paused: {player.IsMpvPaused}\nPos: {player.GetTimePos()} / {player.GetDuration()}";
+                 double.TryParse(player.GetTimePos(), out var posVal);
+                 double.TryParse(player.GetDuration(), out var durVal);
+                 var posTs = TimeSpan.FromSeconds(posVal);
+                 var durTs = TimeSpan.FromSeconds(durVal);
+
+                 debugBlock.Text = $"State: {player.GetState()}\nURL: {player.GetCurrentPath()}\nMPV Paused: {player.IsMpvPaused}\nPos: {posTs:hh\\:mm\\:ss\\.fff} / {durTs:hh\\:mm\\:ss\\.fff}";
                  
                  // Update Pause Button Text
                  var pauseBtn = this.FindControl<Button>("PauseButton");
