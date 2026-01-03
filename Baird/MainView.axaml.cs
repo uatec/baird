@@ -37,8 +37,8 @@ namespace Baird
         private async void InitializeMediaProvider()
         {
             // Switch to TvHeadendService
-            // _mediaProvider = new TvHeadendService();
-            _mediaProvider = new JellyfinService(); // Easy to switch back
+            _mediaProvider = new TvHeadendService();
+            // _mediaProvider = new JellyfinService(); 
             
             var statusBlock = this.FindControl<TextBlock>("StatusTextBlock");
             if (statusBlock != null) statusBlock.Text = "Loading configuration...";
@@ -61,6 +61,18 @@ namespace Baird
                     
                     // Handle Enter key for activation instead of auto-play on selection
                     movieList.KeyDown += OnListKeyDown;
+
+                    // Auto-Play first valid channel (non-zero)
+                    var firstChannel = itemList.FirstOrDefault(c => c.Details != "0");
+                    if (firstChannel != null)
+                    {
+                        Console.WriteLine($"Auto-playing First Channel: {firstChannel.Name}");
+                        PlayItem(firstChannel);
+                    }
+                    else
+                    {
+                        Console.WriteLine("No valid channels found to auto-play.");
+                    }
 
                     if (itemList.Count == 0) 
                     {
