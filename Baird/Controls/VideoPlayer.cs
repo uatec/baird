@@ -20,14 +20,42 @@ namespace Baird.Controls
             _renderUpdateDelegate = UpdateCallback;
         }
 
-        public void Play(string url) => _player.Play(url);
-        public void Pause() => _player.Pause();
-        public void Resume() => _player.Resume();
+        public static readonly StyledProperty<bool> IsPausedProperty =
+            AvaloniaProperty.Register<VideoPlayer, bool>(nameof(IsPaused));
+
+        public bool IsPaused
+        {
+            get => GetValue(IsPausedProperty);
+            set => SetValue(IsPausedProperty, value);
+        }
+
+        public void Play(string url) 
+        {
+            _player.Play(url);
+            IsPaused = false;
+        }
+
+        public void Pause() 
+        {
+            _player.Pause();
+            IsPaused = true;
+        }
+
+        public void Resume() 
+        {
+            _player.Resume();
+            IsPaused = false;
+        }
+
         public void Seek(double s) => _player.Seek(s);
-        public void Stop() => _player.Stop();
+        public void Stop() 
+        {
+            _player.Stop();
+            IsPaused = true;
+        }
         
         public PlaybackState GetState() => _player.State;
-        public bool IsMpvPaused => _player.IsMpvPaused;
+        // public bool IsMpvPaused => _player.IsMpvPaused; // Use IsPaused property instead
         public string GetTimePos() => _player.TimePosition;
         public string GetDuration() => _player.Duration;
         public string GetCurrentPath() => _player.CurrentPath;

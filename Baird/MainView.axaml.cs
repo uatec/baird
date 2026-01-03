@@ -81,7 +81,7 @@ namespace Baird
         
         private void OnListKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
         {
-            if (e.Key == Avalonia.Input.Key.Space)
+            if (e.Key == Avalonia.Input.Key.Space || e.Key == Avalonia.Input.Key.Enter)
             {
                 var listBox = sender as ListBox;
                 if (listBox?.SelectedItem is MediaItem item)
@@ -123,14 +123,9 @@ namespace Baird
                  var posTs = TimeSpan.FromSeconds(posVal);
                  var durTs = TimeSpan.FromSeconds(durVal);
 
-                 debugBlock.Text = $"State: {player.GetState()}\nURL: {player.GetCurrentPath()}\nMPV Paused: {player.IsMpvPaused}\nPos: {posTs:hh\\:mm\\:ss\\.fff} / {durTs:hh\\:mm\\:ss\\.fff}";
+                 debugBlock.Text = $"State: {player.GetState()}\nURL: {player.GetCurrentPath()}\nMPV Paused: {player.IsPaused}\nPos: {posTs:hh\\:mm\\:ss\\.fff} / {durTs:hh\\:mm\\:ss\\.fff}";
                  
-                 // Update Pause Button Text
-                 var pauseBtn = this.FindControl<Button>("PauseButton");
-                 if (pauseBtn != null)
-                 {
-                     pauseBtn.Content = player.IsMpvPaused ? "Resume" : "Pause";
-                 }
+                 // Pause button is updated via XAML binding
              }
         }
 
@@ -145,7 +140,7 @@ namespace Baird
              var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
              if (player != null)
              {
-                 if (player.IsMpvPaused)
+                 if (player.IsPaused)
                     player.Resume();
                  else
                     player.Pause();

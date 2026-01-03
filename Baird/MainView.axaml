@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:c="using:Baird.Controls"
+             xmlns:conv="using:Baird.Converters"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Baird.MainView">
     <UserControl.Styles>
@@ -16,6 +17,10 @@
             <Setter Property="Padding" Value="4"/> 
         </Style>
     </UserControl.Styles>
+    
+    <UserControl.Resources>
+        <conv:BoolToPlayPauseConverter x:Key="BoolToPlayPause"/>
+    </UserControl.Resources>
 
     <Grid RowDefinitions="*,Auto,Auto" XYFocus.NavigationModes="Enabled">
 
@@ -52,7 +57,7 @@
         <Border Grid.Row="1" Margin="20" HorizontalAlignment="Center">
             <StackPanel Orientation="Horizontal" Spacing="20">
                  <Button Content="Play Test" Click="OnPlayClick"/>
-                 <Button Name="PauseButton" Content="Pause" Click="OnPauseClick"/>
+                 <Button Name="PauseButton" Content="{Binding #Player.IsPaused, Converter={StaticResource BoolToPlayPause}}" Click="OnPauseClick"/>
                  <Button Content="Stop" Click="OnStopClick"/>
                  <Button Content="Exit" Click="OnExitClick"/>
             </StackPanel>
