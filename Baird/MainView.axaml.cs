@@ -58,7 +58,9 @@ namespace Baird
                     var itemList = items.ToList();
                     Console.WriteLine($"Found {itemList.Count} channels.");
                     movieList.ItemsSource = itemList;
-                    movieList.SelectionChanged += OnItemSelected;
+                    
+                    // Handle Enter key for activation instead of auto-play on selection
+                    movieList.KeyDown += OnListKeyDown;
 
                     if (itemList.Count == 0) 
                     {
@@ -76,47 +78,27 @@ namespace Baird
                 if (statusBlock != null) statusBlock.Text = $"Error: {ex.Message}";
             }
         }
-
-        private void LoadEnv()
+        
+        private void OnListKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
         {
-            try {
-                var path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".env");
-                // Attempt to find .env in project root if running from bin
-                if (!System.IO.File.Exists(path))
+            if (e.Key == Avalonia.Input.Key.Space)
+            {
+                var listBox = sender as ListBox;
+                if (listBox?.SelectedItem is MediaItem item)
                 {
-                     path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "../../../../../.env");
+                    PlayItem(item);
+                    e.Handled = true;
                 }
-                
-                if (System.IO.File.Exists(path))
-                {
-                    foreach (var line in System.IO.File.ReadAllLines(path))
-                    {
-                        var parts = line.Split('=', 2);
-                        if (parts.Length == 2)
-                        {
-                            Environment.SetEnvironmentVariable(parts[0].Trim(), parts[1].Trim());
-                        }
-                    }
-                    Console.WriteLine("Loaded .env file");
-                }
-                else
-                {
-                    Console.WriteLine("No .env file found");
-                }
-            } catch { /* ignore */ }
+            }
         }
         
-        private void OnItemSelected(object? sender, SelectionChangedEventArgs e)
+        private void PlayItem(MediaItem item)
         {
-            var listBox = sender as ListBox;
-            if (listBox?.SelectedItem is MediaItem item)
-            {
-                var url = _mediaProvider.GetStreamUrl(item.Id);
-                Console.WriteLine($"Playing Channel: {item.Name} at {url}");
-                
-                var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
-                player?.Play(url);
-            }
+            var url = _mediaProvider.GetStreamUrl(item.Id);
+            Console.WriteLine($"Playing Channel: {item.Name} at {url}");
+            
+            var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
+            player?.Play(url);
         }
 
         private void Timer_Tick(object? sender, EventArgs e)
