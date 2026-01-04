@@ -44,9 +44,13 @@ namespace Baird.Controls
 
         public void FocusSearchBox()
         {
-             // For virtual keyboard interaction, maybe focus the container or box
-             var box = this.FindControl<Control>("SearchBox"); 
-             box?.Focus();
+             var box = this.FindControl<TextBox>("SearchBox"); 
+             if (box != null)
+             {
+                 box.Focus();
+                 // Ensure cursor is at the end so appended digits are before the cursor
+                 box.CaretIndex = box.Text?.Length ?? 0;
+             }
         }
     }
 }

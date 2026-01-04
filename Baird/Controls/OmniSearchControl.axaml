@@ -16,7 +16,7 @@
 
         <!-- Row 1: Search Box -->
         <Border Grid.Row="1" Padding="20">
-            <TextBox Name="SearchBox" Text="{Binding SearchText}" FontSize="24" Watermark="Search..." IsReadOnly="True" Focusable="False"/>
+            <TextBox Name="SearchBox" Text="{Binding SearchText}" FontSize="24" Watermark="Search..."/>
         </Border>
 
         <!-- Row 2: Search Results -->

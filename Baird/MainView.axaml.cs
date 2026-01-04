@@ -84,6 +84,9 @@ namespace Baird
 
         private void InputCoordinator(object? sender, KeyEventArgs e)
         {
+            // If the event was already handled (e.g. by a focused TextBox), don't trigger global logic
+            if (e.Handled) return;
+
             // Debug key press
             Console.WriteLine($"Key: {e.Key}");
 
@@ -132,26 +135,27 @@ namespace Baird
             {
                 // Activate Search Mode
                 _viewModel.IsSearchActive = true;
-                _viewModel.OmniSearch.IsKeyboardVisible = false; // Numeric entry implies direct channel/search, not typing
+                _viewModel.OmniSearch.IsKeyboardVisible = false; 
                 
-                // Append Digit
+                // Append Digit to ViewModel
                 _viewModel.OmniSearch.AppendDigit(digit);
 
-                // Focus Results List
+                // Focus Search Box (so subsequent keys type naturally)
                 Dispatcher.UIThread.Post(() => 
                 {
                     var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
-                    searchControl?.FocusResults();
+                    searchControl?.FocusSearchBox();
                 });
                 
-                e.Handled = true; // Consume the key so it doesn't do focus nav
+                e.Handled = true; // Consume this initial key
             }
-            else
-            {
-                // Already in search, just append
-                _viewModel.OmniSearch.AppendDigit(digit);
-                e.Handled = true;
-            }
+            // If search IS active, we do nothing. 
+            // The focused SearchBox (if focused) will handle the key bubbling up to it (or down to it? Bubbling is up, Tunneling is down. KeyDown bubbles).
+            // Actually, if SearchBox is focused, it gets the event FIRST. It handles it. 
+            // Then InputCoordinator sees it. Conditional at top (e.Handled) will exit.
+            // If Search is active but SearchBox NOT focused (e.g. Results focused), then we might want this trigger? 
+            // User said: "After that it should not act, because the search box is visible and focused".
+            // So we assume it stays focused.
         }
 
         private void PlayItem(MediaItem item)
