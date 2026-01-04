@@ -8,5 +8,6 @@ namespace Baird.Services
         public string Name { get; set; }
         public string Details { get; set; } // e.g. Year, Channel Number
         public string ImageUrl { get; set; }
+        public bool IsLive { get; set; }
     }
 }

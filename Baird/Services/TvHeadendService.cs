@@ -84,7 +84,8 @@ namespace Baird.Services
                             Name = c.Name,
                             Details = c.Number.ToString(),
                             // TVHeadend icon URL: /imagecache/{id}
-                            ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}"
+                            ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
+                            IsLive = true
                         })
                         .OrderBy(c => c.Name);
                 }

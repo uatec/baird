@@ -37,6 +37,7 @@ namespace Baird.ViewModels
 
         public MainViewModel()
         {
+            IsVideoHudVisible = true;
         }
     }
 }

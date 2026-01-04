@@ -202,7 +202,8 @@ namespace Baird
                 {
                     Name = item.Name,
                     Details = item.Details,
-                    StreamUrl = url
+                    StreamUrl = url,
+                    IsLive = item.IsLive
                 };
             }
             else

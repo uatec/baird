@@ -13,17 +13,21 @@
         <c:VideoPlayer Name="Player" 
                        HorizontalAlignment="Stretch" 
                        VerticalAlignment="Stretch"
-                       Source="{Binding ActiveItem.StreamUrl}"/>
+                       Source="{Binding ActiveItem.StreamUrl}"
+                       IsLive="{Binding ActiveItem.IsLive}"/>
 
         <!-- Layer 2: Video HUD (Overlay) -->
         <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}" IsHitTestVisible="False">
              <Grid RowDefinitions="Auto,*,Auto">
                  <Border Grid.Row="0" Background="#AA000000" Padding="10">
-                     <TextBlock Text="Now Playing Info" Foreground="White"/>
+                     <StackPanel>
+                        <TextBlock Text="{Binding ActiveItem.Name}" FontSize="24" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding #Player.PlayerState}" FontSize="14" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
+                     </StackPanel>
                  </Border>
                  <Border Grid.Row="2" Background="#AA000000" Padding="10">
                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                         <TextBlock Text="00:00:00 / 01:30:00" Foreground="White"/>
+                         <TextBlock Text="{Binding #Player.FormattedTime}" Foreground="White" FontSize="18"/>
                      </StackPanel>
                  </Border>
              </Grid>

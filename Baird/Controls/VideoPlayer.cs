@@ -13,11 +13,19 @@ namespace Baird.Controls
         private MpvPlayer _player;
         private IntPtr _mpvRenderContext;
         private LibMpv.MpvRenderUpdateFn _renderUpdateDelegate;
+        private Avalonia.Threading.DispatcherTimer _hudTimer;
 
         public VideoPlayer()
         {
             _player = new MpvPlayer();
             _renderUpdateDelegate = UpdateCallback;
+
+            _hudTimer = new Avalonia.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(250)
+            };
+            _hudTimer.Tick += (s, e) => UpdateHud();
+            _hudTimer.Start();
         }
 
         public static readonly StyledProperty<bool> IsPausedProperty =
@@ -36,6 +44,63 @@ namespace Baird.Controls
         {
             get => GetValue(SourceProperty);
             set => SetValue(SourceProperty, value);
+        }
+
+        public static readonly StyledProperty<string> FormattedTimeProperty =
+            AvaloniaProperty.Register<VideoPlayer, string>(nameof(FormattedTime), defaultValue: "00:00:00 / 00:00:00");
+
+        public string FormattedTime
+        {
+            get => GetValue(FormattedTimeProperty);
+            set => SetValue(FormattedTimeProperty, value);
+        }
+
+        public static readonly StyledProperty<string> PlayerStateProperty =
+            AvaloniaProperty.Register<VideoPlayer, string>(nameof(PlayerState), defaultValue: "Idle");
+
+        public string PlayerState
+        {
+            get => GetValue(PlayerStateProperty);
+            set => SetValue(PlayerStateProperty, value);
+        }
+
+        public static readonly StyledProperty<bool> IsLiveProperty =
+            AvaloniaProperty.Register<VideoPlayer, bool>(nameof(IsLive));
+
+        public bool IsLive
+        {
+            get => GetValue(IsLiveProperty);
+            set => SetValue(IsLiveProperty, value);
+        }
+
+        private void UpdateHud()
+        {
+            if (_player == null) return;
+
+            // State
+            var state = _player.State.ToString();
+            
+            if (IsLive)
+            {
+                // Live Stream Mode: Show Clock
+                FormattedTime = DateTime.Now.ToString("HH:mm");
+            }
+            else
+            {
+                // VOD Mode: Show Position / Duration
+                var posStr = _player.TimePosition;
+                var durStr = _player.Duration;
+
+                double.TryParse(posStr, out double pos);
+                double.TryParse(durStr, out double dur);
+
+                var tsPos = TimeSpan.FromSeconds(pos);
+                var tsDur = TimeSpan.FromSeconds(dur);
+
+                FormattedTime = $"{tsPos:hh\\:mm\\:ss} / {tsDur:hh\\:mm\\:ss}";
+            }
+            
+            PlayerState = state;
         }
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
