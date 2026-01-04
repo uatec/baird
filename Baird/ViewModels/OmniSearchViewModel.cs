@@ -25,13 +25,29 @@ namespace Baird.ViewModels
 
         public OmniSearchViewModel()
         {
+            this.WhenAnyValue(x => x.SearchText)
+                .Subscribe(PerformSearch);
+        }
+
+        private void PerformSearch(string? searchText)
+        {
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                // If search is cleared, maybe we want to show all or nothing?
+                // For now, let's just not filter if empty, or clear results?
+                // The previous logic accumulated everything. 
+                // Let's stick to the request: "initially with a dummy implementation".
+                return;
+            }
+
+            // Dummy implementation
+            SearchResults.Clear();
+            SearchResults.Add(new MediaItem { Name = $"Search: {searchText}", Details = "Dummy Result" });
         }
 
         public void AppendDigit(string digit)
         {
             SearchText += digit;
-            // TODO: Trigger search logic here
-            SearchResults.Add(new MediaItem { Name = $"Result for {SearchText}", Details = "Channel" });
         }
 
         public void Backspace()
