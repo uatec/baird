@@ -7,6 +7,21 @@
              x:Class="Baird.Controls.OmniSearchControl"
              x:DataType="vm:OmniSearchViewModel">
     
+    <UserControl.Styles>
+        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="#EEEEEE"/>
+            <Setter Property="BorderThickness" Value="4"/>
+        </Style>
+        <Style Selector="ListBoxItem:focus">
+            <Setter Property="Background" Value="#444444"/>
+            <Setter Property="BorderBrush" Value="#EEEEEE"/>
+            <Setter Property="BorderThickness" Value="4"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="#666666"/>
+        </Style>
+    </UserControl.Styles>
+
     <Grid Name="OmniSearchGrid" RowDefinitions="Auto,Auto,*" Background="#DD000000">
         
         <!-- Row 0: Virtual Keyboard (Visible only when prompted) -->
@@ -16,11 +31,19 @@
 
         <!-- Row 1: Search Box -->
         <Border Grid.Row="1" Padding="20">
-            <TextBox Name="SearchBox" Text="{Binding SearchText}" FontSize="24" Watermark="Search..."/>
+            <TextBox Name="SearchBox" 
+                     Text="{Binding SearchText}" 
+                     FontSize="24" 
+                     Watermark="Search..."
+                     XYFocus.Down="{Binding #ResultsList}"/>
         </Border>
 
         <!-- Row 2: Search Results -->
-        <ListBox Name="ResultsList" Grid.Row="2" ItemsSource="{Binding SearchResults}" Background="Transparent">
+        <ListBox Name="ResultsList" 
+                 Grid.Row="2" 
+                 ItemsSource="{Binding SearchResults}" 
+                 Background="Transparent"
+                 XYFocus.Up="{Binding #SearchBox}">
             <ListBox.ItemTemplate>
                 <DataTemplate>
                      <Grid ColumnDefinitions="Auto,*" Margin="5">

@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Baird.Services;
 using System;
 
@@ -16,9 +17,11 @@ namespace Baird.Controls
             InitializeComponent();
             
             var list = this.FindControl<ListBox>("ResultsList");
+            var box = this.FindControl<TextBox>("SearchBox");
+
             if (list != null)
             {
-                // Intercept KeyDown even if handled by sub-elements
+                // Handle activation
                 list.AddHandler(InputElement.KeyDownEvent, (s, e) => 
                 {
                     if (e.Key == global::Avalonia.Input.Key.Enter || e.Key == global::Avalonia.Input.Key.Return)
@@ -32,58 +35,52 @@ namespace Baird.Controls
                     }
                     else if (e.Key == global::Avalonia.Input.Key.Up)
                     {
-                        var lb = s as ListBox;
-                        if (lb != null && lb.SelectedIndex == 0)
+                        if (list.SelectedIndex == 0)
                         {
-                            Console.WriteLine("ResultsList: Top reached, clearing selection and returning focus to SearchBox");
-                            lb.SelectedIndex = -1;
-                            FocusSearchBox();
                             e.Handled = true;
+                            Dispatcher.UIThread.Post(() => box?.Focus(), DispatcherPriority.Input);
                         }
                     }
-                }, RoutingStrategies.Bubble, true);
+                }, RoutingStrategies.Tunnel, true);
             }
 
-            var box = this.FindControl<TextBox>("SearchBox");
             if (box != null)
             {
-                // CRITICAL: We MUST use handledEventsToo: true because TextBox handles Down key internally
-                box.AddHandler(InputElement.KeyDownEvent, (s, e) =>
+                // Clear selection when we move back up to the search box
+                box.GotFocus += (s, e) => 
+                {
+                    if (list != null)
+                    {
+                        list.SelectedIndex = -1;
+                    }
+                };
+
+                // Manual Down key handling to bridge to the list
+                box.AddHandler(InputElement.KeyDownEvent, (s, e) => 
                 {
                     if (e.Key == global::Avalonia.Input.Key.Down)
                     {
-                        if (DataContext is Baird.ViewModels.OmniSearchViewModel vm && !vm.IsKeyboardVisible)
+                        Console.WriteLine("Down key pressed in search box");
+                        if (list != null && list.ItemCount > 0)
                         {
-                            var resultList = this.FindControl<ListBox>("ResultsList");
-                            if (resultList != null && resultList.ItemCount > 0)
+                            if (list.SelectedIndex < 0) list.SelectedIndex = 0;
+                            e.Handled = true;
+                            Dispatcher.UIThread.Post(() => 
                             {
-                                Console.WriteLine("SearchBox: Intercepting Down key to focus results");
-                                
-                                // Ensure something is selected
-                                if (resultList.SelectedIndex < 0)
-                                    resultList.SelectedIndex = 0;
-                                
-                                // Hand off focus to the Results List
-                                // We use a small delay to ensure the TextBox has finished its cycle
-                                Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+                                // Focus the actual ListBoxItem container, not just the ListBox
+                                var container = list.ContainerFromIndex(list.SelectedIndex);
+                                if (container is ListBoxItem item)
                                 {
-                                    // Try to focus the item container for maximum reliability
-                                    var container = resultList.ContainerFromIndex(resultList.SelectedIndex);
-                                    if (container != null)
-                                    {
-                                        container.Focus();
-                                    }
-                                    else
-                                    {
-                                        resultList.Focus();
-                                    }
-                                }, Avalonia.Threading.DispatcherPriority.Input);
-
-                                e.Handled = true;
-                            }
+                                    item.Focus();
+                                }
+                                else
+                                {
+                                    list.Focus();
+                                }
+                            }, DispatcherPriority.Input);
                         }
                     }
-                }, RoutingStrategies.Bubble, true);
+                }, RoutingStrategies.Tunnel, true);
             }
         }
 
