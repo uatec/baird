@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Baird.ViewModels"
+             xmlns:controls="using:Baird.Controls"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Baird.Controls.OmniSearchControl"
              x:DataType="vm:OmniSearchViewModel">
@@ -25,17 +26,20 @@
     <Grid Name="OmniSearchGrid" RowDefinitions="Auto,Auto,*" Background="#DD000000">
         
         <!-- Row 0: Virtual Keyboard (Visible only when prompted) -->
-        <Grid Grid.Row="0" IsVisible="{Binding IsKeyboardVisible}" Background="#222222" Height="200">
-            <TextBlock Text="[Virtual Keyboard Placeholder - Press Back to Hide]" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Grid>
+        <controls:VirtualKeyboardControl Name="VirtualKeyboard" 
+                                         Grid.Row="0" 
+                                         IsVisible="{Binding IsKeyboardVisible}" 
+                                         Height="320" 
+                                         Margin="0,0,0,10"/>
 
-        <!-- Row 1: Search Box -->
+        <!-- Row 1: SearchBox -->
         <Border Grid.Row="1" Padding="20">
             <TextBox Name="SearchBox" 
                      Text="{Binding SearchText}" 
                      FontSize="24" 
                      Watermark="Search..."
-                     XYFocus.Down="{Binding #ResultsList}"/>
+                     XYFocus.Down="{Binding #ResultsList}"
+                     XYFocus.Up="{Binding #VirtualKeyboard}"/>
         </Border>
 
         <!-- Row 2: Search Results -->

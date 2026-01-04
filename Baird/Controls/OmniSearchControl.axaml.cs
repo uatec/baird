@@ -82,6 +82,35 @@ namespace Baird.Controls
                     }
                 }, RoutingStrategies.Tunnel, true);
             }
+            var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
+            
+            if (keyboard != null && box != null)
+            {
+                keyboard.KeyPressed += (key) =>
+                {
+                   if (box.Text == null) box.Text = "";
+                   box.Text += key; 
+                   box.CaretIndex = box.Text.Length;
+                };
+
+                keyboard.BackspacePressed += () =>
+                {
+                    if (!string.IsNullOrEmpty(box.Text))
+                    {
+                        box.Text = box.Text.Substring(0, box.Text.Length - 1);
+                        box.CaretIndex = box.Text.Length;
+                    }
+                };
+                
+                keyboard.EnterPressed += () =>
+                {
+                    if (list != null && list.ItemCount > 0)
+                    {
+                         list.Focus();
+                         list.SelectedIndex = 0;
+                    }
+                };
+            }
         }
 
         private void InitializeComponent()
@@ -105,5 +134,7 @@ namespace Baird.Controls
                  box.CaretIndex = box.Text?.Length ?? 0;
              }
         }
+
+
     }
 }

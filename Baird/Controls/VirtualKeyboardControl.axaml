@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="300"
+             x:Class="Baird.Controls.VirtualKeyboardControl">
+
+    <UserControl.Styles>
+        <Style Selector="Button">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="#333333"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button:focus">
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="BorderBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+        <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="#444444"/>
+        </Style>
+        <Style Selector="Button.special">
+             <Setter Property="Background" Value="#222222"/>
+             <Setter Property="Foreground" Value="#AAAAAA"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="*,*,*,*" Margin="10">
+        
+        <!-- Row 1: QWERTY + Backspace -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,*,*,*,*,*,*,*,*,*,*" Margin="0,5">
+            <Button Grid.Column="0" Content="Q" Click="OnKeyClick"/>
+            <Button Grid.Column="1" Content="W" Click="OnKeyClick"/>
+            <Button Grid.Column="2" Content="E" Click="OnKeyClick"/>
+            <Button Grid.Column="3" Content="R" Click="OnKeyClick"/>
+            <Button Grid.Column="4" Content="T" Click="OnKeyClick"/>
+            <Button Grid.Column="5" Content="Y" Click="OnKeyClick"/>
+            <Button Grid.Column="6" Content="U" Click="OnKeyClick"/>
+            <Button Grid.Column="7" Content="I" Click="OnKeyClick"/>
+            <Button Grid.Column="8" Content="O" Click="OnKeyClick"/>
+            <Button Grid.Column="9" Content="P" Click="OnKeyClick"/>
+            <!-- Backspace -->
+            <Button Grid.Column="10" Content="⌫" Classes="special" Click="OnBackspaceClick"/>
+        </Grid>
+
+        <!-- Row 2: ASDF + Enter -->
+        <Grid Grid.Row="1" ColumnDefinitions="0.5*,*,*,*,*,*,*,*,*,*,1.5*" Margin="0,5">
+            <!-- Spacer -->
+            <Panel Grid.Column="0"/> 
+            <Button Grid.Column="1" Content="A" Click="OnKeyClick"/>
+            <Button Grid.Column="2" Content="S" Click="OnKeyClick"/>
+            <Button Grid.Column="3" Content="D" Click="OnKeyClick"/>
+            <Button Grid.Column="4" Content="F" Click="OnKeyClick"/>
+            <Button Grid.Column="5" Content="G" Click="OnKeyClick"/>
+            <Button Grid.Column="6" Content="H" Click="OnKeyClick"/>
+            <Button Grid.Column="7" Content="J" Click="OnKeyClick"/>
+            <Button Grid.Column="8" Content="K" Click="OnKeyClick"/>
+            <Button Grid.Column="9" Content="L" Click="OnKeyClick"/>
+            <!-- Enter -->
+            <Button Grid.Column="10" Content="ENTER" Classes="special" Click="OnEnterClick" FontSize="16"/>
+        </Grid>
+
+        <!-- Row 3: ZXCV -->
+        <Grid Grid.Row="2" ColumnDefinitions="1.5*,*,*,*,*,*,*,*,1.5*" Margin="0,5">
+            <Panel Grid.Column="0"/>
+            <Button Grid.Column="1" Content="Z" Click="OnKeyClick"/>
+            <Button Grid.Column="2" Content="X" Click="OnKeyClick"/>
+            <Button Grid.Column="3" Content="C" Click="OnKeyClick"/>
+            <Button Grid.Column="4" Content="V" Click="OnKeyClick"/>
+            <Button Grid.Column="5" Content="B" Click="OnKeyClick"/>
+            <Button Grid.Column="6" Content="N" Click="OnKeyClick"/>
+            <Button Grid.Column="7" Content="M" Click="OnKeyClick"/>
+            <Panel Grid.Column="8"/>
+        </Grid>
+
+        <!-- Row 4: Num/Sym + Space -->
+        <Grid Grid.Row="3" ColumnDefinitions="2*,6*" Margin="0,5">
+            <Button Grid.Column="0" Content="?123" Classes="special" Margin="2,2,10,2" IsEnabled="False" Opacity="0.5"/>
+            <Button Grid.Column="1" Content="SPACE" Click="OnSpaceClick" />
+        </Grid>
+
+    </Grid>
+</UserControl>
