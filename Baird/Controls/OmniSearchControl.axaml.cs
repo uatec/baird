@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Input;
@@ -84,6 +85,8 @@ namespace Baird.Controls
             }
             var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
             
+            bool navigatingToResults = false;
+
             if (keyboard != null && box != null)
             {
                 keyboard.KeyPressed += (key) =>
@@ -104,10 +107,41 @@ namespace Baird.Controls
                 
                 keyboard.EnterPressed += () =>
                 {
-                    if (list != null && list.ItemCount > 0)
+                    if (DataContext is Baird.ViewModels.OmniSearchViewModel vm)
                     {
-                         list.Focus();
-                         list.SelectedIndex = 0;
+                        navigatingToResults = true;
+                        vm.IsKeyboardVisible = false;
+                    }
+                };
+
+                keyboard.PropertyChanged += (s, e) =>
+                {
+                    if (e.Property == Visual.IsVisibleProperty && !keyboard.IsVisible)
+                    {
+                        Dispatcher.UIThread.Post(() => 
+                        {
+                            if (navigatingToResults)
+                            {
+                                if (list != null && list.ItemCount > 0)
+                                {
+                                    list.SelectedIndex = 0;
+                                    var container = list.ContainerFromIndex(0);
+                                    if (container is ListBoxItem item)
+                                    {
+                                        item.Focus();
+                                    }
+                                    else
+                                    {
+                                        list.Focus();
+                                    }
+                                }
+                                navigatingToResults = false;
+                            }
+                            else
+                            {
+                                box.Focus();
+                            }
+                        }, DispatcherPriority.Input);
                     }
                 };
             }
