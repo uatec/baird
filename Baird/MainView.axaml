@@ -2,9 +2,28 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:c="using:Baird.Controls"
+             xmlns:vm="using:Baird.ViewModels"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="Baird.MainView">
-    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
-        <TextBox Text="Hello World" IsReadOnly="True" FontSize="30"/>
+             x:Class="Baird.MainView"
+             x:DataType="vm:MainViewModel">
+
+    <!-- Root Grid with Z-Layers -->
+    <Grid>
+        <!-- Layer 0: Base Layer (Video) -->
+        <c:VideoLayerControl Name="VideoLayer" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+
+        <!-- Layer 1: EPG Overlay (Bottom Up) -->
+        <Border Name="EpgLayer" Background="#CC000000" VerticalAlignment="Bottom" Height="300" IsVisible="{Binding IsEpgActive}">
+            <TextBlock Text="EPG Placeholder" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+
+        <!-- Layer 2: Omni-Search (Top Down, Overlay) -->
+        <c:OmniSearchControl Name="OmniSearchLayer" 
+                             DataContext="{Binding OmniSearch}"
+                             IsVisible="{Binding DataContext.IsSearchActive, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                             HorizontalAlignment="Stretch" 
+                             VerticalAlignment="Stretch"/>
+                             <!-- Note: Re-binding DataContext to OmniSearch sub-VM. IsVisible binding needs to reach back to MainViewModel -->
     </Grid>
 </UserControl>

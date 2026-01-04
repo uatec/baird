@@ -29,6 +29,33 @@ namespace Baird.Controls
             set => SetValue(IsPausedProperty, value);
         }
 
+        public static readonly StyledProperty<string?> SourceProperty =
+            AvaloniaProperty.Register<VideoPlayer, string?>(nameof(Source));
+
+        public string? Source
+        {
+            get => GetValue(SourceProperty);
+            set => SetValue(SourceProperty, value);
+        }
+
+        protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+        {
+            base.OnPropertyChanged(change);
+
+            if (change.Property == SourceProperty)
+            {
+                var url = change.NewValue as string;
+                if (!string.IsNullOrEmpty(url))
+                {
+                    Play(url);
+                }
+                else
+                {
+                    Stop();
+                }
+            }
+        }
+
         public void Play(string url) 
         {
             _player.Play(url);

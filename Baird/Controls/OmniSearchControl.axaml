@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Baird.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Baird.Controls.OmniSearchControl"
+             x:DataType="vm:OmniSearchViewModel">
+    
+    <Grid Name="OmniSearchGrid" RowDefinitions="Auto,Auto,*" Background="#DD000000">
+        
+        <!-- Row 0: Virtual Keyboard (Visible only when prompted) -->
+        <Grid Grid.Row="0" IsVisible="{Binding IsKeyboardVisible}" Background="#222222" Height="200">
+            <TextBlock Text="[Virtual Keyboard Placeholder - Press Back to Hide]" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Grid>
+
+        <!-- Row 1: Search Box -->
+        <Border Grid.Row="1" Padding="20">
+            <TextBox Name="SearchBox" Text="{Binding SearchText}" FontSize="24" Watermark="Search..." IsReadOnly="True" Focusable="False"/>
+        </Border>
+
+        <!-- Row 2: Search Results -->
+        <ListBox Name="ResultsList" Grid.Row="2" ItemsSource="{Binding SearchResults}" Background="Transparent">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                     <Grid ColumnDefinitions="Auto,*" Margin="5">
+                         <Border Width="50" Height="50" Background="Gray" Margin="0,0,10,0">
+                             <!-- Icon placeholder -->
+                         </Border>
+                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                             <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="Bold" Foreground="White"/>
+                             <TextBlock Text="{Binding Details}" FontSize="14" Foreground="LightGray"/>
+                         </StackPanel>
+                     </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</UserControl>

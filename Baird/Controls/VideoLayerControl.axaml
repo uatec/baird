@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:c="using:Baird.Controls"
+             xmlns:vm="using:Baird.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Baird.Controls.VideoLayerControl"
+             x:DataType="vm:MainViewModel">
+    
+    <Grid>
+        <!-- Layer 0: Video Player -->
+        <c:VideoPlayer Name="Player" 
+                       HorizontalAlignment="Stretch" 
+                       VerticalAlignment="Stretch"
+                       Source="{Binding ActiveItem.StreamUrl}"/>
+
+        <!-- Layer 2: Video HUD (Overlay) -->
+        <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}" IsHitTestVisible="False">
+             <Grid RowDefinitions="Auto,*,Auto">
+                 <Border Grid.Row="0" Background="#AA000000" Padding="10">
+                     <TextBlock Text="Now Playing Info" Foreground="White"/>
+                 </Border>
+                 <Border Grid.Row="2" Background="#AA000000" Padding="10">
+                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                         <TextBlock Text="00:00:00 / 01:30:00" Foreground="White"/>
+                     </StackPanel>
+                 </Border>
+             </Grid>
+        </Border>
+    </Grid>
+</UserControl>

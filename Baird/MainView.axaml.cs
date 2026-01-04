@@ -1,12 +1,225 @@
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Threading;
+using Baird.Services;
+using Baird.ViewModels;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Baird
 {
     public partial class MainView : UserControl
     {
+        private MainViewModel _viewModel;
+        private IMediaProvider _mediaProvider;
+
         public MainView()
         {
             InitializeComponent();
+            _viewModel = new MainViewModel();
+            DataContext = _viewModel;
+
+            this.AttachedToVisualTree += async (s, e) =>
+            {
+                // Hook up OmniSearch Play Event
+                var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
+                if (searchControl != null)
+                {
+                    searchControl.ItemChosen += (sender, item) => 
+                    {
+                        PlayItem(item);
+                        // Close search
+                        _viewModel.IsSearchActive = false;
+                        _viewModel.OmniSearch.Clear();
+                    };
+                }
+
+                // TopLevel for global input hook? Or just hook on UserControl?
+                // UserControl KeyDown bubbles, so focusing Root is important.
+                var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
+                if (topLevel != null)
+                {
+                    topLevel.KeyDown += InputCoordinator;
+                }
+                
+                // Focus the Base Layer initially
+                // this.FindControl<Grid>("BaseLayer")?.Focus(); // Grids aren't focusable by default usually, might need a focusable element
+
+                await InitializeMediaProvider();
+            };
+        }
+
+        private async Task InitializeMediaProvider()
+        {
+             _mediaProvider = new TvHeadendService();
+             try
+             {
+                 await _mediaProvider.InitializeAsync();
+                 var items = await _mediaProvider.GetListingAsync();
+
+                 // log loaded channel count
+                 Console.WriteLine($"Loaded: {items.Count()} channels");
+                 // Store items in Search for later use
+                 foreach(var item in items) _viewModel.OmniSearch.SearchResults.Add(item);
+
+                 // Auto-play first channel > 0
+                 var firstChannel = items
+                    .Where(i => i.Details != "0")
+                    .OrderBy(i => i.Details)
+                    .FirstOrDefault();
+
+                 if (firstChannel != null)
+                 {
+                     Console.WriteLine($"Auto-playing channel: {firstChannel.Name}");
+                     PlayItem(firstChannel);
+                 }
+             }
+             catch(Exception ex)
+             {
+                 Console.WriteLine($"Error init media: {ex}");
+             }
+        }
+
+        private void InputCoordinator(object? sender, KeyEventArgs e)
+        {
+            // Debug key press
+            Console.WriteLine($"Key: {e.Key}");
+
+            // Numeric Triggers (0-9)
+            if (IsNumericKey(e.Key))
+            {
+                HandleNumericTrigger(e);
+                return;
+            }
+
+            // Up Trigger
+            if (e.Key == Key.Up)
+            {
+                HandleUpTrigger(e);
+                // Don't mark handled generally, as it might be needed for nav, BUT
+                // if we just switched layers, we might want to consume it.
+                return;
+            }
+
+            // Back/Esc Trigger
+            if (e.Key == Key.Escape || e.Key == Key.Back)
+            {
+                HandleBackTrigger(e);
+                e.Handled = true; // Always consume Back/Esc
+                return;
+            }
+        }
+
+        private bool IsNumericKey(Key key)
+        {
+            return (key >= Key.D0 && key <= Key.D9) || (key >= Key.NumPad0 && key <= Key.NumPad9);
+        }
+
+        private string GetNumericChar(Key key)
+        {
+            if (key >= Key.D0 && key <= Key.D9) return ((int)key - (int)Key.D0).ToString();
+            if (key >= Key.NumPad0 && key <= Key.NumPad9) return ((int)key - (int)Key.NumPad0).ToString();
+            return "";
+        }
+
+        private void HandleNumericTrigger(KeyEventArgs e)
+        {
+            var digit = GetNumericChar(e.Key);
+
+            if (!_viewModel.IsSearchActive)
+            {
+                // Activate Search Mode
+                _viewModel.IsSearchActive = true;
+                _viewModel.OmniSearch.IsKeyboardVisible = false; // Numeric entry implies direct channel/search, not typing
+                
+                // Append Digit
+                _viewModel.OmniSearch.AppendDigit(digit);
+
+                // Focus Results List
+                Dispatcher.UIThread.Post(() => 
+                {
+                    var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
+                    searchControl?.FocusResults();
+                });
+                
+                e.Handled = true; // Consume the key so it doesn't do focus nav
+            }
+            else
+            {
+                // Already in search, just append
+                _viewModel.OmniSearch.AppendDigit(digit);
+                e.Handled = true;
+            }
+        }
+
+        private void PlayItem(MediaItem item)
+        {
+            var url = _mediaProvider.GetStreamUrl(item.Id);
+            Console.WriteLine($"Activating Channel: {item.Name} at {url}");
+            
+            _viewModel.ActiveItem = new ActiveMedia 
+            {
+                Name = item.Name,
+                Details = item.Details,
+                StreamUrl = url
+            };
+        }
+
+        private void HandleUpTrigger(KeyEventArgs e)
+        {
+            // Logic: If on BaseLayer (Video/Home) and press Up -> Open Search with Keyboard
+            
+            if (!_viewModel.IsSearchActive)
+            {
+                 _viewModel.IsSearchActive = true;
+                 _viewModel.OmniSearch.IsKeyboardVisible = true;
+                 
+                 // Focus Keyboard
+                 Dispatcher.UIThread.Post(() => 
+                 {
+                     var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
+                     searchControl?.FocusSearchBox();
+                 });
+                 
+                 e.Handled = true;
+            }
+            else
+            {
+                // In search mode, Up might navigate from Results to Keyboard
+                if (!_viewModel.OmniSearch.IsKeyboardVisible)
+                {
+                     // Logic checks focus... complicated without precise focus tracking.
+                }
+            }
+        }
+
+        private void HandleBackTrigger(KeyEventArgs e)
+        {
+            if (_viewModel.OmniSearch.IsKeyboardVisible)
+            {
+                // Hide Keyboard, Keep Search Open
+                _viewModel.OmniSearch.IsKeyboardVisible = false;
+                
+                // Focus Results
+                Dispatcher.UIThread.Post(() => 
+                {
+                    var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
+                    searchControl?.FocusResults();
+                });
+            }
+            else if (_viewModel.IsSearchActive)
+            {
+                // Close Search, Return to Base
+                _viewModel.IsSearchActive = false;
+                _viewModel.OmniSearch.Clear();
+
+                // Focus Base (Video)
+                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                // Focus the player inside if needed, or just the container
+                // videoLayer?.GetPlayer()?.Focus();
+            }
         }
 
         private void InitializeComponent()
