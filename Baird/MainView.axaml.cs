@@ -13,7 +13,9 @@ namespace Baird
     public partial class MainView : UserControl
     {
         private MainViewModel _viewModel;
-        private IMediaProvider _mediaProvider;
+        // private IMediaProvider _mediaProvider; // Removed single provider
+        private List<IMediaProvider> _providers = new();
+        private Dictionary<string, IMediaProvider> _itemProviderMap = new();
 
         public MainView()
         {
@@ -53,21 +55,52 @@ namespace Baird
 
         private async Task InitializeMediaProvider()
         {
-             _mediaProvider = new TvHeadendService();
+             _providers.Clear();
+             _itemProviderMap.Clear();
+             
+             _providers.Add(new TvHeadendService());
+             _providers.Add(new JellyfinService());
+
              try
              {
-                 await _mediaProvider.InitializeAsync();
-                 var items = await _mediaProvider.GetListingAsync();
+                 var allItems = new List<MediaItem>();
+
+                 foreach (var provider in _providers)
+                 {
+                     try 
+                     {
+                         await provider.InitializeAsync();
+                         var items = await provider.GetListingAsync();
+                         
+                         foreach (var item in items)
+                         {
+                             // Map ID to Provider for playback
+                             if (!_itemProviderMap.ContainsKey(item.Id))
+                             {
+                                 _itemProviderMap[item.Id] = provider;
+                                 allItems.Add(item);
+                             }
+                         }
+                     }
+                     catch (Exception ex)
+                     {
+                         Console.WriteLine($"Error init provider {provider.GetType().Name}: {ex}");
+                     }
+                 }
 
                  // log loaded channel count
-                 Console.WriteLine($"Loaded: {items.Count()} channels");
-                 // Store items in Search for later use
-                 foreach(var item in items) _viewModel.OmniSearch.SearchResults.Add(item);
+                 Console.WriteLine($"Loaded: {allItems.Count} total items");
+                 
+                 // Store items in ViewModel Source
+                 _viewModel.OmniSearch.AllItems = allItems;
+                 
+                 // Trigger initial display (Show All)
+                 _viewModel.OmniSearch.Clear();
 
-                 // Auto-play first channel > 0
-                 var firstChannel = items
-                    .Where(i => i.Details != "0")
-                    .OrderBy(i => i.Details)
+                 // Auto-play first channel > 0 from TVH (assuming Details is channel num)
+                 var firstChannel = allItems
+                    .Where(i => i.Details != "0" && int.TryParse(i.Details, out _)) // Simple check for numeric channel
+                    .OrderBy(i => i.Details.Length).ThenBy(i => i.Details) // Sort by logical order ish
                     .FirstOrDefault();
 
                  if (firstChannel != null)
@@ -160,15 +193,22 @@ namespace Baird
 
         private void PlayItem(MediaItem item)
         {
-            var url = _mediaProvider.GetStreamUrl(item.Id);
-            Console.WriteLine($"Activating Channel: {item.Name} at {url}");
-            
-            _viewModel.ActiveItem = new ActiveMedia 
+            if (_itemProviderMap.TryGetValue(item.Id, out var provider))
             {
-                Name = item.Name,
-                Details = item.Details,
-                StreamUrl = url
-            };
+                var url = provider.GetStreamUrl(item.Id);
+                Console.WriteLine($"Activating Item: {item.Name} at {url}");
+                
+                _viewModel.ActiveItem = new ActiveMedia 
+                {
+                    Name = item.Name,
+                    Details = item.Details,
+                    StreamUrl = url
+                };
+            }
+            else
+            {
+                Console.WriteLine($"Error: No provider found for item {item.Name} ({item.Id})");
+            }
         }
 
         private void HandleUpTrigger(KeyEventArgs e)
