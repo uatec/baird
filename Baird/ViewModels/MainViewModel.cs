@@ -26,7 +26,7 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isVideoHudVisible, value);
         }
 
-        public OmniSearchViewModel OmniSearch { get; } = new();
+        public OmniSearchViewModel OmniSearch { get; }
 
         private ActiveMedia? _activeItem;
         public ActiveMedia? ActiveItem
@@ -35,8 +35,9 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _activeItem, value);
         }
 
-        public MainViewModel()
+        public MainViewModel(System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> providers)
         {
+            OmniSearch = new OmniSearchViewModel(providers);
             IsVideoHudVisible = true;
         }
     }

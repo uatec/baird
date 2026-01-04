@@ -20,7 +20,11 @@ namespace Baird
         public MainView()
         {
             InitializeComponent();
-            _viewModel = new MainViewModel();
+
+            _providers.Add(new TvHeadendService());
+            _providers.Add(new JellyfinService());
+
+            _viewModel = new MainViewModel(_providers);
             DataContext = _viewModel;
 
             this.AttachedToVisualTree += async (s, e) =>
@@ -55,30 +59,25 @@ namespace Baird
 
         private async Task InitializeMediaProvider()
         {
-             _providers.Clear();
              _itemProviderMap.Clear();
              
-             _providers.Add(new TvHeadendService());
-             _providers.Add(new JellyfinService());
-
              try
              {
-                 var allItems = new List<MediaItem>();
-
                  foreach (var provider in _providers)
                  {
                      try 
                      {
                          await provider.InitializeAsync();
+                         
+                         // Pre-fetch for the provider map (needed for playback lookup)
+                         // and for the first channel auto-play
                          var items = await provider.GetListingAsync();
                          
                          foreach (var item in items)
                          {
-                             // Map ID to Provider for playback
                              if (!_itemProviderMap.ContainsKey(item.Id))
                              {
                                  _itemProviderMap[item.Id] = provider;
-                                 allItems.Add(item);
                              }
                          }
                      }
@@ -88,19 +87,19 @@ namespace Baird
                      }
                  }
 
-                 // log loaded channel count
-                 Console.WriteLine($"Loaded: {allItems.Count} total items");
-                 
-                 // Store items in ViewModel Source
-                 _viewModel.OmniSearch.AllItems = allItems;
-                 
-                 // Trigger initial display (Show All)
-                 _viewModel.OmniSearch.Clear();
+                 // Trigger initial "Search" with empty query to populate results list
+                 await _viewModel.OmniSearch.ClearAndSearch();
 
-                 // Auto-play first channel > 0 from TVH (assuming Details is channel num)
+                 // Auto-play first channel logic
+                 var allItems = new List<MediaItem>();
+                 foreach(var p in _providers) {
+                     var list = await p.GetListingAsync();
+                     allItems.AddRange(list);
+                 }
+
                  var firstChannel = allItems
-                    .Where(i => i.Details != "0" && int.TryParse(i.Details, out _)) // Simple check for numeric channel
-                    .OrderBy(i => i.Details.Length).ThenBy(i => i.Details) // Sort by logical order ish
+                    .Where(i => i.Details != "0" && int.TryParse(i.Details, out _))
+                    .OrderBy(i => i.Details.Length).ThenBy(i => i.Details)
                     .FirstOrDefault();
 
                  if (firstChannel != null)

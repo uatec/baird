@@ -154,7 +154,8 @@ namespace Baird.Services
                     {
                         Id = m.Id,
                         Name = m.Name,
-                        Details = m.ProductionYear?.ToString() ?? "Unknown Year"
+                        Details = m.ProductionYear?.ToString() ?? "Unknown Year",
+                        IsLive = false
                     });
                 }
                 return Enumerable.Empty<MediaItem>();
@@ -163,6 +164,43 @@ namespace Baird.Services
             {
                 Console.WriteLine($"Failed to fetch movies: {ex.Message}");
                 Console.WriteLine(ex.StackTrace);
+                return Enumerable.Empty<MediaItem>();
+            }
+        }
+
+        public async Task<IEnumerable<MediaItem>> SearchAsync(string query)
+        {
+            if (!IsAuthenticated || string.IsNullOrWhiteSpace(query)) 
+                return await GetListingAsync();
+
+            try
+            {
+                var q = Uri.EscapeDataString(query.Trim());
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&Fields=ProductionYear&SearchTerm={q}";
+                
+                Console.WriteLine($"Searching Jellyfin movies with query '{query}': {url}");
+                
+                var response = await _httpClient.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+
+                var json = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult);
+                
+                if (result?.Items != null)
+                {
+                    return result.Items.Select(m => new MediaItem 
+                    {
+                        Id = m.Id,
+                        Name = m.Name,
+                        Details = m.ProductionYear?.ToString() ?? "Unknown Year",
+                        IsLive = false
+                    });
+                }
+                return Enumerable.Empty<MediaItem>();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Jellyfin search failed: {ex.Message}");
                 return Enumerable.Empty<MediaItem>();
             }
         }

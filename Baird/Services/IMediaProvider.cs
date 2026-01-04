@@ -7,6 +7,7 @@ namespace Baird.Services
     {
         Task InitializeAsync();
         Task<IEnumerable<MediaItem>> GetListingAsync();
+        Task<IEnumerable<MediaItem>> SearchAsync(string query);
         string GetStreamUrl(string itemId);
     }
 }

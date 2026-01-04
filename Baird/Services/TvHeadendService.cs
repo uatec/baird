@@ -100,6 +100,26 @@ namespace Baird.Services
             }
         }
 
+        public async Task<IEnumerable<MediaItem>> SearchAsync(string query)
+        {
+            var all = await GetListingAsync();
+            if (string.IsNullOrWhiteSpace(query)) return all;
+
+            var q = query.Trim();
+
+            // Use the same logic as before but inside the provider
+            var channelMatches = all
+                .Where(i => i.Details != null && i.Details.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(i => i.Details.Length)
+                .ThenBy(i => i.Details);
+
+            var nameMatches = all
+                .Where(i => i.Name != null && i.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
+                .Where(i => !i.Details.StartsWith(q, StringComparison.OrdinalIgnoreCase));
+
+            return channelMatches.Concat(nameMatches);
+        }
+
         public string GetStreamUrl(string itemId)
         {
             // Stream URL format: http://user:pass@host:port/stream/channel/{uuid}

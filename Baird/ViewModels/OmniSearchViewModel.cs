@@ -23,46 +23,45 @@ namespace Baird.ViewModels
         }
 
         public ObservableCollection<MediaItem> SearchResults { get; } = new();
-        public List<MediaItem> AllItems { get; set; } = new();
+        private readonly IEnumerable<IMediaProvider> _providers;
 
-        public OmniSearchViewModel()
+        public OmniSearchViewModel(IEnumerable<IMediaProvider> providers)
         {
+            _providers = providers;
             this.WhenAnyValue(x => x.SearchText)
                 .Throttle(TimeSpan.FromMilliseconds(50), RxApp.MainThreadScheduler)
-                .Subscribe(PerformSearch);
+                .Subscribe(async (q) => await PerformSearch(q));
         }
 
-        private void PerformSearch(string? searchText)
+        private async Task PerformSearch(string? searchText)
         {
-            if (string.IsNullOrWhiteSpace(searchText))
+            var query = searchText ?? "";
+            
+            // In a real app we might want to cancel previous requests.
+            // For now, simpler: clear and fetch.
+            
+            var results = new List<MediaItem>();
+            foreach (var provider in _providers)
             {
-                // Show all items if search is empty, or clear?
-                // Typically show all for browsing
-                SearchResults.Clear();
-                foreach (var item in AllItems) SearchResults.Add(item);
-                return;
+                try 
+                {
+                    var providerResults = await provider.SearchAsync(query);
+                    if (providerResults != null)
+                    {
+                        results.AddRange(providerResults);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Search error in provider {provider.GetType().Name}: {ex.Message}");
+                }
             }
 
-            var query = searchText.Trim();
-
-            // Priority 1: Channel Number (Details) Prefix Match
-            // Sort by length to prioritize exact/shorter matches (e.g. "3" before "30")
-            var channelMatches = AllItems
-                .Where(i => i.Details != null && i.Details.StartsWith(query, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(i => i.Details.Length)
-                .ThenBy(i => i.Details);
-
-            // Priority 2: Name Fuzzy Match (Contains)
-            // Exclude items already found in channel matches
-            // Using a simple "Contains" for fuzzy simulation here
-            var nameMatches = AllItems
-                .Where(i => i.Name != null && i.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
-                .Where(i => !i.Details.StartsWith(query, StringComparison.OrdinalIgnoreCase)); // Avoid duplicates from priority 1
-
-            // Combine
-            SearchResults.Clear();
-            foreach (var item in channelMatches) SearchResults.Add(item);
-            foreach (var item in nameMatches) SearchResults.Add(item);
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+            {
+                SearchResults.Clear();
+                foreach (var item in results) SearchResults.Add(item);
+            });
         }
 
         public void AppendDigit(string digit)
@@ -82,6 +81,12 @@ namespace Baird.ViewModels
         {
             SearchText = "";
             SearchResults.Clear();
+        }
+
+        public async Task ClearAndSearch()
+        {
+            SearchText = "";
+            await PerformSearch("");
         }
     }
 }
