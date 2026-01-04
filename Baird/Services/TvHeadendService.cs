@@ -111,7 +111,7 @@ namespace Baird.Services
             var port = uri.Port;
             var scheme = uri.Scheme;
             
-            return $"ffmpeg://{scheme}://{host}:{port}/stream/channel/{itemId}?auth={_username}:{_password}";
+            return $"{scheme}://{host}:{port}/stream/channel/{itemId}?auth={_username}:{_password}";
         }
     }
 
