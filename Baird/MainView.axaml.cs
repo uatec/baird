@@ -15,7 +15,6 @@ namespace Baird
         private MainViewModel _viewModel;
         // private IMediaProvider _mediaProvider; // Removed single provider
         private List<IMediaProvider> _providers = new();
-        private Dictionary<string, IMediaProvider> _itemProviderMap = new();
 
         public MainView()
         {
@@ -23,6 +22,7 @@ namespace Baird
 
             _providers.Add(new TvHeadendService());
             _providers.Add(new JellyfinService());
+            _providers.Add(new YouTubeService());
 
             _viewModel = new MainViewModel(_providers);
             DataContext = _viewModel;
@@ -59,8 +59,6 @@ namespace Baird
 
         private async Task InitializeMediaProvider()
         {
-             _itemProviderMap.Clear();
-             
              try
              {
                  foreach (var provider in _providers)
@@ -68,18 +66,6 @@ namespace Baird
                      try 
                      {
                          await provider.InitializeAsync();
-                         
-                         // Pre-fetch for the provider map (needed for playback lookup)
-                         // and for the first channel auto-play
-                         var items = await provider.GetListingAsync();
-                         
-                         foreach (var item in items)
-                         {
-                             if (!_itemProviderMap.ContainsKey(item.Id))
-                             {
-                                 _itemProviderMap[item.Id] = provider;
-                             }
-                         }
                      }
                      catch (Exception ex)
                      {
@@ -192,9 +178,11 @@ namespace Baird
 
         private void PlayItem(MediaItem item)
         {
-            if (_itemProviderMap.TryGetValue(item.Id, out var provider))
+            Console.WriteLine($"Playing Item: {item.Name} ({item.Id})");
+            
+            var url = item.StreamUrl;
+            if (!string.IsNullOrEmpty(url))
             {
-                var url = provider.GetStreamUrl(item.Id);
                 Console.WriteLine($"Activating Item: {item.Name} at {url}");
                 
                 _viewModel.ActiveItem = new ActiveMedia 
@@ -207,7 +195,7 @@ namespace Baird
             }
             else
             {
-                Console.WriteLine($"Error: No provider found for item {item.Name} ({item.Id})");
+                Console.WriteLine($"Warning: No stream URL for {item.Name}");
             }
         }
 

@@ -85,7 +85,8 @@ namespace Baird.Services
                             Details = c.Number.ToString(),
                             // TVHeadend icon URL: /imagecache/{id}
                             ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
-                            IsLive = true
+                            IsLive = true,
+                            StreamUrl = GetStreamUrlInternal(c.Uuid)
                         })
                         .OrderBy(c => c.Name);
                 }
@@ -120,7 +121,7 @@ namespace Baird.Services
             return channelMatches.Concat(nameMatches);
         }
 
-        public string GetStreamUrl(string itemId)
+        private string GetStreamUrlInternal(string itemId)
         {
             // Stream URL format: http://user:pass@host:port/stream/channel/{uuid}
             // We embed credentials in URL for mpv to handle auth easily

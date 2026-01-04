@@ -29,7 +29,7 @@ namespace Baird.ViewModels
         {
             _providers = providers;
             this.WhenAnyValue(x => x.SearchText)
-                .Throttle(TimeSpan.FromMilliseconds(50), RxApp.MainThreadScheduler)
+                .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
                 .Subscribe(async (q) => await PerformSearch(q));
         }
 

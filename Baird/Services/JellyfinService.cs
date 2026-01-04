@@ -155,7 +155,8 @@ namespace Baird.Services
                         Id = m.Id,
                         Name = m.Name,
                         Details = m.ProductionYear?.ToString() ?? "Unknown Year",
-                        IsLive = false
+                        IsLive = false,
+                        StreamUrl = GetStreamUrlInternal(m.Id)
                     });
                 }
                 return Enumerable.Empty<MediaItem>();
@@ -193,7 +194,8 @@ namespace Baird.Services
                         Id = m.Id,
                         Name = m.Name,
                         Details = m.ProductionYear?.ToString() ?? "Unknown Year",
-                        IsLive = false
+                        IsLive = false,
+                        StreamUrl = GetStreamUrlInternal(m.Id)
                     });
                 }
                 return Enumerable.Empty<MediaItem>();
@@ -205,7 +207,7 @@ namespace Baird.Services
             }
         }
 
-        public string GetStreamUrl(string itemId)
+        private string GetStreamUrlInternal(string itemId)
         {
             return $"{_serverUrl}/Videos/{itemId}/stream?api_key={_accessToken}&static=true";
         }
@@ -217,20 +219,20 @@ namespace Baird.Services
 
             protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, System.Threading.CancellationToken cancellationToken)
             {
-                Console.WriteLine($"REQ: {request.Method} {request.RequestUri}");
+                // Console.WriteLine($"REQ: {request.Method} {request.RequestUri}");
                 if(request.Content != null)
                 {
                      var content = await request.Content.ReadAsStringAsync();
-                     Console.WriteLine($"REQ BODY: {content}");
+                    //  Console.WriteLine($"REQ BODY: {content}");
                 }
 
                 var response = await base.SendAsync(request, cancellationToken);
 
-                Console.WriteLine($"RESP: {response.StatusCode}");
+                // Console.WriteLine($"RESP: {response.StatusCode}");
                 if(response.Content != null)
                 {
                      var content = await response.Content.ReadAsStringAsync();
-                     Console.WriteLine($"RESP BODY: {content}");
+                    //  Console.WriteLine($"RESP BODY: {content}");
                      // Re-create content so it can be read again
                      response.Content = new StringContent(content, System.Text.Encoding.UTF8, response.Content.Headers.ContentType?.MediaType ?? "application/json");
                      foreach(var h in response.Headers) response.Content.Headers.TryAddWithoutValidation(h.Key, h.Value);

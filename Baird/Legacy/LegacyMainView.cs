@@ -106,7 +106,7 @@ namespace Baird.Legacy
         
         private void PlayItem(MediaItem item)
         {
-            var url = _mediaProvider.GetStreamUrl(item.Id);
+            var url = item.StreamUrl;
             Console.WriteLine($"Playing Channel: {item.Name} at {url}");
             
             var player = this.FindControl<Baird.Controls.VideoPlayer>("Player");
