@@ -40,40 +40,54 @@ namespace Baird.ViewModels
                 .Subscribe(async (q) => await PerformSearch(q));
         }
 
+        private CancellationTokenSource? _searchCts;
+
         private async Task PerformSearch(string? searchText)
         {
             var query = searchText ?? "";
             
+            // Cancel previous search
+            _searchCts?.Cancel();
+            _searchCts = new CancellationTokenSource();
+            var token = _searchCts.Token;
+
             IsSearching = true;
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => SearchResults.Clear());
+            SearchResults.Clear(); // Already on UI thread due to Throttle scheduler
+
+            var tasks = _providers.Select(async provider =>
+            {
+                try 
+                {
+                    var providerResults = await provider.SearchAsync(query);
+                    if (token.IsCancellationRequested) return;
+
+                    if (providerResults != null)
+                    {
+                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => 
+                        {
+                            if (!token.IsCancellationRequested)
+                            {
+                                foreach (var item in providerResults) SearchResults.Add(item);
+                            }
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Search error in provider {provider.GetType().Name}: {ex.Message}");
+                }
+            });
 
             try
             {
-                var results = new List<MediaItem>();
-                foreach (var provider in _providers)
-                {
-                    try 
-                    {
-                        var providerResults = await provider.SearchAsync(query);
-                        if (providerResults != null)
-                        {
-                            results.AddRange(providerResults);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Search error in provider {provider.GetType().Name}: {ex.Message}");
-                    }
-                }
-
-                Avalonia.Threading.Dispatcher.UIThread.Post(() => 
-                {
-                    foreach (var item in results) SearchResults.Add(item);
-                });
+                await Task.WhenAll(tasks);
             }
             finally
             {
-                IsSearching = false;
+                if (!token.IsCancellationRequested)
+                {
+                    IsSearching = false;
+                }
             }
         }
         
