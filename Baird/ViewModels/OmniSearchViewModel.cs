@@ -3,6 +3,7 @@ using ReactiveUI;
 using System.Reactive;
 using System.Reactive.Linq;
 using Baird.Services;
+using System.Linq;
 
 namespace Baird.ViewModels
 {
@@ -36,16 +37,23 @@ namespace Baird.ViewModels
         {
             _providers = providers;
             
-            // Immediate feedback: clear results when typing starts
-            this.WhenAnyValue(x => x.SearchText)
-                .Skip(1) // Skip initial value from initialization
-                .Subscribe(_ => 
-                {
-                    IsSearching = true;
-                    SearchResults.Clear();
-                });
+            var textChanges = this.WhenAnyValue(x => x.SearchText).Skip(1);
 
-            this.WhenAnyValue(x => x.SearchText)
+            // Immediate feedback: clear results when typing starts
+            textChanges.Subscribe(_ => 
+            {
+                IsSearching = true;
+                SearchResults.Clear();
+            });
+
+            // Branch 1: Short numeric (<= 3 digits) -> Immediate
+            textChanges
+                .Where(q => !string.IsNullOrEmpty(q) && q.Length <= 3 && q.All(char.IsDigit))
+                .Subscribe(async (q) => await PerformSearch(q));
+
+            // Branch 2: Everything else -> Debounced
+            textChanges
+                .Where(q => string.IsNullOrEmpty(q) || q.Length > 3 || !q.All(char.IsDigit))
                 .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
                 .Subscribe(async (q) => await PerformSearch(q));
         }
