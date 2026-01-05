@@ -38,6 +38,7 @@
         <Grid Grid.Row="1">
             <ListBox Name="ResultsList" 
                      ItemsSource="{Binding SearchResults}" 
+                     SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
                      Background="Transparent"
                      XYFocus.Up="{Binding #SearchBox}"
                      XYFocus.Down="{Binding #VirtualKeyboard}">

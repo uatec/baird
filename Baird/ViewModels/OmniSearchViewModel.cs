@@ -29,6 +29,13 @@ namespace Baird.ViewModels
             get => _isSearching;
             set => this.RaiseAndSetIfChanged(ref _isSearching, value);
         }
+        
+        private MediaItem? _selectedItem;
+        public MediaItem? SelectedItem
+        {
+            get => _selectedItem;
+            set => this.RaiseAndSetIfChanged(ref _selectedItem, value);
+        }
 
         public ObservableCollection<MediaItem> SearchResults { get; } = new();
         private readonly IEnumerable<IMediaProvider> _providers;
@@ -43,6 +50,7 @@ namespace Baird.ViewModels
             textChanges.Subscribe(_ => 
             {
                 IsSearching = true;
+                SelectedItem = null;
                 SearchResults.Clear();
             });
 
@@ -86,6 +94,12 @@ namespace Baird.ViewModels
                             if (!token.IsCancellationRequested)
                             {
                                 foreach (var item in providerResults) SearchResults.Add(item);
+                                
+                                // Auto-select first item if nothing is selected yet
+                                if (SelectedItem == null && SearchResults.Count > 0)
+                                {
+                                    SelectedItem = SearchResults[0];
+                                }
                             }
                         });
                     }
@@ -126,6 +140,7 @@ namespace Baird.ViewModels
         {
             SearchText = "";
             SearchResults.Clear();
+            SelectedItem = null;
             IsSearching = false;
         }
 

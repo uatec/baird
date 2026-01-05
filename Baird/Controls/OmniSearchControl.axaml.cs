@@ -47,19 +47,20 @@ namespace Baird.Controls
 
             if (box != null)
             {
-                // Clear selection when we move back up to the search box
-                box.GotFocus += (s, e) => 
-                {
-                    if (list != null)
-                    {
-                        list.SelectedIndex = -1;
-                    }
-                };
+                // box.GotFocus used to clear selection, but we want auto-selection now.
 
                 // Manual Down key handling to bridge to the list
                 box.AddHandler(InputElement.KeyDownEvent, (s, e) => 
                 {
-                    if (e.Key == global::Avalonia.Input.Key.Down)
+                    if (e.Key == global::Avalonia.Input.Key.Enter || e.Key == global::Avalonia.Input.Key.Return)
+                    {
+                        if (DataContext is Baird.ViewModels.OmniSearchViewModel vm && vm.SelectedItem != null)
+                        {
+                            ItemChosen?.Invoke(this, vm.SelectedItem);
+                            e.Handled = true;
+                        }
+                    }
+                    else if (e.Key == global::Avalonia.Input.Key.Down)
                     {
                         Console.WriteLine("Down key pressed in search box");
                         if (list != null && list.ItemCount > 0)
