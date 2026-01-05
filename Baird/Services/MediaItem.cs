@@ -10,5 +10,7 @@ namespace Baird.Services
         public string ImageUrl { get; set; }
         public bool IsLive { get; set; }
         public string StreamUrl { get; set; }
+        public string Source { get; set; } // e.g. "Live TV", "Jellyfin: home", "YouTube"
+        public string? ChannelNumber { get; set; }
     }
 }

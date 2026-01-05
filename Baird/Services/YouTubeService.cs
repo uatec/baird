@@ -64,7 +64,8 @@ namespace Baird.Services
                             Details = uploader,
                             ImageUrl = $"https://i.ytimg.com/vi/{id}/hqdefault.jpg",
                             IsLive = false, // Note: could check if 'is_live' in json, but simplified for now
-                            StreamUrl = GetStreamUrlInternal(id)
+                            StreamUrl = GetStreamUrlInternal(id),
+                            Source = "YouTube"
                         });
                     }
                     catch (Exception ex)

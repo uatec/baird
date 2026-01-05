@@ -55,8 +55,12 @@
                                  <!-- Icon placeholder -->
                              </Border>
                              <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                 <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="Bold" Foreground="White"/>
-                                 <TextBlock Text="{Binding Details}" FontSize="14" Foreground="LightGray"/>
+                                 <StackPanel Orientation="Horizontal">
+                                     <TextBlock Text="{Binding ChannelNumber}" Foreground="#FFD700" FontWeight="Bold" FontSize="18" Margin="0,0,10,0" IsVisible="{Binding ChannelNumber, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                     <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="Bold" Foreground="White"/>
+                                 </StackPanel>
+                                 <TextBlock Text="{Binding Source}" FontSize="12" Foreground="#888888" Margin="0,1,10,0" VerticalAlignment="Center"/>
+                                 <TextBlock Text="{Binding Details}" FontSize="14" Foreground="LightGray" VerticalAlignment="Center" IsVisible="{Binding Details, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                              </StackPanel>
                          </Grid>
                     </DataTemplate>

@@ -13,14 +13,13 @@ namespace Baird.Services
 {
     public class JellyfinService : IMediaProvider
     {
-        private JellyfinApiClient _client;
-        private string _accessToken;
-        private string _userId; // Changed to string for flexibility
-        private string _username;
-        private string _password;
         private string _serverUrl;
         private HttpClient _httpClient;
         private HttpClientRequestAdapter _requestAdapter;
+        private string _serverHostname = "Jellyfin";
+        private string _accessToken;
+        private string _userId;
+        private string _username;
 
         public bool IsAuthenticated => !string.IsNullOrEmpty(_accessToken);
 
@@ -48,6 +47,7 @@ namespace Baird.Services
             }
 
             _serverUrl = serverUrl.TrimEnd('/');
+            try { _serverHostname = new Uri(_serverUrl).Host; } catch { }
             _username = username;
             _userId = ""; // Will be set after auth
             // Password not stored permanently unless needed for re-auth
@@ -156,7 +156,8 @@ namespace Baird.Services
                         Name = m.Name,
                         Details = m.ProductionYear?.ToString() ?? "Unknown Year",
                         IsLive = false,
-                        StreamUrl = GetStreamUrlInternal(m.Id)
+                        StreamUrl = GetStreamUrlInternal(m.Id),
+                        Source = $"Jellyfin: {_serverHostname}"
                     });
                 }
                 return Enumerable.Empty<MediaItem>();
@@ -195,7 +196,8 @@ namespace Baird.Services
                         Name = m.Name,
                         Details = m.ProductionYear?.ToString() ?? "Unknown Year",
                         IsLive = false,
-                        StreamUrl = GetStreamUrlInternal(m.Id)
+                        StreamUrl = GetStreamUrlInternal(m.Id),
+                        Source = $"Jellyfin: {_serverHostname}"
                     });
                 }
                 return Enumerable.Empty<MediaItem>();

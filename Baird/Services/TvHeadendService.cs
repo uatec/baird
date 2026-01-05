@@ -82,11 +82,13 @@ namespace Baird.Services
                         {
                             Id = c.Uuid,
                             Name = c.Name,
-                            Details = c.Number.ToString(),
+                            Details = "", // Channel number moved to ChannelNumber
+                            ChannelNumber = c.Number.ToString(),
                             // TVHeadend icon URL: /imagecache/{id}
                             ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
                             IsLive = true,
-                            StreamUrl = GetStreamUrlInternal(c.Uuid)
+                            StreamUrl = GetStreamUrlInternal(c.Uuid),
+                            Source = "Live TV"
                         })
                         .OrderBy(c => c.Name);
                 }
@@ -109,14 +111,15 @@ namespace Baird.Services
             var q = query.Trim();
 
             // Use the same logic as before but inside the provider
+            // Search by channel number first
             var channelMatches = all
-                .Where(i => i.Details != null && i.Details.StartsWith(q, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(i => i.Details.Length)
-                .ThenBy(i => i.Details);
+                .Where(i => i.ChannelNumber != null && i.ChannelNumber.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(i => i.ChannelNumber.Length)
+                .ThenBy(i => i.ChannelNumber);
 
             var nameMatches = all
                 .Where(i => i.Name != null && i.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
-                .Where(i => !i.Details.StartsWith(q, StringComparison.OrdinalIgnoreCase));
+                .Where(i => i.ChannelNumber == null || !i.ChannelNumber.StartsWith(q, StringComparison.OrdinalIgnoreCase));
 
             return channelMatches.Concat(nameMatches);
         }

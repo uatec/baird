@@ -84,8 +84,9 @@ namespace Baird
                  }
 
                  var firstChannel = allItems
-                    .Where(i => i.Details != "0" && int.TryParse(i.Details, out _))
-                    .OrderBy(i => i.Details.Length).ThenBy(i => i.Details)
+                    .Where(i => i.IsLive)
+                    .Where(i => i.ChannelNumber != null && i.ChannelNumber != "0")
+                    .OrderBy(i => i.ChannelNumber)
                     .FirstOrDefault();
 
                  if (firstChannel != null)
