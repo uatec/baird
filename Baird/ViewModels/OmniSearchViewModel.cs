@@ -35,6 +35,16 @@ namespace Baird.ViewModels
         public OmniSearchViewModel(IEnumerable<IMediaProvider> providers)
         {
             _providers = providers;
+            
+            // Immediate feedback: clear results when typing starts
+            this.WhenAnyValue(x => x.SearchText)
+                .Skip(1) // Skip initial value from initialization
+                .Subscribe(_ => 
+                {
+                    IsSearching = true;
+                    SearchResults.Clear();
+                });
+
             this.WhenAnyValue(x => x.SearchText)
                 .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
                 .Subscribe(async (q) => await PerformSearch(q));

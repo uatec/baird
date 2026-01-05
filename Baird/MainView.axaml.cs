@@ -153,6 +153,7 @@ namespace Baird
             if (!_viewModel.IsSearchActive)
             {
                 // Activate Search Mode
+                _viewModel.OmniSearch.Clear();
                 _viewModel.IsSearchActive = true;
                 _viewModel.OmniSearch.IsKeyboardVisible = false; 
                 
@@ -206,6 +207,7 @@ namespace Baird
             
             if (!_viewModel.IsSearchActive)
             {
+                 _viewModel.OmniSearch.Clear();
                  _viewModel.IsSearchActive = true;
                  _viewModel.OmniSearch.IsKeyboardVisible = true;
                  
