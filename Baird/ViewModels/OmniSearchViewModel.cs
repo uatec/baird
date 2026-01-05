@@ -22,6 +22,13 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isKeyboardVisible, value);
         }
 
+        private bool _isSearching;
+        public bool IsSearching
+        {
+            get => _isSearching;
+            set => this.RaiseAndSetIfChanged(ref _isSearching, value);
+        }
+
         public ObservableCollection<MediaItem> SearchResults { get; } = new();
         private readonly IEnumerable<IMediaProvider> _providers;
 
@@ -37,33 +44,39 @@ namespace Baird.ViewModels
         {
             var query = searchText ?? "";
             
-            // In a real app we might want to cancel previous requests.
-            // For now, simpler: clear and fetch.
-            
-            var results = new List<MediaItem>();
-            foreach (var provider in _providers)
+            IsSearching = true;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => SearchResults.Clear());
+
+            try
             {
-                try 
+                var results = new List<MediaItem>();
+                foreach (var provider in _providers)
                 {
-                    var providerResults = await provider.SearchAsync(query);
-                    if (providerResults != null)
+                    try 
                     {
-                        results.AddRange(providerResults);
+                        var providerResults = await provider.SearchAsync(query);
+                        if (providerResults != null)
+                        {
+                            results.AddRange(providerResults);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Search error in provider {provider.GetType().Name}: {ex.Message}");
                     }
                 }
-                catch (Exception ex)
+
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                 {
-                    Console.WriteLine($"Search error in provider {provider.GetType().Name}: {ex.Message}");
-                }
+                    foreach (var item in results) SearchResults.Add(item);
+                });
             }
-
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+            finally
             {
-                SearchResults.Clear();
-                foreach (var item in results) SearchResults.Add(item);
-            });
+                IsSearching = false;
+            }
         }
-
+        
         public void AppendDigit(string digit)
         {
             SearchText += digit;
@@ -81,6 +94,7 @@ namespace Baird.ViewModels
         {
             SearchText = "";
             SearchResults.Clear();
+            IsSearching = false;
         }
 
         public async Task ClearAndSearch()
