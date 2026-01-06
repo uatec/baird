@@ -3,13 +3,14 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Baird.ViewModels"
+             xmlns:asyncImageLoader="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
              mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="1080"
              x:Class="Baird.Controls.ProgrammeDetailControl">
     
     <Grid Background="#E0000000"> <!-- Dark semi-transparent background -->
         
         <!-- Background Image (Dimmed) -->
-        <Image Source="{Binding SelectedProgramme.ImageUrl}" 
+        <Image asyncImageLoader:ImageLoader.Source="{Binding SelectedProgramme.ImageUrl}" 
                Stretch="UniformToFill" 
                Opacity="0.3"
                VerticalAlignment="Top" Height="600"/>
@@ -56,7 +57,7 @@
                     <DataTemplate>
                         <Grid RowDefinitions="*, Auto, Auto">
                             <Border CornerRadius="8" ClipToBounds="True" Height="169">
-                                <Image Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
                             </Border>
                             <TextBlock Grid.Row="1" Text="{Binding Name}" Foreground="White" FontWeight="Bold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/>
                             <TextBlock Grid.Row="2" Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis"/>
