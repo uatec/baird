@@ -155,6 +155,7 @@ namespace Baird.Services
                         Id = m.Id,
                         Name = m.Name,
                         Details = m.ProductionYear?.ToString() ?? "Unknown Year",
+                        ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary?api_key={_accessToken}",
                         IsLive = false,
                         StreamUrl = GetStreamUrlInternal(m.Id),
                         Source = $"Jellyfin: {_serverHostname}"
@@ -195,6 +196,7 @@ namespace Baird.Services
                         Id = m.Id,
                         Name = m.Name,
                         Details = m.ProductionYear?.ToString() ?? "Unknown Year",
+                        ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary?api_key={_accessToken}",
                         IsLive = false,
                         StreamUrl = GetStreamUrlInternal(m.Id),
                         Source = $"Jellyfin: {_serverHostname}"
