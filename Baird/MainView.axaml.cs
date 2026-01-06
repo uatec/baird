@@ -260,7 +260,7 @@ namespace Baird
         {
             // Logic: If on BaseLayer (Video/Home) and press Up -> Open Search with Keyboard
             
-            if (!_viewModel.IsSearchActive)
+            if (!_viewModel.IsSearchActive && !_viewModel.IsProgrammeDetailVisible)
             {
                  _viewModel.OmniSearch.Clear();
                  _viewModel.IsSearchActive = true;

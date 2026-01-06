@@ -14,11 +14,11 @@
                Opacity="0.3"
                VerticalAlignment="Top" Height="600"/>
         
-        <Grid RowDefinitions="Auto, *, Auto" Margin="50">
+        <Grid RowDefinitions="Auto, *, Auto" Margin="50" XYFocus.NavigationModes="Enabled">
             
             <!-- Header -->
             <StackPanel Grid.Row="0" Spacing="10">
-                <Button Name="BackButton" Content="← Back" Background="Transparent" Foreground="White" FontSize="20" HorizontalAlignment="Left" />
+                <Button Name="BackButton" Content="← Back" Background="Transparent" Foreground="White" FontSize="20" HorizontalAlignment="Left" Focusable="True" />
                 <TextBlock Text="{Binding SelectedProgramme.Name}" FontSize="48" FontWeight="Bold" Foreground="White"/>
                 <TextBlock Text="{Binding SelectedProgramme.Synopsis}" FontSize="24" Foreground="#CCCCCC" TextWrapping="Wrap" MaxWidth="800" HorizontalAlignment="Left"/>
                 <TextBlock Text="{Binding SelectedProgramme.Source}" FontSize="18" Foreground="#AAAAAA"/>
@@ -30,16 +30,26 @@
                      ItemsSource="{Binding ProgrammeChildren}"
                      Background="Transparent"
                      SelectionMode="Single"
+                     Focusable="True"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <WrapPanel ItemWidth="300" ItemHeight="240" />
+                        <WrapPanel Name="EpisodesWrapPanel" ItemWidth="300" ItemHeight="240" />
                     </ItemsPanelTemplate>
                 </ListBox.ItemsPanel>
                 <ListBox.Styles>
                     <Style Selector="ListBoxItem">
                         <Setter Property="Padding" Value="10"/>
                         <Setter Property="CornerRadius" Value="8"/>
+                        <Setter Property="BorderThickness" Value="4"/>
+                        <Setter Property="BorderBrush" Value="Transparent"/>
+                        <Setter Property="Focusable" Value="True"/>
+                    </Style>
+                    <Style Selector="ListBoxItem:focus">
+                        <Setter Property="BorderBrush" Value="#eeeeee"/>
+                    </Style>
+                    <Style Selector="ListBoxItem:selected">
+                        <Setter Property="BorderBrush" Value="#eeeeee"/>
                     </Style>
                 </ListBox.Styles>
                 <ListBox.ItemTemplate>
