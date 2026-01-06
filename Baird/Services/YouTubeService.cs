@@ -83,6 +83,11 @@ namespace Baird.Services
             }
         }
 
+        public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        {
+            return Task.FromResult(Enumerable.Empty<MediaItem>());
+        }
+
         private string GetStreamUrlInternal(string itemId)
         {
             // mpv handles youtube URLs automatically via ytdl hook

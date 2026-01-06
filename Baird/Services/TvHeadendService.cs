@@ -124,6 +124,11 @@ namespace Baird.Services
             return channelMatches.Concat(nameMatches);
         }
 
+        public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        {
+            return Task.FromResult(Enumerable.Empty<MediaItem>());
+        }
+
         private string GetStreamUrlInternal(string itemId)
         {
             // Stream URL format: http://user:pass@host:port/stream/channel/{uuid}

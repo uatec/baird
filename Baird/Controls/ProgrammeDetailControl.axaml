@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Baird.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="1080"
+             x:Class="Baird.Controls.ProgrammeDetailControl">
+    
+    <Grid Background="#E0000000"> <!-- Dark semi-transparent background -->
+        
+        <!-- Background Image (Dimmed) -->
+        <Image Source="{Binding SelectedProgramme.ImageUrl}" 
+               Stretch="UniformToFill" 
+               Opacity="0.3"
+               VerticalAlignment="Top" Height="600"/>
+        
+        <Grid RowDefinitions="Auto, *, Auto" Margin="50">
+            
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Spacing="10">
+                <Button Name="BackButton" Content="← Back" Background="Transparent" Foreground="White" FontSize="20" HorizontalAlignment="Left" />
+                <TextBlock Text="{Binding SelectedProgramme.Name}" FontSize="48" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="{Binding SelectedProgramme.Synopsis}" FontSize="24" Foreground="#CCCCCC" TextWrapping="Wrap" MaxWidth="800" HorizontalAlignment="Left"/>
+                <TextBlock Text="{Binding SelectedProgramme.Source}" FontSize="18" Foreground="#AAAAAA"/>
+            </StackPanel>
+
+            <!-- Episodes List -->
+            <ListBox Grid.Row="1" Margin="0, 30, 0, 0"
+                     Name="EpisodeList" 
+                     ItemsSource="{Binding ProgrammeChildren}"
+                     Background="Transparent"
+                     SelectionMode="Single"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel ItemWidth="300" ItemHeight="240" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="10"/>
+                        <Setter Property="CornerRadius" Value="8"/>
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid RowDefinitions="*, Auto, Auto">
+                            <Border CornerRadius="8" ClipToBounds="True" Height="169">
+                                <Image Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                            </Border>
+                            <TextBlock Grid.Row="1" Text="{Binding Name}" Foreground="White" FontWeight="Bold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Grid.Row="2" Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Grid>
+</UserControl>

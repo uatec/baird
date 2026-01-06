@@ -25,5 +25,11 @@
                              HorizontalAlignment="Stretch" 
                              VerticalAlignment="Stretch"/>
                              <!-- Note: Re-binding DataContext to OmniSearch sub-VM. IsVisible binding needs to reach back to MainViewModel -->
+        
+         <!-- Layer 3: Programme Detail -->
+         <c:ProgrammeDetailControl Name="ProgrammeDetailLayer"
+                                   IsVisible="{Binding IsProgrammeDetailVisible}"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch"/>
     </Grid>
 </UserControl>

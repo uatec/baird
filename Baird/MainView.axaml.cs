@@ -54,6 +54,44 @@ namespace Baird
                 // Focus the Base Layer initially
                 // this.FindControl<Grid>("BaseLayer")?.Focus(); // Grids aren't focusable by default usually, might need a focusable element
 
+                // Hook up ProgrammeDetail Control Events
+                var detailControl = this.FindControl<Baird.Controls.ProgrammeDetailControl>("ProgrammeDetailLayer");
+                if (detailControl != null)
+                {
+                    detailControl.EpisodeChosen += (sender, item) => 
+                    {
+                        PlayItem(item);
+                        // Optional: Keep detail view open or close it? 
+                        // Usually playing video overlays everything, so maybe okay.
+                        // But if we want to return to detail view after video ends, we shouldn't close it here.
+                        // However, PlayItem logic currently sets ActiveItem which replaces the video layer content?
+                        // Actually ActiveItem data binding in VideoLayerControl will start playback.
+                        // We can leave the detail view "visible" behind the video or overlay?
+                        // VideoLayer is Layer 0, ProgrammeDetail is Layer 3.
+                        // If ProgrammeDetail is visible (Opacity 1), it covers Layer 0.
+                        // So we MUST close or hide ProgrammeDetail to see the video.
+                        // Or we need a Player Overlay on top of everything.
+                        
+                        // For now, let's close it to be safe and simple.
+                        _viewModel.CloseProgramme();
+                    };
+
+                    detailControl.BackRequested += (sender, args) =>
+                    {
+                        _viewModel.CloseProgramme();
+                        // Focus Search if it was open? Or just reset?
+                        // If we came from Search, restoring Search would be nice.
+                        if(_viewModel.IsSearchActive)
+                        {
+                             Dispatcher.UIThread.Post(() => 
+                             {
+                                 var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
+                                 searchControl?.FocusResults();
+                             });
+                        }
+                    };
+                }
+
                 await InitializeMediaProvider();
             };
         }
@@ -182,6 +220,22 @@ namespace Baird
         private void PlayItem(MediaItem item)
         {
             Console.WriteLine($"Playing Item: {item.Name} ({item.Id})");
+
+            if (item.Type == MediaType.Brand)
+            {
+                Console.WriteLine($"Opening Programme Detail: {item.Name}");
+                
+                // Pause background video
+                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                videoLayer?.GetPlayer()?.Pause();
+                
+                _viewModel.OpenProgramme(item);
+                
+                // Also close search if active
+                 _viewModel.IsSearchActive = false;
+                 _viewModel.OmniSearch.Clear();
+                return;
+            }
             
             var url = item.StreamUrl;
             if (!string.IsNullOrEmpty(url))
@@ -244,6 +298,19 @@ namespace Baird
                     var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
                     searchControl?.FocusResults();
                 });
+            }
+            else if (_viewModel.IsProgrammeDetailVisible)
+            {
+                _viewModel.CloseProgramme();
+                // Return to Search if it was active?
+                if (_viewModel.IsSearchActive)
+                {
+                     Dispatcher.UIThread.Post(() => 
+                     {
+                         var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
+                         searchControl?.FocusResults();
+                     });
+                }
             }
             else if (_viewModel.IsSearchActive)
             {

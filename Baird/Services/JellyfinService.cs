@@ -209,6 +209,12 @@ namespace Baird.Services
             }
         }
 
+        public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        {
+            // Could implement folder browsing here later
+            return Task.FromResult(Enumerable.Empty<MediaItem>());
+        }
+
         private string GetStreamUrlInternal(string itemId)
         {
             return $"{_serverUrl}/Videos/{itemId}/stream?api_key={_accessToken}&static=true";
