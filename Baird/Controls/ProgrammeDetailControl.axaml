@@ -15,7 +15,12 @@
                Opacity="0.3"
                VerticalAlignment="Top" Height="600"/>
         
-        <Grid RowDefinitions="Auto, *, Auto" Margin="50" XYFocus.NavigationModes="Enabled">
+        <Grid RowDefinitions="Auto, *, Auto" Margin="50" 
+              XYFocus.NavigationModes="Enabled"
+              XYFocus.UpNavigationStrategy="Projection"
+              XYFocus.DownNavigationStrategy="Projection"
+              XYFocus.LeftNavigationStrategy="Projection"
+              XYFocus.RightNavigationStrategy="Projection">
             
             <!-- Header -->
             <StackPanel Grid.Row="0" Spacing="10">
@@ -26,45 +31,40 @@
             </StackPanel>
 
             <!-- Episodes List -->
-            <ListBox Grid.Row="1" Margin="0, 30, 0, 0"
-                     Name="EpisodeList" 
-                     ItemsSource="{Binding ProgrammeChildren}"
-                     Background="Transparent"
-                     SelectionMode="Single"
-                     Focusable="True"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Name="EpisodesWrapPanel" ItemWidth="300" ItemHeight="240" />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.Styles>
-                    <Style Selector="ListBoxItem">
-                        <Setter Property="Padding" Value="10"/>
-                        <Setter Property="CornerRadius" Value="8"/>
-                        <Setter Property="BorderThickness" Value="4"/>
-                        <Setter Property="BorderBrush" Value="Transparent"/>
-                        <Setter Property="Focusable" Value="True"/>
-                    </Style>
-                    <Style Selector="ListBoxItem:focus">
-                        <Setter Property="BorderBrush" Value="#eeeeee"/>
-                    </Style>
-                    <Style Selector="ListBoxItem:selected">
-                        <Setter Property="BorderBrush" Value="#eeeeee"/>
-                    </Style>
-                </ListBox.Styles>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Grid RowDefinitions="*, Auto, Auto">
-                            <Border CornerRadius="8" ClipToBounds="True" Height="169">
-                                <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
-                            </Border>
-                            <TextBlock Grid.Row="1" Text="{Binding Name}" Foreground="White" FontWeight="Bold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/>
-                            <TextBlock Grid.Row="2" Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis"/>
-                        </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <ScrollViewer Grid.Row="1" Margin="0, 30, 0, 0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsControl Name="EpisodeList" ItemsSource="{Binding ProgrammeChildren}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Name="EpisodesWrapPanel" ItemWidth="300" ItemHeight="240" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Background="Transparent" 
+                                    BorderThickness="4" 
+                                    BorderBrush="Transparent"
+                                    CornerRadius="8"
+                                    Padding="10"
+                                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                    Click="OnEpisodeClicked">
+                                <Button.Styles>
+                                    <Style Selector="Button:focus">
+                                        <Setter Property="BorderBrush" Value="#eeeeee"/>
+                                    </Style>
+                                </Button.Styles>
+                                <Grid RowDefinitions="*, Auto, Auto">
+                                    <Border CornerRadius="8" ClipToBounds="True" Height="169">
+                                        <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                    </Border>
+                                    <TextBlock Grid.Row="1" Text="{Binding Name}" Foreground="White" FontWeight="Bold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
+                                    <TextBlock Grid.Row="2" Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </UserControl>
