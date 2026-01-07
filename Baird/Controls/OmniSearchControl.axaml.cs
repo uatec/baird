@@ -70,42 +70,30 @@ namespace Baird.Controls
             AvaloniaXamlLoader.Load(this);
         }
         
-        private void OnResultClicked(object? sender, RoutedEventArgs e)
+        private void OnResultTapped(object? sender, TappedEventArgs e)
         {
-            if (sender is Control c && c.DataContext is MediaItem item)
+            if (sender is ListBox list && e.Source is Visual v)
             {
-                 ItemChosen?.Invoke(this, item);
+               // Find the container (ListBoxItem) from the visual source
+               var container = v.FindAncestorOfType<ListBoxItem>();
+               if (container != null && container.DataContext is MediaItem item)
+               {
+                   ItemChosen?.Invoke(this, item);
+               }
             }
         }
         
-        public async void FocusResults()
+        public void FocusResults()
         {
-            var list = this.FindControl<ItemsControl>("ResultsList");
+            var list = this.FindControl<ListBox>("ResultsList");
             if (list == null) return;
             
-            // Retry loop to find container
-            for(int i=0; i<10; i++) 
+            list.Focus();
+            
+            // If we have items, ensure one is selected to show the highlight
+            if (list.SelectedIndex < 0 && list.ItemCount > 0)
             {
-                if (list.ItemCount > 0)
-                {
-                    var container = list.ContainerFromIndex(0);
-                    if (container == null) 
-                    {
-                        list.UpdateLayout();
-                        container = list.ContainerFromIndex(0);
-                    }
-                    
-                    if (container is Visual v)
-                    {
-                        var btn = v.FindDescendantOfType<Button>();
-                        if (btn != null)
-                        {
-                            btn.Focus();
-                            return;
-                        }
-                    }
-                }
-                await System.Threading.Tasks.Task.Delay(50);
+                list.SelectedIndex = 0;
             }
         }
 
