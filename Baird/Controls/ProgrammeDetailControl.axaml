@@ -3,9 +3,14 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Baird.ViewModels"
+             xmlns:conv="using:Baird.Converters"
              xmlns:asyncImageLoader="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
              mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="1080"
              x:Class="Baird.Controls.ProgrammeDetailControl">
+
+    <UserControl.Resources>
+        <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
+    </UserControl.Resources>
     
     <Grid Background="#E0000000"> <!-- Dark semi-transparent background -->
         
@@ -25,9 +30,13 @@
             <!-- Header -->
             <StackPanel Grid.Row="0" Spacing="10">
                 <Button Name="BackButton" Content="← Back" Background="Transparent" Foreground="White" FontSize="20" HorizontalAlignment="Left" Focusable="True" />
-                <TextBlock Text="{Binding SelectedProgramme.Name}" FontSize="48" FontWeight="Bold" Foreground="White"/>
+                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                     <TextBlock Text="{Binding SelectedProgramme.Name}" FontSize="48" FontWeight="Bold" Foreground="White"/>
+                     <Border Background="#333333" CornerRadius="6" Padding="8,2" VerticalAlignment="Center" Margin="0,4,0,0" IsVisible="{Binding SelectedProgramme.Source, Converter={StaticResource StringVisibilityConverter}}">
+                        <TextBlock Text="{Binding SelectedProgramme.Source}" FontSize="16" FontWeight="SemiBold" Foreground="#4CC9F0"/>
+                     </Border>
+                </StackPanel>
                 <TextBlock Text="{Binding SelectedProgramme.Synopsis}" FontSize="24" Foreground="#CCCCCC" TextWrapping="Wrap" MaxWidth="800" HorizontalAlignment="Left"/>
-                <TextBlock Text="{Binding SelectedProgramme.Source}" FontSize="18" Foreground="#AAAAAA"/>
             </StackPanel>
 
             <!-- Episodes List -->
