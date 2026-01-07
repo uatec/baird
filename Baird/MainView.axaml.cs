@@ -289,6 +289,14 @@ namespace Baird
         {
             if (_viewModel.OmniSearch.IsKeyboardVisible)
             {
+                // New logic: If search is empty, exit search entirely
+                if (string.IsNullOrEmpty(_viewModel.OmniSearch.SearchText))
+                {
+                    _viewModel.IsSearchActive = false;
+                    _viewModel.OmniSearch.Clear();
+                    return;
+                }
+
                 // Hide Keyboard, Keep Search Open
                 _viewModel.OmniSearch.IsKeyboardVisible = false;
                 
