@@ -247,7 +247,8 @@ namespace Baird
                     Name = item.Name,
                     Details = item.Details,
                     StreamUrl = url,
-                    IsLive = item.IsLive
+                    IsLive = item.IsLive,
+                    ChannelNumber = item.ChannelNumber
                 };
             }
             else

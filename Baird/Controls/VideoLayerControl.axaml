@@ -4,9 +4,14 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:c="using:Baird.Controls"
              xmlns:vm="using:Baird.ViewModels"
+             xmlns:conv="using:Baird.Converters"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Baird.Controls.VideoLayerControl"
              x:DataType="vm:MainViewModel">
+    
+    <UserControl.Resources>
+        <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
+    </UserControl.Resources>
     
     <Grid>
         <!-- Layer 0: Video Player -->
@@ -21,7 +26,10 @@
              <Grid RowDefinitions="Auto,*,Auto">
                  <Border Grid.Row="0" Background="#AA000000" Padding="10">
                      <StackPanel>
-                        <TextBlock Text="{Binding ActiveItem.Name}" FontSize="24" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                            <TextBlock Text="{Binding ActiveItem.ChannelNumber}" FontSize="24" FontWeight="ExtraBold" Foreground="#FFD700" IsVisible="{Binding ActiveItem.ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
+                            <TextBlock Text="{Binding ActiveItem.Name}" FontSize="24" FontWeight="Bold" Foreground="White"/>
+                        </StackPanel>
                         <TextBlock Text="{Binding #Player.PlayerState}" FontSize="14" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
                      </StackPanel>
                  </Border>
