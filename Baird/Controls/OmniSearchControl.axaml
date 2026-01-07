@@ -14,67 +14,72 @@
             <Setter Property="BorderBrush" Value="#EEEEEE"/>
             <Setter Property="BorderThickness" Value="4"/>
         </Style>
-        <Style Selector="ListBoxItem:focus">
-            <Setter Property="Background" Value="#444444"/>
-            <Setter Property="BorderBrush" Value="#EEEEEE"/>
-            <Setter Property="BorderThickness" Value="4"/>
-        </Style>
-        <Style Selector="ListBoxItem:selected">
-            <Setter Property="Background" Value="#666666"/>
-        </Style>
     </UserControl.Styles>
 
-    <Grid Name="OmniSearchGrid" RowDefinitions="Auto,*,Auto" Background="#DD000000">
+    <Grid Name="OmniSearchGrid" RowDefinitions="Auto,*,Auto" Background="#DD000000"
+          XYFocus.NavigationModes="Enabled"
+          XYFocus.DownNavigationStrategy="Projection"
+          XYFocus.UpNavigationStrategy="Projection"
+          XYFocus.LeftNavigationStrategy="Projection"
+          XYFocus.RightNavigationStrategy="Projection">
         
         <!-- Row 0: SearchBox -->
         <Border Grid.Row="0" Padding="20">
             <TextBox Name="SearchBox" 
                      Text="{Binding SearchText}" 
                      FontSize="24" 
-                     Watermark="Search..."
-                     XYFocus.Down="{Binding #ResultsList}"/>
+                     Watermark="Search..." />
         </Border>
 
         <!-- Row 1: Search Results -->
-        <Grid Grid.Row="1">
-            <ListBox Name="ResultsList" 
-                     ItemsSource="{Binding SearchResults}" 
-                     SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
-                     Background="Transparent"
-                     XYFocus.Up="{Binding #SearchBox}"
-                     XYFocus.Down="{Binding #VirtualKeyboard}">
-                <ListBox.ItemTemplate>
+        <ScrollViewer Grid.Row="1" 
+                      Name="ResultsScrollViewer"
+                      HorizontalScrollBarVisibility="Disabled" 
+                      VerticalScrollBarVisibility="Auto">
+            <ItemsControl Name="ResultsList" ItemsSource="{Binding SearchResults}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel ItemWidth="300" ItemHeight="240" HorizontalAlignment="Center"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                         <Grid ColumnDefinitions="Auto,*" Margin="5">
-                             <Border CornerRadius="4" ClipToBounds="True" Width="80" Height="45" Background="#333" Margin="0,0,10,0">
-                                 <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
-                             </Border>
-                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                 <StackPanel Orientation="Horizontal">
-                                     <TextBlock Text="{Binding ChannelNumber}" Foreground="#FFD700" FontWeight="Bold" FontSize="18" Margin="0,0,10,0" IsVisible="{Binding ChannelNumber, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                     <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="Bold" Foreground="White"/>
-                                 </StackPanel>
-                                 <TextBlock Text="{Binding Source}" FontSize="12" Foreground="#888888" Margin="0,1,10,0" VerticalAlignment="Center"/>
-                                 <TextBlock Text="{Binding Details}" FontSize="14" Foreground="LightGray" VerticalAlignment="Center" IsVisible="{Binding Details, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                             </StackPanel>
-                         </Grid>
+                        <Button Background="Transparent" 
+                                BorderThickness="4" 
+                                BorderBrush="Transparent"
+                                CornerRadius="8"
+                                Padding="10"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                Click="OnResultClicked">
+                            <Button.Styles>
+                                <Style Selector="Button:focus">
+                                    <Setter Property="BorderBrush" Value="#eeeeee"/>
+                                </Style>
+                            </Button.Styles>
+                            <Grid RowDefinitions="*, Auto, Auto">
+                                <Border CornerRadius="8" ClipToBounds="True" Height="169">
+                                    <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                </Border>
+                                <TextBlock Grid.Row="1" Text="{Binding Name}" Foreground="White" FontWeight="Bold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
+                                <TextBlock Grid.Row="2" Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
+                            </Grid>
+                        </Button>
                     </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-
-            <!-- Loading Indicator -->
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" IsVisible="{Binding IsSearching}">
-                <TextBlock Text="Searching..." FontSize="20" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
-                <ProgressBar IsIndeterminate="True" Width="200" Margin="0,10,0,0" Height="4"/>
-            </StackPanel>
-        </Grid>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+        
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsVisible="{Binding IsSearching}">
+            <TextBlock Text="Searching..." FontSize="20" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
+            <ProgressBar IsIndeterminate="True" Width="200" Margin="0,10,0,0" Height="4"/>
+        </StackPanel>
 
         <!-- Row 2: Virtual Keyboard (Visible only when prompted) -->
         <controls:VirtualKeyboardControl Name="VirtualKeyboard" 
                                          Grid.Row="2" 
                                          IsVisible="{Binding IsKeyboardVisible}" 
                                          Height="320" 
-                                         Margin="0,10,0,0"
-                                         XYFocus.Up="{Binding #ResultsList}"/>
+                                         Margin="0,10,0,0" />
     </Grid>
 </UserControl>

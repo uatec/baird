@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Baird.Services;
 using System;
 
@@ -17,77 +18,9 @@ namespace Baird.Controls
         {
             InitializeComponent();
             
-            var list = this.FindControl<ListBox>("ResultsList");
             var box = this.FindControl<TextBox>("SearchBox");
-
-            if (list != null)
-            {
-                // Handle activation
-                list.AddHandler(InputElement.KeyDownEvent, (s, e) => 
-                {
-                    if (e.Key == global::Avalonia.Input.Key.Enter || e.Key == global::Avalonia.Input.Key.Return)
-                    {
-                        var lb = s as ListBox;
-                        if (lb?.SelectedItem is MediaItem item)
-                        {
-                            ItemChosen?.Invoke(this, item);
-                            e.Handled = true;
-                        }
-                    }
-                    else if (e.Key == global::Avalonia.Input.Key.Up)
-                    {
-                        if (list.SelectedIndex == 0)
-                        {
-                            e.Handled = true;
-                            Dispatcher.UIThread.Post(() => box?.Focus(), DispatcherPriority.Input);
-                        }
-                    }
-                }, RoutingStrategies.Tunnel, true);
-            }
-
-            if (box != null)
-            {
-                // box.GotFocus used to clear selection, but we want auto-selection now.
-
-                // Manual Down key handling to bridge to the list
-                box.AddHandler(InputElement.KeyDownEvent, (s, e) => 
-                {
-                    if (e.Key == global::Avalonia.Input.Key.Enter || e.Key == global::Avalonia.Input.Key.Return)
-                    {
-                        if (DataContext is Baird.ViewModels.OmniSearchViewModel vm && vm.SelectedItem != null)
-                        {
-                            ItemChosen?.Invoke(this, vm.SelectedItem);
-                            e.Handled = true;
-                        }
-                    }
-                    else if (e.Key == global::Avalonia.Input.Key.Down)
-                    {
-                        Console.WriteLine("Down key pressed in search box");
-                        if (list != null && list.ItemCount > 0)
-                        {
-                            if (list.SelectedIndex < 0) list.SelectedIndex = 0;
-                            e.Handled = true;
-                            Dispatcher.UIThread.Post(() => 
-                            {
-                                // Focus the actual ListBoxItem container, not just the ListBox
-                                var container = list.ContainerFromIndex(list.SelectedIndex);
-                                if (container is ListBoxItem item)
-                                {
-                                    item.Focus();
-                                }
-                                else
-                                {
-                                    list.Focus();
-                                }
-                            }, DispatcherPriority.Input);
-                        }
-                    }
-                }, RoutingStrategies.Tunnel, true);
-            }
             var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
             
-            bool navigatingToResults = false;
-
             if (keyboard != null && box != null)
             {
                 keyboard.KeyPressed += (key) =>
@@ -110,39 +43,23 @@ namespace Baird.Controls
                 {
                     if (DataContext is Baird.ViewModels.OmniSearchViewModel vm)
                     {
-                        navigatingToResults = true;
                         vm.IsKeyboardVisible = false;
+                        Dispatcher.UIThread.Post(FocusResults);
                     }
                 };
+            }
 
-                keyboard.PropertyChanged += (s, e) =>
+            if (box != null)
+            {
+                box.KeyDown += (s, e) => 
                 {
-                    if (e.Property == Visual.IsVisibleProperty && !keyboard.IsVisible)
+                    if (e.Key == global::Avalonia.Input.Key.Enter || e.Key == global::Avalonia.Input.Key.Return)
                     {
-                        Dispatcher.UIThread.Post(() => 
+                        if (DataContext is Baird.ViewModels.OmniSearchViewModel vm && vm.SelectedItem != null)
                         {
-                            if (navigatingToResults)
-                            {
-                                if (list != null && list.ItemCount > 0)
-                                {
-                                    list.SelectedIndex = 0;
-                                    var container = list.ContainerFromIndex(0);
-                                    if (container is ListBoxItem item)
-                                    {
-                                        item.Focus();
-                                    }
-                                    else
-                                    {
-                                        list.Focus();
-                                    }
-                                }
-                                navigatingToResults = false;
-                            }
-                            else
-                            {
-                                box.Focus();
-                            }
-                        }, DispatcherPriority.Input);
+                            ItemChosen?.Invoke(this, vm.SelectedItem);
+                            e.Handled = true;
+                        }
                     }
                 };
             }
@@ -153,10 +70,43 @@ namespace Baird.Controls
             AvaloniaXamlLoader.Load(this);
         }
         
-        public void FocusResults()
+        private void OnResultClicked(object? sender, RoutedEventArgs e)
         {
-            var list = this.FindControl<ListBox>("ResultsList");
-            list?.Focus();
+            if (sender is Control c && c.DataContext is MediaItem item)
+            {
+                 ItemChosen?.Invoke(this, item);
+            }
+        }
+        
+        public async void FocusResults()
+        {
+            var list = this.FindControl<ItemsControl>("ResultsList");
+            if (list == null) return;
+            
+            // Retry loop to find container
+            for(int i=0; i<10; i++) 
+            {
+                if (list.ItemCount > 0)
+                {
+                    var container = list.ContainerFromIndex(0);
+                    if (container == null) 
+                    {
+                        list.UpdateLayout();
+                        container = list.ContainerFromIndex(0);
+                    }
+                    
+                    if (container is Visual v)
+                    {
+                        var btn = v.FindDescendantOfType<Button>();
+                        if (btn != null)
+                        {
+                            btn.Focus();
+                            return;
+                        }
+                    }
+                }
+                await System.Threading.Tasks.Task.Delay(50);
+            }
         }
 
         public void FocusSearchBox()
@@ -165,11 +115,8 @@ namespace Baird.Controls
              if (box != null)
              {
                  box.Focus();
-                 // Ensure cursor is at the end so appended digits are before the cursor
                  box.CaretIndex = box.Text?.Length ?? 0;
              }
         }
-
-
     }
 }
