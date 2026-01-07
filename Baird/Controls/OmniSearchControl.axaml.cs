@@ -63,6 +63,22 @@ namespace Baird.Controls
                     }
                 };
             }
+            
+            var list = this.FindControl<ListBox>("ResultsList");
+            if (list != null)
+            {
+                list.KeyDown += (s, e) =>
+                {
+                    if (e.Key == Key.Enter || e.Key == Key.Return)
+                    {
+                        if (s is ListBox lb && lb.SelectedItem is MediaItem item)
+                        {
+                            ItemChosen?.Invoke(this, item);
+                            e.Handled = true;
+                        }
+                    }
+                };
+            }
         }
 
         private void InitializeComponent()
