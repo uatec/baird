@@ -39,8 +39,9 @@ case "${OS}" in
             libgl1-mesa-dri \
             libegl-mesa0 \
             libegl1 \
-            libmpv1 \
+            libicu-dev \
             libmpv-dev
+            # libmpv1 \
         
         echo "Dependencies installed successfully on Linux."
         ;;
