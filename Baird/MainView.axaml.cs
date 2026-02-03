@@ -224,7 +224,7 @@ namespace Baird
 
         private void PlayItem(MediaItem item)
         {
-            Console.WriteLine($"Playing Item: {item.Name} ({item.Id})");
+            Console.WriteLine($"Playing Item: {item.Name} ({item.Id} - {item.Type})");
 
             if (item.Type == MediaType.Brand)
             {
