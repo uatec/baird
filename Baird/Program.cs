@@ -10,9 +10,34 @@ namespace Baird
 {
     class Program
     {
+        private static void testImages()
+        {
+            // Put a test.png file next to your executable first!
+            try 
+            {
+                using (var fs = System.IO.File.OpenRead("test.png"))
+                {
+                    // This forces Skia to decode immediately. 
+                    // If libraries are missing, THIS line will crash with a specific error.
+                    var bitmap = new Avalonia.Media.Imaging.Bitmap(fs);
+                    System.Console.WriteLine($"Success! Image is {bitmap.Size}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Console.WriteLine("CRITICAL IMAGE ERROR: " + ex.ToString());
+            }
+        }
+
         [STAThread]
         public static void Main(string[] args)
         {
+            if (args.Contains("--test-images"))
+            {
+                testImages();
+                return;
+            }
+
             var builder = BuildAvaloniaApp();
             
             if (args.Contains("--drm"))
