@@ -30,12 +30,10 @@ namespace Baird
             // Put a test.png file next to your executable first!
             try 
             {
-                using (var fs = System.IO.File.OpenRead("test.png"))
+                using (var fs = System.IO.File.OpenRead("test.bmp"))
                 {
-                    // This forces Skia to decode immediately. 
-                    // If libraries are missing, THIS line will crash with a specific error.
                     var bitmap = new Avalonia.Media.Imaging.Bitmap(fs);
-                    System.Console.WriteLine($"Success! Image is {bitmap.Size}");
+                    System.Console.WriteLine("BMP Success!");
                 }
             }
             catch (Exception ex)
