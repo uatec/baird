@@ -36,10 +36,14 @@ namespace Baird.Services
 
         private static async void OnSourceChanged(Image image, AvaloniaPropertyChangedEventArgs args)
         {
-            var url = args.NewValue as string;
+            var newVal = args.NewValue;
+            Console.WriteLine($"[SimpleImageLoader] Handler Fired! Value is: '{(newVal ?? "NULL")}'");
+
+            var url = newVal as string;
 
             if (string.IsNullOrWhiteSpace(url))
             {
+                Console.WriteLine($"[SimpleImageLoader] Exiting because URL is empty.");
                 image.Source = null;
                 return;
             }
