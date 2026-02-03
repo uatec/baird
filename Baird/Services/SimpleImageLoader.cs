@@ -24,7 +24,8 @@ namespace Baird.Services
         }
 
         public static void SetSource(Image element, string? value)
-        {
+        {   
+            Console.WriteLine($"[SimpleImageLoader] SetSource called with value: {value}");
             element.SetValue(SourceProperty, value);
         }
 
