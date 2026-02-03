@@ -58,6 +58,11 @@ namespace Baird
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()
+                .With(new X11PlatformOptions 
+                { 
+                    // force software rendering to test
+                    RenderingMode = new [] { X11RenderingMode.Software } 
+                })
                 .LogToTrace()
                 .UseReactiveUI();
     }
