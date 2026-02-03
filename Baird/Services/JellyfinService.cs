@@ -30,10 +30,16 @@ namespace Baird.Services
             string username = Environment.GetEnvironmentVariable("JELLYFIN_USER") ?? "unknown";
             string password = Environment.GetEnvironmentVariable("JELLYFIN_PASS") ?? "unknown";
 
-            // Support .env file if present
-            if (System.IO.File.Exists(".env"))
+            // Support .env file if present (check current and parent dir)
+            var envPath = ".env";
+            if (!System.IO.File.Exists(envPath))
             {
-                foreach (var line in System.IO.File.ReadAllLines(".env"))
+                if (System.IO.File.Exists("../.env")) envPath = "../.env";
+            }
+            
+            if (System.IO.File.Exists(envPath))
+            {
+                foreach (var line in System.IO.File.ReadAllLines(envPath))
                 {
                     var parts = line.Split('=', 2);
                     if (parts.Length != 2) continue;
