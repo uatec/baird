@@ -45,12 +45,14 @@ namespace Baird.Services
 
             try
             {
+                Console.WriteLine($"[SimpleImageLoader] Starting load for: {url}");
                 var bitmap = await LoadImageAsync(url);
                 Dispatcher.UIThread.Post(() => image.Source = bitmap);
+                Console.WriteLine($"[SimpleImageLoader] Successfully displayed: {url}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[SimpleImageLoader] Error loading image from {url}: {ex.Message}");
+                Console.WriteLine($"[SimpleImageLoader] FAILED loading image from {url}: {ex.Message}");
                 // Optionally set a placeholder or null
                 image.Source = null;
             }
@@ -60,14 +62,17 @@ namespace Baird.Services
         {
             if (_memoryCache.TryGetValue(url, out var cachedBitmap))
             {
+                Console.WriteLine($"[SimpleImageLoader] Cache HIT: {url}");
                 return cachedBitmap;
             }
 
+            Console.WriteLine($"[SimpleImageLoader] Downloading: {url}");
             var data = await _httpClient.GetByteArrayAsync(url);
             using var stream = new MemoryStream(data);
             var bitmap = new Bitmap(stream);
             
             _memoryCache.TryAdd(url, bitmap);
+            Console.WriteLine($"[SimpleImageLoader] Download SUCCESS: {url} ({data.Length} bytes)");
             return bitmap;
         }
     }
