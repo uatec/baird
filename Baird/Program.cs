@@ -1,5 +1,6 @@
 ﻿using Avalonia;
 using Avalonia.LinuxFramebuffer;
+using Avalonia.Logging;
 using Avalonia.ReactiveUI;
 using System;
 using System.Linq;
@@ -63,7 +64,6 @@ namespace Baird
                     // force software rendering to test
                     RenderingMode = new [] { X11RenderingMode.Software } 
                 })
-                .LogToTrace()
                 .LogToTrace(LogEventLevel.Debug, "Avalonia") // Ensure Debug level
                 .WithInterFont() // Optional, but helps if system fonts are missing
                 .UseReactiveUI();
