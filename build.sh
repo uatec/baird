@@ -16,6 +16,7 @@ dotnet publish Baird/Baird.csproj \
     --self-contained true \
     -p:PublishSingleFile=true \
     -p:PublishTrimmed=true \
+    -p:Version="${BUILD_VERSION:-1.0.0}" \
     -o "$OUTPUT_DIR/linux-arm64"
 
 cp 99-baird.rules "$OUTPUT_DIR/"
@@ -28,6 +29,7 @@ dotnet publish Baird/Baird.csproj \
     --self-contained true \
     -p:PublishSingleFile=true \
     -p:PublishTrimmed=true \
+    -p:Version="${BUILD_VERSION:-1.0.0}" \
     -o "$OUTPUT_DIR/linux-x64"
 
 echo "Build complete. Artifacts are in $OUTPUT_DIR"

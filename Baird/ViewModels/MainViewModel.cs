@@ -35,12 +35,17 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _activeItem, value);
         }
 
+        public string AppVersion { get; }
+
         public MainViewModel(System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> providers)
         {
             _providers = providers;
             OmniSearch = new OmniSearchViewModel(providers);
             IsVideoHudVisible = true;
             ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
+            
+            var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
+            AppVersion = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0";
         }
 
         private readonly System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> _providers;

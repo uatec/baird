@@ -31,5 +31,14 @@
                                    IsVisible="{Binding IsProgrammeDetailVisible}"
                                    HorizontalAlignment="Stretch"
                                    VerticalAlignment="Stretch"/>
+
+        <!-- Layer 4: Version Info (Top Right) -->
+        <TextBlock Text="{Binding AppVersion}" 
+                   Foreground="White" 
+                   FontSize="14" 
+                   Opacity="0.5" 
+                   HorizontalAlignment="Right" 
+                   VerticalAlignment="Top" 
+                   Margin="20"/>
     </Grid>
 </UserControl>

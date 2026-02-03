@@ -38,6 +38,7 @@ jobs:
 
       - name: Build Application
         run: |
+          export BUILD_VERSION=${{ steps.version.outputs.new_tag }}
           chmod +x build.sh
           ./build.sh
 
