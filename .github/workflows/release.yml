@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x' 
+
+      # Tests might fail due to missing libmpv on macos-latest if not installed. 
+      # Attempting to run them, but allowing failure if it's just environment issues could be wise, 
+      # but user asked for "build, test, package". 
+      # We will try to run them standardly.
+      - name: Test
+        run: dotnet test Baird.Tests/Baird.Tests.csproj
+
+      - name: Calculate Version & Create Tag
+        id: version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+          release_branches: main
+
+      - name: Build Application
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Zip Application
+        id: zip
+        run: |
+          mkdir -p out
+          
+          # Zip linux-arm64
+          cd publish/linux-arm64
+          zip -r ../../out/Baird-linux-arm64.zip .
+          cd ../..
+          
+          # Zip linux-x64
+          cd publish/linux-x64
+          zip -r ../../out/Baird-linux-x64.zip .
+          cd ../..
+          
+          echo "Zipped artifacts created."
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.new_tag }}
+          name: Release ${{ steps.version.outputs.new_version }}
+          files: |
+            out/Baird-linux-arm64.zip
+            out/Baird-linux-x64.zip
+          body: ${{ steps.version.outputs.changelog }}
+
+      - name: Calculate SHA256
+        id: sha256
+        run: |
+          SHA256=$(shasum -a 256 out/Baird-linux-arm64.zip | awk '{print $1}')
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "SHA256 (arm64): $SHA256"
+
+      - name: Dispatch to Homebrew Tools
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: update-formula-cask.yml
+          repo: uatec/homebrew-tools
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          inputs: >-
+            {
+              "name": "baird",
+              "version": "${{ steps.version.outputs.new_tag }}",
+              "url": "https://github.com/uatec/baird/releases/download/${{ steps.version.outputs.new_tag }}/Baird-linux-arm64.zip",
+              "sha256": "${{ steps.sha256.outputs.sha256 }}"
+            }
