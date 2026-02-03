@@ -144,9 +144,9 @@ namespace Baird.Services
             {
                 // Manual HTTP GET for Items
                 // Endpoint: /Users/{UserId}/Items
-                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&Fields=ProductionYear";
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Fields=ProductionYear";
                 
-                Console.WriteLine($"Fetching movies from: {url}");
+                Console.WriteLine($"Fetching movies and shows from: {url}");
                 
                 var response = await _httpClient.GetAsync(url);
                 response.EnsureSuccessStatusCode();
@@ -185,9 +185,9 @@ namespace Baird.Services
             try
             {
                 var q = Uri.EscapeDataString(query.Trim());
-                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&Fields=ProductionYear&SearchTerm={q}";
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episodes&Recursive=true&SortBy=SortName&Fields=ProductionYear&SearchTerm={q}";
                 
-                Console.WriteLine($"Searching Jellyfin movies with query '{query}': {url}");
+                Console.WriteLine($"Searching Jellyfin movies and shows with query '{query}': {url}");
                 
                 var response = await _httpClient.GetAsync(url);
                 response.EnsureSuccessStatusCode();
