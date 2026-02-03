@@ -26,6 +26,23 @@ namespace Baird
             _providers.Add(new BbcIPlayerService());
 
             _viewModel = new MainViewModel(_providers);
+
+            // Put a test.png file next to your executable first!
+            try 
+            {
+                using (var fs = System.IO.File.OpenRead("test.png"))
+                {
+                    // This forces Skia to decode immediately. 
+                    // If libraries are missing, THIS line will crash with a specific error.
+                    var bitmap = new Avalonia.Media.Imaging.Bitmap(fs);
+                    System.Console.WriteLine($"Success! Image is {bitmap.Size}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Console.WriteLine("CRITICAL IMAGE ERROR: " + ex.ToString());
+            }
+            
             DataContext = _viewModel;
 
             this.AttachedToVisualTree += async (s, e) =>
