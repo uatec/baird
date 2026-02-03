@@ -81,7 +81,7 @@
                 <DataTemplate>
                     <Grid RowDefinitions="*, Auto, Auto">
                         <Border CornerRadius="8" ClipToBounds="True" Height="169">
-                            <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                            <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" Background="Red"/>
                         </Border>
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
                              <TextBlock Text="{Binding ChannelNumber}" Foreground="#FFD700" FontWeight="ExtraBold" Margin="0,0,6,0" IsVisible="{Binding ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>

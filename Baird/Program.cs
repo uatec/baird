@@ -64,6 +64,8 @@ namespace Baird
                     RenderingMode = new [] { X11RenderingMode.Software } 
                 })
                 .LogToTrace()
+                .LogToTrace(LogEventLevel.Debug, "Avalonia") // Ensure Debug level
+                .WithInterFont() // Optional, but helps if system fonts are missing
                 .UseReactiveUI();
     }
 }

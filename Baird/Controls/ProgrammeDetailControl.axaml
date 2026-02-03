@@ -18,6 +18,7 @@
         <Image asyncImageLoader:ImageLoader.Source="{Binding SelectedProgramme.ImageUrl}" 
                Stretch="UniformToFill" 
                Opacity="0.3"
+               Background="Blue"
                VerticalAlignment="Top" Height="600"/>
         
         <Grid RowDefinitions="Auto, *, Auto" Margin="50" 
@@ -64,7 +65,7 @@
                                 </Button.Styles>
                                 <Grid RowDefinitions="*, Auto, Auto">
                                     <Border CornerRadius="8" ClipToBounds="True" Height="169">
-                                        <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                        <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" Background="Green"/>
                                     </Border>
                                     <TextBlock Grid.Row="1" Text="{Binding Name}" Foreground="White" FontWeight="Bold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
                                     <TextBlock Grid.Row="2" Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
