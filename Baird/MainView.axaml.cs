@@ -143,6 +143,23 @@ namespace Baird
             // Debug key press
             Console.WriteLine($"Key: {e.Key}");
 
+            // Space Trigger (Play/Pause)
+            if (e.Key == Key.Space)
+            {
+                 var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                 var player = videoLayer?.GetPlayer();
+                 if (player != null)
+                 {
+                     if (player.IsPaused)
+                         player.Resume();
+                     else
+                         player.Pause();
+                         
+                     e.Handled = true;
+                     return;
+                 }
+            }
+
             // Numeric Triggers (0-9)
             if (IsNumericKey(e.Key))
             {
