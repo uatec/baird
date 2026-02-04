@@ -6,6 +6,7 @@
              xmlns:vm="using:Baird.ViewModels"
              xmlns:conv="using:Baird.Converters"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:CompileBindings="True"
              x:Class="Baird.Controls.VideoLayerControl"
              x:DataType="vm:MainViewModel">
     
