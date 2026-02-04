@@ -58,6 +58,91 @@ namespace Baird.ViewModels
 
         public System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem> ProgrammeChildren { get; }
 
+        public System.Collections.Generic.List<Baird.Services.MediaItem> AllChannels { get; private set; } = new();
+
+        public async System.Threading.Tasks.Task RefreshChannels()
+        {
+            var tasks = new System.Collections.Generic.List<System.Threading.Tasks.Task<System.Collections.Generic.IEnumerable<Baird.Services.MediaItem>>>();
+            foreach (var provider in _providers)
+            {
+                tasks.Add(provider.GetListingAsync());
+            }
+
+            try
+            {
+                var results = await System.Threading.Tasks.Task.WhenAll(tasks);
+                var allItems = new System.Collections.Generic.List<Baird.Services.MediaItem>();
+                foreach (var list in results)
+                {
+                    allItems.AddRange(list);
+                }
+
+                AllChannels = allItems
+                    .Where(i => i.IsLive)
+                    .Where(i => i.ChannelNumber != null && i.ChannelNumber != "0")
+                    .OrderBy(i =>
+                    {
+                        if (i.ChannelNumber == null) return int.MaxValue;
+                        if (int.TryParse(i.ChannelNumber, out var num)) return num;
+                        return int.MaxValue;
+                    })
+                    .ToList();
+            }
+            catch (System.Exception ex)
+            {
+                System.Console.WriteLine($"Error refreshing channels: {ex.Message}");
+            }
+        }
+
+        public void SelectNextChannel()
+        {
+            Console.WriteLine($"SelectNextChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
+            if (ActiveItem == null || AllChannels.Count == 0) return;
+
+            var currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
+            if (currentIndex == -1) 
+            {
+                // Current item not in list (maybe VOD or Brand), jump to first channel?
+                // Or do nothing? Let's jump to first channel for now.
+                if(AllChannels.Count > 0) ActivateChannel(AllChannels[0]);
+                return;
+            }
+
+            var nextIndex = (currentIndex + 1) % AllChannels.Count;
+            ActivateChannel(AllChannels[nextIndex]);
+        }
+
+        public void SelectPreviousChannel()
+        {
+            Console.WriteLine($"SelectPreviousChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
+            if (ActiveItem == null || AllChannels.Count == 0) return;
+
+            var currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
+            if (currentIndex == -1) 
+            {
+                if(AllChannels.Count > 0) ActivateChannel(AllChannels[0]);
+                return;
+            }
+
+            var prevIndex = (currentIndex - 1 + AllChannels.Count) % AllChannels.Count;
+            ActivateChannel(AllChannels[prevIndex]);
+        }
+
+        // Helper to activate a channel (similar to PlayItem in View, but VM based)
+        // Note: Actual playback starts because ActiveItem is bound in View.
+        private void ActivateChannel(Baird.Services.MediaItem item)
+        {
+             ActiveItem = new ActiveMedia 
+             {
+                 Id = item.Id,
+                 Name = item.Name,
+                 Details = item.Details,
+                 StreamUrl = item.StreamUrl,
+                 IsLive = item.IsLive,
+                 ChannelNumber = item.ChannelNumber
+             };
+        }
+
         public async System.Threading.Tasks.Task OpenProgramme(Baird.Services.MediaItem programme)
         {
             SelectedProgramme = programme;

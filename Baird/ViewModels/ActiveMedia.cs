@@ -8,5 +8,6 @@ namespace Baird.ViewModels
         public string Details { get; set; }
         public bool IsLive { get; set; }
         public string? ChannelNumber { get; set; }
+        public string Id { get; set; }
     }
 }

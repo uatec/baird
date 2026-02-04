@@ -116,22 +116,12 @@ namespace Baird
                  // Trigger initial "Search" with empty query to populate results list
                  await _viewModel.OmniSearch.ClearAndSearch();
 
-                 // Auto-play first channel logic
-                 var allItems = new List<MediaItem>();
-                 foreach(var p in _providers) {
-                     var list = await p.GetListingAsync();
-                     allItems.AddRange(list);
-                 }
+                 // Initial Channel Refresh
+                 await _viewModel.RefreshChannels();
 
-                 var firstChannel = allItems
-                    .Where(i => i.IsLive)
-                    .Where(i => i.ChannelNumber != null && i.ChannelNumber != "0")
-                    .OrderBy(i => {
-                        // Sort by ChannelNumber
-                        if (i.ChannelNumber == null) return int.MaxValue;
-                        return int.Parse(i.ChannelNumber);  
-                    })
-                    .FirstOrDefault();
+                 // Auto-play first channel logic
+                 // Use the ViewModel's aggregated list
+                 var firstChannel = _viewModel.AllChannels.FirstOrDefault();
 
                  if (firstChannel != null)
                  {
@@ -166,6 +156,21 @@ namespace Baird
                 HandleUpTrigger(e);
                 // Don't mark handled generally, as it might be needed for nav, BUT
                 // if we just switched layers, we might want to consume it.
+                return;
+            }
+
+            // Channel Navigation
+            if (e.Key == Key.OemPlus || e.Key == Key.Add || e.Key == Key.MediaNextTrack)
+            {
+                _viewModel.SelectNextChannel();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.OemMinus || e.Key == Key.Subtract || e.Key == Key.MediaPreviousTrack)
+            {
+                _viewModel.SelectPreviousChannel();
+                e.Handled = true;
                 return;
             }
 
@@ -249,6 +254,7 @@ namespace Baird
                 
                 _viewModel.ActiveItem = new ActiveMedia 
                 {
+                    Id = item.Id,
                     Name = item.Name,
                     Details = item.Details,
                     StreamUrl = url,
