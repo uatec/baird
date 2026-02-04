@@ -75,6 +75,60 @@ namespace Baird.Controls
             set => SetValue(IsLiveProperty, value);
         }
 
+        public static readonly StyledProperty<TimeSpan> PositionProperty =
+            AvaloniaProperty.Register<VideoPlayer, TimeSpan>(nameof(Position));
+
+        public TimeSpan Position
+        {
+            get => GetValue(PositionProperty);
+            set => SetValue(PositionProperty, value);
+        }
+
+        public static readonly StyledProperty<TimeSpan> DurationProperty =
+            AvaloniaProperty.Register<VideoPlayer, TimeSpan>(nameof(Duration));
+
+        public TimeSpan Duration
+        {
+            get => GetValue(DurationProperty);
+            set => SetValue(DurationProperty, value);
+        }
+
+        public static readonly StyledProperty<double> PositionSecondsProperty =
+            AvaloniaProperty.Register<VideoPlayer, double>(nameof(PositionSeconds));
+
+        public double PositionSeconds
+        {
+            get => GetValue(PositionSecondsProperty);
+            set => SetValue(PositionSecondsProperty, value);
+        }
+
+        public static readonly StyledProperty<double> DurationSecondsProperty =
+            AvaloniaProperty.Register<VideoPlayer, double>(nameof(DurationSeconds));
+
+        public double DurationSeconds
+        {
+            get => GetValue(DurationSecondsProperty);
+            set => SetValue(DurationSecondsProperty, value);
+        }
+
+        public static readonly StyledProperty<string> FinishingAtProperty =
+            AvaloniaProperty.Register<VideoPlayer, string>(nameof(FinishingAt), defaultValue: "");
+
+        public string FinishingAt
+        {
+            get => GetValue(FinishingAtProperty);
+            set => SetValue(FinishingAtProperty, value);
+        }
+
+        public static readonly StyledProperty<string> TimeRemainingProperty =
+            AvaloniaProperty.Register<VideoPlayer, string>(nameof(TimeRemaining), defaultValue: "");
+
+        public string TimeRemaining
+        {
+            get => GetValue(TimeRemainingProperty);
+            set => SetValue(TimeRemainingProperty, value);
+        }
+
         private void UpdateHud()
         {
             if (_player == null) return;
@@ -105,7 +159,26 @@ namespace Baird.Controls
                 var tsPos = TimeSpan.FromSeconds(pos);
                 var tsDur = TimeSpan.FromSeconds(dur);
 
-                FormattedTime = $"{tsPos:hh\\:mm\\:ss} / {tsDur:hh\\:mm\\:ss}";
+                Position = tsPos;
+                Duration = tsDur;
+                PositionSeconds = pos;
+                DurationSeconds = dur;
+
+                FormattedTime = $"{tsPos:hh\\:mm\\:ss}"; // Just current time for row 1
+                
+                // Calculate finishing time
+                if (dur > 0)
+                {
+                    var timeLeft = tsDur - tsPos;
+                    var finishTime = DateTime.Now.Add(timeLeft);
+                    FinishingAt = $"Finishing at: {finishTime:HH:mm}";
+                    TimeRemaining = $"-{timeLeft:hh\\:mm\\:ss}";
+                }
+                else
+                {
+                    FinishingAt = "";
+                    TimeRemaining = "";
+                }
             }
             
             PlayerState = state;

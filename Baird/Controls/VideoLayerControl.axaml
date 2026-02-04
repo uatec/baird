@@ -34,9 +34,35 @@
                         <TextBlock Text="{Binding #Player.PlayerState}" FontSize="14" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
                      </StackPanel>
                  </Border>
-                 <Border Grid.Row="2" Background="#AA000000" Padding="10">
-                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                         <TextBlock Text="{Binding #Player.FormattedTime}" Foreground="White" FontSize="18"/>
+                 <Border Grid.Row="2" Background="#AA000000" Padding="20">
+                     <StackPanel>
+                         <!-- Live Stream Clock -->
+                         <TextBlock Text="{Binding #Player.FormattedTime}" 
+                                   Foreground="White" 
+                                   FontSize="24" 
+                                   HorizontalAlignment="Center"
+                                   IsVisible="{Binding ActiveItem.IsLive}"/>
+
+                         <!-- VOD Controls -->
+                         <StackPanel IsVisible="{Binding !ActiveItem.IsLive}" Spacing="5">
+                             <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                 <TextBlock Text="{Binding #Player.FormattedTime}" Foreground="White" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                 
+                                 <ProgressBar Grid.Column="1" 
+                                              Minimum="0" 
+                                              Maximum="{Binding #Player.DurationSeconds}" 
+                                              Value="{Binding #Player.PositionSeconds}"
+                                              Height="10"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,10,0"/>
+                                 
+                                 <TextBlock Grid.Column="2" Text="{Binding #Player.TimeRemaining}" Foreground="White" FontSize="16" VerticalAlignment="Center"/>
+                             </Grid>
+                             
+                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5,0,0">
+                                 <TextBlock Text="{Binding #Player.FinishingAt}" Foreground="#AAAAAA" FontSize="14"/>
+                             </StackPanel>
+                         </StackPanel>
                      </StackPanel>
                  </Border>
              </Grid>
