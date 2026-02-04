@@ -78,7 +78,30 @@ namespace Baird.Controls
                         }
                     }
                 };
+
+                list.GetObservable(ListBox.BoundsProperty).Subscribe(bounds => 
+                {
+                    var width = bounds.Width;
+                    if (width > 0)
+                    {
+                        // 300 is the ItemWidth defined in XAML
+                        var columns = Math.Floor(width / 300);
+                        // Prevent 0 width if very small, though unlikely
+                        if (columns < 1) columns = 1; 
+                        
+                        CalculatedWidth = columns * 300;
+                    }
+                });
             }
+        }
+
+        public static readonly StyledProperty<double> CalculatedWidthProperty =
+            AvaloniaProperty.Register<OmniSearchControl, double>(nameof(CalculatedWidth), 300);
+
+        public double CalculatedWidth
+        {
+            get => GetValue(CalculatedWidthProperty);
+            set => SetValue(CalculatedWidthProperty, value);
         }
 
         private void InitializeComponent()

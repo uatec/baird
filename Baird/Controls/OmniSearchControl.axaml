@@ -75,7 +75,10 @@
                  Tapped="OnResultTapped">
             <ListBox.ItemsPanel>
                 <ItemsPanelTemplate>
-                    <WrapPanel ItemWidth="300" ItemHeight="240" HorizontalAlignment="Center"/>
+                    <WrapPanel ItemWidth="300" 
+                               ItemHeight="240" 
+                               HorizontalAlignment="Center"
+                               Width="{Binding $parent[controls:OmniSearchControl].CalculatedWidth}"/>
                 </ItemsPanelTemplate>
             </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
