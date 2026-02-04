@@ -18,6 +18,6 @@ dotnet publish Baird/Baird.csproj \
     -p:PublishTrimmed=true \
     -p:Version="${BUILD_VERSION:-1.0.0}" \
     -o "$OUTPUT_DIR/linux-arm64"
-scp -r $OUTPUT_DIR/linux-arm64 baird:/home/uatec/baird
+    
 cp 99-baird.rules "$OUTPUT_DIR/"
 cp install_deps.sh "$OUTPUT_DIR/"
