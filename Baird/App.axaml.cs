@@ -22,6 +22,12 @@ namespace Baird
                     Content = new MainView(),
                     Title = "Baird"
                 };
+
+                var fullScreenEnv = System.Environment.GetEnvironmentVariable("BAIRD_FULLSCREEN");
+                if (!string.IsNullOrEmpty(fullScreenEnv) && bool.TryParse(fullScreenEnv, out bool isFullScreen) && isFullScreen)
+                {
+                    desktop.MainWindow.WindowState = WindowState.FullScreen;
+                }
             }
             else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
             {
