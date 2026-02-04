@@ -50,12 +50,6 @@ jobs:
           # Zip linux-arm64
           cd publish/linux-arm64
           zip -r ../../out/Baird-linux-arm64.zip .
-          cd ../..
-          
-          # Zip linux-x64
-          cd publish/linux-x64
-          zip -r ../../out/Baird-linux-x64.zip .
-          cd ../..
           
           echo "Zipped artifacts created."
 
@@ -66,7 +60,6 @@ jobs:
           name: Release ${{ steps.version.outputs.new_version }}
           files: |
             out/Baird-linux-arm64.zip
-            out/Baird-linux-x64.zip
           body: ${{ steps.version.outputs.changelog }}
 
       - name: Calculate SHA256
