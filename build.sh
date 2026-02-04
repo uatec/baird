@@ -11,7 +11,7 @@ rm -rf "$OUTPUT_DIR"
 
 echo "Building for Raspberry Pi (linux-arm64)..."
 dotnet publish Baird/Baird.csproj \
-    -c Release \
+    -c Debug \
     -r linux-arm64 \
     --self-contained true \
     -p:PublishSingleFile=true \
@@ -24,7 +24,7 @@ cp install_deps.sh "$OUTPUT_DIR/"
 
 echo "Building for Virtual Machine (linux-x64)..."
 dotnet publish Baird/Baird.csproj \
-    -c Release \
+    -c Debug \
     -r linux-x64 \
     --self-contained true \
     -p:PublishSingleFile=true \
