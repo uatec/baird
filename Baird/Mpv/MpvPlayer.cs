@@ -39,6 +39,15 @@ namespace Baird.Mpv
             // Maintain aspect ratio (will center with black bars if needed)
             SetPropertyString("keepaspect", "yes");
 
+            // --- Synchronization & Anti-Tearing ---
+            // Sync video to display refresh rate
+            SetPropertyString("video-sync", "display-resample");
+            // Enable interpolation for smoother motion
+            SetPropertyString("interpolation", "yes");
+            SetPropertyString("tscale", "oversample"); 
+            // Enforce VSync
+            SetPropertyString("opengl-swapinterval", "1");
+
             // Prefer English audio
             SetPropertyString("alang", "eng,en");
 
