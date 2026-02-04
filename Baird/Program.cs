@@ -5,6 +5,7 @@ using Avalonia.ReactiveUI;
 using System;
 using System.Linq;
 using System.Threading;
+using System.Diagnostics;
 
 namespace Baird
 {
@@ -14,6 +15,8 @@ namespace Baird
         [STAThread]
         public static void Main(string[] args)
         {
+            Trace.Listeners.Add(new ConsoleTraceListener());
+
             var builder = BuildAvaloniaApp();
             
             if (args.Contains("--drm"))
