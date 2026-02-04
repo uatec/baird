@@ -144,7 +144,7 @@ namespace Baird.Services
             var port = uri.Port;
             var scheme = uri.Scheme;
             
-            return $"{scheme}://{host}:{port}/stream/channel/{itemId}?auth={_username}:{_password}";
+            return $"{scheme}://{host}:{port}/stream/channel/{itemId}?auth={_username}:{_password}&profile=pass";
         }
         
         // Custom Digest Auth Handler
