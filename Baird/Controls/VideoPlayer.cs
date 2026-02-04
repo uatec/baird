@@ -13,7 +13,9 @@ namespace Baird.Controls
         private MpvPlayer _player;
         private IntPtr _mpvRenderContext;
         private LibMpv.MpvRenderUpdateFn _renderUpdateDelegate;
+
         private Avalonia.Threading.DispatcherTimer _hudTimer;
+        private string _lastLoggedState = "Idle";
 
         public VideoPlayer()
         {
@@ -79,6 +81,12 @@ namespace Baird.Controls
 
             // State
             var state = _player.State.ToString();
+            
+            if (state == "Playing" && _lastLoggedState != "Playing")
+            {
+                _player.LogAudioTracks();
+            }
+            _lastLoggedState = state;
             
             if (IsLive)
             {

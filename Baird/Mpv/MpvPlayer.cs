@@ -39,6 +39,9 @@ namespace Baird.Mpv
             // Maintain aspect ratio (will center with black bars if needed)
             SetPropertyString("keepaspect", "yes");
 
+            // Prefer English audio
+            SetPropertyString("alang", "eng,en");
+
             var res = LibMpv.mpv_initialize(_mpvHandle);
             if (res < 0)
                 throw new Exception($"Failed to initialize mpv: {res}");
@@ -149,6 +152,38 @@ namespace Baird.Mpv
             var value = Marshal.PtrToStringUTF8(ptr);
             LibMpv.mpv_free(ptr);
             return value;
+        }
+
+        public int GetPropertyInt(string name)
+        {
+            long val = 0;
+            int res = LibMpv.mpv_get_property(_mpvHandle, name, LibMpv.MpvFormat.Int64, ref val);
+            if (res < 0) return -1;
+            return (int)val;
+        }
+        
+        
+        public int GetTrackCount()
+        {
+             return GetPropertyInt("track-list/count");
+        }
+
+        public void LogAudioTracks()
+        {
+            int count = GetTrackCount();
+            Console.WriteLine($"[MpvPlayer] Found {count} tracks.");
+            for (int i = 0; i < count; i++)
+            {
+                var type = GetPropertyString($"track-list/{i}/type");
+                if (type == "audio")
+                {
+                    var id = GetPropertyString($"track-list/{i}/id");
+                    var lang = GetPropertyString($"track-list/{i}/lang");
+                    var title = GetPropertyString($"track-list/{i}/title");
+                    var selected = GetPropertyString($"track-list/{i}/selected");
+                    Console.WriteLine($"[MpvPlayer] Audio Track {i}: ID={id}, Lang={lang}, Title='{title}', Selected={selected}");
+                }
+            }
         }
         
         public IntPtr Handle => _mpvHandle;

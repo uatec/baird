@@ -86,6 +86,9 @@ namespace Baird.Mpv
         public static extern IntPtr mpv_get_property_string(IntPtr handle, string name);
 
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int mpv_get_property(IntPtr handle, string name, MpvFormat format, ref long data);
+
+        [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern void mpv_free(IntPtr data);
 
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
