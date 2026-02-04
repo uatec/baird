@@ -28,7 +28,7 @@ namespace Baird.Mpv
             // Use "auto" to let mpv pick the best available (videotoolbox on macOS, vaapi/nvdec/v4l2m2m on Linux)
              var hwdec = "auto"; 
             SetPropertyString("hwdec", hwdec);
-            
+
             // Generic Options
             SetPropertyString("terminal", "yes");
             SetPropertyString("msg-level", "all=v");
@@ -44,21 +44,38 @@ namespace Baird.Mpv
                 throw new Exception($"Failed to initialize mpv: {res}");
         }
 
+        // Add this field to your class
+        // private IntPtr _renderContext;
+
         public void InitializeOpenGl(IntPtr procAddressCallback)
         {
-            // Prepare Opengl params
-            // We need a helper to marshal the callback
-            
-            // WARNING: This is a complex part. For simplicity in this iteration, 
-            // we assume the usage with Avalonia's OpenGlControlBase which provides proc addresses.
-            
-             // Note: In a real robust implementation, we need to handle the delegte lifecycle carefully 
-             // to prevent GC collection during P/Invoke.
-             // For this task, we will try to keep it minimal but functional.
+            // 1. Wrap the Avalonia proc address callback
+            var openglParams = new LibMpv.MpvOpenglInitParams
+            {
+                GetProcAddress = Marshal.GetDelegateForFunctionPointer<LibMpv.MpvGetProcAddressFn>(procAddressCallback),
+                UserData = IntPtr.Zero,
+                ExtraParams = IntPtr.Zero
+            };
 
-             // We skip detailed context creation here for now, delegating it to the Render method or initialization phase
-             // where we have the GL context active. 
-             // Actually, `mpv_render_context_create` needs to be called once we have a GL context. 
+            // 2. Prepare the init params
+            IntPtr openglParamsPtr = Marshal.AllocHGlobal(Marshal.SizeOf(openglParams));
+            Marshal.StructureToPtr(openglParams, openglParamsPtr, false);
+
+            var renderParams = new LibMpv.MpvRenderParam[]
+            {
+                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.ApiType, Data = Marshal.StringToHGlobalAnsi("opengl") },
+                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.InitParams, Data = openglParamsPtr },
+                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Invalid, Data = IntPtr.Zero }
+            };
+
+            // 3. Create the context (The missing link!)
+            int res = LibMpv.mpv_render_context_create(out _renderContext, _mpvHandle, renderParams);
+
+            // 4. Cleanup
+            Marshal.FreeHGlobal(openglParamsPtr);
+            Marshal.FreeHGlobal(renderParams[0].Data);
+
+            if (res < 0) throw new Exception($"Failed to create render context: {res}");
         }
 
         public void Play(string url)

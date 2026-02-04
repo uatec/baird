@@ -156,6 +156,7 @@ namespace Baird.Controls
 
         protected override void OnOpenGlInit(GlInterface gl)
         {
+            Console.WriteLine("[VideoPlayer] OnOpenGlInit called. Initializing MPV render context...");
             base.OnOpenGlInit(gl);
 
             // Keep delegate alive
@@ -173,17 +174,6 @@ namespace Baird.Controls
             Marshal.StructureToPtr(paramsStruct, pParams, false);
 
             // MPV Rendering API: Opengl
-            // We need to pass MPV_RENDER_PARAM_API_TYPE (1) = MPV_RENDER_API_TYPE_OPENGL ("opengl")
-            // And MPV_RENDER_PARAM_OPENGL_INIT_PARAMS (2) = paramsStruct
-
-            // We construct the array of parameters manually safely
-            // But mpv_render_context_create expects a specific array termination/structure?
-            // "The parameters array is variable-ended... terminated by type=0"
-            
-            // NOTE: LibMpv.MpvRenderParamType enum: ApiType = 1, InitParams = 2.
-            // Data for ApiType should be a string "opengl" pointer? 
-            // "MPV_RENDER_PARAM_API_TYPE... data is char*" -> "opengl"
-            
             IntPtr pApiType = Marshal.StringToCoTaskMemUTF8("opengl");
             
             var paramsArr = new LibMpv.MpvRenderParam[]
@@ -194,7 +184,9 @@ namespace Baird.Controls
             };
 
             // Call create
+            Console.WriteLine("[VideoPlayer] Calling mpv_render_context_create...");
             int res = LibMpv.mpv_render_context_create(out _mpvRenderContext, _player.Handle, paramsArr);
+            Console.WriteLine($"[VideoPlayer] mpv_render_context_create returned: {res}");
             
             // Clean up temporary pointers
             Marshal.FreeCoTaskMem(pParams);
@@ -202,18 +194,20 @@ namespace Baird.Controls
 
             if (res < 0)
             {
-                // Init failed (maybe MPV was already initialized? But context creation on initialized handle is allowed)
-                Console.WriteLine($"Failed to create render context: {res}");
+                // Init failed
+                Console.WriteLine($"[VideoPlayer] FAILED to create render context: {res}");
                 // We should probably check if it failed.
                 return;
             }
             
             // Set update callback
             LibMpv.mpv_render_context_set_update_callback(_mpvRenderContext, _renderUpdateDelegate, IntPtr.Zero);
+            Console.WriteLine("[VideoPlayer] Render context initialized successfully.");
         }
 
         protected override void OnOpenGlDeinit(GlInterface gl)
         {
+            Console.WriteLine("[VideoPlayer] OnOpenGlDeinit called. Freeing context.");
             if (_mpvRenderContext != IntPtr.Zero)
             {
                 LibMpv.mpv_render_context_free(_mpvRenderContext);
@@ -224,14 +218,19 @@ namespace Baird.Controls
 
         protected override void OnOpenGlRender(GlInterface gl, int fb)
         {
-            if (_mpvRenderContext == IntPtr.Zero) return;
+            if (_mpvRenderContext == IntPtr.Zero)
+            {
+                // console log only once to avoid spam?
+                // Console.WriteLine("[VideoPlayer] OnOpenGlRender: Render Context is ZERO."); 
+                return;
+            }
 
             var scaling = VisualRoot?.RenderScaling ?? 1.0;
             int w = (int)(Bounds.Width * scaling);
             int h = (int)(Bounds.Height * scaling);
             
             // FBO param
-            var fbo = new LibMpv.MpvOpenglFbo { Fbo = fb, W = w, H = h, InternalFormat = 0 };
+            var fbo = new LibMpv.MpvOpenglFbo { Fbo = fb, W = w, H = h, InternalFormat = 0 }; // 0 = default (usually GL_RGBA8)
             IntPtr pFbo = Marshal.AllocCoTaskMem(Marshal.SizeOf(fbo));
             Marshal.StructureToPtr(fbo, pFbo, false);
 
@@ -241,14 +240,13 @@ namespace Baird.Controls
             Marshal.WriteInt32(pFlipY, flipY);
 
             // Params for render
-            // MPV_RENDER_PARAM_OPENGL_FBO (3)
             var paramsArr = new LibMpv.MpvRenderParam[]
             {
                 new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Fbo, Data = pFbo },
                 new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.FlipY, Data = pFlipY },
                 new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Invalid, Data = IntPtr.Zero }
             };
-            
+            // LibMpv.mpv_render_context_render(this._mpvRenderContext, paramsArr);
             LibMpv.mpv_render_context_render(_mpvRenderContext, paramsArr);
             
             Marshal.FreeCoTaskMem(pFbo);
