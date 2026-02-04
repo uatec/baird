@@ -9,6 +9,13 @@ namespace Baird.ViewModels
 {
     public class OmniSearchViewModel : ReactiveObject
     {
+        private bool _isSearchActive;
+        public bool IsSearchActive
+        {
+            get => _isSearchActive;
+            set => this.RaiseAndSetIfChanged(ref _isSearchActive, value);
+        }
+        
         private string _searchText = "";
         public string SearchText
         {

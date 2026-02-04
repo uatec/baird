@@ -39,7 +39,7 @@ namespace Baird
                     {
                         PlayItem(item);
                         // Close search
-                        _viewModel.IsSearchActive = false;
+                        _viewModel.OmniSearch.IsSearchActive = false;
                         _viewModel.OmniSearch.Clear();
                     };
                 }
@@ -82,7 +82,7 @@ namespace Baird
                         _viewModel.CloseProgramme();
                         // Focus Search if it was open? Or just reset?
                         // If we came from Search, restoring Search would be nice.
-                        if(_viewModel.IsSearchActive)
+                        if(_viewModel.OmniSearch.IsSearchActive)
                         {
                              Dispatcher.UIThread.Post(() => 
                              {
@@ -194,11 +194,11 @@ namespace Baird
         {
             var digit = GetNumericChar(e.Key);
 
-            if (!_viewModel.IsSearchActive)
+            if (!_viewModel.OmniSearch.IsSearchActive)
             {
                 // Activate Search Mode
                 _viewModel.OmniSearch.Clear();
-                _viewModel.IsSearchActive = true;
+                _viewModel.OmniSearch.IsSearchActive = true;
                 _viewModel.OmniSearch.IsKeyboardVisible = false; 
                 
                 // Append Digit to ViewModel
@@ -237,7 +237,7 @@ namespace Baird
                 _viewModel.OpenProgramme(item);
                 
                 // Also close search if active
-                 _viewModel.IsSearchActive = false;
+                 _viewModel.OmniSearch.IsSearchActive = false;
                  _viewModel.OmniSearch.Clear();
                 return;
             }
@@ -266,10 +266,10 @@ namespace Baird
         {
             // Logic: If on BaseLayer (Video/Home) and press Up -> Open Search with Keyboard
             
-            if (!_viewModel.IsSearchActive && !_viewModel.IsProgrammeDetailVisible)
+            if (!_viewModel.OmniSearch.IsSearchActive && !_viewModel.IsProgrammeDetailVisible)
             {
                  _viewModel.OmniSearch.Clear();
-                 _viewModel.IsSearchActive = true;
+                 _viewModel.OmniSearch.IsSearchActive = true;
                  _viewModel.OmniSearch.IsKeyboardVisible = true;
                  
                  // Focus Keyboard
@@ -298,7 +298,7 @@ namespace Baird
                 // New logic: If search is empty, exit search entirely
                 if (string.IsNullOrEmpty(_viewModel.OmniSearch.SearchText))
                 {
-                    _viewModel.IsSearchActive = false;
+                    _viewModel.OmniSearch.IsSearchActive = false;
                     _viewModel.OmniSearch.Clear();
                     return;
                 }
@@ -317,7 +317,7 @@ namespace Baird
             {
                 _viewModel.CloseProgramme();
                 // Return to Search if it was active?
-                if (_viewModel.IsSearchActive)
+                if (_viewModel.OmniSearch.IsSearchActive)
                 {
                      Dispatcher.UIThread.Post(() => 
                      {
@@ -326,10 +326,10 @@ namespace Baird
                      });
                 }
             }
-            else if (_viewModel.IsSearchActive)
+            else if (_viewModel.OmniSearch.IsSearchActive)
             {
                 // Close Search, Return to Base
-                _viewModel.IsSearchActive = false;
+                _viewModel.OmniSearch.IsSearchActive = false;
                 _viewModel.OmniSearch.Clear();
 
                 // Focus Base (Video)

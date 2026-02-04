@@ -7,7 +7,9 @@
              xmlns:services="using:Baird.Services"
              mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="1080"
              x:CompileBindings="True"
-             x:Class="Baird.Controls.ProgrammeDetailControl">
+             x:Class="Baird.Controls.ProgrammeDetailControl"
+             x:DataType="vm:MainViewModel"
+             >
 
     <UserControl.Resources>
         <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>

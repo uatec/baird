@@ -4,14 +4,6 @@ namespace Baird.ViewModels
 {
     public class MainViewModel : ReactiveObject
     {
-        private bool _isSearchActive;
-        public bool IsSearchActive
-        {
-            get => _isSearchActive;
-            set => this.RaiseAndSetIfChanged(ref _isSearchActive, value);
-        }
-
-
         private bool _isEpgActive;
         public bool IsEpgActive
         {
