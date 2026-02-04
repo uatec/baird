@@ -21,7 +21,7 @@
         <!-- Layer 2: Omni-Search (Top Down, Overlay) -->
         <c:OmniSearchControl Name="OmniSearchLayer" 
                              DataContext="{Binding OmniSearch}"
-                             IsVisible="{Binding OmniSearch.IsSearchActive}" 
+                             IsVisible="{Binding IsSearchActive}" 
                              HorizontalAlignment="Stretch" 
                              VerticalAlignment="Stretch"/>
                              <!-- Note: Re-binding DataContext to OmniSearch sub-VM. IsVisible binding needs to reach back to MainViewModel -->
