@@ -87,7 +87,7 @@ namespace Baird.Services
                             Id = c.Uuid,
                             Name = c.Name,
                             Details = "", // Channel number moved to ChannelNumber
-                            ChannelNumber = c.Number.ToString(),
+                            ChannelNumber = c.Number > 0 ? c.Number.ToString() : "",
                             // TVHeadend icon URL: /imagecache/{id}
                             ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
                             IsLive = true,
