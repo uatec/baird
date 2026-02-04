@@ -1,3 +1,4 @@
 - [x] the tvheadend stream includes multiple audio streams including audio descriptions. How can we choose the standard english audio?
 - [x] press space to play/pause the stream.
 - [ ] When streaming on raspberry pi 5, the image is tearing. 
+- [ ] Disable screensaver

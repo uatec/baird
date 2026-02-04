@@ -140,6 +140,9 @@ namespace Baird
             // If the event was already handled (e.g. by a focused TextBox), don't trigger global logic
             if (e.Handled) return;
 
+            // Reset HUD Timer on any interaction
+            _viewModel.ResetHudTimer();
+
             // Debug key press
             Console.WriteLine($"Key: {e.Key}");
 

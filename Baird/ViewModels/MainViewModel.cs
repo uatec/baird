@@ -38,9 +38,30 @@ namespace Baird.ViewModels
             
             var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
             AppVersion = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0";
+            
+            // Initialize HUD Timer
+            _hudTimer = new Avalonia.Threading.DispatcherTimer
+            {
+                Interval = System.TimeSpan.FromSeconds(5)
+            };
+            _hudTimer.Tick += (s, e) => 
+            {
+                IsVideoHudVisible = false;
+                _hudTimer.Stop();
+            };
+            // Start it initially so it hides after 5s of startup
+            _hudTimer.Start();
         }
 
+        private Avalonia.Threading.DispatcherTimer _hudTimer;
         private readonly System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> _providers;
+        
+        public void ResetHudTimer()
+        {
+            IsVideoHudVisible = true;
+            _hudTimer.Stop();
+            _hudTimer.Start();
+        }
 
         private Baird.Services.MediaItem? _selectedProgramme;
         public Baird.Services.MediaItem? SelectedProgramme
@@ -141,6 +162,8 @@ namespace Baird.ViewModels
                  IsLive = item.IsLive,
                  ChannelNumber = item.ChannelNumber
              };
+             
+             ResetHudTimer();
         }
 
         public async System.Threading.Tasks.Task OpenProgramme(Baird.Services.MediaItem programme)
