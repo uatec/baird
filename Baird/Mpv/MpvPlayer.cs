@@ -25,9 +25,13 @@ namespace Baird.Mpv
                 throw new Exception("Failed to create mpv context");
 
             // Hardware acceleration configuration
-            // Use "auto" to let mpv pick the best available (videotoolbox on macOS, vaapi/nvdec/v4l2m2m on Linux)
-             var hwdec = "auto"; 
+            // RPi 5: "auto-copy" ensures decoded frames are copied back to system memory
+            // which is often necessary when embedding mpv in Avalonia/OpenGL to avoid
+            // DRM/KMS overlay issues that might bypass the UI.
+            // "yes" for deinterlace is critical for 1080i50 broadcasts (UK Satellite/Terrestrial).
+             var hwdec = "auto-copy"; 
             SetPropertyString("hwdec", hwdec);
+            SetPropertyString("deinterlace", "yes");
 
             // Generic Options
             SetPropertyString("terminal", "yes");
