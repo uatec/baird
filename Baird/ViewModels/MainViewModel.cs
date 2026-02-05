@@ -18,6 +18,13 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isVideoHudVisible, value);
         }
 
+        private bool _isSubtitlesEnabled;
+        public bool IsSubtitlesEnabled
+        {
+            get => _isSubtitlesEnabled;
+            set => this.RaiseAndSetIfChanged(ref _isSubtitlesEnabled, value);
+        }
+
         public OmniSearchViewModel OmniSearch { get; }
 
         private ActiveMedia? _activeItem;
@@ -34,6 +41,16 @@ namespace Baird.ViewModels
             _providers = providers;
             OmniSearch = new OmniSearchViewModel(providers);
             IsVideoHudVisible = true;
+            
+            try 
+            {
+               IsSubtitlesEnabled = System.Console.CapsLock;
+            }
+            catch 
+            {
+               IsSubtitlesEnabled = false;
+            }
+
             ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
             
             var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;

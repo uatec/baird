@@ -50,6 +50,8 @@ namespace Baird.Mpv
 
             // Prefer English audio
             SetPropertyString("alang", "eng,en");
+            // Prefer English subtitles
+            SetPropertyString("slang", "eng,en");
 
             var res = LibMpv.mpv_initialize(_mpvHandle);
             if (res < 0)
@@ -107,6 +109,13 @@ namespace Baird.Mpv
         {
              SetPropertyString("pause", "no");
              State = PlaybackState.Playing;
+        }
+
+        public void SetSubtitle(bool enabled)
+        {
+            // "auto" selects the best subtitle track according to "slang"
+            // "no" disables subtitles
+            SetPropertyString("sid", enabled ? "auto" : "no");
         }
 
         public void Seek(double seconds)

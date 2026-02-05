@@ -129,6 +129,15 @@ namespace Baird.Controls
             set => SetValue(TimeRemainingProperty, value);
         }
 
+        public static readonly StyledProperty<bool> IsSubtitlesEnabledProperty =
+            AvaloniaProperty.Register<VideoPlayer, bool>(nameof(IsSubtitlesEnabled));
+
+        public bool IsSubtitlesEnabled
+        {
+            get => GetValue(IsSubtitlesEnabledProperty);
+            set => SetValue(IsSubtitlesEnabledProperty, value);
+        }
+
         private void UpdateHud()
         {
             if (_player == null) return;
@@ -194,11 +203,19 @@ namespace Baird.Controls
                 if (!string.IsNullOrEmpty(url))
                 {
                     Play(url);
+                    // Apply subtitle state when source changes/starts
+                    SetSubtitle(IsSubtitlesEnabled);
                 }
                 else
                 {
                     Stop();
                 }
+            }
+            
+            if (change.Property == IsSubtitlesEnabledProperty)
+            {
+                var enabled = (bool)change.NewValue;
+                SetSubtitle(enabled);
             }
         }
 
@@ -219,6 +236,8 @@ namespace Baird.Controls
             _player.Resume();
             IsPaused = false;
         }
+
+        public void SetSubtitle(bool enabled) => _player.SetSubtitle(enabled);
 
         public void Seek(double s) => _player.Seek(s);
         public void Stop() 

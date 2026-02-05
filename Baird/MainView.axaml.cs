@@ -201,6 +201,16 @@ namespace Baird
                 e.Handled = true; // Always consume Back/Esc
                 return;
             }
+
+            // Subtitle Toggle (Caps Lock)
+            if (e.Key == Key.CapsLock)
+            {
+                _viewModel.IsSubtitlesEnabled = !_viewModel.IsSubtitlesEnabled;
+                // e.Handled = true; // Let system handle CapsLock state toggle too?
+                // If we handle it, maybe system LED won't toggle? 
+                // Usually OS handles Caps Lock global state regardless of app handling.
+                return;
+            }
         }
 
         private bool IsNumericKey(Key key)

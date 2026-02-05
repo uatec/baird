@@ -20,7 +20,8 @@
                        HorizontalAlignment="Stretch" 
                        VerticalAlignment="Stretch"
                        Source="{Binding ActiveItem.StreamUrl}"
-                       IsLive="{Binding ActiveItem.IsLive}"/>
+                       IsLive="{Binding ActiveItem.IsLive}"
+                       IsSubtitlesEnabled="{Binding IsSubtitlesEnabled}"/>
 
         <!-- Layer 2: Video HUD (Overlay) -->
         <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}" IsHitTestVisible="False">
@@ -28,6 +29,7 @@
                  <Border Grid.Row="0" Background="#AA000000" Padding="10">
                      <StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                            <TextBlock Text="SUB" FontSize="16" FontWeight="Bold" Foreground="#FFFF00" IsVisible="{Binding IsSubtitlesEnabled}" VerticalAlignment="Center" Margin="0,0,5,0"/>
                             <TextBlock Text="{Binding ActiveItem.ChannelNumber}" FontSize="24" FontWeight="ExtraBold" Foreground="#FFD700" IsVisible="{Binding ActiveItem.ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
                             <TextBlock Text="{Binding ActiveItem.Name}" FontSize="24" FontWeight="Bold" Foreground="White"/>
                         </StackPanel>
