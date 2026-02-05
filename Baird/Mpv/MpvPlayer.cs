@@ -29,16 +29,19 @@ namespace Baird.Mpv
             // which is often necessary when embedding mpv in Avalonia/OpenGL to avoid
             // DRM/KMS overlay issues that might bypass the UI.
             // "yes" for deinterlace is critical for 1080i50 broadcasts (UK Satellite/Terrestrial).
-             var hwdec = "auto-copy"; 
+             var hwdec = "drm-copy"; 
             SetPropertyString("hwdec", hwdec);
-            SetPropertyString("deinterlace", "yes");
+            // SetPropertyString("deinterlace", "yes");
 
-            // Generic Options
+            // Generics Options
             SetPropertyString("terminal", "yes");
             SetPropertyString("msg-level", "all=v");
             
             // Critical for embedding: Force libmpv VO to prevent detached window
-            SetPropertyString("vo", "libmpv");
+            SetPropertyString("vo", "gpu");
+
+            SetPropertyString("gpu-api", "opengl");
+            SetPropertyString("gpu-dumb-mode", "yes");
 
             // Maintain aspect ratio (will center with black bars if needed)
             SetPropertyString("keepaspect", "yes");
@@ -46,9 +49,6 @@ namespace Baird.Mpv
             // --- Synchronization & Anti-Tearing ---
             // Sync video to display refresh rate
             SetPropertyString("video-sync", "display-resample");
-            // Enable interpolation for smoother motion
-            SetPropertyString("interpolation", "yes");
-            SetPropertyString("tscale", "oversample"); 
             // Enforce VSync
             SetPropertyString("opengl-swapinterval", "1");
 
