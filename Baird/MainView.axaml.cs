@@ -201,6 +201,15 @@ namespace Baird
                 e.Handled = true; // Always consume Back/Esc
                 return;
             }
+            
+            // Stats Toggle (Tab)
+            if (e.Key == Key.Tab)
+            {
+                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                videoLayer?.GetPlayer()?.ToggleStats();
+                e.Handled = true;
+                return;
+            }
 
             // Subtitle Toggle (Caps Lock)
             if (e.Key == Key.CapsLock)

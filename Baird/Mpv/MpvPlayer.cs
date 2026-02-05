@@ -47,10 +47,14 @@ namespace Baird.Mpv
             SetPropertyString("keepaspect", "yes");
 
             // --- Synchronization & Anti-Tearing ---
-            // Sync video to display refresh rate
-            SetPropertyString("video-sync", "display-resample");
-            // Enforce VSync
-            SetPropertyString("opengl-swapinterval", "1");
+            // DISABLED for RPi 5 Performance. Interpolation is very heavy on GPU.
+            // SetPropertyString("video-sync", "display-resample");
+            // SetPropertyString("interpolation", "yes");
+            // SetPropertyString("tscale", "oversample"); 
+            // SetPropertyString("opengl-swapinterval", "1"); // VSync
+            
+            // Standard sync
+            SetPropertyString("video-sync", "audio");
 
             // Prefer English audio
             SetPropertyString("alang", "eng,en");
@@ -133,7 +137,7 @@ namespace Baird.Mpv
             State = PlaybackState.Idle;
         }
 
-        private void Command(params string[] args)
+        public void Command(params string[] args)
         {
              // Marshaling string array to IntPtr[] is required for mpv_command
              // But mpv_command_string is easier for simple commands

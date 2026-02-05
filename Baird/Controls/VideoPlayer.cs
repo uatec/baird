@@ -251,6 +251,11 @@ namespace Baird.Controls
         public string GetTimePos() => _player.TimePosition;
         public string GetDuration() => _player.Duration;
         public string GetCurrentPath() => _player.CurrentPath;
+        
+        public void ToggleStats()
+        {
+            _player.Command("script-binding", "stats/display-stats-toggle");
+        }
 
         private LibMpv.MpvGetProcAddressFn? _getProcAddress;
 
