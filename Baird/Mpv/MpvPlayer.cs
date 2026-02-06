@@ -32,7 +32,8 @@ namespace Baird.Mpv
              var hwdec = "auto-copy"; 
             SetPropertyString("hwdec", hwdec);
             // SetPropertyString("deinterlace", "yes");
-
+            
+            SetPropertyString("gpu-context", "x11");
             // Generics Options
             SetPropertyString("terminal", "yes");
             SetPropertyString("msg-level", "all=v");
