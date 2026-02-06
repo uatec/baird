@@ -214,6 +214,7 @@ namespace Baird
             // Subtitle Toggle (Caps Lock)
             if (e.Key == Key.CapsLock)
             {
+                Console.WriteLine($"[InputCoordinator] CapsLock pressed. Toggling subtitles from {_viewModel.IsSubtitlesEnabled} to {!_viewModel.IsSubtitlesEnabled}");
                 _viewModel.IsSubtitlesEnabled = !_viewModel.IsSubtitlesEnabled;
                 // e.Handled = true; // Let system handle CapsLock state toggle too?
                 // If we handle it, maybe system LED won't toggle? 
