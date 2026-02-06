@@ -31,18 +31,14 @@ namespace Baird.Mpv
             // "yes" for deinterlace is critical for 1080i50 broadcasts (UK Satellite/Terrestrial).
              var hwdec = "auto-copy"; 
             SetPropertyString("hwdec", hwdec);
-            // SetPropertyString("deinterlace", "yes");
+             // SetPropertyString("deinterlace", "yes");
             
-            SetPropertyString("gpu-context", "x11");
             // Generics Options
             SetPropertyString("terminal", "yes");
             SetPropertyString("msg-level", "all=v");
             
             // Critical for embedding: Force libmpv VO to prevent detached window
-            SetPropertyString("vo", "gpu");
-
-            SetPropertyString("gpu-api", "opengl");
-            SetPropertyString("gpu-dumb-mode", "yes");
+            SetPropertyString("vo", "libmpv");
 
             // Maintain aspect ratio (will center with black bars if needed)
             SetPropertyString("keepaspect", "yes");
@@ -70,8 +66,13 @@ namespace Baird.Mpv
         // Add this field to your class
         // private IntPtr _renderContext;
 
-        public void InitializeOpenGl(IntPtr procAddressCallback)
+        private LibMpv.MpvRenderUpdateFn _renderUpdateFn;
+        private Action _requestRender;
+
+        public void InitializeOpenGl(IntPtr procAddressCallback, Action requestRender)
         {
+            _requestRender = requestRender;
+            
             // 1. Wrap the Avalonia proc address callback
             var openglParams = new LibMpv.MpvOpenglInitParams
             {
@@ -91,7 +92,7 @@ namespace Baird.Mpv
                 new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Invalid, Data = IntPtr.Zero }
             };
 
-            // 3. Create the context (The missing link!)
+            // 3. Create the context
             int res = LibMpv.mpv_render_context_create(out _renderContext, _mpvHandle, renderParams);
 
             // 4. Cleanup
@@ -99,6 +100,43 @@ namespace Baird.Mpv
             Marshal.FreeHGlobal(renderParams[0].Data);
 
             if (res < 0) throw new Exception($"Failed to create render context: {res}");
+            
+            // 5. Set update callback
+            _renderUpdateFn = UpdateCallback;
+            LibMpv.mpv_render_context_set_update_callback(_renderContext, _renderUpdateFn, IntPtr.Zero);
+        }
+        
+        private void UpdateCallback(IntPtr ctx)
+        {
+            _requestRender?.Invoke();
+        }
+
+        public void Render(int fbo, int width, int height)
+        {
+            if (_renderContext == IntPtr.Zero) return;
+
+            // FBO param
+            var fboParam = new LibMpv.MpvOpenglFbo { Fbo = fbo, W = width, H = height, InternalFormat = 0 };
+            IntPtr pFbo = Marshal.AllocCoTaskMem(Marshal.SizeOf(fboParam));
+            Marshal.StructureToPtr(fboParam, pFbo, false);
+
+            // FlipY param
+            int flipY = 1;
+            IntPtr pFlipY = Marshal.AllocCoTaskMem(sizeof(int));
+            Marshal.WriteInt32(pFlipY, flipY);
+
+            // Params for render
+            var paramsArr = new LibMpv.MpvRenderParam[]
+            {
+                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Fbo, Data = pFbo },
+                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.FlipY, Data = pFlipY },
+                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Invalid, Data = IntPtr.Zero }
+            };
+
+            LibMpv.mpv_render_context_render(_renderContext, paramsArr);
+            
+            Marshal.FreeCoTaskMem(pFbo);
+            Marshal.FreeCoTaskMem(pFlipY);
         }
 
         public void Play(string url)
