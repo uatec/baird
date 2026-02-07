@@ -144,7 +144,7 @@ namespace Baird.Services
             {
                 // Manual HTTP GET for Items
                 // Endpoint: /Users/{UserId}/Items
-                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Fields=ProductionYear";
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Fields=ProductionYear,ProviderIds";
                 
                 Console.WriteLine($"Fetching movies and shows from: {url}");
                 
@@ -156,16 +156,7 @@ namespace Baird.Services
                 
                 if (result?.Items != null)
                 {
-                    return result.Items.Select(m => new MediaItem 
-                    {
-                        Id = m.Id,
-                        Name = m.Name,
-                        Details = m.ProductionYear?.ToString() ?? "Unknown Year",
-                        ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary?api_key={_accessToken}",
-                        IsLive = false,
-                        StreamUrl = GetStreamUrlInternal(m.Id),
-                        Source = $"Jellyfin: {_serverHostname}"
-                    });
+                    return result.Items.Select(MapJellyfinItem);
                 }
                 return Enumerable.Empty<MediaItem>();
             }
@@ -185,7 +176,7 @@ namespace Baird.Services
             try
             {
                 var q = Uri.EscapeDataString(query.Trim());
-                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episodes&Recursive=true&SortBy=SortName&Fields=ProductionYear&SearchTerm={q}";
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Fields=ProductionYear&SearchTerm={q}";
                 
                 Console.WriteLine($"Searching Jellyfin movies and shows with query '{query}': {url}");
                 
@@ -197,16 +188,7 @@ namespace Baird.Services
                 
                 if (result?.Items != null)
                 {
-                    return result.Items.Select(m => new MediaItem 
-                    {
-                        Id = m.Id,
-                        Name = m.Name,
-                        Details = m.ProductionYear?.ToString() ?? "Unknown Year",
-                        ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary?api_key={_accessToken}",
-                        IsLive = false,
-                        StreamUrl = GetStreamUrlInternal(m.Id),
-                        Source = $"Jellyfin: {_serverHostname}"
-                    });
+                    return result.Items.Select(MapJellyfinItem);
                 }
                 return Enumerable.Empty<MediaItem>();
             }
@@ -217,10 +199,50 @@ namespace Baird.Services
             }
         }
 
-        public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        public async Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
         {
-            // Could implement folder browsing here later
-            return Task.FromResult(Enumerable.Empty<MediaItem>());
+            if (!IsAuthenticated) return Enumerable.Empty<MediaItem>();
+
+            try
+            {
+                var url = $"Users/{_userId}/Items?ParentId={id}&IncludeItemTypes=Episode&Recursive=true&SortBy=ParentIndexNumber,IndexNumber,SortName&Fields=ProductionYear";
+                Console.WriteLine($"Fetching children for {id}: {url}");
+                
+                var response = await _httpClient.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+
+                var json = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult);
+                
+                if (result?.Items != null)
+                {
+                    return result.Items.Select(MapJellyfinItem);
+                }
+                return Enumerable.Empty<MediaItem>();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Jellyfin GetChildren failed: {ex.Message}");
+                return Enumerable.Empty<MediaItem>();
+            }
+        }
+
+        private MediaItem MapJellyfinItem(MovieItem m)
+        {
+            var isBrand = m.Type != null && m.Type.Equals("Series", StringComparison.OrdinalIgnoreCase);
+            var type = isBrand ? MediaType.Brand : MediaType.Video;
+            
+            return new MediaItem 
+            {
+                Id = m.Id,
+                Name = m.Name,
+                Details = m.ProductionYear?.ToString() ?? "Unknown Year",
+                ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary?api_key={_accessToken}",
+                IsLive = false,
+                StreamUrl = isBrand ? "" : GetStreamUrlInternal(m.Id), 
+                Source = $"Jellyfin: {_serverHostname}",
+                Type = type
+            };
         }
 
         private string GetStreamUrlInternal(string itemId)
@@ -276,6 +298,7 @@ namespace Baird.Services
         public string Name { get; set; }
         public string Id { get; set; }
         public int? ProductionYear { get; set; }
+        public string Type { get; set; }
     }
 
     [JsonSerializable(typeof(AuthRequest))]
