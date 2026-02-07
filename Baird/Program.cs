@@ -25,7 +25,7 @@ namespace Baird
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()
-                .LogToTrace(LogEventLevel.Verbose) // Ensure Debug level
+                .LogToTrace(LogEventLevel.Debug) // Ensure Debug level
                 .WithInterFont() // Optional, but helps if system fonts are missing
                 .UseReactiveUI();
     }
