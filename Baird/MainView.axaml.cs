@@ -348,16 +348,21 @@ namespace Baird
         {
             if (_viewModel.IsProgrammeDetailVisible)
             {
-                _viewModel.CloseProgramme();
-                // Return to Search if it was active?
-                if (_viewModel.OmniSearch.IsSearchActive)
-                {
-                     Dispatcher.UIThread.Post(() => 
-                     {
-                         var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
-                         searchControl?.FocusResults();
-                     });
-                }
+               // Redundant logic removed. ProgrammeDetailControl handles its own back navigation via Focus and KeyDown.
+               // However, if the control doesn't have focus (e.g. user clicked away?), this might still be needed as fallback?
+               // The user complaint was "why do we need to implement...".
+               // If properly focused, it should handle it. 
+               // If not focused, MainView gets it.
+               // But if MainView gets it, it means ProgrammeDetail didn't handle it.
+               // So maybe we should KEEP it as fallback?
+               // But the prompt says "if isProgrammeDetailVisible is true, then the focussed control should be the ProgrammeDetailControl".
+               // So we assume it IS focused.
+               // If it is focused, OnKeyDown in control handles it and sets Handled=true.
+               // So MainView.InputCoordinator won't even see it (because e.Handled check at top).
+               // So this block becomes dead code if focus works.
+               // If focus fails, this block is a safety net.
+               // But the user explicitly asked "why do we need to implement...".
+               // So I will remove it to respect the "it should be focused" paradigm.
             }
             else if (_viewModel.OmniSearch.IsSearchActive)
             {

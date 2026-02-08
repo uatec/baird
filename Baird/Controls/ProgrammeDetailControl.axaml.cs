@@ -38,6 +38,17 @@ namespace Baird.Controls
             }
         }
 
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            
+            if (e.Key == Key.Escape || e.Key == Key.Back)
+            {
+                BackRequested?.Invoke(this, EventArgs.Empty);
+                e.Handled = true;
+            }
+        }
+        
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
         {
             base.OnPropertyChanged(change);
