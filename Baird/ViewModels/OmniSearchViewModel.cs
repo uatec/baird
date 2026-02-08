@@ -37,6 +37,13 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _searchText, value);
         }
 
+        private bool _isSearchFieldFocused;
+        public bool IsSearchFieldFocused
+        {
+            get => _isSearchFieldFocused;
+            set => this.RaiseAndSetIfChanged(ref _isSearchFieldFocused, value);
+        }
+
         private bool _isSearching;
         public bool IsSearching
         {
@@ -98,25 +105,79 @@ namespace Baird.ViewModels
 
             IsSearching = true;
             SearchResults.Clear(); // Already on UI thread due to Throttle scheduler
-
+            
+            var accumulatedResults = new List<MediaItem>();
             var sorter = new SearchResultSorter();
-            try 
-            {
-                var result2 = await sorter.SearchAndSortAsync(_providers, query, token);
 
-                if (!token.IsCancellationRequested)
+            // Create tasks for each provider
+            var tasks = _providers.Select(async provider => 
+            {
+                try 
                 {
-                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    var results = await provider.SearchAsync(query, token);
+                    
+                    if (token.IsCancellationRequested) return;
+
+                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => 
                     {
-                        SearchResults.Clear();
-                        SearchResults.AddRange(result2);
-                        SelectedItem = SearchResults.FirstOrDefault();
+                        if (token.IsCancellationRequested) return;
+
+                        var newItems = results.ToList();
+                        if (newItems.Any())
+                        {
+                            accumulatedResults.AddRange(newItems);
+                            
+                            if (IsSearchFieldFocused)
+                            {
+                                // Re-sort everything
+                                var sorted = sorter.Sort(accumulatedResults, query);
+                                SearchResults.Clear();
+                                SearchResults.AddRange(sorted);
+                                
+                                // Auto-select first if nothing selected or selection lost
+                                if (SelectedItem == null)
+                                {
+                                    SelectedItem = SearchResults.FirstOrDefault();
+                                }
+                            }
+                            else
+                            {
+                                // Append only
+                                // We might want to sort the *new* batch? 
+                                // Or just append them raw?
+                                // "if the focus has moved to the list items, please append only so items don't move under the user"
+                                // Appending raw preserves "accumulated" order, which is "arrival time".
+                                // But if a provider returns a mix of "High Priority" and "Low Priority", we should probably sort the *batch*?
+                                // Let's sort the batch using the same logic, but just for this batch.
+                                var sortedBatch = sorter.Sort(newItems, query);
+                                SearchResults.AddRange(sortedBatch);
+                            }
+                        }
                     });
                 }
-            }
-            catch (OperationCanceledException)
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Search provider error: {ex}");
+                }
+            }).ToList();
+
+            try 
             {
-                // Search cancelled, do nothing
+                await Task.WhenAll(tasks);
+            }
+            catch (Exception) 
+            { 
+               // Ignore aggregate exceptions from cancellation 
+            }
+            finally
+            {
+                if (!token.IsCancellationRequested)
+                {
+                    IsSearching = false;
+                }
+                _searchCts.Dispose();
+                _searchCts = null;
             }
         }
         

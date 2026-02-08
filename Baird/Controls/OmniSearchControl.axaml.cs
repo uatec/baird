@@ -55,7 +55,22 @@ namespace Baird.Controls
                 {
                     Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
                 }
+
+                var box = this.FindControl<TextBox>("SearchBox");
+                if (box != null)
+                {
+                    box.GotFocus += (sender, args) => UpdateFocusState(true);
+                    box.LostFocus += (sender, args) => UpdateFocusState(false);
+                }
             };
+        }
+
+        private void UpdateFocusState(bool isFocused)
+        {
+            if (DataContext is ViewModels.OmniSearchViewModel vm)
+            {
+                vm.IsSearchFieldFocused = isFocused;
+            }
         }
 
         public static readonly StyledProperty<double> CalculatedWidthProperty =
