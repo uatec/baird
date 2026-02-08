@@ -41,7 +41,21 @@ namespace Baird.Controls
                 });
             }
 
-            this.AttachedToVisualTree += (s, e) => FocusSearchBox();
+            this.GetObservable(IsVisibleProperty).Subscribe(visible => 
+            {
+                if (visible)
+                {
+                    Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
+                }
+            });
+
+            this.AttachedToVisualTree += (s, e) => 
+            {
+                if (IsVisible)
+                {
+                    Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
+                }
+            };
         }
 
         public static readonly StyledProperty<double> CalculatedWidthProperty =
