@@ -28,6 +28,40 @@ namespace Baird.Controls
             };
             _hudTimer.Tick += (s, e) => UpdateHud();
             _hudTimer.Start();
+
+            Focusable = true;
+        }
+
+        public event EventHandler? SearchRequested;
+
+        protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.Handled) return;
+
+            switch (e.Key)
+            {
+                case Avalonia.Input.Key.Space:
+                case Avalonia.Input.Key.MediaPlayPause:
+                    IsPaused = !IsPaused;
+                    e.Handled = true;
+                    break;
+                
+                case Avalonia.Input.Key.Tab:
+                    ToggleStats();
+                    e.Handled = true;
+                    break;
+
+                case Avalonia.Input.Key.CapsLock:
+                    IsSubtitlesEnabled = !IsSubtitlesEnabled;
+                    e.Handled = true; // Potentially let system handle too? But user asked to move logic here.
+                    break;
+
+                case Avalonia.Input.Key.Up:
+                    SearchRequested?.Invoke(this, EventArgs.Empty);
+                    e.Handled = true;
+                    break;
+            }
         }
 
         public static readonly StyledProperty<bool> IsPausedProperty =

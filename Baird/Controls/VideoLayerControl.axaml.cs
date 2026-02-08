@@ -20,5 +20,35 @@ namespace Baird.Controls
         {
             return this.FindControl<VideoPlayer>("Player");
         }
+
+        protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+        {
+            base.OnAttachedToVisualTree(e);
+            var player = GetPlayer();
+            if (player != null)
+            {
+                player.SearchRequested += OnSearchRequested;
+                player.Focus(); // Ensure player gets focus when layer is active
+            }
+        }
+
+        protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+        {
+            base.OnDetachedFromVisualTree(e);
+             var player = GetPlayer();
+            if (player != null)
+            {
+                player.SearchRequested -= OnSearchRequested;
+            }
+        }
+
+        private void OnSearchRequested(object? sender, System.EventArgs e)
+        {
+            if (DataContext is ViewModels.MainViewModel vm)
+            {
+                vm.OmniSearch.Clear();
+                vm.PushViewModel(vm.OmniSearch);
+            }
+        }
     }
 }

@@ -92,14 +92,7 @@ namespace Baird
             // Debug key press
             Console.WriteLine($"Key: {e.Key}");
 
-             // Space or MediaPlayPause Trigger (Play/Pause)
-            if (e.Key == Key.Space || e.Key == Key.MediaPlayPause)
-            {
-                 // Toggle Pause State via ViewModel
-                 _viewModel.IsPaused = !_viewModel.IsPaused;
-                 e.Handled = true;
-                 return;
-            }
+
 
             // Numeric Triggers (0-9)
             if (IsNumericKey(e.Key))
@@ -108,14 +101,7 @@ namespace Baird
                 return;
             }
 
-            // Up Trigger
-            if (e.Key == Key.Up)
-            {
-                HandleUpTrigger(e);
-                // Don't mark handled generally, as it might be needed for nav, BUT
-                // if we just switched layers, we might want to consume it.
-                return;
-            }
+
 
             // Channel Navigation
             if (e.Key == Key.OemPlus || e.Key == Key.Add || e.Key == Key.MediaNextTrack || e.Key == Key.PageUp)
@@ -148,25 +134,7 @@ namespace Baird
                 return;
             }
             
-            // Stats Toggle (Tab)
-            if (e.Key == Key.Tab)
-            {
-                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                videoLayer?.GetPlayer()?.ToggleStats();
-                e.Handled = true;
-                return;
-            }
 
-            // Subtitle Toggle (Caps Lock)
-            if (e.Key == Key.CapsLock)
-            {
-                Console.WriteLine($"[InputCoordinator] CapsLock pressed. Toggling subtitles from {_viewModel.IsSubtitlesEnabled} to {!_viewModel.IsSubtitlesEnabled}");
-                _viewModel.IsSubtitlesEnabled = !_viewModel.IsSubtitlesEnabled;
-                // e.Handled = true; // Let system handle CapsLock state toggle too?
-                // If we handle it, maybe system LED won't toggle? 
-                // Usually OS handles Caps Lock global state regardless of app handling.
-                return;
-            }
         }
 
         private bool IsNumericKey(Key key)
@@ -205,20 +173,7 @@ namespace Baird
 
 
 
-        private void HandleUpTrigger(KeyEventArgs e)
-        {
-            // Logic: If on BaseLayer (Video/Home) and press Up -> Open Search with Keyboard
-            
-            if (_viewModel.CurrentPage == null)
-            {
-                 _viewModel.OmniSearch.Clear();
-                 _viewModel.PushViewModel(_viewModel.OmniSearch);
-                 
-                 // Focus Search Box handled by OmniSearchControl.AttachedToVisualTree
-                 
-                 e.Handled = true;
-            }
-        }
+
 
         private void HandleBackTrigger(KeyEventArgs e)
         {
