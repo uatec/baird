@@ -42,23 +42,23 @@ namespace Baird
                 }
 
                 // Restore focus to VideoPlayer when CurrentPage is cleared
-                // _viewModel.ObservableForProperty(x => x.CurrentPage)
-                //     .Subscribe(change => 
-                //     {
-                //         if (change.Value == null)
-                //         {
-                //             Dispatcher.UIThread.Post(() => 
-                //             {
-                //                 var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                //                 var player = videoLayer?.GetPlayer();
-                //                 if (player != null)
-                //                 {
-                //                     Console.WriteLine("[MainView] CurrentPage is null, forcing focus to VideoPlayer");
-                //                     player.Focus();
-                //                 }
-                //             });
-                //         }
-                //     });
+                _viewModel.ObservableForProperty(x => x.CurrentPage)
+                    .Subscribe(change => 
+                    {
+                        if (change.Value == null)
+                        {
+                            Dispatcher.UIThread.Post(() => 
+                            {
+                                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                                var player = videoLayer?.GetPlayer();
+                                if (player != null)
+                                {
+                                    Console.WriteLine("[MainView] CurrentPage is null, forcing focus to VideoPlayer");
+                                    player.Focus();
+                                }
+                            });
+                        }
+                    });
 
                 // Force initial focus to VideoPlayer
                 Dispatcher.UIThread.Post(() =>
@@ -70,7 +70,7 @@ namespace Baird
                         Console.WriteLine("[MainView] Startup: Forcing focus to VideoPlayer");
                         player.Focus();
                     }
-                }, DispatcherPriority.Loaded);
+                }, DispatcherPriority.Input);
                 
                 await InitializeMediaProvider();
             };
