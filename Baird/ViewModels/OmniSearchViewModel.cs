@@ -58,7 +58,8 @@ namespace Baird.ViewModels
         {
             _providers = providers;
 
-            PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay);
+            var canPlay = this.WhenAnyValue(x => x.SelectedItem, (MediaItem? item) => item != null);
+            PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay, canPlay);
             BackCommand = ReactiveCommand.Create(RequestBack);
             
             var textChanges = this.WhenAnyValue(x => x.SearchText).Skip(1);
@@ -104,6 +105,7 @@ namespace Baird.ViewModels
             {
                 SearchResults.Clear();
                 SearchResults.AddRange(result2);
+                SelectedItem = SearchResults.FirstOrDefault();
             });
         }
         

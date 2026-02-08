@@ -19,6 +19,7 @@
     <UserControl.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
         <KeyBinding Gesture="Back" Command="{Binding BackCommand}" />
+        <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedEpisode}" />
     </UserControl.KeyBindings>
     
     <Grid Background="#E0000000"> <!-- Dark semi-transparent background -->
@@ -51,28 +52,53 @@
 
             <!-- Episodes List -->
             <ScrollViewer Grid.Row="1" Margin="0, 30, 0, 0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <ItemsControl Name="EpisodeList" ItemsSource="{Binding ProgrammeChildren}">
-                    <ItemsControl.ItemsPanel>
+                <ListBox Name="EpisodeList" 
+                         ItemsSource="{Binding ProgrammeChildren}"
+                         SelectedItem="{Binding SelectedEpisode, Mode=TwoWay}"
+                         Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" 
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.Styles>
+                        <!-- Tile Style for ListBoxItem -->
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderThickness" Value="4"/>
+                            <Setter Property="BorderBrush" Value="Transparent"/>
+                            <Setter Property="CornerRadius" Value="8"/>
+                            <Setter Property="Padding" Value="10"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                        </Style>
+                        
+                        <!-- Selected or Focused -> Highlight Border -->
+                        <Style Selector="ListBoxItem:selected">
+                            <Setter Property="BorderBrush" Value="#eeeeee"/>
+                        </Style>
+                        <Style Selector="ListBoxItem:focus">
+                            <Setter Property="BorderBrush" Value="#eeeeee"/>
+                        </Style>
+                        
+                        <!-- Remove default blue background for selection -->
+                        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel Name="EpisodesWrapPanel" ItemWidth="300" ItemHeight="240" />
                         </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Button Background="Transparent" 
-                                    BorderThickness="4" 
-                                    BorderBrush="Transparent"
-                                    CornerRadius="8"
-                                    Padding="10"
+                                    BorderThickness="0" 
                                     HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                                     Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
                                     CommandParameter="{Binding}">
-                                <Button.Styles>
-                                    <Style Selector="Button:focus">
-                                        <Setter Property="BorderBrush" Value="#eeeeee"/>
-                                    </Style>
-                                </Button.Styles>
                                 <Grid RowDefinitions="*, Auto, Auto">
                                     <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="Green">
                                         <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
@@ -82,8 +108,8 @@
                                 </Grid>
                             </Button>
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </ScrollViewer>
         </Grid>
     </Grid>
