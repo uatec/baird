@@ -5,6 +5,7 @@
              xmlns:vm="using:Baird.ViewModels"
              xmlns:conv="using:Baird.Converters"
              xmlns:services="using:Baird.Services"
+             xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
              mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="1080"
              x:CompileBindings="True"
              x:Class="Baird.Controls.ProgrammeDetailControl"
@@ -24,7 +25,7 @@
         
         <!-- Background Image (Dimmed) -->
         <Border Background="Blue" VerticalAlignment="Top" Height="600">
-             <Image services:SimpleImageLoader.Source="{Binding SelectedProgramme.ImageUrl}" 
+             <Image asyncImage:ImageLoader.Source="{Binding SelectedProgramme.ImageUrl}" 
                     Stretch="UniformToFill" 
                     Opacity="0.3"/>
         </Border>
@@ -74,7 +75,7 @@
                                 </Button.Styles>
                                 <Grid RowDefinitions="*, Auto, Auto">
                                     <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="Green">
-                                        <Image services:SimpleImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
+                                        <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill"/>
                                     </Border>
                                     <TextBlock Grid.Row="1" Text="{Binding Name}" Foreground="White" FontWeight="Bold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
                                     <TextBlock Grid.Row="2" Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
