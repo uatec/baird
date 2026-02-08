@@ -168,7 +168,7 @@ namespace Baird.Services
             }
         }
 
-        public async Task<IEnumerable<MediaItem>> SearchAsync(string query)
+        public async Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
             if (!IsAuthenticated || string.IsNullOrWhiteSpace(query)) 
                 return await GetListingAsync();
@@ -180,7 +180,7 @@ namespace Baird.Services
                 
                 Console.WriteLine($"Searching Jellyfin movies and shows with query '{query}': {url}");
                 
-                var response = await _httpClient.GetAsync(url);
+                var response = await _httpClient.GetAsync(url, cancellationToken);
                 response.EnsureSuccessStatusCode();
 
                 var json = await response.Content.ReadAsStringAsync();

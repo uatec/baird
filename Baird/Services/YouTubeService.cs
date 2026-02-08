@@ -22,7 +22,7 @@ namespace Baird.Services
             return Task.FromResult(Enumerable.Empty<MediaItem>());
         }
 
-        public async Task<IEnumerable<MediaItem>> SearchAsync(string query)
+        public async Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItem>();
 

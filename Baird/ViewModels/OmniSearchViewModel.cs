@@ -75,6 +75,7 @@ namespace Baird.ViewModels
             // Branch 1: Short numeric (<= 3 digits) -> Immediate
             textChanges
                 .Where(q => !string.IsNullOrEmpty(q) && q.Length <= 3 && q.All(char.IsDigit))
+                .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
                 .Subscribe(async (q) => await PerformSearch(q));
 
             // Branch 2: Everything else -> Debounced
@@ -99,14 +100,24 @@ namespace Baird.ViewModels
             SearchResults.Clear(); // Already on UI thread due to Throttle scheduler
 
             var sorter = new SearchResultSorter();
-            var result2 = await sorter.SearchAndSortAsync(_providers, query);
-
-            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            try 
             {
-                SearchResults.Clear();
-                SearchResults.AddRange(result2);
-                SelectedItem = SearchResults.FirstOrDefault();
-            });
+                var result2 = await sorter.SearchAndSortAsync(_providers, query, token);
+
+                if (!token.IsCancellationRequested)
+                {
+                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        SearchResults.Clear();
+                        SearchResults.AddRange(result2);
+                        SelectedItem = SearchResults.FirstOrDefault();
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Search cancelled, do nothing
+            }
         }
         
         public void Clear()

@@ -107,7 +107,7 @@ namespace Baird.Services
             }
         }
 
-        public async Task<IEnumerable<MediaItem>> SearchAsync(string query)
+        public async Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
             var all = await GetListingAsync();
             if (string.IsNullOrWhiteSpace(query)) return all;

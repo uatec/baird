@@ -8,7 +8,7 @@ namespace Baird.ViewModels
 {
     public class SearchResultSorter
     {
-        public async Task<List<MediaItem>> SearchAndSortAsync(IEnumerable<IMediaProvider> providers, string query)
+        public async Task<List<MediaItem>> SearchAndSortAsync(IEnumerable<IMediaProvider> providers, string query, System.Threading.CancellationToken cancellationToken = default)
         {
             var q = query ?? "";
             
@@ -20,7 +20,8 @@ namespace Baird.ViewModels
             // 2. Wait for all
             // 3. Concat in original provider order
             
-            var searchTasks = providers.Select(async p => await p.SearchAsync(q)).ToList();
+            var searchTasks = providers.Select(async p => await p.SearchAsync(q, cancellationToken)).ToList();
+
             var searchResults = await Task.WhenAll(searchTasks);
             
             var allResults = searchResults.SelectMany(r => r ?? Enumerable.Empty<MediaItem>()).ToList();

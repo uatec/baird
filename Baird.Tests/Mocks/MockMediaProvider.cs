@@ -24,7 +24,7 @@ namespace Baird.Tests.Mocks
             return Task.FromResult((IEnumerable<MediaItem>)_items);
         }
 
-        public Task<IEnumerable<MediaItem>> SearchAsync(string query)
+        public Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
             // Simple mock search: contains name or channel number
             if (string.IsNullOrWhiteSpace(query))

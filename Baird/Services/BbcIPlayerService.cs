@@ -30,7 +30,7 @@ namespace Baird.Services
             return Task.FromResult(Enumerable.Empty<MediaItem>());
         }
 
-        public async Task<IEnumerable<MediaItem>> SearchAsync(string query)
+        public async Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItem>();
 
@@ -39,7 +39,7 @@ namespace Baird.Services
                 var url = string.Format(SearchUrl, Uri.EscapeDataString(query));
                 Console.WriteLine($"[BBCiPlayer] Searching: {url}");
                 
-                var response = await _httpClient.GetStringAsync(url);
+                var response = await _httpClient.GetStringAsync(url, cancellationToken);
                 Console.WriteLine($"[BBCiPlayer] Response received ({response.Length} chars)");
 
                 using var doc = JsonDocument.Parse(response);
