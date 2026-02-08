@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System;
 using System.Threading.Tasks;
 using System.Threading;
+using DynamicData;
 
 namespace Baird.ViewModels
 {
@@ -96,47 +97,14 @@ namespace Baird.ViewModels
             IsSearching = true;
             SearchResults.Clear(); // Already on UI thread due to Throttle scheduler
 
-            var tasks = _providers.Select(async provider =>
-            {
-                try 
-                {
-                    var providerResults = await provider.SearchAsync(query);
-                    if (token.IsCancellationRequested) return;
+            var sorter = new SearchResultSorter();
+            var result2 = await sorter.SearchAndSortAsync(_providers, query);
 
-                    if (providerResults != null)
-                    {
-                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => 
-                        {
-                            if (!token.IsCancellationRequested)
-                            {
-                                foreach (var item in providerResults) SearchResults.Add(item);
-                                
-                                // Auto-select first item if nothing is selected yet
-                                if (SelectedItem == null && SearchResults.Count > 0)
-                                {
-                                    SelectedItem = SearchResults[0];
-                                }
-                            }
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Search error in provider {provider.GetType().Name}: {ex.Message}");
-                }
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                SearchResults.Clear();
+                SearchResults.AddRange(result2);
             });
-
-            try
-            {
-                await Task.WhenAll(tasks);
-            }
-            finally
-            {
-                if (!token.IsCancellationRequested)
-                {
-                    IsSearching = false;
-                }
-            }
         }
         
         public void Clear()

@@ -24,8 +24,8 @@ namespace Baird
 
             _providers.Add(new TvHeadendService());
             _providers.Add(new JellyfinService());
-            _providers.Add(new YouTubeService());
             _providers.Add(new BbcIPlayerService());
+            _providers.Add(new YouTubeService());
 
             _viewModel = new MainViewModel(_providers);
             
