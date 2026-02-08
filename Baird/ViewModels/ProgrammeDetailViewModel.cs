@@ -24,6 +24,9 @@ namespace Baird.ViewModels
         public event EventHandler<MediaItem>? PlayRequested;
         public event EventHandler? BackRequested;
 
+        public ReactiveCommand<MediaItem, System.Reactive.Unit> PlayCommand { get; }
+        public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> BackCommand { get; }
+
         public void RequestPlay(MediaItem item)
         {
             PlayRequested?.Invoke(this, item);
@@ -38,6 +41,10 @@ namespace Baird.ViewModels
         {
             _providers = providers;
             SelectedProgramme = programme;
+
+            PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay);
+            BackCommand = ReactiveCommand.Create(RequestBack);
+
             _ = LoadChildren();
         }
 

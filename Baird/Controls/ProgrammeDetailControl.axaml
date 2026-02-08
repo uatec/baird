@@ -14,6 +14,11 @@
     <UserControl.Resources>
         <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
     </UserControl.Resources>
+
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+        <KeyBinding Gesture="Back" Command="{Binding BackCommand}" />
+    </UserControl.KeyBindings>
     
     <Grid Background="#E0000000"> <!-- Dark semi-transparent background -->
         
@@ -33,7 +38,7 @@
             
             <!-- Header -->
             <StackPanel Grid.Row="0" Spacing="10">
-                <Button Name="BackButton" Content="← Back" Background="Transparent" Foreground="White" FontSize="20" HorizontalAlignment="Left" Focusable="True" />
+                <Button Name="BackButton" Content="← Back" Background="Transparent" Foreground="White" FontSize="20" HorizontalAlignment="Left" Focusable="True" Command="{Binding BackCommand}" />
                 <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                      <TextBlock Text="{Binding SelectedProgramme.Name}" FontSize="48" FontWeight="Bold" Foreground="White"/>
                      <Border Background="#333333" CornerRadius="6" Padding="8,2" VerticalAlignment="Center" Margin="0,4,0,0" IsVisible="{Binding SelectedProgramme.Source, Converter={StaticResource StringVisibilityConverter}}">
@@ -60,7 +65,8 @@
                                     Padding="10"
                                     HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                                    Click="OnEpisodeClicked">
+                                    Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
+                                    CommandParameter="{Binding}">
                                 <Button.Styles>
                                     <Style Selector="Button:focus">
                                         <Setter Property="BorderBrush" Value="#eeeeee"/>

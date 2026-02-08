@@ -14,18 +14,6 @@ namespace Baird.Controls
         public ProgrammeDetailControl()
         {
             InitializeComponent();
-            
-            var backBtn = this.FindControl<Button>("BackButton");
-            if (backBtn != null)
-            {
-                backBtn.Click += (s, e) => 
-                {
-                    if (DataContext is ViewModels.ProgrammeDetailViewModel vm)
-                    {
-                        vm.RequestBack();
-                    }
-                };
-            }
         }
 
         private void InitializeComponent()
@@ -33,30 +21,7 @@ namespace Baird.Controls
             AvaloniaXamlLoader.Load(this);
         }
 
-        private void OnEpisodeClicked(object? sender, RoutedEventArgs e)
-        {
-            if (sender is Control control && control.DataContext is MediaItem item)
-            {
-                if (DataContext is ViewModels.ProgrammeDetailViewModel vm)
-                {
-                    vm.RequestPlay(item);
-                }
-            }
-        }
 
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            base.OnKeyDown(e);
-            
-            if (e.Key == Key.Escape || e.Key == Key.Back)
-            {
-                if (DataContext is ViewModels.ProgrammeDetailViewModel vm)
-                {
-                    vm.RequestBack();
-                }
-                e.Handled = true;
-            }
-        }
         
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
