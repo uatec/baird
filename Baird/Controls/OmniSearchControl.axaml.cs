@@ -12,63 +12,20 @@ namespace Baird.Controls
 {
     public partial class OmniSearchControl : UserControl
     {
-        public event EventHandler<MediaItem>? ItemChosen;
-        public event EventHandler? BackRequested;
+
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
-            
-            if (e.Key == Key.Escape)
-            {
-                if (DataContext is Baird.ViewModels.OmniSearchViewModel vm)
-                {
-                    vm.RequestBack();
-                    e.Handled = true;
-                }
-            }
         }
 
         public OmniSearchControl()
         {
             InitializeComponent();
             
-            var box = this.FindControl<TextBox>("SearchBox");
-
-
-            if (box != null)
-            {
-                box.KeyDown += (s, e) => 
-                {
-                    if (e.Key == global::Avalonia.Input.Key.Enter || e.Key == global::Avalonia.Input.Key.Return)
-                    {
-                        if (DataContext is Baird.ViewModels.OmniSearchViewModel vm && vm.SelectedItem != null)
-                        {
-                            vm.RequestPlay(vm.SelectedItem);
-                            e.Handled = true;
-                        }
-                    }
-                };
-            }
-            
             var list = this.FindControl<ListBox>("ResultsList");
             if (list != null)
             {
-                list.KeyDown += (s, e) =>
-                {
-                    if (e.Key == Key.Enter || e.Key == Key.Return)
-                    {
-                        if (s is ListBox lb && lb.SelectedItem is MediaItem item)
-                        {
-                             if (DataContext is Baird.ViewModels.OmniSearchViewModel vm)
-                            {
-                                vm.RequestPlay(item);
-                                e.Handled = true;
-                            }
-                        }
-                    }
-                };
-
                 list.GetObservable(ListBox.BoundsProperty).Subscribe(bounds => 
                 {
                     var width = bounds.Width;
@@ -100,24 +57,6 @@ namespace Baird.Controls
         {
             AvaloniaXamlLoader.Load(this);
         }
-        
-        private void OnResultTapped(object? sender, TappedEventArgs e)
-        {
-            if (sender is ListBox list && e.Source is Visual v)
-            {
-               // Find the container (ListBoxItem) from the visual source
-               var container = v.FindAncestorOfType<ListBoxItem>();
-               if (container != null && container.DataContext is MediaItem item)
-               {
-                   if (DataContext is Baird.ViewModels.OmniSearchViewModel vm)
-                    {
-                        vm.RequestPlay(item);
-                    }
-               }
-            }
-        }
-
-        
         public void FocusResults()
         {
             var list = this.FindControl<ListBox>("ResultsList");

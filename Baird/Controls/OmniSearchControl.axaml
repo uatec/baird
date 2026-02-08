@@ -15,6 +15,11 @@
         <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
     </UserControl.Resources>
 
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+        <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedItem}" />
+    </UserControl.KeyBindings>
+
     <UserControl.Styles>
         <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
             <Setter Property="BorderBrush" Value="#EEEEEE"/>
@@ -61,7 +66,11 @@
             <TextBox Name="SearchBox" 
                      Text="{Binding SearchText}" 
                      FontSize="24" 
-                     Watermark="Search..." />
+                     Watermark="Search...">
+                <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedItem}" />
+                </TextBox.KeyBindings>
+            </TextBox>
         </Border>
 
         <!-- Row 1: Search Results -->
@@ -71,8 +80,7 @@
                  SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
                  Background="Transparent"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto"
-                 Tapped="OnResultTapped">
+                 ScrollViewer.VerticalScrollBarVisibility="Auto">
             <ListBox.ItemsPanel>
                 <ItemsPanelTemplate>
                     <WrapPanel ItemWidth="300" 
@@ -83,21 +91,31 @@
             </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Grid RowDefinitions="*, Auto, Auto">
-                        <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="Red">
-                            <Image services:SimpleImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" />
-                        </Border>
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
-                             <TextBlock Text="{Binding ChannelNumber}" Foreground="#FFD700" FontWeight="ExtraBold" Margin="0,0,6,0" IsVisible="{Binding ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
-                             <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="Bold" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
-                        </StackPanel>
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
-                            <Border Background="#333333" CornerRadius="4" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding Source, Converter={StaticResource StringVisibilityConverter}}">
-                                <TextBlock Text="{Binding Source}" Foreground="#4CC9F0" FontSize="10" FontWeight="Bold"/>
+                    <Button Background="Transparent" 
+                            Padding="0"
+                            BorderThickness="0"
+                            HorizontalAlignment="Stretch" 
+                            VerticalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch" 
+                            VerticalContentAlignment="Stretch"
+                            Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
+                            CommandParameter="{Binding}">
+                        <Grid RowDefinitions="*, Auto, Auto">
+                            <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="Red">
+                                <Image services:SimpleImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" />
                             </Border>
-                            <TextBlock Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Grid>
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
+                                 <TextBlock Text="{Binding ChannelNumber}" Foreground="#FFD700" FontWeight="ExtraBold" Margin="0,0,6,0" IsVisible="{Binding ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
+                                 <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="Bold" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                                <Border Background="#333333" CornerRadius="4" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding Source, Converter={StaticResource StringVisibilityConverter}}">
+                                    <TextBlock Text="{Binding Source}" Foreground="#4CC9F0" FontSize="10" FontWeight="Bold"/>
+                                </Border>
+                                <TextBlock Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
+                    </Button>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
