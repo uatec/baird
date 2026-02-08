@@ -42,6 +42,15 @@ namespace Baird
                         _viewModel.OmniSearch.IsSearchActive = false;
                         _viewModel.OmniSearch.Clear();
                     };
+
+                    searchControl.BackRequested += (sender, args) =>
+                    {
+                        _viewModel.OmniSearch.IsSearchActive = false;
+                        _viewModel.OmniSearch.Clear();
+                        
+                        // Optional: Focus Base Layer?
+                        // this.FindControl<Control>("VideoLayer")?.Focus();
+                    };
                 }
 
                 // TopLevel for global input hook? Or just hook on UserControl?
@@ -366,14 +375,15 @@ namespace Baird
             }
             else if (_viewModel.OmniSearch.IsSearchActive)
             {
-                // Close Search, Return to Base
-                _viewModel.OmniSearch.IsSearchActive = false;
-                _viewModel.OmniSearch.Clear();
-
-                // Focus Base (Video)
-                // var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                // Focus the player inside if needed, or just the container
-                // videoLayer?.GetPlayer()?.Focus();
+                 // Redundant logic removed. OmniSearchControl handles its own back navigation via BackRequested event.
+                 // MainView listens to BackRequested and closes search.
+                 // So if focus is in OmniSearch, OnKeyDown in control handles it.
+                 // If focus is NOT in OmniSearch but Search is Active?
+                 // Then this block might be needed?
+                 // "If isProgrammeDetailVisible is true, then the focussed control should be the ProgrammeDetailControl"
+                 // Same for OmniSearch.
+                 // If Search is active, SearchControl SHOULD be focused.
+                 // So we assume it is focused.
             }
         }
 

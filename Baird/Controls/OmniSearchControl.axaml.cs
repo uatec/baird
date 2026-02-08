@@ -13,6 +13,18 @@ namespace Baird.Controls
     public partial class OmniSearchControl : UserControl
     {
         public event EventHandler<MediaItem>? ItemChosen;
+        public event EventHandler? BackRequested;
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            
+            if (e.Key == Key.Escape)
+            {
+                BackRequested?.Invoke(this, EventArgs.Empty);
+                e.Handled = true;
+            }
+        }
 
         public OmniSearchControl()
         {
