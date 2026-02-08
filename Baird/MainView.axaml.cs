@@ -146,8 +146,8 @@ namespace Baird
             // Debug key press
             Console.WriteLine($"Key: {e.Key}");
 
-            // Space Trigger (Play/Pause)
-            if (e.Key == Key.Space)
+            // Space or MediaPlayPause Trigger (Play/Pause)
+            if (e.Key == Key.Space || e.Key == Key.MediaPlayPause)
             {
                  var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
                  var player = videoLayer?.GetPlayer();
@@ -180,14 +180,14 @@ namespace Baird
             }
 
             // Channel Navigation
-            if (e.Key == Key.OemPlus || e.Key == Key.Add || e.Key == Key.MediaNextTrack)
+            if (e.Key == Key.OemPlus || e.Key == Key.Add || e.Key == Key.MediaNextTrack || e.Key == Key.PageUp)
             {
                 _viewModel.SelectNextChannel();
                 e.Handled = true;
                 return;
             }
 
-            if (e.Key == Key.OemMinus || e.Key == Key.Subtract || e.Key == Key.MediaPreviousTrack)
+            if (e.Key == Key.OemMinus || e.Key == Key.Subtract || e.Key == Key.MediaPreviousTrack || e.Key == Key.PageDown)
             {
                 _viewModel.SelectPreviousChannel();
                 e.Handled = true;
@@ -199,6 +199,14 @@ namespace Baird
             {
                 HandleBackTrigger(e);
                 e.Handled = true; // Always consume Back/Esc
+                return;
+            }
+
+            // Exit (Q)
+            if (e.Key == Key.Q)
+            {
+                Console.WriteLine("[InputCoordinator] Q pressed. Exiting application.");
+                Environment.Exit(0);
                 return;
             }
             
@@ -214,6 +222,7 @@ namespace Baird
             // Subtitle Toggle (Caps Lock)
             if (e.Key == Key.CapsLock)
             {
+                Console.WriteLine($"[InputCoordinator] CapsLock pressed. Toggling subtitles from {_viewModel.IsSubtitlesEnabled} to {!_viewModel.IsSubtitlesEnabled}");
                 _viewModel.IsSubtitlesEnabled = !_viewModel.IsSubtitlesEnabled;
                 // e.Handled = true; // Let system handle CapsLock state toggle too?
                 // If we handle it, maybe system LED won't toggle? 

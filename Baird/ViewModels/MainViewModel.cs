@@ -1,4 +1,5 @@
 using ReactiveUI;
+using System.Runtime.InteropServices;
 
 namespace Baird.ViewModels
 {
@@ -42,14 +43,7 @@ namespace Baird.ViewModels
             OmniSearch = new OmniSearchViewModel(providers);
             IsVideoHudVisible = true;
             
-            try 
-            {
-               IsSubtitlesEnabled = System.Console.CapsLock;
-            }
-            catch 
-            {
-               IsSubtitlesEnabled = false;
-            }
+            IsSubtitlesEnabled = NativeUtils.GetCapsLockState();
 
             ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
             

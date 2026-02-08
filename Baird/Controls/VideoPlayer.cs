@@ -11,8 +11,8 @@ namespace Baird.Controls
     public class VideoPlayer : OpenGlControlBase
     {
         private MpvPlayer _player;
-        private IntPtr _mpvRenderContext;
-        private LibMpv.MpvRenderUpdateFn _renderUpdateDelegate;
+        // private IntPtr _mpvRenderContext; // Moved to MpvPlayer
+        // private LibMpv.MpvRenderUpdateFn _renderUpdateDelegate; // Moved to MpvPlayer
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private string _lastLoggedState = "Idle";
@@ -20,7 +20,7 @@ namespace Baird.Controls
         public VideoPlayer()
         {
             _player = new MpvPlayer();
-            _renderUpdateDelegate = UpdateCallback;
+            // _renderUpdateDelegate = UpdateCallback; // Moved to MpvPlayer internal logic
 
             _hudTimer = new Avalonia.Threading.DispatcherTimer
             {
@@ -261,107 +261,49 @@ namespace Baird.Controls
 
         protected override void OnOpenGlInit(GlInterface gl)
         {
-            Console.WriteLine("[VideoPlayer] OnOpenGlInit called. Initializing MPV render context...");
+            Console.WriteLine("[VideoPlayer] OnOpenGlInit called. Initializing MPV render context in MpvPlayer...");
             base.OnOpenGlInit(gl);
 
             // Keep delegate alive
             _getProcAddress = (ctx, name) => gl.GetProcAddress(name);
-
-            IntPtr openglParams = IntPtr.Zero;
             
-            var paramsStruct = new LibMpv.MpvOpenglInitParams
+            // Get function pointer for the delegate
+            IntPtr ptr = Marshal.GetFunctionPointerForDelegate(_getProcAddress);
+
+            try 
             {
-                GetProcAddress = _getProcAddress,
-                UserData = IntPtr.Zero
-            };
-            
-            IntPtr pParams = Marshal.AllocCoTaskMem(Marshal.SizeOf(paramsStruct));
-            Marshal.StructureToPtr(paramsStruct, pParams, false);
-
-            // MPV Rendering API: Opengl
-            IntPtr pApiType = Marshal.StringToCoTaskMemUTF8("opengl");
-            
-            var paramsArr = new LibMpv.MpvRenderParam[]
-            {
-                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.ApiType, Data = pApiType },
-                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.InitParams, Data = pParams },
-                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Invalid, Data = IntPtr.Zero }
-            };
-
-            // Call create
-            Console.WriteLine("[VideoPlayer] Calling mpv_render_context_create...");
-            int res = LibMpv.mpv_render_context_create(out _mpvRenderContext, _player.Handle, paramsArr);
-            Console.WriteLine($"[VideoPlayer] mpv_render_context_create returned: {res}");
-            
-            // Clean up temporary pointers
-            Marshal.FreeCoTaskMem(pParams);
-            Marshal.FreeCoTaskMem(pApiType);
-
-            if (res < 0)
-            {
-                // Init failed
-                Console.WriteLine($"[VideoPlayer] FAILED to create render context: {res}");
-                // We should probably check if it failed.
-                return;
+                 _player.InitializeOpenGl(ptr, () => 
+                 {
+                     Avalonia.Threading.Dispatcher.UIThread.Post(RequestNextFrameRendering, Avalonia.Threading.DispatcherPriority.Render);
+                 });
+                 Console.WriteLine("[VideoPlayer] Render context initialized successfully.");
             }
-            
-            // Set update callback
-            LibMpv.mpv_render_context_set_update_callback(_mpvRenderContext, _renderUpdateDelegate, IntPtr.Zero);
-            Console.WriteLine("[VideoPlayer] Render context initialized successfully.");
+            catch(Exception ex)
+            {
+                 Console.WriteLine($"[VideoPlayer] Failed to initialize MpvPlayer OpenGL: {ex}");
+            }
         }
 
         protected override void OnOpenGlDeinit(GlInterface gl)
         {
             Console.WriteLine("[VideoPlayer] OnOpenGlDeinit called. Freeing context.");
-            if (_mpvRenderContext != IntPtr.Zero)
-            {
-                LibMpv.mpv_render_context_free(_mpvRenderContext);
-                _mpvRenderContext = IntPtr.Zero;
-            }
+            _player.Dispose(); // This frees the render context and the mpv handle
             base.OnOpenGlDeinit(gl);
         }
 
         protected override void OnOpenGlRender(GlInterface gl, int fb)
         {
-            if (_mpvRenderContext == IntPtr.Zero)
-            {
-                // console log only once to avoid spam?
-                // Console.WriteLine("[VideoPlayer] OnOpenGlRender: Render Context is ZERO."); 
-                return;
-            }
-
             var scaling = VisualRoot?.RenderScaling ?? 1.0;
             int w = (int)(Bounds.Width * scaling);
             int h = (int)(Bounds.Height * scaling);
             
-            // FBO param
-            var fbo = new LibMpv.MpvOpenglFbo { Fbo = fb, W = w, H = h, InternalFormat = 0 }; // 0 = default (usually GL_RGBA8)
-            IntPtr pFbo = Marshal.AllocCoTaskMem(Marshal.SizeOf(fbo));
-            Marshal.StructureToPtr(fbo, pFbo, false);
-
-            // FlipY param (OpenGL usually needs this when rendering to FBOs in some toolkits)
-            int flipY = 1;
-            IntPtr pFlipY = Marshal.AllocCoTaskMem(sizeof(int));
-            Marshal.WriteInt32(pFlipY, flipY);
-
-            // Params for render
-            var paramsArr = new LibMpv.MpvRenderParam[]
-            {
-                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Fbo, Data = pFbo },
-                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.FlipY, Data = pFlipY },
-                new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Invalid, Data = IntPtr.Zero }
-            };
-            // LibMpv.mpv_render_context_render(this._mpvRenderContext, paramsArr);
-            LibMpv.mpv_render_context_render(_mpvRenderContext, paramsArr);
-            
-            Marshal.FreeCoTaskMem(pFbo);
-            Marshal.FreeCoTaskMem(pFlipY);
+            _player.Render(fb, w, h);
         }
         
-        private void UpdateCallback(IntPtr ctx)
-        {
-            // Request render
-            Avalonia.Threading.Dispatcher.UIThread.Post(RequestNextFrameRendering, Avalonia.Threading.DispatcherPriority.Render);
-        }
+        // private void UpdateCallback(IntPtr ctx)
+        // {
+        //     // Request render
+        //     Avalonia.Threading.Dispatcher.UIThread.Post(RequestNextFrameRendering, Avalonia.Threading.DispatcherPriority.Render);
+        // }
     }
 }
