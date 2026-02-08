@@ -143,13 +143,25 @@ namespace Baird.Controls
             if (_player == null) return;
 
             // State
-            var state = _player.State.ToString();
+            var state = _player.State;
+            var stateStr = state.ToString();
             
-            if (state == "Playing" && _lastLoggedState != "Playing")
+            // Sync IsPaused with actual player state (if changed externally or by internal logic)
+            // Use SetCurrentValue to avoid overwriting binding if not necessary, or just SetValue
+            bool shouldBePaused = state == PlaybackState.Paused || state == PlaybackState.Idle;
+            if (IsPaused != shouldBePaused)
+            {
+                 // We only update if it mismatches to avoid fighting with the binding?
+                 // But wait, if we are playing and user presses pause on headset?
+                 // We want ViewModel to know.
+                 SetCurrentValue(IsPausedProperty, shouldBePaused);
+            }
+
+            if (stateStr == "Playing" && _lastLoggedState != "Playing")
             {
                 _player.LogAudioTracks();
             }
-            _lastLoggedState = state;
+            _lastLoggedState = stateStr;
             
             if (IsLive)
             {
@@ -190,7 +202,7 @@ namespace Baird.Controls
                 }
             }
             
-            PlayerState = state;
+            PlayerState = stateStr;
         }
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -216,6 +228,19 @@ namespace Baird.Controls
             {
                 var enabled = (bool)change.NewValue;
                 SetSubtitle(enabled);
+            }
+
+            if (change.Property == IsPausedProperty)
+            {
+                var paused = (bool)change.NewValue;
+                if (paused && (_player.State == PlaybackState.Playing || _player.State == PlaybackState.Buffering))
+                {
+                    _player.Pause();
+                }
+                else if (!paused && _player.State == PlaybackState.Paused)
+                {
+                    _player.Resume();
+                }
             }
         }
 

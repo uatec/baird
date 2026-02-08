@@ -21,7 +21,8 @@
                        VerticalAlignment="Stretch"
                        Source="{Binding ActiveItem.StreamUrl}"
                        IsLive="{Binding ActiveItem.IsLive}"
-                       IsSubtitlesEnabled="{Binding IsSubtitlesEnabled}"/>
+                       IsSubtitlesEnabled="{Binding IsSubtitlesEnabled}"
+                       IsPaused="{Binding IsPaused, Mode=TwoWay}"/>
 
         <!-- Layer 2: Video HUD (Overlay) -->
         <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}" IsHitTestVisible="False">

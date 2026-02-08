@@ -26,6 +26,13 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isSubtitlesEnabled, value);
         }
 
+        private bool _isPaused;
+        public bool IsPaused
+        {
+            get => _isPaused;
+            set => this.RaiseAndSetIfChanged(ref _isPaused, value);
+        }
+
         public OmniSearchViewModel OmniSearch { get; }
 
         private ActiveMedia? _activeItem;

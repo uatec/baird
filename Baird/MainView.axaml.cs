@@ -146,21 +146,13 @@ namespace Baird
             // Debug key press
             Console.WriteLine($"Key: {e.Key}");
 
-            // Space or MediaPlayPause Trigger (Play/Pause)
+             // Space or MediaPlayPause Trigger (Play/Pause)
             if (e.Key == Key.Space || e.Key == Key.MediaPlayPause)
             {
-                 var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                 var player = videoLayer?.GetPlayer();
-                 if (player != null)
-                 {
-                     if (player.IsPaused)
-                         player.Resume();
-                     else
-                         player.Pause();
-                         
-                     e.Handled = true;
-                     return;
-                 }
+                 // Toggle Pause State via ViewModel
+                 _viewModel.IsPaused = !_viewModel.IsPaused;
+                 e.Handled = true;
+                 return;
             }
 
             // Numeric Triggers (0-9)
@@ -284,8 +276,7 @@ namespace Baird
                 Console.WriteLine($"Opening Programme Detail: {item.Name}");
                 
                 // Pause background video
-                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                videoLayer?.GetPlayer()?.Pause();
+                _viewModel.IsPaused = true;
                 
                 _viewModel.OpenProgramme(item);
                 
@@ -387,7 +378,7 @@ namespace Baird
                 _viewModel.OmniSearch.Clear();
 
                 // Focus Base (Video)
-                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                // var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
                 // Focus the player inside if needed, or just the container
                 // videoLayer?.GetPlayer()?.Focus();
             }
