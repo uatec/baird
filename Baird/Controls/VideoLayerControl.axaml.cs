@@ -42,12 +42,17 @@ namespace Baird.Controls
             }
         }
 
-        private void OnSearchRequested(object? sender, System.EventArgs e)
+        private void OnSearchRequested(object? sender, string text)
         {
             if (DataContext is ViewModels.MainViewModel vm)
             {
                 vm.OmniSearch.Clear();
                 vm.PushViewModel(vm.OmniSearch);
+                
+                if (!string.IsNullOrEmpty(text))
+                {
+                    vm.OmniSearch.SearchText = text;
+                }
             }
         }
     }

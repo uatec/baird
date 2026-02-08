@@ -32,12 +32,22 @@ namespace Baird.Controls
             Focusable = true;
         }
 
-        public event EventHandler? SearchRequested;
+        public event EventHandler<string>? SearchRequested;
 
         protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
         {
             base.OnKeyDown(e);
             if (e.Handled) return;
+
+            // Numeric keys
+            if (IsNumericKey(e.Key))
+            {
+                Console.WriteLine("Numeric key pressed: " + e.Key);
+                var digit = GetNumericChar(e.Key);
+                SearchRequested?.Invoke(this, digit);
+                e.Handled = true;
+                return;
+            }
 
             switch (e.Key)
             {
@@ -54,14 +64,26 @@ namespace Baird.Controls
 
                 case Avalonia.Input.Key.CapsLock:
                     IsSubtitlesEnabled = !IsSubtitlesEnabled;
-                    e.Handled = true; // Potentially let system handle too? But user asked to move logic here.
+                    e.Handled = true; 
                     break;
 
                 case Avalonia.Input.Key.Up:
-                    SearchRequested?.Invoke(this, EventArgs.Empty);
+                    SearchRequested?.Invoke(this, string.Empty);
                     e.Handled = true;
                     break;
             }
+        }
+
+        private bool IsNumericKey(Avalonia.Input.Key key)
+        {
+            return (key >= Avalonia.Input.Key.D0 && key <= Avalonia.Input.Key.D9) || (key >= Avalonia.Input.Key.NumPad0 && key <= Avalonia.Input.Key.NumPad9);
+        }
+
+        private string GetNumericChar(Avalonia.Input.Key key)
+        {
+            if (key >= Avalonia.Input.Key.D0 && key <= Avalonia.Input.Key.D9) return ((int)key - (int)Avalonia.Input.Key.D0).ToString();
+            if (key >= Avalonia.Input.Key.NumPad0 && key <= Avalonia.Input.Key.NumPad9) return ((int)key - (int)Avalonia.Input.Key.NumPad0).ToString();
+            return string.Empty;
         }
 
         public static readonly StyledProperty<bool> IsPausedProperty =

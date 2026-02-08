@@ -94,12 +94,7 @@ namespace Baird
 
 
 
-            // Numeric Triggers (0-9)
-            if (IsNumericKey(e.Key))
-            {
-                HandleNumericTrigger(e);
-                return;
-            }
+
 
 
 
@@ -137,39 +132,7 @@ namespace Baird
 
         }
 
-        private bool IsNumericKey(Key key)
-        {
-            return (key >= Key.D0 && key <= Key.D9) || (key >= Key.NumPad0 && key <= Key.NumPad9);
-        }
 
-        private string GetNumericChar(Key key)
-        {
-            if (key >= Key.D0 && key <= Key.D9) return ((int)key - (int)Key.D0).ToString();
-            if (key >= Key.NumPad0 && key <= Key.NumPad9) return ((int)key - (int)Key.NumPad0).ToString();
-            return "";
-        }
-
-        private void HandleNumericTrigger(KeyEventArgs e)
-        {
-            var digit = GetNumericChar(e.Key);
-
-            if (!(_viewModel.CurrentPage is OmniSearchViewModel))
-            {
-                // Activate Search Mode
-                _viewModel.OmniSearch.Clear();
-                _viewModel.PushViewModel(_viewModel.OmniSearch);
-                
-                // Focus Search Box handled by OmniSearchControl.AttachedToVisualTree
-                
-                // Append digit
-                _viewModel.OmniSearch.SearchText = digit;
-                
-                e.Handled = true; // Consume this initial key
-            }
-
-
-            // If search IS active, we do nothing. 
-        }
 
 
 
