@@ -23,12 +23,7 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _searchText, value);
         }
 
-        private bool _isKeyboardVisible;
-        public bool IsKeyboardVisible
-        {
-            get => _isKeyboardVisible;
-            set => this.RaiseAndSetIfChanged(ref _isKeyboardVisible, value);
-        }
+
 
         private bool _isSearching;
         public bool IsSearching
@@ -130,18 +125,7 @@ namespace Baird.ViewModels
             }
         }
         
-        public void AppendDigit(string digit)
-        {
-            SearchText += digit;
-        }
 
-        public void Backspace()
-        {
-            if (!string.IsNullOrEmpty(SearchText))
-            {
-                SearchText = SearchText.Substring(0, SearchText.Length - 1);
-            }
-        }
 
         public void Clear()
         {

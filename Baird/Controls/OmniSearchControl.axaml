@@ -108,10 +108,6 @@
         </StackPanel>
 
         <!-- Row 2: Virtual Keyboard (Visible only when prompted) -->
-        <!-- <controls:VirtualKeyboardControl Name="VirtualKeyboard" 
-                                         Grid.Row="2" 
-                                         IsVisible="{Binding IsKeyboardVisible}" 
-                                         Height="320" 
-                                         Margin="0,10,0,0" /> -->
+
     </Grid>
 </UserControl>

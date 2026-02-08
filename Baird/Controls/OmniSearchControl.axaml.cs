@@ -19,35 +19,7 @@ namespace Baird.Controls
             InitializeComponent();
             
             var box = this.FindControl<TextBox>("SearchBox");
-            var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
-            
-            if (keyboard != null && box != null)
-            {
-                keyboard.KeyPressed += (key) =>
-                {
-                   if (box.Text == null) box.Text = "";
-                   box.Text += key; 
-                   box.CaretIndex = box.Text.Length;
-                };
 
-                keyboard.BackspacePressed += () =>
-                {
-                    if (!string.IsNullOrEmpty(box.Text))
-                    {
-                        box.Text = box.Text.Substring(0, box.Text.Length - 1);
-                        box.CaretIndex = box.Text.Length;
-                    }
-                };
-                
-                keyboard.EnterPressed += () =>
-                {
-                    if (DataContext is Baird.ViewModels.OmniSearchViewModel vm)
-                    {
-                        vm.IsKeyboardVisible = false;
-                        Dispatcher.UIThread.Post(FocusResults);
-                    }
-                };
-            }
 
             if (box != null)
             {

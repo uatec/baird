@@ -244,20 +244,37 @@ namespace Baird
                 // Activate Search Mode
                 _viewModel.OmniSearch.Clear();
                 _viewModel.OmniSearch.IsSearchActive = true;
-                _viewModel.OmniSearch.IsKeyboardVisible = false; 
                 
-                // Append Digit to ViewModel
-                _viewModel.OmniSearch.AppendDigit(digit);
-
                 // Focus Search Box (so subsequent keys type naturally)
                 Dispatcher.UIThread.Post(() => 
                 {
                     var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
                     searchControl?.FocusSearchBox();
+                    
+                    // We don't append the digit manually anymore. 
+                    // The standard input flow will handle it if the search box gets focus quickly enough, 
+                    // OR we might need to send the key again? 
+                    // Actually, if we just focus, the initial key press MIGHT be lost if we mark e.Handled = true.
+                    // If we mark e.Handled = false, it might bubble up to the newly focused element?
+                    // But focus happens on Dispatcher.Post, so it's too late for THIS event.
+                    
+                    // User wants "conventional text input". The first key press is usually "lost" or used to open the field.
+                    // If we want the digit to appear, we should probably append it manually OR send it.
+                    // Let's manually append it for the first char to be smooth.
+                    
+                    _viewModel.OmniSearch.SearchText = digit;
+                    
+                     var box = searchControl?.FindControl<TextBox>("SearchBox"); 
+                     if (box != null)
+                     {
+                         box.CaretIndex = box.Text?.Length ?? 0;
+                     }
                 });
                 
                 e.Handled = true; // Consume this initial key
             }
+
+
             // If search IS active, we do nothing. 
             // The focused SearchBox (if focused) will handle the key bubbling up to it (or down to it? Bubbling is up, Tunneling is down. KeyDown bubbles).
             // Actually, if SearchBox is focused, it gets the event FIRST. It handles it. 
@@ -315,9 +332,8 @@ namespace Baird
             {
                  _viewModel.OmniSearch.Clear();
                  _viewModel.OmniSearch.IsSearchActive = true;
-                 _viewModel.OmniSearch.IsKeyboardVisible = true;
                  
-                 // Focus Keyboard
+                 // Focus Search Box
                  Dispatcher.UIThread.Post(() => 
                  {
                      var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
@@ -326,39 +342,11 @@ namespace Baird
                  
                  e.Handled = true;
             }
-            else
-            {
-                // In search mode, Up might navigate from Results to Keyboard
-                if (!_viewModel.OmniSearch.IsKeyboardVisible)
-                {
-                     // Logic checks focus... complicated without precise focus tracking.
-                }
-            }
         }
 
         private void HandleBackTrigger(KeyEventArgs e)
         {
-            if (_viewModel.OmniSearch.IsKeyboardVisible)
-            {
-                // New logic: If search is empty, exit search entirely
-                if (string.IsNullOrEmpty(_viewModel.OmniSearch.SearchText))
-                {
-                    _viewModel.OmniSearch.IsSearchActive = false;
-                    _viewModel.OmniSearch.Clear();
-                    return;
-                }
-
-                // Hide Keyboard, Keep Search Open
-                _viewModel.OmniSearch.IsKeyboardVisible = false;
-                
-                // Focus Results
-                Dispatcher.UIThread.Post(() => 
-                {
-                    var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
-                    searchControl?.FocusResults();
-                });
-            }
-            else if (_viewModel.IsProgrammeDetailVisible)
+            if (_viewModel.IsProgrammeDetailVisible)
             {
                 _viewModel.CloseProgramme();
                 // Return to Search if it was active?
