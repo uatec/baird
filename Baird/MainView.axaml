@@ -18,19 +18,20 @@
             <TextBlock Text="EPG Placeholder" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
 
-        <!-- Layer 2: Omni-Search (Top Down, Overlay) -->
-        <c:OmniSearchControl Name="OmniSearchLayer" 
-                             DataContext="{Binding OmniSearch}"
-                             IsVisible="{Binding IsSearchActive}" 
-                             HorizontalAlignment="Stretch" 
-                             VerticalAlignment="Stretch"/>
-                             <!-- Note: Re-binding DataContext to OmniSearch sub-VM. IsVisible binding needs to reach back to MainViewModel -->
-        
-         <!-- Layer 3: Programme Detail -->
-         <c:ProgrammeDetailControl Name="ProgrammeDetailLayer"
-                                   IsVisible="{Binding IsProgrammeDetailVisible}"
-                                   HorizontalAlignment="Stretch"
-                                   VerticalAlignment="Stretch"/>
+        <!-- Layer 2: Navigation Content -->
+        <ContentControl Name="PageFrame" 
+                        Content="{Binding CurrentPage}" 
+                        HorizontalAlignment="Stretch" 
+                        VerticalAlignment="Stretch">
+            <ContentControl.DataTemplates>
+                <DataTemplate DataType="{x:Type vm:OmniSearchViewModel}">
+                    <c:OmniSearchControl/>
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:ProgrammeDetailViewModel}">
+                    <c:ProgrammeDetailControl/>
+                </DataTemplate>
+            </ContentControl.DataTemplates>
+        </ContentControl>
 
         <!-- Layer 4: Version Info (Top Right) -->
         <TextBlock Text="{Binding AppVersion}" 

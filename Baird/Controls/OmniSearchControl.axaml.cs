@@ -21,8 +21,11 @@ namespace Baird.Controls
             
             if (e.Key == Key.Escape)
             {
-                BackRequested?.Invoke(this, EventArgs.Empty);
-                e.Handled = true;
+                if (DataContext is Baird.ViewModels.OmniSearchViewModel vm)
+                {
+                    vm.RequestBack();
+                    e.Handled = true;
+                }
             }
         }
 
@@ -41,7 +44,7 @@ namespace Baird.Controls
                     {
                         if (DataContext is Baird.ViewModels.OmniSearchViewModel vm && vm.SelectedItem != null)
                         {
-                            ItemChosen?.Invoke(this, vm.SelectedItem);
+                            vm.RequestPlay(vm.SelectedItem);
                             e.Handled = true;
                         }
                     }
@@ -57,8 +60,11 @@ namespace Baird.Controls
                     {
                         if (s is ListBox lb && lb.SelectedItem is MediaItem item)
                         {
-                            ItemChosen?.Invoke(this, item);
-                            e.Handled = true;
+                             if (DataContext is Baird.ViewModels.OmniSearchViewModel vm)
+                            {
+                                vm.RequestPlay(item);
+                                e.Handled = true;
+                            }
                         }
                     }
                 };
@@ -77,6 +83,8 @@ namespace Baird.Controls
                     }
                 });
             }
+
+            this.AttachedToVisualTree += (s, e) => FocusSearchBox();
         }
 
         public static readonly StyledProperty<double> CalculatedWidthProperty =
@@ -101,10 +109,14 @@ namespace Baird.Controls
                var container = v.FindAncestorOfType<ListBoxItem>();
                if (container != null && container.DataContext is MediaItem item)
                {
-                   ItemChosen?.Invoke(this, item);
+                   if (DataContext is Baird.ViewModels.OmniSearchViewModel vm)
+                    {
+                        vm.RequestPlay(item);
+                    }
                }
             }
         }
+
         
         public void FocusResults()
         {

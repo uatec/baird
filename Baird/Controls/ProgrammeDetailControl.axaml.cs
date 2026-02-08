@@ -11,9 +11,6 @@ namespace Baird.Controls
 {
     public partial class ProgrammeDetailControl : UserControl
     {
-        public event EventHandler<MediaItem>? EpisodeChosen;
-        public event EventHandler? BackRequested;
-
         public ProgrammeDetailControl()
         {
             InitializeComponent();
@@ -21,7 +18,13 @@ namespace Baird.Controls
             var backBtn = this.FindControl<Button>("BackButton");
             if (backBtn != null)
             {
-                backBtn.Click += (s, e) => BackRequested?.Invoke(this, EventArgs.Empty);
+                backBtn.Click += (s, e) => 
+                {
+                    if (DataContext is ViewModels.ProgrammeDetailViewModel vm)
+                    {
+                        vm.RequestBack();
+                    }
+                };
             }
         }
 
@@ -34,7 +37,10 @@ namespace Baird.Controls
         {
             if (sender is Control control && control.DataContext is MediaItem item)
             {
-                EpisodeChosen?.Invoke(this, item);
+                if (DataContext is ViewModels.ProgrammeDetailViewModel vm)
+                {
+                    vm.RequestPlay(item);
+                }
             }
         }
 
@@ -44,18 +50,18 @@ namespace Baird.Controls
             
             if (e.Key == Key.Escape || e.Key == Key.Back)
             {
-                BackRequested?.Invoke(this, EventArgs.Empty);
+                if (DataContext is ViewModels.ProgrammeDetailViewModel vm)
+                {
+                    vm.RequestBack();
+                }
                 e.Handled = true;
             }
         }
         
-        protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+        protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
-            base.OnPropertyChanged(change);
-            if (change.Property == Visual.IsVisibleProperty && change.NewValue is bool b && b)
-            {
-                FocusFirstItem();
-            }
+            base.OnAttachedToVisualTree(e);
+            FocusFirstItem();
         }
 
         private async void FocusFirstItem()

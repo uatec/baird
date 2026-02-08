@@ -4,16 +4,26 @@ using System.Reactive;
 using System.Reactive.Linq;
 using Baird.Services;
 using System.Linq;
+using System.Collections.Generic;
+using System;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Baird.ViewModels
 {
     public class OmniSearchViewModel : ReactiveObject
     {
-        private bool _isSearchActive;
-        public bool IsSearchActive
+        public event EventHandler<MediaItem>? PlayRequested;
+        public event EventHandler? BackRequested;
+
+        public void RequestPlay(MediaItem item)
         {
-            get => _isSearchActive;
-            set => this.RaiseAndSetIfChanged(ref _isSearchActive, value);
+            PlayRequested?.Invoke(this, item);
+        }
+
+        public void RequestBack()
+        {
+            BackRequested?.Invoke(this, EventArgs.Empty);
         }
         
         private string _searchText = "";
@@ -22,8 +32,6 @@ namespace Baird.ViewModels
             get => _searchText;
             set => this.RaiseAndSetIfChanged(ref _searchText, value);
         }
-
-
 
         private bool _isSearching;
         public bool IsSearching
@@ -125,8 +133,6 @@ namespace Baird.ViewModels
             }
         }
         
-
-
         public void Clear()
         {
             SearchText = "";

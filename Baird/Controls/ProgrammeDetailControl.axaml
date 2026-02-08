@@ -8,7 +8,7 @@
              mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="1080"
              x:CompileBindings="True"
              x:Class="Baird.Controls.ProgrammeDetailControl"
-             x:DataType="vm:MainViewModel"
+             x:DataType="vm:ProgrammeDetailViewModel"
              >
 
     <UserControl.Resources>

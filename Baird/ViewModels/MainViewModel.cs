@@ -1,5 +1,6 @@
 using ReactiveUI;
 using System.Runtime.InteropServices;
+using Baird.Services;
 
 namespace Baird.ViewModels
 {
@@ -52,7 +53,7 @@ namespace Baird.ViewModels
             
             IsSubtitlesEnabled = NativeUtils.GetCapsLockState();
 
-            ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
+            // ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
             
             var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
             AppVersion = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0";
@@ -69,6 +70,9 @@ namespace Baird.ViewModels
             };
             // Start it initially so it hides after 5s of startup
             _hudTimer.Start();
+
+            OmniSearch.PlayRequested += (s, item) => PlayItem(item);
+            OmniSearch.BackRequested += (s, e) => GoBack();
         }
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
@@ -81,21 +85,68 @@ namespace Baird.ViewModels
             _hudTimer.Start();
         }
 
-        private Baird.Services.MediaItem? _selectedProgramme;
-        public Baird.Services.MediaItem? SelectedProgramme
+        public void PlayItem(MediaItem item)
         {
-            get => _selectedProgramme;
-            set => this.RaiseAndSetIfChanged(ref _selectedProgramme, value);
+            if (item.Type == MediaType.Brand)
+            {
+                // IsPaused = true; // Optional: pause background if entering detail view?
+                                   // But maybe not if we want audio to continue?
+                                   // Existing logic did set IsPaused=true.
+                IsPaused = true;
+                OpenProgramme(item);
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(item.StreamUrl))
+            {
+                ActivateChannel(item);
+                
+                // Clear navigation stack to return to video
+                NavigationHistory.Clear();
+                CurrentPage = null;
+                
+                // Also clear search if it was active (it might be deep in stack or top)
+                OmniSearch.Clear();
+            }
         }
 
-        private bool _isProgrammeDetailVisible;
-        public bool IsProgrammeDetailVisible
+        public void GoBack()
         {
-            get => _isProgrammeDetailVisible;
-            set => this.RaiseAndSetIfChanged(ref _isProgrammeDetailVisible, value);
+           PopViewModel();
+           // If we popped to nothing (Video), ensure specific focus or state?
+           if (CurrentPage == null)
+           {
+               // We are back at video
+           }
         }
 
-        public System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem> ProgrammeChildren { get; }
+        public Stack<ReactiveObject> NavigationHistory { get; } = new();
+
+        private ReactiveObject? _currentPage;
+        public ReactiveObject? CurrentPage
+        {
+            get => _currentPage;
+            private set => this.RaiseAndSetIfChanged(ref _currentPage, value);
+        }
+
+        public void PushViewModel(ReactiveObject viewModel)
+        {
+            NavigationHistory.Push(viewModel);
+            CurrentPage = viewModel;
+        }
+
+        public void PopViewModel()
+        {
+            if (NavigationHistory.Count > 0)
+            {
+                NavigationHistory.Pop();
+                CurrentPage = NavigationHistory.Count > 0 ? NavigationHistory.Peek() : null;
+            }
+            else
+            {
+                CurrentPage = null;
+            }
+        }
 
         public System.Collections.Generic.List<Baird.Services.MediaItem> AllChannels { get; private set; } = new();
 
@@ -184,45 +235,23 @@ namespace Baird.ViewModels
              ResetHudTimer();
         }
 
-        public async System.Threading.Tasks.Task OpenProgramme(Baird.Services.MediaItem programme)
+        public void OpenProgramme(Baird.Services.MediaItem programme)
         {
-            SelectedProgramme = programme;
-            ProgrammeChildren.Clear();
-            IsProgrammeDetailVisible = true;
-            
-            // Find the provider that owns this item (simplified by Source string or try all)
-            // For now, BbcIPlayerService is the only one returning Brands.
-            // Ideally we'd map "BBC iPlayer" -> BbcIPlayerService.
-            
-            // Just try all providers, fast one wins.
-            var tasks = new System.Collections.Generic.List<System.Threading.Tasks.Task<System.Collections.Generic.IEnumerable<Baird.Services.MediaItem>>>();
-            foreach(var p in _providers)
-            {
-               tasks.Add(p.GetChildrenAsync(programme.Id));
-            }
-
-            try 
-            {
-                var results = await System.Threading.Tasks.Task.WhenAll(tasks);
-                foreach(var list in results)
-                {
-                    foreach(var item in list)
-                    {
-                        ProgrammeChildren.Add(item);
-                    }
-                }
-            }
-            catch(System.Exception ex)
-            {
-                System.Console.WriteLine($"Error fetching children: {ex.Message}");
-            }
+            var vm = new ProgrammeDetailViewModel(_providers, programme);
+            vm.PlayRequested += (s, item) => PlayItem(item);
+            vm.BackRequested += (s, e) => GoBack();
+            PushViewModel(vm);
         }
 
         public void CloseProgramme()
         {
-            IsProgrammeDetailVisible = false;
-            SelectedProgramme = null;
-            ProgrammeChildren.Clear();
+            // Specifically pop if top is ProgrammeDetailViewModel?
+            // Or generically pop?
+            // Let's generically pop for now, assuming OpenProgramme pushed it last.
+            if (CurrentPage is ProgrammeDetailViewModel)
+            {
+                PopViewModel();
+            }
         }
     }
 }

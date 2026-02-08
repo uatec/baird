@@ -31,28 +31,6 @@ namespace Baird
 
             this.AttachedToVisualTree += async (s, e) =>
             {
-                // Hook up OmniSearch Play Event
-                var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
-                if (searchControl != null)
-                {
-                    searchControl.ItemChosen += (sender, item) => 
-                    {
-                        PlayItem(item);
-                        // Close search
-                        _viewModel.OmniSearch.IsSearchActive = false;
-                        _viewModel.OmniSearch.Clear();
-                    };
-
-                    searchControl.BackRequested += (sender, args) =>
-                    {
-                        _viewModel.OmniSearch.IsSearchActive = false;
-                        _viewModel.OmniSearch.Clear();
-                        
-                        // Optional: Focus Base Layer?
-                        // this.FindControl<Control>("VideoLayer")?.Focus();
-                    };
-                }
-
                 // TopLevel for global input hook? Or just hook on UserControl?
                 // UserControl KeyDown bubbles, so focusing Root is important.
                 var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
@@ -61,47 +39,6 @@ namespace Baird
                     topLevel.KeyDown += InputCoordinator;
                 }
                 
-                // Focus the Base Layer initially
-                // this.FindControl<Grid>("BaseLayer")?.Focus(); // Grids aren't focusable by default usually, might need a focusable element
-
-                // Hook up ProgrammeDetail Control Events
-                var detailControl = this.FindControl<Baird.Controls.ProgrammeDetailControl>("ProgrammeDetailLayer");
-                if (detailControl != null)
-                {
-                    detailControl.EpisodeChosen += (sender, item) => 
-                    {
-                        PlayItem(item);
-                        // Optional: Keep detail view open or close it? 
-                        // Usually playing video overlays everything, so maybe okay.
-                        // But if we want to return to detail view after video ends, we shouldn't close it here.
-                        // However, PlayItem logic currently sets ActiveItem which replaces the video layer content?
-                        // Actually ActiveItem data binding in VideoLayerControl will start playback.
-                        // We can leave the detail view "visible" behind the video or overlay?
-                        // VideoLayer is Layer 0, ProgrammeDetail is Layer 3.
-                        // If ProgrammeDetail is visible (Opacity 1), it covers Layer 0.
-                        // So we MUST close or hide ProgrammeDetail to see the video.
-                        // Or we need a Player Overlay on top of everything.
-                        
-                        // For now, let's close it to be safe and simple.
-                        _viewModel.CloseProgramme();
-                    };
-
-                    detailControl.BackRequested += (sender, args) =>
-                    {
-                        _viewModel.CloseProgramme();
-                        // Focus Search if it was open? Or just reset?
-                        // If we came from Search, restoring Search would be nice.
-                        if(_viewModel.OmniSearch.IsSearchActive)
-                        {
-                             Dispatcher.UIThread.Post(() => 
-                             {
-                                 var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
-                                 searchControl?.FocusResults();
-                             });
-                        }
-                    };
-                }
-
                 await InitializeMediaProvider();
             };
         }
@@ -135,7 +72,7 @@ namespace Baird
                  if (firstChannel != null)
                  {
                      Console.WriteLine($"Auto-playing channel: {firstChannel.Name}");
-                     PlayItem(firstChannel);
+                     _viewModel.PlayItem(firstChannel);
                  }
              }
              catch(Exception ex)
@@ -248,106 +185,36 @@ namespace Baird
         {
             var digit = GetNumericChar(e.Key);
 
-            if (!_viewModel.OmniSearch.IsSearchActive)
+            if (!(_viewModel.CurrentPage is OmniSearchViewModel))
             {
                 // Activate Search Mode
                 _viewModel.OmniSearch.Clear();
-                _viewModel.OmniSearch.IsSearchActive = true;
+                _viewModel.PushViewModel(_viewModel.OmniSearch);
                 
-                // Focus Search Box (so subsequent keys type naturally)
-                Dispatcher.UIThread.Post(() => 
-                {
-                    var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
-                    searchControl?.FocusSearchBox();
-                    
-                    // We don't append the digit manually anymore. 
-                    // The standard input flow will handle it if the search box gets focus quickly enough, 
-                    // OR we might need to send the key again? 
-                    // Actually, if we just focus, the initial key press MIGHT be lost if we mark e.Handled = true.
-                    // If we mark e.Handled = false, it might bubble up to the newly focused element?
-                    // But focus happens on Dispatcher.Post, so it's too late for THIS event.
-                    
-                    // User wants "conventional text input". The first key press is usually "lost" or used to open the field.
-                    // If we want the digit to appear, we should probably append it manually OR send it.
-                    // Let's manually append it for the first char to be smooth.
-                    
-                    _viewModel.OmniSearch.SearchText = digit;
-                    
-                     var box = searchControl?.FindControl<TextBox>("SearchBox"); 
-                     if (box != null)
-                     {
-                         box.CaretIndex = box.Text?.Length ?? 0;
-                     }
-                });
+                // Focus Search Box handled by OmniSearchControl.AttachedToVisualTree
+                
+                // Append digit
+                _viewModel.OmniSearch.SearchText = digit;
                 
                 e.Handled = true; // Consume this initial key
             }
 
 
             // If search IS active, we do nothing. 
-            // The focused SearchBox (if focused) will handle the key bubbling up to it (or down to it? Bubbling is up, Tunneling is down. KeyDown bubbles).
-            // Actually, if SearchBox is focused, it gets the event FIRST. It handles it. 
-            // Then InputCoordinator sees it. Conditional at top (e.Handled) will exit.
-            // If Search is active but SearchBox NOT focused (e.g. Results focused), then we might want this trigger? 
-            // User said: "After that it should not act, because the search box is visible and focused".
-            // So we assume it stays focused.
         }
 
-        private void PlayItem(MediaItem item)
-        {
-            Console.WriteLine($"Playing Item: {item.Name} ({item.Id} - {item.Type})");
 
-            if (item.Type == MediaType.Brand)
-            {
-                Console.WriteLine($"Opening Programme Detail: {item.Name}");
-                
-                // Pause background video
-                _viewModel.IsPaused = true;
-                
-                _viewModel.OpenProgramme(item);
-                
-                // Also close search if active
-                 _viewModel.OmniSearch.IsSearchActive = false;
-                 _viewModel.OmniSearch.Clear();
-                return;
-            }
-            
-            var url = item.StreamUrl;
-            if (!string.IsNullOrEmpty(url))
-            {
-                Console.WriteLine($"Activating Item: {item.Name} at {url}");
-                
-                _viewModel.ActiveItem = new ActiveMedia 
-                {
-                    Id = item.Id,
-                    Name = item.Name,
-                    Details = item.Details,
-                    StreamUrl = url,
-                    IsLive = item.IsLive,
-                    ChannelNumber = item.ChannelNumber
-                };
-            }
-            else
-            {
-                Console.WriteLine($"Warning: No stream URL for {item.Name}");
-            }
-        }
 
         private void HandleUpTrigger(KeyEventArgs e)
         {
             // Logic: If on BaseLayer (Video/Home) and press Up -> Open Search with Keyboard
             
-            if (!_viewModel.OmniSearch.IsSearchActive && !_viewModel.IsProgrammeDetailVisible)
+            if (_viewModel.CurrentPage == null)
             {
                  _viewModel.OmniSearch.Clear();
-                 _viewModel.OmniSearch.IsSearchActive = true;
+                 _viewModel.PushViewModel(_viewModel.OmniSearch);
                  
-                 // Focus Search Box
-                 Dispatcher.UIThread.Post(() => 
-                 {
-                     var searchControl = this.FindControl<Baird.Controls.OmniSearchControl>("OmniSearchLayer");
-                     searchControl?.FocusSearchBox();
-                 });
+                 // Focus Search Box handled by OmniSearchControl.AttachedToVisualTree
                  
                  e.Handled = true;
             }
@@ -355,35 +222,11 @@ namespace Baird
 
         private void HandleBackTrigger(KeyEventArgs e)
         {
-            if (_viewModel.IsProgrammeDetailVisible)
+            // If there is any page open, go back
+            if (_viewModel.CurrentPage != null)
             {
-               // Redundant logic removed. ProgrammeDetailControl handles its own back navigation via Focus and KeyDown.
-               // However, if the control doesn't have focus (e.g. user clicked away?), this might still be needed as fallback?
-               // The user complaint was "why do we need to implement...".
-               // If properly focused, it should handle it. 
-               // If not focused, MainView gets it.
-               // But if MainView gets it, it means ProgrammeDetail didn't handle it.
-               // So maybe we should KEEP it as fallback?
-               // But the prompt says "if isProgrammeDetailVisible is true, then the focussed control should be the ProgrammeDetailControl".
-               // So we assume it IS focused.
-               // If it is focused, OnKeyDown in control handles it and sets Handled=true.
-               // So MainView.InputCoordinator won't even see it (because e.Handled check at top).
-               // So this block becomes dead code if focus works.
-               // If focus fails, this block is a safety net.
-               // But the user explicitly asked "why do we need to implement...".
-               // So I will remove it to respect the "it should be focused" paradigm.
-            }
-            else if (_viewModel.OmniSearch.IsSearchActive)
-            {
-                 // Redundant logic removed. OmniSearchControl handles its own back navigation via BackRequested event.
-                 // MainView listens to BackRequested and closes search.
-                 // So if focus is in OmniSearch, OnKeyDown in control handles it.
-                 // If focus is NOT in OmniSearch but Search is Active?
-                 // Then this block might be needed?
-                 // "If isProgrammeDetailVisible is true, then the focussed control should be the ProgrammeDetailControl"
-                 // Same for OmniSearch.
-                 // If Search is active, SearchControl SHOULD be focused.
-                 // So we assume it is focused.
+                _viewModel.GoBack();
+                e.Handled = true;
             }
         }
 
