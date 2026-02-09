@@ -15,7 +15,6 @@ namespace Baird.Controls
         // private LibMpv.MpvRenderUpdateFn _renderUpdateDelegate; // Moved to MpvPlayer
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
-        private Avalonia.Threading.DispatcherTimer _scanDebounceTimer;
         private bool _isScanning;
         private string _lastLoggedState = "Idle";
 
@@ -30,12 +29,6 @@ namespace Baird.Controls
             };
             _hudTimer.Tick += (s, e) => UpdateHud();
             _hudTimer.Start();
-
-            _scanDebounceTimer = new Avalonia.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(300)
-            };
-            _scanDebounceTimer.Tick += OnScanDebounceTick;
 
             Focusable = true;
         }
@@ -113,39 +106,13 @@ namespace Baird.Controls
             // If not already scanning and currently playing, pause first
             if (!_isScanning)
             {
-                 if (!IsPaused)
-                 {
-                     _player.Pause();
-                     // Note: We don't set IsPaused property here because we want to resume automatically.
-                     // But if we don't set IsPaused, UpdateHud might try to set it?
-                     // Let's set the flag so we know we are in a "scan operation".
-                 }
                  _isScanning = true;
             }
             
             // Perform the seek
             _player.Command("seek", seconds.ToString(), "relative");
-            
-            // Reset the debounce timer
-            _scanDebounceTimer.Stop();
-            _scanDebounceTimer.Start();
-            
-            // Update HUD immediately to show new position?
-            // UpdateHud(); // Optional, might look choppy if too frequent.
         }
 
-        private void OnScanDebounceTick(object? sender, EventArgs e)
-        {
-            _scanDebounceTimer.Stop();
-            _isScanning = false;
-            
-            // Resume playback
-            // If the user *was* paused before scanning, do we resume? 
-            // Requirement says: "un-pause and resume at the chosen location"
-            // implying it should always resume.
-            _player.Resume();
-            IsPaused = false; 
-        }
 
         private bool IsNumericKey(Avalonia.Input.Key key)
         {
