@@ -4,7 +4,7 @@ using Avalonia.OpenGL;
 
 namespace Baird.Mpv
 {
-    public enum PlaybackState { Idle, Playing, Paused, Buffering }
+    public enum PlaybackState { Idle, Loading, Playing, Paused, Buffering }
 
     public class MpvPlayer : IDisposable
     {
@@ -17,6 +17,7 @@ namespace Baird.Mpv
         public string TimePosition => GetPropertyString("time-pos") ?? "0";
         public string Duration => GetPropertyString("duration") ?? "0";
         public string CurrentPath => GetPropertyString("path") ?? "None";
+        public bool IsCoreIdle => GetPropertyString("core-idle") == "yes";
         
         public MpvPlayer()
         {
@@ -139,6 +140,26 @@ namespace Baird.Mpv
             Marshal.FreeCoTaskMem(pFlipY);
         }
 
+        public void UpdateVideoStatus()
+        {
+            if (State == PlaybackState.Loading)
+            {
+                // Check if we have started playing
+                // Criteria: time-pos is valid (not null) OR core-idle is false
+                // But time-pos might be 0 at start.
+                // core-idle is usually true when loading/buffering or paused?
+                // Let's use simple check: if we have a duration or time-pos
+                
+                var time = GetPropertyString("time-pos");
+                // var idle = GetPropertyString("core-idle");
+                
+                if (!string.IsNullOrEmpty(time))
+                {
+                    State = PlaybackState.Playing;
+                }
+            }
+        }
+
         public void Play(string url, double? startSeconds = null)
         {
             int startSecondsInt = (int)(startSeconds ?? 0); 
@@ -156,7 +177,7 @@ namespace Baird.Mpv
             }
             
             SetPropertyString("pause", "no");
-            State = PlaybackState.Playing;
+            State = PlaybackState.Loading;
         }
 
         public void Pause()

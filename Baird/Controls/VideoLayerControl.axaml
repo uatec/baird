@@ -24,6 +24,14 @@
                        ResumeTime="{Binding ActiveItem.ResumeTime}"
                        IsSubtitlesEnabled="{Binding IsSubtitlesEnabled}"
                        IsPaused="{Binding IsPaused, Mode=TwoWay}"/>
+        
+        <!-- Loading Overlay -->
+        <Border Background="Black" IsVisible="{Binding #Player.IsLoading}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
+                <ProgressBar IsIndeterminate="True" Width="100" Height="10"/>
+                <TextBlock Text="Loading..." Foreground="White" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
 
         <!-- Layer 2: Video HUD (Overlay) -->
         <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}" IsHitTestVisible="False">

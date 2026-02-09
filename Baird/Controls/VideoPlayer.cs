@@ -264,6 +264,15 @@ namespace Baird.Controls
             set => SetValue(IsSubtitlesEnabledProperty, value);
         }
 
+        public static readonly StyledProperty<bool> IsLoadingProperty =
+            AvaloniaProperty.Register<VideoPlayer, bool>(nameof(IsLoading));
+
+        public bool IsLoading
+        {
+            get => GetValue(IsLoadingProperty);
+            set => SetValue(IsLoadingProperty, value);
+        }
+
         public static readonly StyledProperty<TimeSpan?> ResumeTimeProperty =
             AvaloniaProperty.Register<VideoPlayer, TimeSpan?>(nameof(ResumeTime));
 
@@ -276,10 +285,16 @@ namespace Baird.Controls
         private void UpdateHud()
         {
             if (_player == null) return;
+            
+            // Check for state transitions (Loading -> Playing)
+            _player.UpdateVideoStatus();
 
             // State
             var state = _player.State;
             var stateStr = state.ToString();
+            
+            // Update IsLoading property
+            IsLoading = state == PlaybackState.Loading;
             
             // Sync IsPaused with actual player state (if changed externally or by internal logic)
             // Use SetCurrentValue to avoid overwriting binding if not necessary, or just SetValue
@@ -517,6 +532,14 @@ namespace Baird.Controls
 
         protected override void OnOpenGlRender(GlInterface gl, int fb)
         {
+            // If Loading, clear to black
+            if (_player.State == PlaybackState.Loading)
+            {
+                gl.ClearColor(0f, 0f, 0f, 1f);
+                gl.Clear(GlConsts.GL_COLOR_BUFFER_BIT);
+                return;
+            }
+
             var scaling = VisualRoot?.RenderScaling ?? 1.0;
             int w = (int)(Bounds.Width * scaling);
             int h = (int)(Bounds.Height * scaling);
