@@ -28,6 +28,7 @@ namespace Baird.Controls
             if (player != null)
             {
                 player.SearchRequested += OnSearchRequested;
+                player.UserActivity += OnUserActivity;
                 player.Focus(); // Ensure player gets focus when layer is active
             }
         }
@@ -39,7 +40,16 @@ namespace Baird.Controls
             if (player != null)
             {
                 player.SearchRequested -= OnSearchRequested;
+                player.UserActivity -= OnUserActivity;
             }
+        }
+
+        private void OnUserActivity(object? sender, EventArgs e)
+        {
+             if (DataContext is ViewModels.MainViewModel vm)
+             {
+                 vm.ResetHudTimer();
+             }
         }
 
         private void OnSearchRequested(object? sender, string text)

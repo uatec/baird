@@ -15,6 +15,8 @@ namespace Baird.Controls
         // private LibMpv.MpvRenderUpdateFn _renderUpdateDelegate; // Moved to MpvPlayer
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
+        private Avalonia.Threading.DispatcherTimer _scanDebounceTimer;
+        private bool _isScanning;
         private string _lastLoggedState = "Idle";
 
         public VideoPlayer()
@@ -29,15 +31,26 @@ namespace Baird.Controls
             _hudTimer.Tick += (s, e) => UpdateHud();
             _hudTimer.Start();
 
+            _scanDebounceTimer = new Avalonia.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(300)
+            };
+            _scanDebounceTimer.Tick += OnScanDebounceTick;
+
             Focusable = true;
         }
 
         public event EventHandler<string>? SearchRequested;
+        public event EventHandler? UserActivity;
 
         protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
         {
             base.OnKeyDown(e);
             if (e.Handled) return;
+
+            // Notify activity on any key press that is handled by us
+            // But we'll do it inside the specific cases or generally if it's a valid key?
+            // Let's do it generally for now if we handle it.
 
             // Numeric keys
             if (IsNumericKey(e.Key))
@@ -45,6 +58,7 @@ namespace Baird.Controls
                 Console.WriteLine("Numeric key pressed: " + e.Key);
                 var digit = GetNumericChar(e.Key);
                 SearchRequested?.Invoke(this, digit);
+                UserActivity?.Invoke(this, EventArgs.Empty);
                 e.Handled = true;
                 return;
             }
@@ -54,24 +68,83 @@ namespace Baird.Controls
                 case Avalonia.Input.Key.Space:
                 case Avalonia.Input.Key.MediaPlayPause:
                     IsPaused = !IsPaused;
+                    UserActivity?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;
                     break;
                 
                 case Avalonia.Input.Key.Tab:
                     ToggleStats();
+                    UserActivity?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;
                     break;
 
                 case Avalonia.Input.Key.CapsLock:
                     IsSubtitlesEnabled = !IsSubtitlesEnabled;
+                    UserActivity?.Invoke(this, EventArgs.Empty);
                     e.Handled = true; 
                     break;
 
                 case Avalonia.Input.Key.Up:
                     SearchRequested?.Invoke(this, string.Empty);
+                    UserActivity?.Invoke(this, EventArgs.Empty);
+                    e.Handled = true;
+                    break;
+                
+                case Avalonia.Input.Key.Left:
+                case Avalonia.Input.Key.MediaPreviousTrack:
+                    PerformScan(-10);
+                    // PerformScan invokes UserActivity
+                    e.Handled = true;
+                    break;
+
+                case Avalonia.Input.Key.Right:
+                case Avalonia.Input.Key.MediaNextTrack:
+                    PerformScan(10);
+                    // PerformScan invokes UserActivity
                     e.Handled = true;
                     break;
             }
+        }
+        
+        private void PerformScan(double seconds)
+        {
+            UserActivity?.Invoke(this, EventArgs.Empty);
+            
+            // If not already scanning and currently playing, pause first
+            if (!_isScanning)
+            {
+                 if (!IsPaused)
+                 {
+                     _player.Pause();
+                     // Note: We don't set IsPaused property here because we want to resume automatically.
+                     // But if we don't set IsPaused, UpdateHud might try to set it?
+                     // Let's set the flag so we know we are in a "scan operation".
+                 }
+                 _isScanning = true;
+            }
+            
+            // Perform the seek
+            _player.Command("seek", seconds.ToString(), "relative");
+            
+            // Reset the debounce timer
+            _scanDebounceTimer.Stop();
+            _scanDebounceTimer.Start();
+            
+            // Update HUD immediately to show new position?
+            // UpdateHud(); // Optional, might look choppy if too frequent.
+        }
+
+        private void OnScanDebounceTick(object? sender, EventArgs e)
+        {
+            _scanDebounceTimer.Stop();
+            _isScanning = false;
+            
+            // Resume playback
+            // If the user *was* paused before scanning, do we resume? 
+            // Requirement says: "un-pause and resume at the chosen location"
+            // implying it should always resume.
+            _player.Resume();
+            IsPaused = false; 
         }
 
         private bool IsNumericKey(Avalonia.Input.Key key)
