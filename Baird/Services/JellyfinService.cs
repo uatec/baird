@@ -176,7 +176,7 @@ namespace Baird.Services
             try
             {
                 var q = Uri.EscapeDataString(query.Trim());
-                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Fields=ProductionYear&SearchTerm={q}";
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series&Recursive=true&SortBy=SortName&Fields=ProductionYear&SearchTerm={q}";
                 
                 Console.WriteLine($"Searching Jellyfin movies and shows with query '{query}': {url}");
                 

@@ -63,7 +63,7 @@ namespace Baird.Services
                     if (item.TryGetProperty("type", out var typeProp))
                     {
                         var type = typeProp.GetString();
-                        if (type == "episode" || type == "brand" || type == "programme")
+                        if (type == "brand" || type == "programme")
                         {
                             var id = item.GetProperty("id").GetString();
                             var title = item.GetProperty("title").GetString();
