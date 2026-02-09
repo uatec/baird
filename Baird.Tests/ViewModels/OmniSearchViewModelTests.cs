@@ -12,7 +12,7 @@ namespace Baird.Tests.ViewModels
     public class OmniSearchViewModelTests
     {
         [Fact]
-        public async Task Search_NumericUnder3Digits_PrioritizesLiveChannels_And_PreservesProviderOrder()
+        public void Search_NumericUnder3Digits_PrioritizesLiveChannels_And_PreservesProviderOrder()
         {
             // Arrange
             // Provider 1: "VOD 1" (Not Live), "BBC One" (Live, Ch 1), "Channel 4" (Live, Ch 104)
@@ -31,50 +31,30 @@ namespace Baird.Tests.ViewModels
                 new MediaItem { Name = "Video 1", IsLive = false, Source = "P2" }
             };
 
-            var p1 = new MockMediaProvider("P1", provider1Items);
-            var p2 = new MockMediaProvider("P2", provider2Items);
+            // Combine as if search results came in
+            var allItems = provider1Items.Concat(provider2Items);
 
             var sorter = new SearchResultSorter();
 
             // Act
-            var results = await sorter.SearchAndSortAsync(new[] { p1, p2 }, "1");
+            var results = sorter.Sort(allItems, "1");
 
             // Assert
-            // Expected Order:
-            // Priority (Live + Ch "1" or starts with "1"):
-            // 1. BBC One (P1, Ch 1)
-            // 2. RTE One (P2, Ch 1)
-            // Others (Provider order preserved):
-            // 3. VOD 1 (P1)
-            // 4. Channel 4 (P1, Ch 104) - Matches "1" in "104" but logic says "starts with". 
-            //    Wait, logic checking: `isMatch = ... StartsWith(q)`.
-            //    "104" starts with "1". So it IS a priority match if IsLive.
-            //    So Channel 4 IS a priority match.
-            //    
-            //    So Priority should be:
-            //    - BBC One (P1)
-            //    - Channel 4 (P1)
-            //    - RTE One (P2)
-            //    
-            //    Others:
-            //    - VOD 1 (P1)
-            //    - Video 1 (P2)
-            //
-            //    Wait! `allResults` is P1[VOD, BBC, Ch4], P2[RTE, Vid].
-            //    Iterating `allResults`:
-            //    1. VOD 1 -> Not Live -> Others
-            //    2. BBC One -> Live, Ch "1" starts with "1" -> Priority
-            //    3. Channel 4 -> Live, Ch "104" starts with "1" -> Priority
-            //    4. RTE One -> Live, Ch "1" starts with "1" -> Priority
-            //    5. Video 1 -> Not Live -> Others
-            //
-            //    Concat(Priority, Others)
-            //    Priority: [BBC One, Channel 4, RTE One]
-            //    Others: [VOD 1, Video 1]
-            //    
-            //    Total: [BBC One, Channel 4, RTE One, VOD 1, Video 1]
-            
             Assert.Equal(5, results.Count);
+            // BBC One (Live, Ch 1) -> Priority
+            // RTE One (Live, Ch 1) -> Priority. (Wait, which one first? Stable sort? The code does: foreach item, if match add to priority. So preserves order of appearance.)
+            // Channel 4 (Live, Ch 104) -> Priority?
+            // "1" matches "104".StartsWith("1") -> Yes.
+            
+            // Expected Priority List: 
+            // 1. BBC One (P1)
+            // 2. Channel 4 (P1)
+            // 3. RTE One (P2)
+            
+            // Expected Others List:
+            // 4. VOD 1 (P1)
+            // 5. Video 1 (P2)
+
             Assert.Equal("BBC One", results[0].Name);
             Assert.Equal("Channel 4", results[1].Name);
             Assert.Equal("RTE One", results[2].Name);
@@ -83,7 +63,7 @@ namespace Baird.Tests.ViewModels
         }
 
         [Fact]
-        public async Task Search_NonNumeric_PreservesProviderOrder()
+        public void Search_NonNumeric_PreservesProviderOrder()
         {
              // Arrange
             var provider1Items = new List<MediaItem>
@@ -97,14 +77,13 @@ namespace Baird.Tests.ViewModels
                 new MediaItem { Name = "Bravo", Source = "P2" },
                 new MediaItem { Name = "Delta", Source = "P2" }
             };
-
-            var p1 = new MockMediaProvider("P1", provider1Items);
-            var p2 = new MockMediaProvider("P2", provider2Items);
+            
+            var allItems = provider1Items.Concat(provider2Items);
             
             var sorter = new SearchResultSorter();
 
             // Act
-            var results = await sorter.SearchAndSortAsync(new[] { p1, p2 }, "a");
+            var results = sorter.Sort(allItems, "a");
 
             // Assert
             // Should be P1 items then P2 items (Alpha, Charlie, Bravo, Delta) assuming "a" matches all (contains 'a')

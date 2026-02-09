@@ -31,7 +31,7 @@ namespace Baird.Mpv
             // "yes" for deinterlace is critical for 1080i50 broadcasts (UK Satellite/Terrestrial).
              var hwdec = "auto-copy"; 
             SetPropertyString("hwdec", hwdec);
-             // SetPropertyString("deinterlace", "yes");
+             SetPropertyString("deinterlace", "yes");
             
             // Generics Options
             SetPropertyString("terminal", "yes");
@@ -48,7 +48,7 @@ namespace Baird.Mpv
             // SetPropertyString("video-sync", "display-resample");
             // SetPropertyString("interpolation", "yes");
             // SetPropertyString("tscale", "oversample"); 
-            // SetPropertyString("opengl-swapinterval", "1"); // VSync
+            SetPropertyString("opengl-swapinterval", "1"); // VSync
             
             // Standard sync
             SetPropertyString("video-sync", "audio");

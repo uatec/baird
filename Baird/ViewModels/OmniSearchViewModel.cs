@@ -100,8 +100,9 @@ namespace Baird.ViewModels
             
             // Cancel previous search
             _searchCts?.Cancel();
-            _searchCts = new CancellationTokenSource();
-            var token = _searchCts.Token;
+            var newCts = new CancellationTokenSource();
+            _searchCts = newCts;
+            var token = newCts.Token; // Capture token from local source
 
             IsSearching = true;
             SearchResults.Clear(); // Already on UI thread due to Throttle scheduler
@@ -176,8 +177,15 @@ namespace Baird.ViewModels
                 {
                     IsSearching = false;
                 }
-                _searchCts.Dispose();
-                _searchCts = null;
+                
+                // Dispose the local CTS that we created for THIS search
+                newCts.Dispose();
+                
+                // Only clear the shared field if it still points to our CTS (i.e. hasn't been replaced by a newer search)
+                if (_searchCts == newCts)
+                {
+                    _searchCts = null;
+                }
             }
         }
         
