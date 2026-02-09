@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Baird.ViewModels"
+             xmlns:services="using:Baird.Services"
+             xmlns:conv="using:Baird.Converters"
+             xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="240"
+             x:Class="Baird.Controls.MediaTileControl"
+             x:CompileBindings="True"
+             x:DataType="services:MediaItem">
+             
+    <UserControl.Resources>
+        <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
+    </UserControl.Resources>
+
+    <Grid RowDefinitions="*, Auto, Auto">
+        <!-- Image & Progress Overlay -->
+        <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="#333333">
+            <Grid>
+                <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" />
+                
+                <!-- Progress Bar Overlay (History) -->
+                <ProgressBar Value="{Binding Progress}" 
+                             Maximum="1.0" 
+                             Minimum="0.0" 
+                             Height="6" 
+                             VerticalAlignment="Bottom" 
+                             Background="#33000000" 
+                             Foreground="#E50914" 
+                             IsHitTestVisible="False"
+                             IsVisible="{Binding Progress, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            </Grid>
+        </Border>
+        
+        <!-- Row 1: Channel/Name -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
+             <TextBlock Text="{Binding ChannelNumber}" 
+                        Foreground="#FFD700" 
+                        FontWeight="ExtraBold" 
+                        Margin="0,0,6,0" 
+                        IsVisible="{Binding ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
+             <TextBlock Text="{Binding Name}" 
+                        Foreground="White" 
+                        FontWeight="Bold" 
+                        TextTrimming="CharacterEllipsis" 
+                        TextAlignment="Left"/>
+        </StackPanel>
+        
+        <!-- Row 2: Source Badge & Details -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+            <Border Background="#333333" CornerRadius="4" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding Source, Converter={StaticResource StringVisibilityConverter}}">
+                <TextBlock Text="{Binding Source}" Foreground="#4CC9F0" FontSize="10" FontWeight="Bold"/>
+            </Border>
+            <TextBlock Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left" VerticalAlignment="Center"/>
+        </StackPanel>
+    </Grid>
+</UserControl>
