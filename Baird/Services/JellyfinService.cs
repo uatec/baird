@@ -205,20 +205,77 @@ namespace Baird.Services
 
             try
             {
-                var url = $"Users/{_userId}/Items?ParentId={id}&IncludeItemTypes=Episode&Recursive=true&SortBy=ParentIndexNumber,IndexNumber,SortName&Fields=ProductionYear";
-                Console.WriteLine($"Fetching children for {id}: {url}");
+                // Parse ID for Season filtering (Format: itemId|seasonNumber)
+                string itemId = id;
+                string? targetSeason = null;
+
+                if (id.Contains("|"))
+                {
+                    var parts = id.Split('|');
+                    itemId = parts[0];
+                    if (parts.Length > 1) targetSeason = parts[1];
+                }
+
+                // Changed to non-recursive to support Season folders
+                // IncludeItemTypes: Season, Episode, Movie, Folder (for other structures)
+                // Added ParentIndexNumber to Fields for manual grouping
+                var url = $"Users/{_userId}/Items?ParentId={itemId}&IncludeItemTypes=Season,Episode,Movie,Folder&Recursive=false&SortBy=ParentIndexNumber,IndexNumber,SortName&Fields=ProductionYear,ParentIndexNumber";
+                // Console.WriteLine($"[Jellyfin] Fetching children for {itemId} with URL: {url}");
                 
                 var response = await _httpClient.GetAsync(url);
                 response.EnsureSuccessStatusCode();
 
                 var json = await response.Content.ReadAsStringAsync();
+
                 var result = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult);
                 
-                if (result?.Items != null)
+                if (result?.Items == null) return Enumerable.Empty<MediaItem>();
+                
+                var items = result.Items;
+
+                // 1. If we are looking for a SPECIFIC Virtual Season (targetSeason != null)
+                if (targetSeason != null)
                 {
-                    return result.Items.Select(MapJellyfinItem);
+                     if (int.TryParse(targetSeason, out int seasonNum))
+                     {
+                         return items
+                            .Where(i => (i.ParentIndexNumber ?? 1) == seasonNum)
+                            .Select(MapJellyfinItem);
+                     }
+                     return Enumerable.Empty<MediaItem>();
                 }
-                return Enumerable.Empty<MediaItem>();
+                
+                // 2. If we found actual Seasons/Folders, just return them (Native Structure)
+                if (items.Any(i => i.Type.Equals("Season", StringComparison.OrdinalIgnoreCase) || 
+                                   i.Type.Equals("Folder", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return items.Select(MapJellyfinItem);
+                }
+
+                // 3. We found only Episodes (flat library). Check if we need to group them.
+                var seasons = items
+                    .Select(i => i.ParentIndexNumber ?? 1) 
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToList();
+                
+                if (seasons.Count > 1)
+                {
+                    // Create Virtual Season Folders
+                    return seasons.Select(s => new MediaItem 
+                    {
+                        Id = $"{itemId}|{s}",
+                        Name = $"Season {s}",
+                        Details = $"{items.Count(x => (x.ParentIndexNumber ?? 1) == s)} Episodes",
+                        // Use Series image for the folder
+                        ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{itemId}/Images/Primary?api_key={_accessToken}",
+                        Type = MediaType.Brand,
+                        Source = $"Jellyfin: {_serverHostname}"
+                    });
+                }
+
+                // 4. Otherwise (Single season or just episodes), return as is
+                return items.Select(MapJellyfinItem);
             }
             catch (Exception ex)
             {
@@ -229,22 +286,30 @@ namespace Baird.Services
 
         private MediaItem MapJellyfinItem(MovieItem m)
         {
-            var isBrand = m.Type != null && m.Type.Equals("Series", StringComparison.OrdinalIgnoreCase);
-            var type = isBrand ? MediaType.Brand : MediaType.Video;
+            // Treat Series, Season, and generic Folder as "Brand" (navigable container)
+            var isContainer = m.Type != null && (
+                m.Type.Equals("Series", StringComparison.OrdinalIgnoreCase) || 
+                m.Type.Equals("Season", StringComparison.OrdinalIgnoreCase) ||
+                m.Type.Equals("Folder", StringComparison.OrdinalIgnoreCase)
+            );
             
+            var type = isContainer ? MediaType.Brand : MediaType.Video;
+            
+            // Console.WriteLine($"[Jellyfin] Mapping: {m.Name}, Type={m.Type} -> {type}");
+
             return new MediaItem 
             {
                 Id = m.Id,
                 Name = m.Name,
-                Details = m.ProductionYear?.ToString() ?? "Unknown Year",
+                Details = m.ProductionYear?.ToString() ?? "",
                 ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary?api_key={_accessToken}",
                 IsLive = false,
-                StreamUrl = isBrand ? "" : GetStreamUrlInternal(m.Id), 
+                StreamUrl = isContainer ? "" : GetStreamUrlInternal(m.Id), 
                 Source = $"Jellyfin: {_serverHostname}",
                 Type = type
             };
         }
-
+        
         private string GetStreamUrlInternal(string itemId)
         {
             return $"{_serverUrl}/Videos/{itemId}/stream?api_key={_accessToken}&static=true";
@@ -299,6 +364,7 @@ namespace Baird.Services
         public string Id { get; set; }
         public int? ProductionYear { get; set; }
         public string Type { get; set; }
+        public int? ParentIndexNumber { get; set; }
     }
 
     [JsonSerializable(typeof(AuthRequest))]
