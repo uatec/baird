@@ -2,3 +2,14 @@
 - [x] press space to play/pause the stream.
 - [ ] When streaming on raspberry pi 5, the image is tearing. 
 - [ ] Disable screensaver
+- [x] When i press Down to load the history page, the keyboard input still goes to the video player. 
+- [ ] Up from the history view should hide history, not open search
+- [ ] auto-update
+- [ ] auto-restart
+- [ ] loading screen
+- [ ] faves - hold to add to faves, faves page
+- [ ] This Video options: fav, subtitles 
+- [ ] embedded encrypted videos
+- [ ] search debugging - why does it sometimes hang?
+- [ ] search tvdb index and pull video stream from suggested data
+- [ ] 
