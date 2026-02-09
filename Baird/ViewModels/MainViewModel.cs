@@ -97,10 +97,6 @@ namespace Baird.ViewModels
         {
             if (item.Type == MediaType.Brand)
             {
-                // IsPaused = true; // Optional: pause background if entering detail view?
-                                   // But maybe not if we want audio to continue?
-                                   // Existing logic did set IsPaused=true.
-                IsPaused = true;
                 OpenProgramme(item);
                 return;
             }
