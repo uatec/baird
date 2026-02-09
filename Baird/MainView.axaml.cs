@@ -17,6 +17,7 @@ namespace Baird
         private MainViewModel _viewModel;
         // private IMediaProvider _mediaProvider; // Removed single provider
         private List<IMediaProvider> _providers = new();
+        private ICecService _cecService;
 
         public MainView()
         {
@@ -26,6 +27,8 @@ namespace Baird
             _providers.Add(new JellyfinService());
             _providers.Add(new BbcIPlayerService());
             _providers.Add(new YouTubeService());
+
+            _cecService = new CecService();
 
             _viewModel = new MainViewModel(_providers);
             
@@ -73,6 +76,7 @@ namespace Baird
                 }, DispatcherPriority.Input);
                 
                 await InitializeMediaProvider();
+                await _cecService.StartAsync();
             };
         }
 
@@ -159,6 +163,15 @@ namespace Baird
             {
                 Console.WriteLine("[InputCoordinator] Q pressed. Exiting application.");
                 Environment.Exit(0);
+                return;
+            }
+
+            // Power Toggle (P)
+            if (e.Key == Key.P)
+            {
+                Console.WriteLine("[InputCoordinator] P pressed. Toggling TV Power via CEC.");
+                _ = _cecService.TogglePowerAsync(); // Fire and forget
+                e.Handled = true;
                 return;
             }
             
