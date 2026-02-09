@@ -9,6 +9,16 @@ namespace Baird.Controls
         {
             InitializeComponent();
         }
+        
+        public Baird.Services.IHistoryService? HistoryService
+        {
+            get => GetPlayer()?.HistoryService;
+            set 
+            {
+                var player = GetPlayer();
+                if (player != null) player.HistoryService = value;
+            }
+        }
 
         private void InitializeComponent()
         {

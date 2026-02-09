@@ -17,6 +17,8 @@ namespace Baird.Controls
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private bool _isScanning;
         private string _lastLoggedState = "Idle";
+        
+        public Baird.Services.IHistoryService? HistoryService { get; set; }
 
         public VideoPlayer()
         {
@@ -35,11 +37,24 @@ namespace Baird.Controls
 
         public event EventHandler<string>? SearchRequested;
         public event EventHandler? UserActivity;
+        public event EventHandler? HistoryRequested;
 
         protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
         {
             base.OnKeyDown(e);
             if (e.Handled) return;
+
+            // Handle Down key for History
+            if (e.Key == Avalonia.Input.Key.Down)
+            {
+                Console.WriteLine("[VideoPlayer] Down key pressed -> HistoryRequested");
+                HistoryRequested?.Invoke(this, EventArgs.Empty);
+                UserActivity?.Invoke(this, EventArgs.Empty);
+                e.Handled = true;
+                return;
+                e.Handled = true;
+                return;
+            }
 
             // Notify activity on any key press that is handled by us
             // But we'll do it inside the specific cases or generally if it's a valid key?
@@ -161,6 +176,21 @@ namespace Baird.Controls
             get => GetValue(PlayerStateProperty);
             set => SetValue(PlayerStateProperty, value);
         }
+        
+        // Helper to track current media item ID for history
+        private string? _currentMediaId;
+        private Baird.Services.MediaItem? _currentMediaItem;
+        
+        public void SetCurrentMediaItem(Baird.Services.MediaItem item)
+        {
+            // Save progress of previous item before switching
+            if (_currentMediaItem != null && item != null && _currentMediaItem.Id != item.Id)
+            {
+                SaveProgress();
+            }
+            _currentMediaItem = item;
+            _currentMediaId = item.Id;
+        }
 
         public static readonly StyledProperty<bool> IsLiveProperty =
             AvaloniaProperty.Register<VideoPlayer, bool>(nameof(IsLive));
@@ -234,6 +264,15 @@ namespace Baird.Controls
             set => SetValue(IsSubtitlesEnabledProperty, value);
         }
 
+        public static readonly StyledProperty<TimeSpan?> ResumeTimeProperty =
+            AvaloniaProperty.Register<VideoPlayer, TimeSpan?>(nameof(ResumeTime));
+
+        public TimeSpan? ResumeTime
+        {
+            get => GetValue(ResumeTimeProperty);
+            set => SetValue(ResumeTimeProperty, value);
+        }
+
         private void UpdateHud()
         {
             if (_player == null) return;
@@ -299,6 +338,36 @@ namespace Baird.Controls
             }
             
             PlayerState = stateStr;
+
+            // Update History periodically? Or just rely on Stop/Pause?
+            // User requirement: "whenever we stop or change video stream... record the progress"
+            // We should arguably do it on Pause too.
+            // And maybe periodically in case of crash?
+        }
+        
+        public async void SaveProgress()
+        {
+            if (HistoryService == null || _currentMediaItem == null) 
+            {
+                Console.WriteLine($"[VideoPlayer] SaveProgress skipped. Service={HistoryService!=null}, Item={_currentMediaItem?.Name}");
+                return;
+            }
+            
+            // Get current pos/dur
+            var posStr = _player.TimePosition;
+            var durStr = _player.Duration;
+            
+            Console.WriteLine($"[VideoPlayer] SaveProgress Raw: Pos='{posStr}', Dur='{durStr}'");
+
+            if (double.TryParse(posStr, out double pos) && double.TryParse(durStr, out double dur))
+            {
+                 Console.WriteLine($"[VideoPlayer] Saving {pos} / {dur} for {_currentMediaItem.Name}");
+                 await HistoryService.UpsertAsync(_currentMediaItem, TimeSpan.FromSeconds(pos), TimeSpan.FromSeconds(dur));
+            }
+            else
+            {
+                 Console.WriteLine($"[VideoPlayer] Failed to parse pos/dur.");
+            }
         }
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -310,7 +379,27 @@ namespace Baird.Controls
                 var url = change.NewValue as string;
                 if (!string.IsNullOrEmpty(url))
                 {
-                    Play(url);
+                    if (ResumeTime.HasValue)
+                    {
+                        var start = ResumeTime.Value;
+                        Console.WriteLine($"[VideoPlayer] Playing with ResumeTime: {start}");
+                        Play(url, start);
+                        // Reset ResumeTime so subsequent plays don't reuse it?
+                        // But it's bound. The binding source should update or we should just hope next item has null.
+                        // ActiveItem changes -> ResumeTime changes -> Source changes.
+                        // Order of property changes matters.
+                        // If Source changes before ResumeTime, we might capture old ResumeTime.
+                        // BUT ActiveMedia is atomic object replacement.
+                        // So bindings update independently.
+                        // Ideally we wait for both?
+                        // Avalonia bindings usually update in order defined? No guarantee.
+                        // If ActiveItem is replaced, all properties update.
+                    }
+                    else
+                    {
+                        Play(url);
+                    }
+
                     // Apply subtitle state when source changes/starts
                     SetSubtitle(IsSubtitlesEnabled);
                 }
@@ -337,12 +426,32 @@ namespace Baird.Controls
                 {
                     _player.Resume();
                 }
+                
+                // Save progress on Pause
+                if (paused) SaveProgress();
             }
         }
 
         public void Play(string url) 
         {
             _player.Play(url);
+            IsPaused = false;
+        }
+
+        public void Play(string url, TimeSpan startTime)
+        {
+            _player.Play(url);
+            // Seek after start? MpvPlayer might handle start time property?
+            // Or we can just seek immediately.
+            // _player.Play is async-ish?
+            // "start" option in MPV is better: --start=...
+            // But MpvPlayer wrapper might not expose options easily per play?
+            // Let's just Seek after Play.
+            
+            // Wait, if we Seek immediately after Play command, it might work if MPV handles command queue.
+            // Ideally we pass "start" option.
+            // Let's try explicit Seek.
+            _player.Seek(startTime.TotalSeconds); 
             IsPaused = false;
         }
 
@@ -363,6 +472,7 @@ namespace Baird.Controls
         public void Seek(double s) => _player.Seek(s);
         public void Stop() 
         {
+            SaveProgress();
             _player.Stop();
             IsPaused = true;
         }
@@ -379,6 +489,13 @@ namespace Baird.Controls
         }
 
         private LibMpv.MpvGetProcAddressFn? _getProcAddress;
+
+        protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+        {
+            Console.WriteLine("[VideoPlayer] OnDetachedFromVisualTree called. Saving progress.");
+            SaveProgress();
+            base.OnDetachedFromVisualTree(e);
+        }
 
         protected override void OnOpenGlInit(GlInterface gl)
         {

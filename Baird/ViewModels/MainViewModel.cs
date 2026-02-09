@@ -35,6 +35,7 @@ namespace Baird.ViewModels
         }
 
         public OmniSearchViewModel OmniSearch { get; }
+        public HistoryViewModel History { get; }
 
         private ActiveMedia? _activeItem;
         public ActiveMedia? ActiveItem
@@ -44,11 +45,18 @@ namespace Baird.ViewModels
         }
 
         public string AppVersion { get; }
+        public IHistoryService HistoryService { get; } // Exposed for now, or just internal use
 
-        public MainViewModel(System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> providers)
+        public MainViewModel(System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> providers, IHistoryService historyService)
         {
             _providers = providers;
+            HistoryService = historyService;
             OmniSearch = new OmniSearchViewModel(providers);
+            History = new HistoryViewModel(historyService);
+            
+            History.PlayRequested += (s, item) => PlayItem(item);
+            History.BackRequested += (s, e) => GoBack();
+
             IsVideoHudVisible = true;
             
             IsSubtitlesEnabled = NativeUtils.GetCapsLockState();
@@ -99,7 +107,18 @@ namespace Baird.ViewModels
 
             if (!string.IsNullOrEmpty(item.StreamUrl))
             {
-                ActivateChannel(item);
+                // Check for resume progress
+                var history = HistoryService.GetProgress(item.Id);
+                TimeSpan? resumeTime = null;
+                
+                if (history != null && !history.IsFinished && history.Progress > 0 && !item.IsLive)
+                {
+                    // Resume logic
+                    resumeTime = history.LastPosition;
+                    Console.WriteLine($"Resuming {item.Name} at {resumeTime}");
+                }
+
+                ActivateChannel(item, resumeTime);
                 
                 // Clear navigation stack to return to video
                 NavigationHistory.Clear();
@@ -220,16 +239,22 @@ namespace Baird.ViewModels
 
         // Helper to activate a channel (similar to PlayItem in View, but VM based)
         // Note: Actual playback starts because ActiveItem is bound in View.
-        private void ActivateChannel(Baird.Services.MediaItem item)
+        private void ActivateChannel(Baird.Services.MediaItem item, TimeSpan? resumeTime = null)
         {
              ActiveItem = new ActiveMedia 
              {
                  Id = item.Id,
                  Name = item.Name,
                  Details = item.Details,
+                 ImageUrl = item.ImageUrl,
+                 Source = item.Source,
+                 Type = item.Type,
+                 Synopsis = item.Synopsis,
+                 Subtitle = item.Subtitle,
                  StreamUrl = item.StreamUrl,
                  IsLive = item.IsLive,
-                 ChannelNumber = item.ChannelNumber
+                 ChannelNumber = item.ChannelNumber,
+                 ResumeTime = resumeTime
              };
              
              ResetHudTimer();
@@ -252,6 +277,13 @@ namespace Baird.ViewModels
             {
                 PopViewModel();
             }
+        }
+        
+        public async void OpenHistory()
+        {
+             // Refresh history before showing
+             await History.RefreshAsync();
+             PushViewModel(History);
         }
     }
 }

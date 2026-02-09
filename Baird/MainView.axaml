@@ -30,6 +30,9 @@
                 <DataTemplate DataType="{x:Type vm:ProgrammeDetailViewModel}">
                     <c:ProgrammeDetailControl/>
                 </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:HistoryViewModel}">
+                    <c:HistoryControl/>
+                </DataTemplate>
             </ContentControl.DataTemplates>
         </ContentControl>
 

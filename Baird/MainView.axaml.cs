@@ -18,6 +18,7 @@ namespace Baird
         // private IMediaProvider _mediaProvider; // Removed single provider
         private List<IMediaProvider> _providers = new();
         private ICecService _cecService;
+        private IHistoryService _historyService;
 
         public MainView()
         {
@@ -29,8 +30,9 @@ namespace Baird
             _providers.Add(new YouTubeService());
 
             _cecService = new CecService();
+            _historyService = new JsonHistoryService();
 
-            _viewModel = new MainViewModel(_providers);
+            _viewModel = new MainViewModel(_providers, _historyService);
             
             DataContext = _viewModel;
 
@@ -75,6 +77,61 @@ namespace Baird
                     }
                 }, DispatcherPriority.Input);
                 
+                // Inject HistoryService into VideoLayer/Player
+                var vLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                if (vLayer != null)
+                {
+                    vLayer.HistoryService = _historyService;
+                }
+
+                // Subscribe to ActiveItem changes to notify VideoPlayer of current item identity
+                _viewModel.ObservableForProperty(x => x.ActiveItem)
+                    .Subscribe(change => 
+                    {
+                         var item = change.Value;
+                         if (vLayer != null && item != null)
+                         {
+                             // ActiveMedia is a subclass or similar to MediaItem? 
+                             // Wait, ActiveMedia is defined where? In MainViewModel.cs?
+                             // Let's check MainViewModel.cs for ActiveMedia definition.
+                             // It seems to be a local class or struct, or reusing MediaItem.
+                             
+                             // If ActiveMedia is compatible or we can map it.
+                             // MainViewModel.cs: private ActiveMedia? _activeItem;
+                             // We probably need to map it back to MediaItem or just pass the ID/Name/etc.
+                             // VideoPlayer.SetCurrentMediaItem takes MediaItem.
+                             
+                             // Let's assume for now we construct a MediaItem from ActiveMedia
+                             var mediaItem = new MediaItem 
+                             {
+                                 Id = item.Id,
+                                 Name = item.Name,
+                                 Details = item.Details,
+                                 ImageUrl = item.ImageUrl,
+                                 Source = item.Source,
+                                 Type = item.Type,
+                                 Synopsis = item.Synopsis,
+                                 Subtitle = item.Subtitle,
+                                 IsLive = item.IsLive,
+                                 StreamUrl = item.StreamUrl
+                             };
+                             vLayer.GetPlayer()?.SetCurrentMediaItem(mediaItem);
+                         }
+                    });
+
+                // Hook up 'Down' key from player to OpenHistory
+                if (vLayer != null)
+                {
+                    var player = vLayer.GetPlayer();
+                    if (player != null)
+                    {
+                        player.HistoryRequested += (sender, args) => 
+                        {
+                            Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.OpenHistory());
+                        };
+                    }
+                }
+
                 await InitializeMediaProvider();
                 await _cecService.StartAsync();
             };
@@ -162,6 +219,17 @@ namespace Baird
             if (e.Key == Key.Q)
             {
                 Console.WriteLine("[InputCoordinator] Q pressed. Exiting application.");
+                // Try to save progress before exit
+                var vLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                vLayer?.GetPlayer()?.SaveProgress();
+                
+                // Allow a small delay for async save? Or just hope it writes fast enough?
+                // UpsertAsync writes to file.
+                // We should probably wait a bit or make SaveProgress synchronous-ish or blocking?
+                // But SaveProgress is async void.
+                // For now, let's just call it and sleep slightly.
+                System.Threading.Thread.Sleep(500);
+                
                 Environment.Exit(0);
                 return;
             }

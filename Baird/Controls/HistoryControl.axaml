@@ -5,12 +5,11 @@
              xmlns:vm="using:Baird.ViewModels"
              xmlns:controls="using:Baird.Controls"
              xmlns:conv="using:Baird.Converters"
-             xmlns:services="using:Baird.Services"
              xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="Baird.Controls.OmniSearchControl"
+             x:Class="Baird.Controls.HistoryControl"
              x:CompileBindings="True"
-             x:DataType="vm:OmniSearchViewModel">
+             x:DataType="vm:HistoryViewModel">
              
     <UserControl.Resources>
         <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
@@ -22,23 +21,14 @@
     </UserControl.KeyBindings>
 
     <UserControl.Styles>
-        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-            <Setter Property="BorderBrush" Value="#EEEEEE"/>
-            <Setter Property="BorderThickness" Value="4"/>
-        </Style>
-        
-        <!-- Tile Style for ListBoxItem -->
         <Style Selector="ListBoxItem">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="4"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="10"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
         </Style>
         
-        <!-- Selected or Focused -> Highlight Border -->
         <Style Selector="ListBoxItem:selected">
             <Setter Property="BorderBrush" Value="#eeeeee"/>
         </Style>
@@ -46,7 +36,6 @@
             <Setter Property="BorderBrush" Value="#eeeeee"/>
         </Style>
         
-        <!-- Remove default blue background for selection -->
         <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent"/>
         </Style>
@@ -55,39 +44,23 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Name="OmniSearchGrid" RowDefinitions="Auto,*,Auto" Background="#DD000000"
-          XYFocus.NavigationModes="Enabled"
-          XYFocus.DownNavigationStrategy="Projection"
-          XYFocus.UpNavigationStrategy="Projection"
-          XYFocus.LeftNavigationStrategy="Projection"
-          XYFocus.RightNavigationStrategy="Projection">
+    <Grid Name="HistoryGrid" RowDefinitions="Auto,*" Background="#DD000000">
         
-        <!-- Row 0: SearchBox -->
-        <Border Grid.Row="0" Padding="20">
-            <TextBox Name="SearchBox" 
-                     Text="{Binding SearchText}" 
-                     FontSize="24" 
-                     Watermark="Search...">
-                <TextBox.KeyBindings>
-                    <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedItem}" />
-                </TextBox.KeyBindings>
-            </TextBox>
-        </Border>
+        <!-- Header -->
+        <TextBlock Text="Continue Watching" FontSize="28" FontWeight="Bold" Foreground="White" Margin="20"/>
 
-        <!-- Row 1: Search Results -->
+        <!-- History Grid -->
         <ListBox Grid.Row="1" 
-                 Name="ResultsList" 
-                 ItemsSource="{Binding SearchResults}"
+                 Name="HistoryList" 
+                 Focusable="True"
+                 ItemsSource="{Binding HistoryItems}"
                  SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
                  Background="Transparent"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  ScrollViewer.VerticalScrollBarVisibility="Auto">
             <ListBox.ItemsPanel>
                 <ItemsPanelTemplate>
-                    <WrapPanel ItemWidth="300" 
-                               ItemHeight="240" 
-                               HorizontalAlignment="Center"
-                               Width="{Binding $parent[controls:OmniSearchControl].CalculatedWidth}"/>
+                    <WrapPanel ItemWidth="300" ItemHeight="240" HorizontalAlignment="Center"/>
                 </ItemsPanelTemplate>
             </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
@@ -97,12 +70,10 @@
                             BorderThickness="0"
                             HorizontalAlignment="Stretch" 
                             VerticalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch" 
-                            VerticalContentAlignment="Stretch"
                             Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
                             CommandParameter="{Binding}">
                         <Grid RowDefinitions="*, Auto, Auto">
-                            <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="Red">
+                            <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="Black">
                                 <Grid>
                                     <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" />
                                     <!-- Progress Bar Overlay -->
@@ -110,13 +81,9 @@
                                 </Grid>
                             </Border>
                             <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
-                                 <TextBlock Text="{Binding ChannelNumber}" Foreground="#FFD700" FontWeight="ExtraBold" Margin="0,0,6,0" IsVisible="{Binding ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
                                  <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="Bold" TextTrimming="CharacterEllipsis" TextAlignment="Left"/>
                             </StackPanel>
                             <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
-                                <Border Background="#333333" CornerRadius="4" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding Source, Converter={StaticResource StringVisibilityConverter}}">
-                                    <TextBlock Text="{Binding Source}" Foreground="#4CC9F0" FontSize="10" FontWeight="Bold"/>
-                                </Border>
                                 <TextBlock Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Grid>
@@ -125,12 +92,7 @@
             </ListBox.ItemTemplate>
         </ListBox>
         
-        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsVisible="{Binding IsSearching}">
-            <TextBlock Text="Searching..." FontSize="20" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
-            <ProgressBar IsIndeterminate="True" Width="200" Margin="0,10,0,0" Height="4"/>
-        </StackPanel>
-
-        <!-- Row 2: Virtual Keyboard (Visible only when prompted) -->
+        <TextBlock Grid.Row="1" Text="No history items found." Foreground="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HistoryItems.Count}"/>
 
     </Grid>
 </UserControl>

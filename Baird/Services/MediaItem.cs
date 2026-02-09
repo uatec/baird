@@ -24,5 +24,11 @@ namespace Baird.Services
         public MediaType Type { get; set; } = MediaType.Video;
         public string Synopsis { get; set; } = "";
         public string Subtitle { get; set; } = ""; // e.g. "Series 1: Episode 1"
+
+        // History Tracking
+        public TimeSpan LastPosition { get; set; }
+        public double Progress { get; set; } // 0.0 to 1.0
+        public bool IsFinished { get; set; }
+        public DateTime LastWatched { get; set; }
     }
 }

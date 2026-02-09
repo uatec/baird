@@ -21,6 +21,7 @@
                        VerticalAlignment="Stretch"
                        Source="{Binding ActiveItem.StreamUrl}"
                        IsLive="{Binding ActiveItem.IsLive}"
+                       ResumeTime="{Binding ActiveItem.ResumeTime}"
                        IsSubtitlesEnabled="{Binding IsSubtitlesEnabled}"
                        IsPaused="{Binding IsPaused, Mode=TwoWay}"/>
 
