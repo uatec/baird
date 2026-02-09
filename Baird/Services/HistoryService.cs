@@ -85,17 +85,15 @@ namespace Baird.Services
                     ChannelNumber = item.ChannelNumber,
                     Type = item.Type,
                     Synopsis = item.Synopsis,
-                    Subtitle = item.Subtitle
+                    Subtitle = item.Subtitle,
+                    Duration = duration,
                 };
                 _historyCache.Add(existing);
             }
 
             existing.LastWatched = DateTime.Now;
-            existing.LastPosition = position;
+            existing.LastPosition = existing.IsLive ? TimeSpan.Zero : position;
             
-            double progress = position.TotalSeconds / duration.TotalSeconds;
-            existing.Progress = existing.IsLive ? 0 : Math.Clamp(progress, 0.0, 1.0);
-
             // Finished Logic
             // Came within 5% of end for short videos
             // Came within 10 minutes of end for longer videos (e.g. Movies > 90 mins)

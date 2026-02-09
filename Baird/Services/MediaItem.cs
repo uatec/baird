@@ -27,8 +27,10 @@ namespace Baird.Services
 
         // History Tracking
         public TimeSpan LastPosition { get; set; }
-        public double Progress { get; set; } // 0.0 to 1.0
+        public TimeSpan Duration { get; set; }
         public bool IsFinished { get; set; }
         public DateTime LastWatched { get; set; }
+
+        public double Progress => LastPosition.TotalSeconds / Duration.TotalSeconds;
     }
 }

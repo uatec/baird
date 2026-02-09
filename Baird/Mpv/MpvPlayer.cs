@@ -35,7 +35,7 @@ namespace Baird.Mpv
             
             // Generics Options
             SetPropertyString("terminal", "yes");
-            SetPropertyString("msg-level", "all=v");
+            SetPropertyString("msg-level", "all=warn");
             
             // Critical for embedding: Force libmpv VO to prevent detached window
             SetPropertyString("vo", "libmpv");
@@ -139,9 +139,22 @@ namespace Baird.Mpv
             Marshal.FreeCoTaskMem(pFlipY);
         }
 
-        public void Play(string url)
+        public void Play(string url, double? startSeconds = null)
         {
-            Command("loadfile", url);
+            int startSecondsInt = (int)(startSeconds ?? 0); 
+            Console.WriteLine($"[MpvPlayer] Playing URL: {url} (start={startSecondsInt.ToString(System.Globalization.CultureInfo.InvariantCulture)})");
+            if (startSeconds.HasValue)
+            {
+                 // "replace" is the default flag (replace current file)
+                 // "start=X" is the option
+                 // include playlist index of zero because we don't play playlists
+                 Command("loadfile", url, "replace", "0", $"start={startSecondsInt.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            }
+            else
+            {
+                Command("loadfile", url);
+            }
+            
             SetPropertyString("pause", "no");
             State = PlaybackState.Playing;
         }
@@ -183,6 +196,7 @@ namespace Baird.Mpv
              var cmdString = string.Join(" ", args); // Simple join might generally work for simple args, but quoting is safer.
              // However, LibMpv.mpv_command expects null-terminated array.
              
+             Console.WriteLine($"[MpvPlayer] Command: {cmdString}");
              IntPtr[] pointers = new IntPtr[args.Length + 1];
              for (int i = 0; i < args.Length; i++)
              {

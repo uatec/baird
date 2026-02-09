@@ -379,26 +379,23 @@ namespace Baird.Controls
                 var url = change.NewValue as string;
                 if (!string.IsNullOrEmpty(url))
                 {
-                    if (ResumeTime.HasValue)
+                    // Defer play to allow other bindings (like ResumeTime) to update if they are changing simultaneously
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                     {
-                        var start = ResumeTime.Value;
-                        Console.WriteLine($"[VideoPlayer] Playing with ResumeTime: {start}");
-                        Play(url, start);
-                        // Reset ResumeTime so subsequent plays don't reuse it?
-                        // But it's bound. The binding source should update or we should just hope next item has null.
-                        // ActiveItem changes -> ResumeTime changes -> Source changes.
-                        // Order of property changes matters.
-                        // If Source changes before ResumeTime, we might capture old ResumeTime.
-                        // BUT ActiveMedia is atomic object replacement.
-                        // So bindings update independently.
-                        // Ideally we wait for both?
-                        // Avalonia bindings usually update in order defined? No guarantee.
-                        // If ActiveItem is replaced, all properties update.
-                    }
-                    else
-                    {
-                        Play(url);
-                    }
+                        // Double check source hasn't changed again
+                        if (Source != url) return;
+
+                        if (ResumeTime.HasValue)
+                        {
+                            var start = ResumeTime.Value;
+                            Console.WriteLine($"[VideoPlayer] Playing with ResumeTime: {start}");
+                            Play(url, start);
+                        }
+                        else
+                        {
+                            Play(url);
+                        }
+                    });
 
                     // Apply subtitle state when source changes/starts
                     SetSubtitle(IsSubtitlesEnabled);
@@ -440,18 +437,7 @@ namespace Baird.Controls
 
         public void Play(string url, TimeSpan startTime)
         {
-            _player.Play(url);
-            // Seek after start? MpvPlayer might handle start time property?
-            // Or we can just seek immediately.
-            // _player.Play is async-ish?
-            // "start" option in MPV is better: --start=...
-            // But MpvPlayer wrapper might not expose options easily per play?
-            // Let's just Seek after Play.
-            
-            // Wait, if we Seek immediately after Play command, it might work if MPV handles command queue.
-            // Ideally we pass "start" option.
-            // Let's try explicit Seek.
-            _player.Seek(startTime.TotalSeconds); 
+            _player.Play(url, startTime.TotalSeconds);
             IsPaused = false;
         }
 

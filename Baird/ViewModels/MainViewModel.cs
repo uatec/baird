@@ -111,7 +111,7 @@ namespace Baird.ViewModels
                 var history = HistoryService.GetProgress(item.Id);
                 TimeSpan? resumeTime = null;
                 
-                if (history != null && !history.IsFinished && history.Progress > 0 && !item.IsLive)
+                if (history != null && !history.IsFinished && !item.IsLive)
                 {
                     // Resume logic
                     resumeTime = history.LastPosition;
