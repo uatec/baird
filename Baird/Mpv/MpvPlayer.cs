@@ -10,6 +10,10 @@ namespace Baird.Mpv
     {
         private IntPtr _mpvHandle;
         private IntPtr _renderContext;
+        private System.Threading.Thread? _eventThread;
+        private volatile bool _eventLoopRunning;
+        
+        public event EventHandler? StreamEnded;
         
         public PlaybackState State { get; private set; } = PlaybackState.Idle;
 
@@ -62,6 +66,60 @@ namespace Baird.Mpv
             var res = LibMpv.mpv_initialize(_mpvHandle);
             if (res < 0)
                 throw new Exception($"Failed to initialize mpv: {res}");
+            
+            // Start event loop thread
+            _eventLoopRunning = true;
+            _eventThread = new System.Threading.Thread(EventLoop)
+            {
+                IsBackground = true,
+                Name = "MpvEventLoop"
+            };
+            _eventThread.Start();
+        }
+
+        private void EventLoop()
+        {
+            Console.WriteLine("[MpvPlayer] Event loop thread started");
+            
+            while (_eventLoopRunning)
+            {
+                try
+                {
+                    // Wait for events with 1 second timeout
+                    IntPtr eventPtr = LibMpv.mpv_wait_event(_mpvHandle, 1.0);
+                    if (eventPtr == IntPtr.Zero)
+                        continue;
+
+                    var evt = Marshal.PtrToStructure<LibMpv.MpvEvent>(eventPtr);
+                    
+                    if (evt.EventId == LibMpv.MpvEventId.EndFile)
+                    {
+                        if (evt.Data != IntPtr.Zero)
+                        {
+                            var endFileEvent = Marshal.PtrToStructure<LibMpv.MpvEndFileEvent>(evt.Data);
+                            Console.WriteLine($"[MpvPlayer] EndFile event: reason={endFileEvent.Reason}, error={endFileEvent.Error}");
+                            
+                            // Only fire StreamEnded for natural EOF, not for stop/error/quit
+                            if (endFileEvent.Reason == LibMpv.MpvEndFileReason.Eof)
+                            {
+                                Console.WriteLine("[MpvPlayer] Stream ended naturally (EOF)");
+                                StreamEnded?.Invoke(this, EventArgs.Empty);
+                            }
+                        }
+                    }
+                    else if (evt.EventId == LibMpv.MpvEventId.Shutdown)
+                    {
+                        Console.WriteLine("[MpvPlayer] Received shutdown event");
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MpvPlayer] Error in event loop: {ex.Message}");
+                }
+            }
+            
+            Console.WriteLine("[MpvPlayer] Event loop thread exiting");
         }
 
         // Add this field to your class
@@ -290,6 +348,14 @@ namespace Baird.Mpv
 
         public void Dispose()
         {
+            // Stop event loop thread first
+            _eventLoopRunning = false;
+            if (_eventThread != null && _eventThread.IsAlive)
+            {
+                // Give it a moment to exit gracefully
+                _eventThread.Join(2000);
+            }
+            
             if (_renderContext != IntPtr.Zero)
             {
                 LibMpv.mpv_render_context_free(_renderContext);

@@ -24,6 +24,13 @@ namespace Baird.Controls
         {
             _player = new MpvPlayer();
             // _renderUpdateDelegate = UpdateCallback; // Moved to MpvPlayer internal logic
+            
+            // Subscribe to player's StreamEnded event
+            _player.StreamEnded += (sender, args) =>
+            {
+                Console.WriteLine("[VideoPlayer] StreamEnded event received from MpvPlayer");
+                StreamEnded?.Invoke(this, EventArgs.Empty);
+            };
 
             _hudTimer = new Avalonia.Threading.DispatcherTimer
             {
@@ -38,6 +45,7 @@ namespace Baird.Controls
         public event EventHandler<string>? SearchRequested;
         public event EventHandler? UserActivity;
         public event EventHandler? HistoryRequested;
+        public event EventHandler? StreamEnded;
 
         protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
         {

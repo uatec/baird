@@ -106,6 +106,10 @@ namespace Baird.Mpv
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern void mpv_set_wakeup_callback(IntPtr handle, MpvWakeupCallback cb, IntPtr d);
 
+        [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr mpv_wait_event(IntPtr handle, double timeout);
+
+
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void MpvRenderUpdateFn(IntPtr cb_ctx);
         
@@ -125,6 +129,39 @@ namespace Baird.Mpv
             Node = 6,
             ByteArray = 7
         }
+
+        public enum MpvEventId
+        {
+            None = 0,
+            Shutdown = 1,
+            LogMessage = 2,
+            GetPropertyReply = 3,
+            SetPropertyReply = 4,
+            CommandReply = 5,
+            StartFile = 6,
+            EndFile = 7,
+            FileLoaded = 8,
+            Idle = 11,
+            Tick = 14,
+            ClientMessage = 16,
+            VideoReconfig = 17,
+            AudioReconfig = 18,
+            Seek = 20,
+            PlaybackRestart = 21,
+            PropertyChange = 22,
+            QueueOverflow = 24,
+            Hook = 25
+        }
+
+        public enum MpvEndFileReason
+        {
+            Eof = 0,
+            Stop = 2,
+            Quit = 3,
+            Error = 4,
+            Redirect = 5
+        }
+
 
         public enum MpvRenderParamType
         {
@@ -170,5 +207,22 @@ namespace Baird.Mpv
             public int H;
             public int InternalFormat;
         }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MpvEvent
+        {
+            public MpvEventId EventId;
+            public int Error;
+            public ulong ReplyUserdata;
+            public IntPtr Data;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MpvEndFileEvent
+        {
+            public MpvEndFileReason Reason;
+            public int Error;
+        }
+
     }
 }

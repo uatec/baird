@@ -39,6 +39,7 @@ namespace Baird.Controls
             {
                 player.SearchRequested += OnSearchRequested;
                 player.UserActivity += OnUserActivity;
+                player.StreamEnded += OnStreamEnded;
                 player.Focus(); // Ensure player gets focus when layer is active
             }
         }
@@ -51,6 +52,7 @@ namespace Baird.Controls
             {
                 player.SearchRequested -= OnSearchRequested;
                 player.UserActivity -= OnUserActivity;
+                player.StreamEnded -= OnStreamEnded;
             }
         }
 
@@ -74,6 +76,21 @@ namespace Baird.Controls
                     vm.OmniSearch.SearchText = text;
                 }
             }
+        }
+
+        private void OnStreamEnded(object? sender, EventArgs e)
+        {
+            Console.WriteLine("[VideoLayerControl] StreamEnded event received, navigating back");
+            
+            // Ensure we're on the UI thread before calling navigation
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (DataContext is ViewModels.MainViewModel vm)
+                {
+                    Console.WriteLine("[VideoLayerControl] Calling PopViewModel to navigate back");
+                    vm.PopViewModel();
+                }
+            });
         }
     }
 }
