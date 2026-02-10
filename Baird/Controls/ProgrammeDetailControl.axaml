@@ -52,13 +52,15 @@
             </StackPanel>
 
             <!-- Episodes List -->
-            <ScrollViewer Grid.Row="1" Margin="0, 30, 0, 0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <ListBox Name="EpisodeList" 
-                         ItemsSource="{Binding ProgrammeChildren}"
-                         SelectedItem="{Binding SelectedEpisode, Mode=TwoWay}"
-                         Background="Transparent"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" 
-                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListBox Grid.Row="1" 
+                     Name="EpisodeList" 
+                     Margin="0, 30, 0, 0"
+                     Focusable="True"
+                     ItemsSource="{Binding ProgrammeChildren}"
+                     SelectedItem="{Binding SelectedEpisode, Mode=TwoWay}"
+                     Background="Transparent"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" 
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <ListBox.Styles>
                         <!-- Tile Style for ListBoxItem -->
                         <Style Selector="ListBoxItem">
@@ -105,7 +107,6 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-            </ScrollViewer>
         </Grid>
     </Grid>
 </UserControl>
