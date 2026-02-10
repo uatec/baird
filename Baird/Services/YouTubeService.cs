@@ -39,7 +39,7 @@ namespace Baird.Services
                 if (process == null) return Enumerable.Empty<MediaItem>();
 
                 var items = new List<MediaItem>();
-                string line;
+                string? line;
                 while ((line = await process.StandardOutput.ReadLineAsync()) != null)
                 {
                     try
@@ -48,16 +48,25 @@ namespace Baird.Services
                         var root = doc.RootElement;
 
                         var id = root.GetProperty("id").GetString();
+                        if (id == null)
+                        {
+                            Console.WriteLine($"Invalid ID in yt-dlp output: {line}");
+                            continue;
+                        }
                         var title = root.GetProperty("title").GetString();
-                        var uploader = root.TryGetProperty("uploader", out var u) ? u.GetString() : "YouTube";
+                        if (title == null)
+                        {
+                            Console.WriteLine($"Invalid title in yt-dlp output: {line}");
+                            continue;
+                        }
 
                         items.Add(new MediaItem
                         {
                             Id = id,
                             Name = title,
-                            Details = uploader,
+                            Details = "", // TODO: Get the full video blurb here
                             ImageUrl = $"https://i.ytimg.com/vi/{id}/hqdefault.jpg",
-                            IsLive = false, // Note: could check if 'is_live' in json, but simplified for now
+                            IsLive = false, // TODO: could check if 'is_live' in json, but simplified for now. Youtube live streams are not the same as channels.
                             StreamUrl = GetStreamUrlInternal(id),
                             Source = "YouTube",
                             Type = MediaType.Video,

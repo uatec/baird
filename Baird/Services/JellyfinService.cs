@@ -319,8 +319,8 @@ namespace Baird.Services
                 StreamUrl = isContainer ? "" : GetStreamUrlInternal(m.Id),
                 Source = $"Jellyfin: {_serverHostname}",
                 Type = type,
-                Subtitle = null,
-                Synopsis = null,
+                Subtitle = "",
+                Synopsis = "", // TODO: should this stuff just be nullable or expicitly empty? or a subtype for Groupings
             };
         }
 

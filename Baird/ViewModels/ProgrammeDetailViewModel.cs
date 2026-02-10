@@ -47,7 +47,7 @@ namespace Baird.ViewModels
         public ProgrammeDetailViewModel(IEnumerable<IMediaProvider> providers, MediaItem programme)
         {
             _providers = providers;
-            SelectedProgramme = programme;
+            _selectedProgramme = programme;
 
             var canPlay = this.WhenAnyValue(x => x.SelectedEpisode, (MediaItem? item) => item != null);
             PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay, canPlay);
@@ -59,26 +59,26 @@ namespace Baird.ViewModels
         private async Task LoadChildren()
         {
             ProgrammeChildren.Clear();
-            
+
             var tasks = new List<Task<IEnumerable<MediaItem>>>();
-            foreach(var p in _providers)
+            foreach (var p in _providers)
             {
-               tasks.Add(p.GetChildrenAsync(SelectedProgramme.Id));
+                tasks.Add(p.GetChildrenAsync(SelectedProgramme.Id));
             }
 
-            try 
+            try
             {
                 var results = await Task.WhenAll(tasks);
-                foreach(var list in results)
+                foreach (var list in results)
                 {
-                    foreach(var item in list)
+                    foreach (var item in list)
                     {
                         ProgrammeChildren.Add(item);
                     }
                 }
                 SelectedEpisode = ProgrammeChildren.FirstOrDefault();
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Console.WriteLine($"Error fetching children: {ex.Message}");
             }

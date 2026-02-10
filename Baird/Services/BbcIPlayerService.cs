@@ -60,7 +60,17 @@ namespace Baird.Services
                         if (type == "brand" || type == "programme")
                         {
                             var id = item.GetProperty("id").GetString();
+                            if (id == null)
+                            {
+                                Console.WriteLine("[BBCiPlayer] Invalid ID in JSON");
+                                continue;
+                            }
                             var title = item.GetProperty("title").GetString();
+                            if (title == null)
+                            {
+                                Console.WriteLine("[BBCiPlayer] Invalid title in JSON");
+                                continue;
+                            }
 
                             string subtitle = "";
                             if (item.TryGetProperty("subtitle", out var subProp))

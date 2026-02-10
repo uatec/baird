@@ -122,16 +122,8 @@ namespace Baird.Mpv
             Console.WriteLine("[MpvPlayer] Event loop thread exiting");
         }
 
-        // Add this field to your class
-        // private IntPtr _renderContext;
-
-        private LibMpv.MpvRenderUpdateFn _renderUpdateFn;
-        private Action _requestRender;
-
         public void InitializeOpenGl(IntPtr procAddressCallback, Action requestRender)
         {
-            _requestRender = requestRender;
-
             // 1. Wrap the Avalonia proc address callback
             var openglParams = new LibMpv.MpvOpenglInitParams
             {
@@ -161,13 +153,7 @@ namespace Baird.Mpv
             if (res < 0) throw new Exception($"Failed to create render context: {res}");
 
             // 5. Set update callback
-            _renderUpdateFn = UpdateCallback;
-            LibMpv.mpv_render_context_set_update_callback(_renderContext, _renderUpdateFn, IntPtr.Zero);
-        }
-
-        private void UpdateCallback(IntPtr ctx)
-        {
-            _requestRender?.Invoke();
+            LibMpv.mpv_render_context_set_update_callback(_renderContext, ctx => requestRender(), IntPtr.Zero);
         }
 
         public void Render(int fbo, int width, int height)

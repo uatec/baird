@@ -189,8 +189,9 @@ namespace Baird.Controls
 
         public void SetCurrentMediaItem(Baird.Services.MediaItem item)
         {
+            if (item == null) throw new ArgumentNullException(nameof(item));
             // Save progress of previous item before switching
-            if (_currentMediaItem != null && item != null && _currentMediaItem.Id != item.Id)
+            if (_currentMediaItem != null && _currentMediaItem.Id != item.Id)
             {
                 SaveProgress();
             }
