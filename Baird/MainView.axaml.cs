@@ -270,12 +270,9 @@ namespace Baird
 
         private void HandleBackTrigger(KeyEventArgs e)
         {
-            // If there is any page open, go back
-            if (_viewModel.CurrentPage != null)
-            {
-                _viewModel.GoBack();
-                e.Handled = true;
-            }
+            // Always handle back - GoBack() now handles both overlay pages and video player
+            _viewModel.GoBack();
+            e.Handled = true;
         }
 
         private void InitializeComponent()

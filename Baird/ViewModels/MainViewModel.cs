@@ -116,23 +116,24 @@ namespace Baird.ViewModels
 
                 ActivateChannel(item, resumeTime);
                 
-                // Clear navigation stack to return to video
-                NavigationHistory.Clear();
+                // Set CurrentPage to null to show video player, but preserve navigation history
+                // so user can navigate back to their previous page
                 CurrentPage = null;
-                
-                // Also clear search if it was active (it might be deep in stack or top)
-                OmniSearch.Clear();
             }
         }
 
         public void GoBack()
         {
-           PopViewModel();
-           // If we popped to nothing (Video), ensure specific focus or state?
-           if (CurrentPage == null)
-           {
-               // We are back at video
-           }
+            // If we're on the video player (CurrentPage == null) and there's history,
+            // restore the previous page
+            if (CurrentPage == null && NavigationHistory.Count > 0)
+            {
+                CurrentPage = NavigationHistory.Peek();
+                return;
+            }
+            
+            // Otherwise, pop the current page to go back
+            PopViewModel();
         }
 
         public Stack<ReactiveObject> NavigationHistory { get; } = new();
