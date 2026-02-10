@@ -106,6 +106,10 @@ namespace Baird.ViewModels
                 return;
             }
 
+            // Clear episode list for videos
+            // (will be set after by OpenProgramme.PlayRequested if playing from programme details)
+            _currentEpisodeList = null;
+
             if (!string.IsNullOrEmpty(item.StreamUrl))
             {
                 // Check for resume progress
@@ -316,10 +320,11 @@ namespace Baird.ViewModels
             var vm = new ProgrammeDetailViewModel(_providers, programme);
             vm.PlayRequested += (s, item) =>
             {
+                PlayItem(item);
                 // Set current episode list for auto-play next episode
+                // (after PlayItem, which clears it to handle Search/History plays correctly)
                 _currentEpisodeList = vm.ProgrammeChildren.ToList();
                 Console.WriteLine($"[MainViewModel] Set episode list with {_currentEpisodeList.Count} episodes");
-                PlayItem(item);
             };
             vm.BackRequested += (s, e) => GoBack();
             PushViewModel(vm);
