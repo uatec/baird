@@ -14,6 +14,21 @@ namespace Baird.Controls
         public ProgrammeDetailControl()
         {
             InitializeComponent();
+            
+            // Re-focus when DataContext changes (happens when ContentControl reuses this view for a new ViewModel)
+            this.GetObservable(DataContextProperty).Subscribe(dc =>
+            {
+                if (dc is ViewModels.ProgrammeDetailViewModel)
+                {
+                    Console.WriteLine("[ProgrammeDetailControl] DataContext changed, re-running focus logic");
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        this.Focusable = true;
+                        this.Focus();
+                        FocusFirstItem();
+                    }, Avalonia.Threading.DispatcherPriority.Input);
+                }
+            });
         }
 
         private void InitializeComponent()
@@ -26,6 +41,8 @@ namespace Baird.Controls
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
+            this.Focusable = true;
+            this.Focus();
             FocusFirstItem();
         }
 
@@ -37,6 +54,9 @@ namespace Baird.Controls
              // Retry waiting for data
              for(int i=0; i<20; i++)
              {
+                 // Bail out if we've been detached from the tree
+                 if (this.GetVisualRoot() == null) return;
+
                  if (list.ItemCount > 0)
                  {
                       // Ensure layout is up to date to get container

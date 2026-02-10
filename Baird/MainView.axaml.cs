@@ -63,6 +63,22 @@ namespace Baird
                                 }
                             });
                         }
+                        else
+                        {
+                            // When transitioning between overlay pages, temporarily focus the
+                            // PageFrame to prevent VideoPlayer from capturing focus while the
+                            // new control's FocusFirstItem() waits for data to load.
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                var pageFrame = this.FindControl<ContentControl>("PageFrame");
+                                if (pageFrame != null)
+                                {
+                                    Console.WriteLine("[MainView] CurrentPage changed to non-null, parking focus on PageFrame");
+                                    pageFrame.Focusable = true;
+                                    pageFrame.Focus();
+                                }
+                            });
+                        }
                     });
 
                 // Force initial focus to VideoPlayer
