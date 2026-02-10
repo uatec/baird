@@ -80,15 +80,14 @@ namespace Baird.Controls
 
         private void OnStreamEnded(object? sender, EventArgs e)
         {
-            Console.WriteLine("[VideoLayerControl] StreamEnded event received, navigating back");
+            Console.WriteLine("[VideoLayerControl] StreamEnded event received, checking for next episode");
             
             // Ensure we're on the UI thread before calling navigation
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 if (DataContext is ViewModels.MainViewModel vm)
                 {
-                    Console.WriteLine("[VideoLayerControl] Calling PopViewModel to navigate back");
-                    vm.PopViewModel();
+                    vm.PlayNextEpisodeOrGoBack();
                 }
             });
         }

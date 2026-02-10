@@ -46,6 +46,9 @@ namespace Baird.ViewModels
 
         public string AppVersion { get; }
         public IHistoryService HistoryService { get; } // Exposed for now, or just internal use
+        
+        // Track current episode list for auto-play next episode
+        private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
 
         public MainViewModel(System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> providers, IHistoryService historyService)
         {
@@ -97,6 +100,8 @@ namespace Baird.ViewModels
         {
             if (item.Type == MediaType.Brand)
             {
+                // Clear episode list when opening a programme (not playing an episode)
+                _currentEpisodeList = null;
                 OpenProgramme(item);
                 return;
             }
@@ -161,6 +166,55 @@ namespace Baird.ViewModels
             else
             {
                 CurrentPage = null;
+            }
+        }
+
+        private MediaItem? FindNextEpisode(MediaItem currentEpisode)
+        {
+            if (_currentEpisodeList == null || _currentEpisodeList.Count == 0)
+                return null;
+
+            var currentIndex = _currentEpisodeList.FindIndex(e => e.Id == currentEpisode.Id);
+            if (currentIndex == -1 || currentIndex >= _currentEpisodeList.Count - 1)
+                return null; // Not found or last episode
+
+            return _currentEpisodeList[currentIndex + 1];
+        }
+
+        public void PlayNextEpisodeOrGoBack()
+        {
+            if (ActiveItem == null)
+            {
+                PopViewModel();
+                return;
+            }
+
+            // Convert ActiveItem to MediaItem for searching
+            var currentItem = new MediaItem
+            {
+                Id = ActiveItem.Id,
+                Name = ActiveItem.Name,
+                Details = ActiveItem.Details,
+                ImageUrl = ActiveItem.ImageUrl,
+                Source = ActiveItem.Source,
+                Type = ActiveItem.Type,
+                Synopsis = ActiveItem.Synopsis,
+                Subtitle = ActiveItem.Subtitle,
+                StreamUrl = ActiveItem.StreamUrl,
+                IsLive = ActiveItem.IsLive,
+                ChannelNumber = ActiveItem.ChannelNumber
+            };
+
+            var nextEpisode = FindNextEpisode(currentItem);
+            if (nextEpisode != null)
+            {
+                Console.WriteLine($"[MainViewModel] Auto-playing next episode: {nextEpisode.Name}");
+                PlayItem(nextEpisode);
+            }
+            else
+            {
+                Console.WriteLine("[MainViewModel] No next episode, navigating back");
+                PopViewModel();
             }
         }
 
@@ -260,7 +314,13 @@ namespace Baird.ViewModels
         public void OpenProgramme(Baird.Services.MediaItem programme)
         {
             var vm = new ProgrammeDetailViewModel(_providers, programme);
-            vm.PlayRequested += (s, item) => PlayItem(item);
+            vm.PlayRequested += (s, item) =>
+            {
+                // Set current episode list for auto-play next episode
+                _currentEpisodeList = vm.ProgrammeChildren.ToList();
+                Console.WriteLine($"[MainViewModel] Set episode list with {_currentEpisodeList.Count} episodes");
+                PlayItem(item);
+            };
             vm.BackRequested += (s, e) => GoBack();
             PushViewModel(vm);
         }
