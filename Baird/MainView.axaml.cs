@@ -33,7 +33,7 @@ namespace Baird
             _historyService = new JsonHistoryService();
 
             _viewModel = new MainViewModel(_providers, _historyService);
-            
+
             DataContext = _viewModel;
 
             this.AttachedToVisualTree += async (s, e) =>
@@ -48,11 +48,11 @@ namespace Baird
 
                 // Restore focus to VideoPlayer when CurrentPage is cleared
                 _viewModel.ObservableForProperty(x => x.CurrentPage)
-                    .Subscribe(change => 
+                    .Subscribe(change =>
                     {
                         if (change.Value == null)
                         {
-                            Dispatcher.UIThread.Post(() => 
+                            Dispatcher.UIThread.Post(() =>
                             {
                                 var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
                                 var player = videoLayer?.GetPlayer();
@@ -92,7 +92,7 @@ namespace Baird
                         player.Focus();
                     }
                 }, DispatcherPriority.Input);
-                
+
                 // Inject HistoryService into VideoLayer/Player
                 var vLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
                 if (vLayer != null)
@@ -102,37 +102,38 @@ namespace Baird
 
                 // Subscribe to ActiveItem changes to notify VideoPlayer of current item identity
                 _viewModel.ObservableForProperty(x => x.ActiveItem)
-                    .Subscribe(change => 
+                    .Subscribe(change =>
                     {
-                         var item = change.Value;
-                         if (vLayer != null && item != null)
-                         {
-                             // ActiveMedia is a subclass or similar to MediaItem? 
-                             // Wait, ActiveMedia is defined where? In MainViewModel.cs?
-                             // Let's check MainViewModel.cs for ActiveMedia definition.
-                             // It seems to be a local class or struct, or reusing MediaItem.
-                             
-                             // If ActiveMedia is compatible or we can map it.
-                             // MainViewModel.cs: private ActiveMedia? _activeItem;
-                             // We probably need to map it back to MediaItem or just pass the ID/Name/etc.
-                             // VideoPlayer.SetCurrentMediaItem takes MediaItem.
-                             
-                             // Let's assume for now we construct a MediaItem from ActiveMedia
-                             var mediaItem = new MediaItem 
-                             {
-                                 Id = item.Id,
-                                 Name = item.Name,
-                                 Details = item.Details,
-                                 ImageUrl = item.ImageUrl,
-                                 Source = item.Source,
-                                 Type = item.Type,
-                                 Synopsis = item.Synopsis,
-                                 Subtitle = item.Subtitle,
-                                 IsLive = item.IsLive,
-                                 StreamUrl = item.StreamUrl
-                             };
-                             vLayer.GetPlayer()?.SetCurrentMediaItem(mediaItem);
-                         }
+                        var item = change.Value;
+                        if (vLayer != null && item != null)
+                        {
+                            // ActiveMedia is a subclass or similar to MediaItem? 
+                            // Wait, ActiveMedia is defined where? In MainViewModel.cs?
+                            // Let's check MainViewModel.cs for ActiveMedia definition.
+                            // It seems to be a local class or struct, or reusing MediaItem.
+
+                            // If ActiveMedia is compatible or we can map it.
+                            // MainViewModel.cs: private ActiveMedia? _activeItem;
+                            // We probably need to map it back to MediaItem or just pass the ID/Name/etc.
+                            // VideoPlayer.SetCurrentMediaItem takes MediaItem.
+
+                            // Let's assume for now we construct a MediaItem from ActiveMedia
+                            //  var mediaItem = new MediaItem 
+                            //  {
+                            //      Id = item.Id,
+                            //      Name = item.Name,
+                            //      Details = item.Details,
+                            //      ImageUrl = item.ImageUrl,
+                            //      Source = item.Source,
+                            //      Type = item.Type,
+                            //      Synopsis = item.Synopsis,
+                            //      Subtitle = item.Subtitle,
+                            //      IsLive = item.IsLive,
+                            //      StreamUrl = item.StreamUrl
+                            //  };
+                            var mediaItem = item;
+                            vLayer.GetPlayer()?.SetCurrentMediaItem(mediaItem);
+                        }
                     });
 
                 // Hook up 'Down' key from player to OpenHistory
@@ -141,54 +142,27 @@ namespace Baird
                     var player = vLayer.GetPlayer();
                     if (player != null)
                     {
-                        player.HistoryRequested += (sender, args) => 
+                        player.HistoryRequested += (sender, args) =>
                         {
                             Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.OpenHistory());
                         };
                     }
                 }
 
-                await InitializeMediaProvider();
+
+                await _viewModel.OmniSearch.ClearAndSearch();
+                await _viewModel.RefreshChannels();
+
+                // Auto-play first channel
+                var firstChannel = _viewModel.AllChannels.FirstOrDefault();
+                if (firstChannel != null)
+                {
+                    Console.WriteLine($"Auto-playing channel: {firstChannel.Name}");
+                    _viewModel.PlayItem(firstChannel);
+                }
+
                 await _cecService.StartAsync();
             };
-        }
-
-        private async Task InitializeMediaProvider()
-        {
-             try
-             {
-                 foreach (var provider in _providers)
-                 {
-                     try 
-                     {
-                         await provider.InitializeAsync();
-                     }
-                     catch (Exception ex)
-                     {
-                         Console.WriteLine($"Error init provider {provider.GetType().Name}: {ex}");
-                     }
-                 }
-
-                 // Trigger initial "Search" with empty query to populate results list
-                 await _viewModel.OmniSearch.ClearAndSearch();
-
-                 // Initial Channel Refresh
-                 await _viewModel.RefreshChannels();
-
-                 // Auto-play first channel logic
-                 // Use the ViewModel's aggregated list
-                 var firstChannel = _viewModel.AllChannels.FirstOrDefault();
-
-                 if (firstChannel != null)
-                 {
-                     Console.WriteLine($"Auto-playing channel: {firstChannel.Name}");
-                     _viewModel.PlayItem(firstChannel);
-                 }
-             }
-             catch(Exception ex)
-             {
-                 Console.WriteLine($"Error init media: {ex}");
-             }
         }
 
         private void InputCoordinator(object? sender, KeyEventArgs e)
@@ -238,14 +212,14 @@ namespace Baird
                 // Try to save progress before exit
                 var vLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
                 vLayer?.GetPlayer()?.SaveProgress();
-                
+
                 // Allow a small delay for async save? Or just hope it writes fast enough?
                 // UpsertAsync writes to file.
                 // We should probably wait a bit or make SaveProgress synchronous-ish or blocking?
                 // But SaveProgress is async void.
                 // For now, let's just call it and sleep slightly.
                 System.Threading.Thread.Sleep(500);
-                
+
                 Environment.Exit(0);
                 return;
             }
@@ -258,7 +232,7 @@ namespace Baird
                 e.Handled = true;
                 return;
             }
-            
+
 
         }
 

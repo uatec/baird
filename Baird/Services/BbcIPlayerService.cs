@@ -18,12 +18,6 @@ namespace Baird.Services
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         }
 
-        public Task InitializeAsync()
-        {
-            Console.WriteLine("BBC iPlayer Service Initialized");
-            return Task.CompletedTask;
-        }
-
         public Task<IEnumerable<MediaItem>> GetListingAsync()
         {
             // Full browsing not implemented yet
@@ -38,7 +32,7 @@ namespace Baird.Services
             {
                 var url = string.Format(SearchUrl, Uri.EscapeDataString(query));
                 Console.WriteLine($"[BBCiPlayer] Searching: {url}");
-                
+
                 var response = await _httpClient.GetStringAsync(url, cancellationToken);
                 Console.WriteLine($"[BBCiPlayer] Response received ({response.Length} chars)");
 
@@ -67,7 +61,7 @@ namespace Baird.Services
                         {
                             var id = item.GetProperty("id").GetString();
                             var title = item.GetProperty("title").GetString();
-                            
+
                             string subtitle = "";
                             if (item.TryGetProperty("subtitle", out var subProp))
                             {
@@ -75,7 +69,7 @@ namespace Baird.Services
                             }
 
                             string imageUrl = "";
-                            if (item.TryGetProperty("images", out var imagesProp) && 
+                            if (item.TryGetProperty("images", out var imagesProp) &&
                                 imagesProp.TryGetProperty("standard", out var standardProp))
                             {
                                 imageUrl = standardProp.GetString()?.Replace("{recipe}", "480x270") ?? "";
@@ -100,12 +94,13 @@ namespace Baird.Services
                                 Type = mediaType,
                                 Synopsis = synopsis,
                                 StreamUrl = mediaType == MediaType.Brand ? "" : $"https://www.bbc.co.uk/iplayer/episode/{id}",
-                                Source = "BBC iPlayer"
+                                Source = "BBC iPlayer",
+                                Subtitle = subtitle,
                             });
                         }
                         else
                         {
-                             Console.WriteLine($"[BBCiPlayer] Skipping item of type: {type}");
+                            Console.WriteLine($"[BBCiPlayer] Skipping item of type: {type}");
                         }
                     }
                 }
@@ -143,21 +138,21 @@ namespace Baird.Services
 
                 var response = await _httpClient.GetStringAsync(url);
                 using var doc = JsonDocument.Parse(response);
-                
+
                 if (!doc.RootElement.TryGetProperty("programme_episodes", out var progEpisodes))
                 {
-                     // Try 'episodes' just in case
-                     if(!doc.RootElement.TryGetProperty("episodes", out progEpisodes))
-                     {
-                         Console.WriteLine("[BBCiPlayer] 'programme_episodes' or 'episodes' property not found");
-                         return Enumerable.Empty<MediaItem>();
-                     }
+                    // Try 'episodes' just in case
+                    if (!doc.RootElement.TryGetProperty("episodes", out progEpisodes))
+                    {
+                        Console.WriteLine("[BBCiPlayer] 'programme_episodes' or 'episodes' property not found");
+                        return Enumerable.Empty<MediaItem>();
+                    }
                 }
-                
+
                 JsonElement elements;
                 if (progEpisodes.ValueKind == JsonValueKind.Array)
                 {
-                     elements = progEpisodes;
+                    elements = progEpisodes;
                 }
                 else if (progEpisodes.TryGetProperty("initial_children", out var initialChildren))
                 {
@@ -167,7 +162,7 @@ namespace Baird.Services
                 {
                     elements = elementsProp;
                 }
-                else 
+                else
                 {
                     Console.WriteLine("[BBCiPlayer] Could not find array of episodes");
                     return Enumerable.Empty<MediaItem>();
@@ -176,13 +171,13 @@ namespace Baird.Services
                 var allEpisodes = new List<(string Id, string Title, string Subtitle, string ImageUrl, string Synopsis, string Season)>();
                 var seasons = new HashSet<string>();
 
-                foreach(var item in elements.EnumerateArray())
+                foreach (var item in elements.EnumerateArray())
                 {
-                    if(item.GetProperty("type").GetString() == "episode")
+                    if (item.GetProperty("type").GetString() == "episode")
                     {
                         var epId = item.GetProperty("id").GetString();
                         var title = item.GetProperty("title").GetString();
-                        
+
                         string subtitle = "";
                         if (item.TryGetProperty("subtitle", out var subProp))
                         {
@@ -195,7 +190,7 @@ namespace Baird.Services
 
                         // Extract Season from Subtitle (e.g. "Series 1: Episode 1")
                         string season = "Unknown";
-                        if (!string.IsNullOrEmpty(subtitle)) 
+                        if (!string.IsNullOrEmpty(subtitle))
                         {
                             var match = System.Text.RegularExpressions.Regex.Match(subtitle, @"Series\s+(\d+)");
                             if (match.Success)
@@ -213,31 +208,31 @@ namespace Baird.Services
                         }
 
                         string imageUrl = "";
-                        if (item.TryGetProperty("images", out var imagesProp) && 
+                        if (item.TryGetProperty("images", out var imagesProp) &&
                             imagesProp.TryGetProperty("standard", out var standardProp))
                         {
                             imageUrl = standardProp.GetString()?.Replace("{recipe}", "480x270") ?? "";
                         }
 
-                        allEpisodes.Add((epId, title, subtitle, imageUrl, synopsis, season));
+                        allEpisodes.Add((epId ?? "", title ?? "", subtitle, imageUrl, synopsis, season));
                     }
                 }
 
                 // 2. Logic for Return
-                
+
                 // Case A: Specific Season Requested
                 if (targetSeason != null)
                 {
-                     return allEpisodes
-                        .Where(x => x.Season == targetSeason)
-                        .Select(x => CreateEpisodeItem(x, brandId));
+                    return allEpisodes
+                       .Where(x => x.Season == targetSeason)
+                       .Select(x => CreateEpisodeItem(x, brandId));
                 }
 
                 // Case B: No specific season, but multiple seasons exist (ignoring "Unknown" if real seasons exist)
                 var realSeasons = seasons.Where(s => s != "Unknown").OrderBy(s => s.Length).ThenBy(s => s).ToList(); // Simple sort, typically 1, 2, 10
-                
+
                 // If we have actual seasons found
-                if (realSeasons.Count > 1) 
+                if (realSeasons.Count > 1)
                 {
                     // Return Season Folders
                     var seasonItems = new List<MediaItem>();
@@ -245,30 +240,33 @@ namespace Baird.Services
                     {
                         // Find first episode to get an image?
                         var firstEp = allEpisodes.FirstOrDefault(x => x.Season == s);
-                        
-                        seasonItems.Add(new MediaItem 
+
+                        seasonItems.Add(new MediaItem
                         {
                             Id = $"{brandId}|{s}",
                             Name = $"Series {s}",
                             Details = $"{allEpisodes.Count(x => x.Season == s)} Episodes",
                             ImageUrl = firstEp.ImageUrl,
                             Type = MediaType.Brand, // Treat seasons as Brands/Folders so they open a new view
-                            Source = "BBC iPlayer"
+                            Source = "BBC iPlayer",
+                            Subtitle = "Season " + s,
+                            Synopsis = "Season " + s,
+                            IsLive = false,
                         });
                     }
-                    
+
                     // Also add "Unknown" season items if any, or just dump them? 
                     // Usually "Unknown" might just be specials or missed parsing. 
                     // Let's add an "Other" folder if there are Unknowns? Or just append them?
                     // For now, let's just stick to the main seasons.
-                    
+
                     return seasonItems;
                 }
 
                 // Case C: Only 1 season or no season info -> Return all episodes
                 return allEpisodes.Select(x => CreateEpisodeItem(x, brandId));
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Console.WriteLine($"[BBCiPlayer] Failed to get children for {id}: {ex.Message}");
                 return Enumerable.Empty<MediaItem>();
@@ -280,9 +278,9 @@ namespace Baird.Services
             return new MediaItem
             {
                 Id = x.Id,
-                Name = x.Title, 
+                Name = x.Title,
                 Details = x.Subtitle,
-                Subtitle = x.Subtitle, 
+                Subtitle = x.Subtitle,
                 Synopsis = x.Synopsis,
                 ImageUrl = x.ImageUrl,
                 IsLive = false,

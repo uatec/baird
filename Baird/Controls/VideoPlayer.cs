@@ -17,14 +17,14 @@ namespace Baird.Controls
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private bool _isScanning;
         private string _lastLoggedState = "Idle";
-        
+
         public Baird.Services.IHistoryService? HistoryService { get; set; }
 
         public VideoPlayer()
         {
             _player = new MpvPlayer();
             // _renderUpdateDelegate = UpdateCallback; // Moved to MpvPlayer internal logic
-            
+
             // Subscribe to player's StreamEnded event
             _player.StreamEnded += (sender, args) =>
             {
@@ -60,8 +60,6 @@ namespace Baird.Controls
                 UserActivity?.Invoke(this, EventArgs.Empty);
                 e.Handled = true;
                 return;
-                e.Handled = true;
-                return;
             }
 
             // Notify activity on any key press that is handled by us
@@ -87,7 +85,7 @@ namespace Baird.Controls
                     UserActivity?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;
                     break;
-                
+
                 case Avalonia.Input.Key.Tab:
                     ToggleStats();
                     UserActivity?.Invoke(this, EventArgs.Empty);
@@ -97,7 +95,7 @@ namespace Baird.Controls
                 case Avalonia.Input.Key.CapsLock:
                     IsSubtitlesEnabled = !IsSubtitlesEnabled;
                     UserActivity?.Invoke(this, EventArgs.Empty);
-                    e.Handled = true; 
+                    e.Handled = true;
                     break;
 
                 case Avalonia.Input.Key.Up:
@@ -105,7 +103,7 @@ namespace Baird.Controls
                     UserActivity?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;
                     break;
-                
+
                 case Avalonia.Input.Key.Left:
                 case Avalonia.Input.Key.MediaPreviousTrack:
                     PerformScan(-10);
@@ -121,17 +119,17 @@ namespace Baird.Controls
                     break;
             }
         }
-        
+
         private void PerformScan(double seconds)
         {
             UserActivity?.Invoke(this, EventArgs.Empty);
-            
+
             // If not already scanning and currently playing, pause first
             if (!_isScanning)
             {
-                 _isScanning = true;
+                _isScanning = true;
             }
-            
+
             // Perform the seek
             _player.Command("seek", seconds.ToString(), "relative");
         }
@@ -184,11 +182,11 @@ namespace Baird.Controls
             get => GetValue(PlayerStateProperty);
             set => SetValue(PlayerStateProperty, value);
         }
-        
+
         // Helper to track current media item ID for history
         private string? _currentMediaId;
         private Baird.Services.MediaItem? _currentMediaItem;
-        
+
         public void SetCurrentMediaItem(Baird.Services.MediaItem item)
         {
             // Save progress of previous item before switching
@@ -293,26 +291,26 @@ namespace Baird.Controls
         private void UpdateHud()
         {
             if (_player == null) return;
-            
+
             // Check for state transitions (Loading -> Playing)
             _player.UpdateVideoStatus();
 
             // State
             var state = _player.State;
             var stateStr = state.ToString();
-            
+
             // Update IsLoading property
             IsLoading = state == PlaybackState.Loading;
-            
+
             // Sync IsPaused with actual player state (if changed externally or by internal logic)
             // Use SetCurrentValue to avoid overwriting binding if not necessary, or just SetValue
             bool shouldBePaused = state == PlaybackState.Paused || state == PlaybackState.Idle;
             if (IsPaused != shouldBePaused)
             {
-                 // We only update if it mismatches to avoid fighting with the binding?
-                 // But wait, if we are playing and user presses pause on headset?
-                 // We want ViewModel to know.
-                 SetCurrentValue(IsPausedProperty, shouldBePaused);
+                // We only update if it mismatches to avoid fighting with the binding?
+                // But wait, if we are playing and user presses pause on headset?
+                // We want ViewModel to know.
+                SetCurrentValue(IsPausedProperty, shouldBePaused);
             }
 
             if (stateStr == "Playing" && _lastLoggedState != "Playing")
@@ -320,7 +318,7 @@ namespace Baird.Controls
                 _player.LogAudioTracks();
             }
             _lastLoggedState = stateStr;
-            
+
             if (IsLive)
             {
                 // Live Stream Mode: Show Clock
@@ -344,7 +342,7 @@ namespace Baird.Controls
                 DurationSeconds = dur;
 
                 FormattedTime = $"{tsPos:hh\\:mm\\:ss}"; // Just current time for row 1
-                
+
                 // Calculate finishing time
                 if (dur > 0)
                 {
@@ -359,7 +357,7 @@ namespace Baird.Controls
                     TimeRemaining = "";
                 }
             }
-            
+
             PlayerState = stateStr;
 
             // Update History periodically? Or just rely on Stop/Pause?
@@ -367,29 +365,29 @@ namespace Baird.Controls
             // We should arguably do it on Pause too.
             // And maybe periodically in case of crash?
         }
-        
+
         public async void SaveProgress()
         {
-            if (HistoryService == null || _currentMediaItem == null) 
+            if (HistoryService == null || _currentMediaItem == null)
             {
-                Console.WriteLine($"[VideoPlayer] SaveProgress skipped. Service={HistoryService!=null}, Item={_currentMediaItem?.Name}");
+                Console.WriteLine($"[VideoPlayer] SaveProgress skipped. Service={HistoryService != null}, Item={_currentMediaItem?.Name}");
                 return;
             }
-            
+
             // Get current pos/dur
             var posStr = _player.TimePosition;
             var durStr = _player.Duration;
-            
+
             Console.WriteLine($"[VideoPlayer] SaveProgress Raw: Pos='{posStr}', Dur='{durStr}'");
 
             if (double.TryParse(posStr, out double pos) && double.TryParse(durStr, out double dur))
             {
-                 Console.WriteLine($"[VideoPlayer] Saving {pos} / {dur} for {_currentMediaItem.Name}");
-                 await HistoryService.UpsertAsync(_currentMediaItem, TimeSpan.FromSeconds(pos), TimeSpan.FromSeconds(dur));
+                Console.WriteLine($"[VideoPlayer] Saving {pos} / {dur} for {_currentMediaItem.Name}");
+                await HistoryService.UpsertAsync(_currentMediaItem, TimeSpan.FromSeconds(pos), TimeSpan.FromSeconds(dur));
             }
             else
             {
-                 Console.WriteLine($"[VideoPlayer] Failed to parse pos/dur.");
+                Console.WriteLine($"[VideoPlayer] Failed to parse pos/dur.");
             }
         }
 
@@ -403,7 +401,7 @@ namespace Baird.Controls
                 if (!string.IsNullOrEmpty(url))
                 {
                     // Defer play to allow other bindings (like ResumeTime) to update if they are changing simultaneously
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                     {
                         // Double check source hasn't changed again
                         if (Source != url) return;
@@ -428,31 +426,35 @@ namespace Baird.Controls
                     Stop();
                 }
             }
-            
+
             if (change.Property == IsSubtitlesEnabledProperty)
             {
-                var enabled = (bool)change.NewValue;
-                SetSubtitle(enabled);
+                if (change.NewValue is bool enabled)
+                {
+                    SetSubtitle(enabled);
+                }
             }
 
             if (change.Property == IsPausedProperty)
             {
-                var paused = (bool)change.NewValue;
-                if (paused && (_player.State == PlaybackState.Playing || _player.State == PlaybackState.Buffering))
+                if (change.NewValue is bool paused)
                 {
-                    _player.Pause();
+                    if (paused && (_player.State == PlaybackState.Playing || _player.State == PlaybackState.Buffering))
+                    {
+                        _player.Pause();
+                    }
+                    else if (!paused && _player.State == PlaybackState.Paused)
+                    {
+                        _player.Resume();
+                    }
+
+                    // Save progress on Pause
+                    if (paused) SaveProgress();
                 }
-                else if (!paused && _player.State == PlaybackState.Paused)
-                {
-                    _player.Resume();
-                }
-                
-                // Save progress on Pause
-                if (paused) SaveProgress();
             }
         }
 
-        public void Play(string url) 
+        public void Play(string url)
         {
             _player.Play(url);
             IsPaused = false;
@@ -464,13 +466,13 @@ namespace Baird.Controls
             IsPaused = false;
         }
 
-        public void Pause() 
+        public void Pause()
         {
             _player.Pause();
             IsPaused = true;
         }
 
-        public void Resume() 
+        public void Resume()
         {
             _player.Resume();
             IsPaused = false;
@@ -479,19 +481,19 @@ namespace Baird.Controls
         public void SetSubtitle(bool enabled) => _player.SetSubtitle(enabled);
 
         public void Seek(double s) => _player.Seek(s);
-        public void Stop() 
+        public void Stop()
         {
             SaveProgress();
             _player.Stop();
             IsPaused = true;
         }
-        
+
         public PlaybackState GetState() => _player.State;
         // public bool IsMpvPaused => _player.IsMpvPaused; // Use IsPaused property instead
         public string GetTimePos() => _player.TimePosition;
         public string GetDuration() => _player.Duration;
         public string GetCurrentPath() => _player.CurrentPath;
-        
+
         public void ToggleStats()
         {
             _player.Command("script-binding", "stats/display-stats-toggle");
@@ -513,21 +515,21 @@ namespace Baird.Controls
 
             // Keep delegate alive
             _getProcAddress = (ctx, name) => gl.GetProcAddress(name);
-            
+
             // Get function pointer for the delegate
             IntPtr ptr = Marshal.GetFunctionPointerForDelegate(_getProcAddress);
 
-            try 
+            try
             {
-                 _player.InitializeOpenGl(ptr, () => 
-                 {
-                     Avalonia.Threading.Dispatcher.UIThread.Post(RequestNextFrameRendering, Avalonia.Threading.DispatcherPriority.Render);
-                 });
-                 Console.WriteLine("[VideoPlayer] Render context initialized successfully.");
+                _player.InitializeOpenGl(ptr, () =>
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.Post(RequestNextFrameRendering, Avalonia.Threading.DispatcherPriority.Render);
+                });
+                Console.WriteLine("[VideoPlayer] Render context initialized successfully.");
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                 Console.WriteLine($"[VideoPlayer] Failed to initialize MpvPlayer OpenGL: {ex}");
+                Console.WriteLine($"[VideoPlayer] Failed to initialize MpvPlayer OpenGL: {ex}");
             }
         }
 
@@ -551,10 +553,10 @@ namespace Baird.Controls
             var scaling = VisualRoot?.RenderScaling ?? 1.0;
             int w = (int)(Bounds.Width * scaling);
             int h = (int)(Bounds.Height * scaling);
-            
+
             _player.Render(fb, w, h);
         }
-        
+
         // private void UpdateCallback(IntPtr ctx)
         // {
         //     // Request render

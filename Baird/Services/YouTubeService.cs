@@ -10,12 +10,6 @@ namespace Baird.Services
 {
     public class YouTubeService : IMediaProvider
     {
-        public Task InitializeAsync()
-        {
-            Console.WriteLine("YouTube Service Initialized (using yt-dlp)");
-            return Task.CompletedTask;
-        }
-
         public Task<IEnumerable<MediaItem>> GetListingAsync()
         {
             // Browsing YouTube without a query is not supported in this simple implementation
@@ -65,7 +59,10 @@ namespace Baird.Services
                             ImageUrl = $"https://i.ytimg.com/vi/{id}/hqdefault.jpg",
                             IsLive = false, // Note: could check if 'is_live' in json, but simplified for now
                             StreamUrl = GetStreamUrlInternal(id),
-                            Source = "YouTube"
+                            Source = "YouTube",
+                            Type = MediaType.Video,
+                            Synopsis = "",
+                            Subtitle = ""
                         });
                     }
                     catch (Exception ex)

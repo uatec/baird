@@ -11,12 +11,12 @@ namespace Baird.Services
 {
     public class TvHeadendService : IMediaProvider
     {
-        private HttpClient _httpClient;
-        private string _serverUrl;
-        private string _username;
-        private string _password;
+        private readonly HttpClient _httpClient;
+        private readonly string _serverUrl;
+        private readonly string _username;
+        private readonly string _password;
 
-        public async Task InitializeAsync()
+        public TvHeadendService()
         {
             // Load configuration locally
             string serverUrl = Environment.GetEnvironmentVariable("TVH_URL") ?? "http://localhost:9981";
@@ -24,12 +24,12 @@ namespace Baird.Services
             string password = Environment.GetEnvironmentVariable("TVH_PASS") ?? "unknown";
 
             // Support .env file if present (check current and parent dir)
-            var envPath = ".env`````````````z";
+            var envPath = ".env";
             if (!System.IO.File.Exists(envPath))
             {
                 if (System.IO.File.Exists("../.env")) envPath = "../.env";
             }
-            
+
             if (System.IO.File.Exists(envPath))
             {
                 foreach (var line in System.IO.File.ReadAllLines(envPath))
@@ -38,7 +38,7 @@ namespace Baird.Services
                     if (parts.Length != 2) continue;
                     var key = parts[0].Trim();
                     var val = parts[1].Trim();
-                    
+
                     if (key == "TVH_URL") serverUrl = val;
                     if (key == "TVH_USER") username = val;
                     if (key == "TVH_PASS") password = val;
@@ -55,12 +55,12 @@ namespace Baird.Services
             // TvHeadend often requires standard Digest processing which HttpClientHandler can struggle with
             // if headers aren't perfect, so we use a custom implementation.
             var handler = new DigestAuthHandler(_username, _password);
-            
+
             _httpClient = new HttpClient(handler) { BaseAddress = new Uri(_serverUrl + "/") };
-            
+
             Console.WriteLine($"Initialized TVHeadend Service at {_serverUrl} with Custom Digest Auth support");
-            await Task.CompletedTask;
         }
+
 
         public async Task<IEnumerable<MediaItem>> GetListingAsync()
         {
@@ -68,21 +68,21 @@ namespace Baird.Services
             {
                 // API to get channel grid: /api/channel/grid
                 var url = "api/channel/grid?start=0&limit=9999";
-                
+
                 Console.WriteLine($"Fetching channels from: {url}");
-                
+
                 var response = await _httpClient.GetAsync(url);
                 response.EnsureSuccessStatusCode();
 
                 var json = await response.Content.ReadAsStringAsync();
-                
+
                 // Using Source Generator context
                 var grid = JsonSerializer.Deserialize(json, TvHeadendJsonContext.Default.TvHeadendGrid);
-                
+
                 if (grid?.Entries != null)
                 {
                     return grid.Entries
-                        .Select(c => new MediaItem 
+                        .Select(c => new MediaItem
                         {
                             Id = c.Uuid,
                             Name = c.Name,
@@ -92,11 +92,14 @@ namespace Baird.Services
                             ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
                             IsLive = true,
                             StreamUrl = GetStreamUrlInternal(c.Uuid),
-                            Source = "Live TV"
+                            Source = "Live TV",
+                            Type = MediaType.Channel,
+                            Subtitle = "",
+                            Synopsis = "",
                         })
                         .OrderBy(c => c.Name);
                 }
-                
+
                 return Enumerable.Empty<MediaItem>();
             }
             catch (Exception ex)
@@ -118,7 +121,7 @@ namespace Baird.Services
             // Search by channel number first
             var channelMatches = all
                 .Where(i => i.ChannelNumber != null && i.ChannelNumber.StartsWith(q, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(i => i.ChannelNumber.Length)
+                .OrderBy(i => i.ChannelNumber?.Length)
                 .ThenBy(i => i.ChannelNumber);
 
             var nameMatches = all
@@ -137,29 +140,29 @@ namespace Baird.Services
         {
             // Stream URL format: http://user:pass@host:port/stream/channel/{uuid}
             // We embed credentials in URL for mpv to handle auth easily
-            
+
             // Parse host/port from serverUrl
             Uri uri = new Uri(_serverUrl);
             var host = uri.Host;
             var port = uri.Port;
             var scheme = uri.Scheme;
-            
+
             return $"{scheme}://{host}:{port}/stream/channel/{itemId}?auth={_username}:{_password}&profile=pass";
         }
-        
+
         // Custom Digest Auth Handler
         private class DigestAuthHandler : DelegatingHandler
         {
             private readonly string _username;
             private readonly string _password;
-            private string _realm;
-            private string _nonce;
-            private string _opaque;
-            private string _algorithm;
-            private string _qop;
+            private string _realm = null!;
+            private string _nonce = null!;
+            private string _opaque = null!;
+            private string _algorithm = null!;
+            private string _qop = null!;
             private int _nc = 0;
-            private string _cnonce;
-            private string _lastNonce;
+            private string _cnonce = null!;
+            private string _lastNonce = null!;
 
             public DigestAuthHandler(string username, string password) : base(new HttpClientHandler())
             {
@@ -177,12 +180,12 @@ namespace Baird.Services
                 {
                     Console.WriteLine($"[TVHeadend] 401 Unauthorized with Digest challenge");
                     var authHeader = response.Headers.WwwAuthenticate.First(h => h.Scheme.Equals("Digest", StringComparison.OrdinalIgnoreCase));
-                    ParseHeader(authHeader.Parameter);
+                    ParseHeader(authHeader.Parameter ?? "");
 
-                    var headerValue = GetDigestHeader(request.Method.Method, request.RequestUri.PathAndQuery);
-                    
+                    var headerValue = GetDigestHeader(request.Method.Method, request.RequestUri?.PathAndQuery ?? "/");
+
                     request.Headers.Authorization = new AuthenticationHeaderValue("Digest", headerValue);
-                    
+
                     // Retry with auth
                     response = await base.SendAsync(request, cancellationToken);
                     Console.WriteLine($"[TVHeadend] Digest retry response received ({response.StatusCode})");
@@ -213,13 +216,13 @@ namespace Baird.Services
                     _lastNonce = _nonce;
                 }
                 _nc++;
-                
+
                 _cnonce = GenerateCNonce();
-                
+
                 string ha1 = CalculateMd5($"{_username}:{_realm}:{_password}");
                 string ha2 = CalculateMd5($"{method}:{uri}");
                 string response;
-                
+
                 if (!string.IsNullOrEmpty(_qop))
                 {
                     // qop=auth
@@ -232,7 +235,7 @@ namespace Baird.Services
                 }
 
                 var header = $"username=\"{_username}\", realm=\"{_realm}\", nonce=\"{_nonce}\", uri=\"{uri}\", response=\"{response}\"";
-                
+
                 if (!string.IsNullOrEmpty(_opaque)) header += $", opaque=\"{_opaque}\"";
                 if (!string.IsNullOrEmpty(_algorithm)) header += $", algorithm=\"{_algorithm}\"";
                 if (!string.IsNullOrEmpty(_qop)) header += $", qop=\"{_qop}\", nc={_nc:x8}, cnonce=\"{_cnonce}\"";
@@ -266,8 +269,8 @@ namespace Baird.Services
     public class TvHeadendGrid
     {
         [JsonPropertyName("entries")]
-        public TvHeadendEntry[] Entries { get; set; }
-        
+        public TvHeadendEntry[] Entries { get; set; } = null!;
+
         [JsonPropertyName("totalCount")]
         public int TotalCount { get; set; }
     }
@@ -275,19 +278,19 @@ namespace Baird.Services
     public class TvHeadendEntry
     {
         [JsonPropertyName("uuid")]
-        public string Uuid { get; set; }
-        
+        public string Uuid { get; set; } = null!;
+
         [JsonPropertyName("name")]
-        public string Name { get; set; }
-        
+        public string Name { get; set; } = null!;
+
         [JsonPropertyName("number")]
         public int Number { get; set; }
-        
+
         [JsonPropertyName("icon")]
-        public string IconUrl { get; set; }
-        
+        public string IconUrl { get; set; } = null!;
+
         [JsonPropertyName("icon_public_url")]
-        public string IconId { get; set; } // Sometimes useful if IconUrl is relative
+        public string IconId { get; set; } = null!; // Sometimes useful if IconUrl is relative
     }
 
     [JsonSerializable(typeof(TvHeadendGrid))]

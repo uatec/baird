@@ -18,7 +18,6 @@ namespace Baird.Services
     {
         private readonly string _filePath;
         private List<MediaItem> _historyCache;
-        private bool _isDirty;
 
         public JsonHistoryService()
         {

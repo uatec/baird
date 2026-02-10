@@ -12,9 +12,9 @@ namespace Baird.Mpv
         private IntPtr _renderContext;
         private System.Threading.Thread? _eventThread;
         private volatile bool _eventLoopRunning;
-        
+
         public event EventHandler? StreamEnded;
-        
+
         public PlaybackState State { get; private set; } = PlaybackState.Idle;
 
         public bool IsMpvPaused => GetPropertyString("pause") == "yes";
@@ -22,7 +22,7 @@ namespace Baird.Mpv
         public string Duration => GetPropertyString("duration") ?? "0";
         public string CurrentPath => GetPropertyString("path") ?? "None";
         public bool IsCoreIdle => GetPropertyString("core-idle") == "yes";
-        
+
         public MpvPlayer()
         {
             _mpvHandle = LibMpv.mpv_create();
@@ -34,14 +34,14 @@ namespace Baird.Mpv
             // which is often necessary when embedding mpv in Avalonia/OpenGL to avoid
             // DRM/KMS overlay issues that might bypass the UI.
             // "yes" for deinterlace is critical for 1080i50 broadcasts (UK Satellite/Terrestrial).
-             var hwdec = "auto-copy"; 
+            var hwdec = "auto-copy";
             SetPropertyString("hwdec", hwdec);
-             SetPropertyString("deinterlace", "yes");
-            
+            SetPropertyString("deinterlace", "yes");
+
             // Generics Options
             SetPropertyString("terminal", "yes");
             SetPropertyString("msg-level", "all=warn");
-            
+
             // Critical for embedding: Force libmpv VO to prevent detached window
             SetPropertyString("vo", "libmpv");
 
@@ -54,7 +54,7 @@ namespace Baird.Mpv
             // SetPropertyString("interpolation", "yes");
             // SetPropertyString("tscale", "oversample"); 
             SetPropertyString("opengl-swapinterval", "1"); // VSync
-            
+
             // Standard sync
             SetPropertyString("video-sync", "audio");
 
@@ -66,7 +66,7 @@ namespace Baird.Mpv
             var res = LibMpv.mpv_initialize(_mpvHandle);
             if (res < 0)
                 throw new Exception($"Failed to initialize mpv: {res}");
-            
+
             // Start event loop thread
             _eventLoopRunning = true;
             _eventThread = new System.Threading.Thread(EventLoop)
@@ -80,7 +80,7 @@ namespace Baird.Mpv
         private void EventLoop()
         {
             Console.WriteLine("[MpvPlayer] Event loop thread started");
-            
+
             while (_eventLoopRunning)
             {
                 try
@@ -91,14 +91,14 @@ namespace Baird.Mpv
                         continue;
 
                     var evt = Marshal.PtrToStructure<LibMpv.MpvEvent>(eventPtr);
-                    
+
                     if (evt.EventId == LibMpv.MpvEventId.EndFile)
                     {
                         if (evt.Data != IntPtr.Zero)
                         {
                             var endFileEvent = Marshal.PtrToStructure<LibMpv.MpvEndFileEvent>(evt.Data);
                             Console.WriteLine($"[MpvPlayer] EndFile event: reason={endFileEvent.Reason}, error={endFileEvent.Error}");
-                            
+
                             // Only fire StreamEnded for natural EOF, not for stop/error/quit
                             if (endFileEvent.Reason == LibMpv.MpvEndFileReason.Eof)
                             {
@@ -118,7 +118,7 @@ namespace Baird.Mpv
                     Console.WriteLine($"[MpvPlayer] Error in event loop: {ex.Message}");
                 }
             }
-            
+
             Console.WriteLine("[MpvPlayer] Event loop thread exiting");
         }
 
@@ -131,7 +131,7 @@ namespace Baird.Mpv
         public void InitializeOpenGl(IntPtr procAddressCallback, Action requestRender)
         {
             _requestRender = requestRender;
-            
+
             // 1. Wrap the Avalonia proc address callback
             var openglParams = new LibMpv.MpvOpenglInitParams
             {
@@ -159,12 +159,12 @@ namespace Baird.Mpv
             Marshal.FreeHGlobal(renderParams[0].Data);
 
             if (res < 0) throw new Exception($"Failed to create render context: {res}");
-            
+
             // 5. Set update callback
             _renderUpdateFn = UpdateCallback;
             LibMpv.mpv_render_context_set_update_callback(_renderContext, _renderUpdateFn, IntPtr.Zero);
         }
-        
+
         private void UpdateCallback(IntPtr ctx)
         {
             _requestRender?.Invoke();
@@ -193,7 +193,7 @@ namespace Baird.Mpv
             };
 
             LibMpv.mpv_render_context_render(_renderContext, paramsArr);
-            
+
             Marshal.FreeCoTaskMem(pFbo);
             Marshal.FreeCoTaskMem(pFlipY);
         }
@@ -207,10 +207,10 @@ namespace Baird.Mpv
                 // But time-pos might be 0 at start.
                 // core-idle is usually true when loading/buffering or paused?
                 // Let's use simple check: if we have a duration or time-pos
-                
+
                 var time = GetPropertyString("time-pos");
                 // var idle = GetPropertyString("core-idle");
-                
+
                 if (!string.IsNullOrEmpty(time))
                 {
                     State = PlaybackState.Playing;
@@ -220,20 +220,20 @@ namespace Baird.Mpv
 
         public void Play(string url, double? startSeconds = null)
         {
-            int startSecondsInt = (int)(startSeconds ?? 0); 
+            int startSecondsInt = (int)(startSeconds ?? 0);
             Console.WriteLine($"[MpvPlayer] Playing URL: {url} (start={startSecondsInt.ToString(System.Globalization.CultureInfo.InvariantCulture)})");
             if (startSeconds.HasValue)
             {
-                 // "replace" is the default flag (replace current file)
-                 // "start=X" is the option
-                 // include playlist index of zero because we don't play playlists
-                 Command("loadfile", url, "replace", "0", $"start={startSecondsInt.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+                // "replace" is the default flag (replace current file)
+                // "start=X" is the option
+                // include playlist index of zero because we don't play playlists
+                Command("loadfile", url, "replace", "0", $"start={startSecondsInt.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
             }
             else
             {
                 Command("loadfile", url);
             }
-            
+
             SetPropertyString("pause", "no");
             State = PlaybackState.Loading;
         }
@@ -243,11 +243,11 @@ namespace Baird.Mpv
             SetPropertyString("pause", "yes");
             State = PlaybackState.Paused;
         }
-        
+
         public void Resume()
         {
-             SetPropertyString("pause", "no");
-             State = PlaybackState.Playing;
+            SetPropertyString("pause", "no");
+            State = PlaybackState.Playing;
         }
 
         public void SetSubtitle(bool enabled)
@@ -270,25 +270,25 @@ namespace Baird.Mpv
 
         public void Command(params string[] args)
         {
-             // Marshaling string array to IntPtr[] is required for mpv_command
-             // But mpv_command_string is easier for simple commands
-             var cmdString = string.Join(" ", args); // Simple join might generally work for simple args, but quoting is safer.
-             // However, LibMpv.mpv_command expects null-terminated array.
-             
-             Console.WriteLine($"[MpvPlayer] Command: {cmdString}");
-             IntPtr[] pointers = new IntPtr[args.Length + 1];
-             for (int i = 0; i < args.Length; i++)
-             {
-                 pointers[i] = Marshal.StringToCoTaskMemUTF8(args[i]);
-             }
-             pointers[args.Length] = IntPtr.Zero;
+            // Marshaling string array to IntPtr[] is required for mpv_command
+            // But mpv_command_string is easier for simple commands
+            var cmdString = string.Join(" ", args); // Simple join might generally work for simple args, but quoting is safer.
+                                                    // However, LibMpv.mpv_command expects null-terminated array.
 
-             LibMpv.mpv_command(_mpvHandle, pointers);
+            Console.WriteLine($"[MpvPlayer] Command: {cmdString}");
+            IntPtr[] pointers = new IntPtr[args.Length + 1];
+            for (int i = 0; i < args.Length; i++)
+            {
+                pointers[i] = Marshal.StringToCoTaskMemUTF8(args[i]);
+            }
+            pointers[args.Length] = IntPtr.Zero;
 
-             for (int i = 0; i < args.Length; i++)
-             {
-                 Marshal.FreeCoTaskMem(pointers[i]);
-             }
+            LibMpv.mpv_command(_mpvHandle, pointers);
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                Marshal.FreeCoTaskMem(pointers[i]);
+            }
         }
 
         public void SetPropertyString(string name, string value)
@@ -300,13 +300,13 @@ namespace Baird.Mpv
         {
             int res = LibMpv.mpv_set_property(_mpvHandle, name, LibMpv.MpvFormat.Double, ref value);
         }
-        
-        public string GetPropertyString(string name)
+
+        public string? GetPropertyString(string name)
         {
             var ptr = LibMpv.mpv_get_property_string(_mpvHandle, name);
             if (ptr == IntPtr.Zero)
                 return null;
-                
+
             var value = Marshal.PtrToStringUTF8(ptr);
             LibMpv.mpv_free(ptr);
             return value;
@@ -319,11 +319,11 @@ namespace Baird.Mpv
             if (res < 0) return -1;
             return (int)val;
         }
-        
-        
+
+
         public int GetTrackCount()
         {
-             return GetPropertyInt("track-list/count");
+            return GetPropertyInt("track-list/count");
         }
 
         public void LogAudioTracks()
@@ -343,7 +343,7 @@ namespace Baird.Mpv
                 }
             }
         }
-        
+
         public IntPtr Handle => _mpvHandle;
 
         public void Dispose()
@@ -355,7 +355,7 @@ namespace Baird.Mpv
                 // Give it a moment to exit gracefully
                 _eventThread.Join(2000);
             }
-            
+
             if (_renderContext != IntPtr.Zero)
             {
                 LibMpv.mpv_render_context_free(_renderContext);

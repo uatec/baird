@@ -12,7 +12,7 @@ namespace Baird.ViewModels
             get => _isEpgActive;
             set => this.RaiseAndSetIfChanged(ref _isEpgActive, value);
         }
-        
+
         private bool _isVideoHudVisible;
         public bool IsVideoHudVisible
         {
@@ -37,8 +37,8 @@ namespace Baird.ViewModels
         public OmniSearchViewModel OmniSearch { get; }
         public HistoryViewModel History { get; }
 
-        private ActiveMedia? _activeItem;
-        public ActiveMedia? ActiveItem
+        private MediaItem? _activeItem;
+        public MediaItem? ActiveItem
         {
             get => _activeItem;
             set => this.RaiseAndSetIfChanged(ref _activeItem, value);
@@ -46,7 +46,7 @@ namespace Baird.ViewModels
 
         public string AppVersion { get; }
         public IHistoryService HistoryService { get; } // Exposed for now, or just internal use
-        
+
         // Track current episode list for auto-play next episode
         private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
 
@@ -56,25 +56,25 @@ namespace Baird.ViewModels
             HistoryService = historyService;
             OmniSearch = new OmniSearchViewModel(providers);
             History = new HistoryViewModel(historyService);
-            
+
             History.PlayRequested += (s, item) => PlayItem(item);
             History.BackRequested += (s, e) => GoBack();
 
             IsVideoHudVisible = true;
-            
+
             IsSubtitlesEnabled = NativeUtils.GetCapsLockState();
 
             // ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
-            
+
             var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
             AppVersion = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0";
-            
+
             // Initialize HUD Timer
             _hudTimer = new Avalonia.Threading.DispatcherTimer
             {
                 Interval = System.TimeSpan.FromSeconds(5)
             };
-            _hudTimer.Tick += (s, e) => 
+            _hudTimer.Tick += (s, e) =>
             {
                 IsVideoHudVisible = false;
                 _hudTimer.Stop();
@@ -88,7 +88,7 @@ namespace Baird.ViewModels
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private readonly System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> _providers;
-        
+
         public void ResetHudTimer()
         {
             IsVideoHudVisible = true;
@@ -115,7 +115,7 @@ namespace Baird.ViewModels
                 // Check for resume progress
                 var history = HistoryService.GetProgress(item.Id);
                 TimeSpan? resumeTime = null;
-                
+
                 if (history != null && !history.IsFinished && !item.IsLive)
                 {
                     // Resume logic
@@ -124,7 +124,7 @@ namespace Baird.ViewModels
                 }
 
                 ActivateChannel(item, resumeTime);
-                
+
                 // Set CurrentPage to null to show video player, but preserve navigation history
                 // so user can navigate back to their previous page
                 CurrentPage = null;
@@ -140,7 +140,7 @@ namespace Baird.ViewModels
                 CurrentPage = NavigationHistory.Peek();
                 return;
             }
-            
+
             // Otherwise, pop the current page to go back
             PopViewModel();
         }
@@ -264,11 +264,11 @@ namespace Baird.ViewModels
             if (ActiveItem == null || AllChannels.Count == 0) return;
 
             var currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
-            if (currentIndex == -1) 
+            if (currentIndex == -1)
             {
                 // Current item not in list (maybe VOD or Brand), jump to first channel?
                 // Or do nothing? Let's jump to first channel for now.
-                if(AllChannels.Count > 0) ActivateChannel(AllChannels[0]);
+                if (AllChannels.Count > 0) ActivateChannel(AllChannels[0]);
                 return;
             }
 
@@ -282,9 +282,9 @@ namespace Baird.ViewModels
             if (ActiveItem == null || AllChannels.Count == 0) return;
 
             var currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
-            if (currentIndex == -1) 
+            if (currentIndex == -1)
             {
-                if(AllChannels.Count > 0) ActivateChannel(AllChannels[0]);
+                if (AllChannels.Count > 0) ActivateChannel(AllChannels[0]);
                 return;
             }
 
@@ -296,23 +296,24 @@ namespace Baird.ViewModels
         // Note: Actual playback starts because ActiveItem is bound in View.
         private void ActivateChannel(Baird.Services.MediaItem item, TimeSpan? resumeTime = null)
         {
-             ActiveItem = new ActiveMedia 
-             {
-                 Id = item.Id,
-                 Name = item.Name,
-                 Details = item.Details,
-                 ImageUrl = item.ImageUrl,
-                 Source = item.Source,
-                 Type = item.Type,
-                 Synopsis = item.Synopsis,
-                 Subtitle = item.Subtitle,
-                 StreamUrl = item.StreamUrl,
-                 IsLive = item.IsLive,
-                 ChannelNumber = item.ChannelNumber,
-                 ResumeTime = resumeTime
-             };
-             
-             ResetHudTimer();
+            ActiveItem = item;
+            // ActiveItem = new ActiveMedia
+            // {
+            //     Id = item.Id,
+            //     Name = item.Name,
+            //     Details = item.Details,
+            //     ImageUrl = item.ImageUrl,
+            //     Source = item.Source,
+            //     Type = item.Type,
+            //     Synopsis = item.Synopsis,
+            //     Subtitle = item.Subtitle,
+            //     StreamUrl = item.StreamUrl,
+            //     IsLive = item.IsLive,
+            //     ChannelNumber = item.ChannelNumber,
+            //     ResumeTime = resumeTime
+            // };
+
+            ResetHudTimer();
         }
 
         public void OpenProgramme(Baird.Services.MediaItem programme)
@@ -340,12 +341,12 @@ namespace Baird.ViewModels
                 PopViewModel();
             }
         }
-        
+
         public async void OpenHistory()
         {
-             // Refresh history before showing
-             await History.RefreshAsync();
-             PushViewModel(History);
+            // Refresh history before showing
+            await History.RefreshAsync();
+            PushViewModel(History);
         }
     }
 }

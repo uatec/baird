@@ -28,7 +28,7 @@
 - [ ] Disable screensaver, energy saver
 - [ ] auto-update
 - [ ] auto-restart
-- [ ] 69 errors
+- [x] 69 errors
 
 ## Programme Details
 - [ ] show series name etc in episode view
