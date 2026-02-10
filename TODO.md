@@ -7,7 +7,7 @@
 ### Programme Details
 - [ ] fix nested programme details navigation
 ### Search
-- [ ] timeout on 3 digit search
+- [x] timeout on 3 digit search
 
 ## Playback
 - [x] loading screen
@@ -23,15 +23,19 @@
 - [ ] group shows and movies in their own rows in search
 - [ ] search suggestion history
 - [ ] When searching right after the application opens, search box can be closed when the initial video starts
+- [ ] show episode length
+- [ ] cache TV channels inside tvheadend and refresh every 10 minutes
 
 ## Runtime
 - [ ] Disable screensaver, energy saver
 - [ ] auto-update
 - [ ] auto-restart
 - [x] 69 errors
+- [ ] general navigation weirdness
 
 ## Programme Details
 - [ ] show series name etc in episode view
+- [ ] show episode length
 
 ## New Features
 - [ ] faves - hold to add to faves, faves page

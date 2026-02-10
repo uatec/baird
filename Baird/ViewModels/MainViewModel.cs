@@ -54,7 +54,7 @@ namespace Baird.ViewModels
         {
             _providers = providers;
             HistoryService = historyService;
-            OmniSearch = new OmniSearchViewModel(providers);
+            OmniSearch = new OmniSearchViewModel(providers, () => AllChannels);
             History = new HistoryViewModel(historyService);
 
             History.PlayRequested += (s, item) => PlayItem(item);

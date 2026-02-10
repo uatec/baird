@@ -9,6 +9,7 @@ using System;
 using System.Threading.Tasks;
 using System.Threading;
 using DynamicData;
+using Avalonia.Threading;
 
 namespace Baird.ViewModels
 {
@@ -30,7 +31,7 @@ namespace Baird.ViewModels
         {
             BackRequested?.Invoke(this, EventArgs.Empty);
         }
-        
+
         private string _searchText = "";
         public string SearchText
         {
@@ -51,7 +52,7 @@ namespace Baird.ViewModels
             get => _isSearching;
             set => this.RaiseAndSetIfChanged(ref _isSearching, value);
         }
-        
+
         private MediaItem? _selectedItem;
         public MediaItem? SelectedItem
         {
@@ -59,29 +60,48 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _selectedItem, value);
         }
 
+        private bool _isAutoActivationPending;
+        public bool IsAutoActivationPending
+        {
+            get => _isAutoActivationPending;
+            set => this.RaiseAndSetIfChanged(ref _isAutoActivationPending, value);
+        }
+
+        private double _autoActivationProgress;
+        public double AutoActivationProgress
+        {
+            get => _autoActivationProgress;
+            set => this.RaiseAndSetIfChanged(ref _autoActivationProgress, value);
+        }
+
         public ObservableCollection<MediaItem> SearchResults { get; } = new();
         private readonly IEnumerable<IMediaProvider> _providers;
+        private readonly Func<List<MediaItem>> _getAllChannels;
+        private DispatcherTimer? _autoActivationTimer;
+        private DateTime _timerStartTime;
 
-        public OmniSearchViewModel(IEnumerable<IMediaProvider> providers)
+        public OmniSearchViewModel(IEnumerable<IMediaProvider> providers, Func<List<MediaItem>> getAllChannels)
         {
             _providers = providers;
+            _getAllChannels = getAllChannels;
 
             var canPlay = this.WhenAnyValue(x => x.SelectedItem, (MediaItem? item) => item != null);
             PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay, canPlay);
             BackCommand = ReactiveCommand.Create(RequestBack);
-            
+
             // BackIfEmptyCommand only executes when search text is empty
             var canBackIfEmpty = this.WhenAnyValue(x => x.SearchText, (string? text) => string.IsNullOrEmpty(text));
             BackIfEmptyCommand = ReactiveCommand.Create(RequestBack, canBackIfEmpty);
-            
+
             var textChanges = this.WhenAnyValue(x => x.SearchText).Skip(1);
 
             // Immediate feedback: clear results when typing starts
-            textChanges.Subscribe(_ => 
+            textChanges.Subscribe(_ =>
             {
                 IsSearching = true;
                 SelectedItem = null;
                 SearchResults.Clear();
+                StopAutoActivationTimer();
             });
 
             // Branch 1: Short numeric (<= 3 digits) -> Immediate
@@ -102,7 +122,7 @@ namespace Baird.ViewModels
         private async Task PerformSearch(string? searchText)
         {
             var query = searchText ?? "";
-            
+
             // Cancel previous search
             _searchCts?.Cancel();
             var newCts = new CancellationTokenSource();
@@ -111,20 +131,59 @@ namespace Baird.ViewModels
 
             IsSearching = true;
             SearchResults.Clear(); // Already on UI thread due to Throttle scheduler
-            
+
+            // For short numeric queries (1-3 digits), do in-memory channel search
+            bool isShortNumericQuery = !string.IsNullOrEmpty(query) && query.Length <= 3 && query.All(char.IsDigit);
+
+            if (isShortNumericQuery)
+            {
+                // In-memory channel number search
+                var allChannels = _getAllChannels();
+                var matchingChannels = allChannels
+                    .Where(c => c.ChannelNumber != null &&
+                               (c.ChannelNumber == query || c.ChannelNumber.StartsWith(query)))
+                    .OrderBy(c => c.ChannelNumber?.Length)
+                    .ThenBy(c => c.ChannelNumber)
+                    .ToList();
+
+                SearchResults.AddRange(matchingChannels);
+
+                if (matchingChannels.Any())
+                {
+                    SelectedItem = SearchResults.FirstOrDefault();
+                }
+
+                IsSearching = false;
+
+                // Start timer only if we found matching channels
+                if (SelectedItem != null)
+                {
+                    StartAutoActivationTimer();
+                }
+
+                // Clean up cancellation token
+                newCts.Dispose();
+                if (_searchCts == newCts)
+                {
+                    _searchCts = null;
+                }
+
+                return; // Skip provider search
+            }
+
             var accumulatedResults = new List<MediaItem>();
             var sorter = new SearchResultSorter();
 
             // Create tasks for each provider
-            var tasks = _providers.Select(async provider => 
+            var tasks = _providers.Select(async provider =>
             {
-                try 
+                try
                 {
                     var results = await provider.SearchAsync(query, token);
-                    
+
                     if (token.IsCancellationRequested) return;
 
-                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => 
+                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         if (token.IsCancellationRequested) return;
 
@@ -132,14 +191,14 @@ namespace Baird.ViewModels
                         if (newItems.Any())
                         {
                             accumulatedResults.AddRange(newItems);
-                            
+
                             if (IsSearchFieldFocused)
                             {
                                 // Re-sort everything
                                 var sorted = sorter.Sort(accumulatedResults, query);
                                 SearchResults.Clear();
                                 SearchResults.AddRange(sorted);
-                                
+
                                 // Auto-select first if nothing selected or selection lost
                                 if (SelectedItem == null)
                                 {
@@ -168,13 +227,13 @@ namespace Baird.ViewModels
                 }
             }).ToList();
 
-            try 
+            try
             {
                 await Task.WhenAll(tasks);
             }
-            catch (Exception) 
-            { 
-               // Ignore aggregate exceptions from cancellation 
+            catch (Exception)
+            {
+                // Ignore aggregate exceptions from cancellation 
             }
             finally
             {
@@ -182,10 +241,10 @@ namespace Baird.ViewModels
                 {
                     IsSearching = false;
                 }
-                
+
                 // Dispose the local CTS that we created for THIS search
                 newCts.Dispose();
-                
+
                 // Only clear the shared field if it still points to our CTS (i.e. hasn't been replaced by a newer search)
                 if (_searchCts == newCts)
                 {
@@ -193,13 +252,62 @@ namespace Baird.ViewModels
                 }
             }
         }
-        
+
+        private void StartAutoActivationTimer()
+        {
+            StopAutoActivationTimer();
+
+            IsAutoActivationPending = true;
+            AutoActivationProgress = 0;
+            _timerStartTime = DateTime.Now;
+
+            _autoActivationTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(50) // Update every 50ms for smooth progress
+            };
+
+            _autoActivationTimer.Tick += OnAutoActivationTimerTick;
+            _autoActivationTimer.Start();
+        }
+
+        private void StopAutoActivationTimer()
+        {
+            if (_autoActivationTimer != null)
+            {
+                _autoActivationTimer.Stop();
+                _autoActivationTimer.Tick -= OnAutoActivationTimerTick;
+                _autoActivationTimer = null;
+            }
+
+            IsAutoActivationPending = false;
+            AutoActivationProgress = 0;
+        }
+
+        private void OnAutoActivationTimerTick(object? sender, EventArgs e)
+        {
+            const double timeoutSeconds = 3.0;
+            var elapsed = (DateTime.Now - _timerStartTime).TotalSeconds;
+            AutoActivationProgress = Math.Min(elapsed / timeoutSeconds, 1.0);
+
+            if (AutoActivationProgress >= 1.0)
+            {
+                StopAutoActivationTimer();
+
+                // Auto-activate the selected item
+                if (SelectedItem != null)
+                {
+                    RequestPlay(SelectedItem);
+                }
+            }
+        }
+
         public void Clear()
         {
             SearchText = "";
             SearchResults.Clear();
             SelectedItem = null;
             IsSearching = false;
+            StopAutoActivationTimer();
         }
 
         public async Task ClearAndSearch()

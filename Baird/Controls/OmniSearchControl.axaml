@@ -65,14 +65,28 @@
         
         <!-- Row 0: SearchBox -->
         <Border Grid.Row="0" Padding="20">
-            <TextBox Name="SearchBox" 
-                     Text="{Binding SearchText}" 
-                     FontSize="24" 
-                     Watermark="Search...">
-                <TextBox.KeyBindings>
-                    <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedItem}" />
-                </TextBox.KeyBindings>
-            </TextBox>
+            <Grid>
+                <TextBox Name="SearchBox" 
+                         Text="{Binding SearchText}" 
+                         FontSize="24" 
+                         Watermark="Search...">
+                    <TextBox.KeyBindings>
+                        <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedItem}" />
+                    </TextBox.KeyBindings>
+                </TextBox>
+                
+                <!-- Progress bar along bottom border -->
+                <ProgressBar Height="4" 
+                             VerticalAlignment="Bottom" 
+                             HorizontalAlignment="Stretch"
+                             IsVisible="{Binding IsAutoActivationPending}"
+                             Minimum="0"
+                             Maximum="1"
+                             Value="{Binding AutoActivationProgress}"
+                             Margin="0,0,0,-4"
+                             Foreground="#4CAF50"
+                             Background="Transparent" />
+            </Grid>
         </Border>
 
         <!-- Row 1: Search Results -->
