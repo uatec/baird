@@ -19,6 +19,7 @@ namespace Baird.ViewModels
 
         public ReactiveCommand<MediaItem, Unit> PlayCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
+        public ReactiveCommand<Unit, Unit> BackIfEmptyCommand { get; }
 
         public void RequestPlay(MediaItem item)
         {
@@ -68,6 +69,10 @@ namespace Baird.ViewModels
             var canPlay = this.WhenAnyValue(x => x.SelectedItem, (MediaItem? item) => item != null);
             PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay, canPlay);
             BackCommand = ReactiveCommand.Create(RequestBack);
+            
+            // BackIfEmptyCommand only executes when search text is empty
+            var canBackIfEmpty = this.WhenAnyValue(x => x.SearchText, (string? text) => string.IsNullOrEmpty(text));
+            BackIfEmptyCommand = ReactiveCommand.Create(RequestBack, canBackIfEmpty);
             
             var textChanges = this.WhenAnyValue(x => x.SearchText).Skip(1);
 

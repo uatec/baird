@@ -18,6 +18,7 @@
 
     <UserControl.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+        <KeyBinding Gesture="Back" Command="{Binding BackIfEmptyCommand}" />
         <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedItem}" />
     </UserControl.KeyBindings>
 

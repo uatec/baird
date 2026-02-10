@@ -14,11 +14,6 @@ namespace Baird.Controls
     {
 
 
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            base.OnKeyDown(e);
-        }
-
         public OmniSearchControl()
         {
             InitializeComponent();
