@@ -12,7 +12,9 @@ namespace Baird.Mpv
         private IntPtr _renderContext;
         private System.Threading.Thread? _eventThread;
         private volatile bool _eventLoopRunning;
+        private Action? _requestRender;
 
+        private LibMpv.MpvRenderUpdateFn? _renderUpdateFn;
         public event EventHandler? StreamEnded;
 
         public PlaybackState State { get; private set; } = PlaybackState.Idle;
@@ -124,6 +126,8 @@ namespace Baird.Mpv
 
         public void InitializeOpenGl(IntPtr procAddressCallback, Action requestRender)
         {
+            _requestRender = requestRender;
+
             // 1. Wrap the Avalonia proc address callback
             var openglParams = new LibMpv.MpvOpenglInitParams
             {
@@ -153,7 +157,13 @@ namespace Baird.Mpv
             if (res < 0) throw new Exception($"Failed to create render context: {res}");
 
             // 5. Set update callback
-            LibMpv.mpv_render_context_set_update_callback(_renderContext, ctx => requestRender(), IntPtr.Zero);
+            _renderUpdateFn = UpdateCallback;
+            LibMpv.mpv_render_context_set_update_callback(_renderContext, _renderUpdateFn, IntPtr.Zero);
+        }
+
+        private void UpdateCallback(IntPtr ctx)
+        {
+            _requestRender?.Invoke();
         }
 
         public void Render(int fbo, int width, int height)
