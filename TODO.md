@@ -2,7 +2,7 @@
 ### Playback
 - [x] auto play next episode in show
     - [ ] returns to the show page, not the previous series... should return to the parent page of the current media item?
-    - [ ] warning/cancel button before playing next episode
+    - [x] warning/cancel button before playing next episode
 - [x] after video finishes with nothing next, go back to previous page
 ### Programme Details
 - [ ] fix nested programme details navigation
