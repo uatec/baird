@@ -400,12 +400,44 @@ namespace Baird.Controls
             // And maybe periodically in case of crash?
         }
 
+        // Track when the current video started playing
+        private DateTime _currentVideoStartTime;
+
         public async void SaveProgress(TimeSpan? positionOverride = null)
         {
             if (DataService == null || _currentMediaItem == null)
             {
                 Console.WriteLine($"[VideoPlayer] SaveProgress skipped. Service={DataService != null}, Item={_currentMediaItem?.Name}");
                 return;
+            }
+
+            // Check if we should save history
+            if (IsLive)
+            {
+                // For live streams, check if we've been watching for at least 10 seconds this session
+                var timeWatched = DateTime.Now - _currentVideoStartTime;
+                if (timeWatched.TotalSeconds < 10)
+                {
+                    Console.WriteLine($"[VideoPlayer] Skipping history save for live stream. Watched only {timeWatched.TotalSeconds:F1}s (needs 10s)");
+                    return;
+                }
+            }
+            else
+            {
+                // For VOD, check if we are at least 10 seconds into the video
+                // OR if we have watched for at least 10 seconds (to catch people who skip ahead immediately?)
+                // User said: "only add something to history if we have progressed more than 10 seconds in to the video."
+                // This implies position > 10s.
+                // However, "this prevents channel hopping from being added to history" usually implies time spent watching.
+                // But the user clarified: "for live streams, that's more than 10 seconds playback time elapsed this session."
+                // implying for VOD it denotes position.
+
+                var currentPos = positionOverride ?? Position;
+                if (currentPos.TotalSeconds < 10)
+                {
+                    Console.WriteLine($"[VideoPlayer] Skipping history save for VOD. Position {currentPos.TotalSeconds:F1}s < 10s");
+                    return;
+                }
             }
 
             var position = positionOverride ?? Position;
@@ -484,12 +516,14 @@ namespace Baird.Controls
 
         public void Play(string url)
         {
+            _currentVideoStartTime = DateTime.Now;
             _player.Play(url);
             IsPaused = false;
         }
 
         public void Play(string url, TimeSpan startTime)
         {
+            _currentVideoStartTime = DateTime.Now;
             _player.Play(url, startTime.TotalSeconds);
             IsPaused = false;
         }
