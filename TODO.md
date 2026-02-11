@@ -15,6 +15,7 @@
 - [x] the tvheadend stream includes multiple audio streams including audio descriptions. How can we choose the standard english audio?
 - [ ] This Video options: fav, subtitles 
 - [ ] When streaming on raspberry pi 5, the image is tearing. 
+- [ ] after video ends, continue to next season.
 
 ## Search
 - [x] don't search episodes
