@@ -23,8 +23,8 @@
 - [ ] group shows and movies in their own rows in search
 - [ ] search suggestion history
 - [ ] When searching right after the application opens, search box can be closed when the initial video starts
-- [ ] show episode length
-- [ ] cache TV channels inside tvheadend and refresh every 10 minutes
+- [x] show episode length
+- [x] cache TV channels inside tvheadend
 
 ## Runtime
 - [ ] Disable screensaver, energy saver
