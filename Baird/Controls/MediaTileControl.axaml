@@ -21,6 +21,20 @@
             <Grid>
                 <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" />
                 
+                <!-- Duration Badge (bottom-right) -->
+                <Border Background="#DD000000" 
+                        CornerRadius="3" 
+                        Padding="4,2"
+                        HorizontalAlignment="Right" 
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,6,6"
+                        IsVisible="{Binding Duration, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="{Binding Duration, StringFormat='{}{0:h\\:mm\\:ss}'}" 
+                               Foreground="White" 
+                               FontSize="11"
+                               FontWeight="SemiBold"/>
+                </Border>
+                
                 <!-- Progress Bar Overlay (History) -->
                 <ProgressBar Value="{Binding Progress}" 
                              Maximum="1.0" 

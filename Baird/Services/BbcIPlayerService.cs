@@ -92,6 +92,30 @@ namespace Baird.Services
                                 else if (synopsesProp.TryGetProperty("small", out var smallSyn)) synopsis = smallSyn.GetString() ?? "";
                             }
 
+                            // Extract duration from versions[0].duration.value (ISO 8601 format like "PT7M0.040S")
+                            TimeSpan duration = TimeSpan.Zero;
+                            if (item.TryGetProperty("versions", out var versionsProp) && versionsProp.GetArrayLength() > 0)
+                            {
+                                var firstVersion = versionsProp[0];
+                                if (firstVersion.TryGetProperty("duration", out var durationProp) &&
+                                    durationProp.TryGetProperty("value", out var durationValue))
+                                {
+                                    var durationStr = durationValue.GetString();
+                                    if (!string.IsNullOrEmpty(durationStr))
+                                    {
+                                        try
+                                        {
+                                            // Parse ISO 8601 duration format (e.g., "PT7M0.040S")
+                                            duration = System.Xml.XmlConvert.ToTimeSpan(durationStr);
+                                        }
+                                        catch (FormatException ex)
+                                        {
+                                            Console.WriteLine($"[BBCiPlayer] Failed to parse duration '{durationStr}': {ex.Message}");
+                                        }
+                                    }
+                                }
+                            }
+
                             var mediaType = (type == "brand" || type == "programme") ? MediaType.Brand : MediaType.Video;
 
                             items.Add(new MediaItem
@@ -106,6 +130,7 @@ namespace Baird.Services
                                 StreamUrl = mediaType == MediaType.Brand ? "" : $"https://www.bbc.co.uk/iplayer/episode/{id}",
                                 Source = "BBC iPlayer",
                                 Subtitle = subtitle,
+                                Duration = duration,
                             });
                         }
                         else
@@ -178,7 +203,7 @@ namespace Baird.Services
                     return Enumerable.Empty<MediaItem>();
                 }
 
-                var allEpisodes = new List<(string Id, string Title, string Subtitle, string ImageUrl, string Synopsis, string Season)>();
+                var allEpisodes = new List<(string Id, string Title, string Subtitle, string ImageUrl, string Synopsis, string Season, TimeSpan Duration)>();
                 var seasons = new HashSet<string>();
 
                 foreach (var item in elements.EnumerateArray())
@@ -224,7 +249,30 @@ namespace Baird.Services
                             imageUrl = standardProp.GetString()?.Replace("{recipe}", "480x270") ?? "";
                         }
 
-                        allEpisodes.Add((epId ?? "", title ?? "", subtitle, imageUrl, synopsis, season));
+                        // Extract duration from versions[0].duration.value
+                        TimeSpan duration = TimeSpan.Zero;
+                        if (item.TryGetProperty("versions", out var versionsProp) && versionsProp.GetArrayLength() > 0)
+                        {
+                            var firstVersion = versionsProp[0];
+                            if (firstVersion.TryGetProperty("duration", out var durationProp) &&
+                                durationProp.TryGetProperty("value", out var durationValue))
+                            {
+                                var durationStr = durationValue.GetString();
+                                if (!string.IsNullOrEmpty(durationStr))
+                                {
+                                    try
+                                    {
+                                        duration = System.Xml.XmlConvert.ToTimeSpan(durationStr);
+                                    }
+                                    catch (FormatException ex)
+                                    {
+                                        Console.WriteLine($"[BBCiPlayer] Failed to parse duration '{durationStr}': {ex.Message}");
+                                    }
+                                }
+                            }
+                        }
+
+                        allEpisodes.Add((epId ?? "", title ?? "", subtitle, imageUrl, synopsis, season, duration));
                     }
                 }
 
@@ -283,7 +331,7 @@ namespace Baird.Services
             }
         }
 
-        private MediaItem CreateEpisodeItem((string Id, string Title, string Subtitle, string ImageUrl, string Synopsis, string Season) x, string brandId)
+        private MediaItem CreateEpisodeItem((string Id, string Title, string Subtitle, string ImageUrl, string Synopsis, string Season, TimeSpan Duration) x, string brandId)
         {
             return new MediaItem
             {
@@ -296,7 +344,8 @@ namespace Baird.Services
                 IsLive = false,
                 Type = MediaType.Video,
                 StreamUrl = $"https://www.bbc.co.uk/iplayer/episode/{x.Id}",
-                Source = "BBC iPlayer"
+                Source = "BBC iPlayer",
+                Duration = x.Duration,
             };
         }
     }

@@ -60,18 +60,43 @@ namespace Baird.Services
                             continue;
                         }
 
+                        var uploader = root.GetProperty("uploader").GetString() ?? "";
+                        var url = root.GetProperty("webpage_url").GetString() ?? GetStreamUrlInternal(id);
+
+                        string imageUrl = "";
+                        if (doc.RootElement.TryGetProperty("thumbnails", out var thumbnails) && thumbnails.GetArrayLength() > 0)
+                        {
+                            imageUrl = thumbnails[thumbnails.GetArrayLength() - 1].GetProperty("url").GetString() ?? "";
+                        }
+                        else
+                        {
+                            imageUrl = $"https://i.ytimg.com/vi/{id}/hqdefault.jpg"; // Fallback to default YouTube thumbnail
+                        }
+
+                        // Extract duration (in seconds, may be null for live streams)
+                        TimeSpan duration = TimeSpan.Zero;
+                        if (doc.RootElement.TryGetProperty("duration", out var durationProp))
+                        {
+                            if (durationProp.ValueKind == JsonValueKind.Number)
+                            {
+                                var durationSeconds = durationProp.GetDouble();
+                                duration = TimeSpan.FromSeconds(durationSeconds);
+                            }
+                        }
+
                         items.Add(new MediaItem
                         {
                             Id = id,
                             Name = title,
-                            Details = "", // TODO: Get the full video blurb here
-                            ImageUrl = $"https://i.ytimg.com/vi/{id}/hqdefault.jpg",
+                            Details = uploader,
+                            ImageUrl = imageUrl,
                             IsLive = false, // TODO: could check if 'is_live' in json, but simplified for now. Youtube live streams are not the same as channels.
-                            StreamUrl = GetStreamUrlInternal(id),
+                            StreamUrl = url,
                             Source = "YouTube",
                             Type = MediaType.Video,
                             Synopsis = "",
-                            Subtitle = ""
+                            Subtitle = "",
+                            Duration = duration,
                         });
                     }
                     catch (Exception ex)

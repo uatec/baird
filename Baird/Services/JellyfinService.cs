@@ -151,7 +151,7 @@ namespace Baird.Services
             {
                 // Manual HTTP GET for Items
                 // Endpoint: /Users/{UserId}/Items
-                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Fields=ProductionYear,ProviderIds";
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Fields=ProductionYear,ProviderIds,RunTimeTicks";
 
                 Console.WriteLine($"Fetching movies and shows from: {url}");
 
@@ -184,7 +184,7 @@ namespace Baird.Services
             try
             {
                 var q = Uri.EscapeDataString(query.Trim());
-                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series&Recursive=true&SortBy=SortName&Fields=ProductionYear&SearchTerm={q}";
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series&Recursive=true&SortBy=SortName&Fields=ProductionYear,RunTimeTicks&SearchTerm={q}";
 
                 Console.WriteLine($"Searching Jellyfin movies and shows with query '{query}': {url}");
 
@@ -228,7 +228,7 @@ namespace Baird.Services
                 // Changed to non-recursive to support Season folders
                 // IncludeItemTypes: Season, Episode, Movie, Folder (for other structures)
                 // Added ParentIndexNumber to Fields for manual grouping
-                var url = $"Users/{_userId}/Items?ParentId={itemId}&IncludeItemTypes=Season,Episode,Movie,Folder&Recursive=false&SortBy=ParentIndexNumber,IndexNumber,SortName&Fields=ProductionYear,ParentIndexNumber";
+                var url = $"Users/{_userId}/Items?ParentId={itemId}&IncludeItemTypes=Season,Episode,Movie,Folder&Recursive=false&SortBy=ParentIndexNumber,IndexNumber,SortName&Fields=ProductionYear,ParentIndexNumber,RunTimeTicks";
                 // Console.WriteLine($"[Jellyfin] Fetching children for {itemId} with URL: {url}");
 
                 var response = await _httpClient.GetAsync(url);
@@ -309,6 +309,13 @@ namespace Baird.Services
 
             // Console.WriteLine($"[Jellyfin] Mapping: {m.Name}, Type={m.Type} -> {type}");
 
+            // Convert RunTimeTicks to TimeSpan
+            // Jellyfin uses ticks where 1 tick = 100 nanoseconds = 0.0000001 seconds
+            // So we divide by 10,000,000 to get seconds
+            var duration = m.RunTimeTicks.HasValue
+                ? TimeSpan.FromTicks(m.RunTimeTicks.Value)
+                : TimeSpan.Zero;
+
             return new MediaItem
             {
                 Id = m.Id,
@@ -321,6 +328,7 @@ namespace Baird.Services
                 Type = type,
                 Subtitle = "",
                 Synopsis = "", // TODO: should this stuff just be nullable or expicitly empty? or a subtype for Groupings
+                Duration = duration,
             };
         }
 
@@ -379,6 +387,7 @@ namespace Baird.Services
         public int? ProductionYear { get; set; }
         public string Type { get; set; } = null!;
         public int? ParentIndexNumber { get; set; }
+        public long? RunTimeTicks { get; set; }
     }
 
     [JsonSerializable(typeof(AuthRequest))]

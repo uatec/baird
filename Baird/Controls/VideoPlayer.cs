@@ -349,6 +349,13 @@ namespace Baird.Controls
                 var tsPos = TimeSpan.FromSeconds(pos);
                 var tsDur = TimeSpan.FromSeconds(dur);
 
+                // Sync to MediaItem if we have one
+                if (_currentMediaItem != null && dur > 0)
+                {
+                    _currentMediaItem.LastPosition = tsPos;
+                    _currentMediaItem.Duration = tsDur;
+                }
+
                 Position = tsPos;
                 Duration = tsDur;
                 PositionSeconds = pos;
