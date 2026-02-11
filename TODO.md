@@ -21,7 +21,7 @@
 - [ ] search debugging - why does it sometimes hang?
 - [ ] search tvdb index and pull video stream from suggested data
 - [ ] group shows and movies in their own rows in search
-- [ ] search suggestion history
+- [x] search suggestion history
 - [ ] When searching right after the application opens, search box can be closed when the initial video starts
 - [x] show episode length
 - [x] cache TV channels inside tvheadend

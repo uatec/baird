@@ -79,8 +79,7 @@
                 </Grid>
 
                 <!-- Suggested Terms Pills -->
-                <ItemsControl ItemsSource="{Binding SuggestedTerms}"
-                              IsVisible="{Binding !IsSearching}">
+                <ItemsControl ItemsSource="{Binding SuggestedTerms}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Orientation="Horizontal" Spacing="8"/>
