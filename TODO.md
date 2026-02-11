@@ -1,7 +1,7 @@
 ## Phase 1
 ### Playback
 - [x] auto play next episode in show
-    - [ ] returns to the show page, not the previous series... should return to the parent page of the current media item?
+    - [x] returns to the show page, not the previous series... should return to the parent page of the current media item?
     - [x] warning/cancel button before playing next episode
 - [x] after video finishes with nothing next, go back to previous page
 ### Programme Details
