@@ -117,14 +117,12 @@ namespace Baird.Controls
                     break;
 
                 case Avalonia.Input.Key.Left:
-                case Avalonia.Input.Key.MediaPreviousTrack:
                     PerformScan(-10);
                     // PerformScan invokes UserActivity
                     e.Handled = true;
                     break;
 
                 case Avalonia.Input.Key.Right:
-                case Avalonia.Input.Key.MediaNextTrack:
                     PerformScan(10);
                     // PerformScan invokes UserActivity
                     e.Handled = true;

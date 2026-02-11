@@ -187,20 +187,7 @@ namespace Baird
 
 
 
-            // Channel Navigation
-            if (e.Key == Key.OemPlus || e.Key == Key.Add || e.Key == Key.MediaNextTrack || e.Key == Key.PageUp)
-            {
-                _viewModel.SelectNextChannel();
-                e.Handled = true;
-                return;
-            }
 
-            if (e.Key == Key.OemMinus || e.Key == Key.Subtract || e.Key == Key.MediaPreviousTrack || e.Key == Key.PageDown)
-            {
-                _viewModel.SelectPreviousChannel();
-                e.Handled = true;
-                return;
-            }
 
             // Back/Esc Trigger
             if (e.Key == Key.Escape || e.Key == Key.Back)

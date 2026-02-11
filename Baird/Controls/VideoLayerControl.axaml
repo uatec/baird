@@ -13,6 +13,18 @@
     <UserControl.Resources>
         <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
     </UserControl.Resources>
+
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="PageUp" Command="{Binding SelectNextChannelCommand}" />
+        <KeyBinding Gesture="OemPlus" Command="{Binding SelectNextChannelCommand}" />
+        <KeyBinding Gesture="Add" Command="{Binding SelectNextChannelCommand}" />
+        <KeyBinding Gesture="MediaNextTrack" Command="{Binding SelectNextChannelCommand}" />
+
+        <KeyBinding Gesture="PageDown" Command="{Binding SelectPreviousChannelCommand}" />
+        <KeyBinding Gesture="OemMinus" Command="{Binding SelectPreviousChannelCommand}" />
+        <KeyBinding Gesture="Subtract" Command="{Binding SelectPreviousChannelCommand}" />
+        <KeyBinding Gesture="MediaPreviousTrack" Command="{Binding SelectPreviousChannelCommand}" />
+    </UserControl.KeyBindings>
     
     <Grid>
         <!-- Layer 0: Video Player -->

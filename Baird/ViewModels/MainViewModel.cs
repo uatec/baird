@@ -52,6 +52,9 @@ namespace Baird.ViewModels
         // Track current episode list for auto-play next episode
         private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
 
+        public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectNextChannelCommand { get; }
+        public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectPreviousChannelCommand { get; }
+
         public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService)
         {
             _dataService = dataService;
@@ -65,6 +68,9 @@ namespace Baird.ViewModels
             // MainView created HistoryService and passed it to VM AND VideoLayer.
             // Now MainView will create DataService.
             // VideoLayer likely needs updates too.
+
+            SelectNextChannelCommand = ReactiveCommand.Create(SelectNextChannel);
+            SelectPreviousChannelCommand = ReactiveCommand.Create(SelectPreviousChannel);
 
             OmniSearch = new OmniSearchViewModel(dataService, searchHistoryService, () => AllChannels);
             History = new HistoryViewModel(dataService);
