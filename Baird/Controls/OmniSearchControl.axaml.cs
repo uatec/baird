@@ -40,6 +40,18 @@ namespace Baird.Controls
             };
         }
 
+        protected override void OnDataContextChanged(EventArgs e)
+        {
+            base.OnDataContextChanged(e);
+            if (DataContext is ViewModels.OmniSearchViewModel vm)
+            {
+                vm.SearchBoxFocusRequested += (s, args) =>
+                {
+                    Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
+                };
+            }
+        }
+
         private void UpdateFocusState(bool isFocused)
         {
             if (DataContext is ViewModels.OmniSearchViewModel vm)

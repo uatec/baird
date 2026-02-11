@@ -17,6 +17,7 @@ namespace Baird.ViewModels
     {
         public event EventHandler<MediaItem>? PlayRequested;
         public event EventHandler? BackRequested;
+        public event EventHandler? SearchBoxFocusRequested;
 
         public ReactiveCommand<MediaItem, Unit> PlayCommand { get; }
         public ReactiveCommand<Unit, Unit> PlayFirstResultCommand { get; }
@@ -31,6 +32,11 @@ namespace Baird.ViewModels
         public void RequestBack()
         {
             BackRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void RequestSearchBoxFocus()
+        {
+            SearchBoxFocusRequested?.Invoke(this, EventArgs.Empty);
         }
 
         private string _searchText = "";
@@ -121,9 +127,7 @@ namespace Baird.ViewModels
             SearchTermCommand = ReactiveCommand.CreateFromTask<string>(async term =>
             {
                 SearchText = term;
-                // Focus search box? Or just perform search?
-                // SearchText change triggers search automatically.
-                // But we might want to ensure focus is correct or something?
+                RequestSearchBoxFocus();
                 await PerformSearch(term);
             });
 
