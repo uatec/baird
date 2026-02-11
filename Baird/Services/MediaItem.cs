@@ -34,5 +34,8 @@ namespace Baird.Services
 
         [System.Text.Json.Serialization.JsonIgnore]
         public double Progress => LastPosition.TotalSeconds / Duration.TotalSeconds;
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasDuration => Duration > TimeSpan.Zero;
     }
 }

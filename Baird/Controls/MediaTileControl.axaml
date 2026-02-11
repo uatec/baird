@@ -28,7 +28,7 @@
                         HorizontalAlignment="Right" 
                         VerticalAlignment="Bottom"
                         Margin="0,0,6,6"
-                        IsVisible="{Binding Duration, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        IsVisible="{Binding HasDuration}">
                     <TextBlock Text="{Binding Duration, StringFormat='{}{0:h\\:mm\\:ss}'}" 
                                Foreground="White" 
                                FontSize="11"
