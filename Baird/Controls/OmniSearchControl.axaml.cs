@@ -12,31 +12,11 @@ namespace Baird.Controls
 {
     public partial class OmniSearchControl : UserControl
     {
-
-
         public OmniSearchControl()
         {
             InitializeComponent();
-            
-            var list = this.FindControl<ListBox>("ResultsList");
-            if (list != null)
-            {
-                list.GetObservable(ListBox.BoundsProperty).Subscribe(bounds => 
-                {
-                    var width = bounds.Width;
-                    if (width > 0)
-                    {
-                        // 300 is the ItemWidth defined in XAML
-                        var columns = Math.Floor(width / 300);
-                        // Prevent 0 width if very small, though unlikely
-                        if (columns < 1) columns = 1; 
-                        
-                        CalculatedWidth = columns * 300;
-                    }
-                });
-            }
 
-            this.GetObservable(IsVisibleProperty).Subscribe(visible => 
+            this.GetObservable(IsVisibleProperty).Subscribe(visible =>
             {
                 if (visible)
                 {
@@ -44,7 +24,7 @@ namespace Baird.Controls
                 }
             });
 
-            this.AttachedToVisualTree += (s, e) => 
+            this.AttachedToVisualTree += (s, e) =>
             {
                 if (IsVisible)
                 {
@@ -68,41 +48,36 @@ namespace Baird.Controls
             }
         }
 
-        public static readonly StyledProperty<double> CalculatedWidthProperty =
-            AvaloniaProperty.Register<OmniSearchControl, double>(nameof(CalculatedWidth), 300);
-
-        public double CalculatedWidth
-        {
-            get => GetValue(CalculatedWidthProperty);
-            set => SetValue(CalculatedWidthProperty, value);
-        }
-
         private void InitializeComponent()
         {
             AvaloniaXamlLoader.Load(this);
         }
+
         public void FocusResults()
         {
-            var list = this.FindControl<ListBox>("ResultsList");
-            if (list == null) return;
-            
-            list.Focus();
-            
-            // If we have items, ensure one is selected to show the highlight
-            if (list.SelectedIndex < 0 && list.ItemCount > 0)
+            var itemsControl = this.FindControl<ItemsControl>("ResultsList");
+            if (itemsControl == null) return;
+
+            // Try to focus the first button in the grid
+            if (itemsControl.ItemCount > 0)
             {
-                list.SelectedIndex = 0;
+                var container = itemsControl.ContainerFromIndex(0);
+                if (container is Visual visual)
+                {
+                    var button = visual.FindDescendantOfType<Button>();
+                    button?.Focus();
+                }
             }
         }
 
         public void FocusSearchBox()
         {
-             var box = this.FindControl<TextBox>("SearchBox"); 
-             if (box != null)
-             {
-                 box.Focus();
-                 box.CaretIndex = box.Text?.Length ?? 0;
-             }
+            var box = this.FindControl<TextBox>("SearchBox");
+            if (box != null)
+            {
+                box.Focus();
+                box.CaretIndex = box.Text?.Length ?? 0;
+            }
         }
     }
 }

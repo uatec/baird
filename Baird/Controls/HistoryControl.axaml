@@ -17,30 +17,21 @@
 
     <UserControl.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
-        <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedItem}" />
     </UserControl.KeyBindings>
 
     <UserControl.Styles>
-        <Style Selector="ListBoxItem">
+        <Style Selector="Button.MediaTileButton">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="4"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="10"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
         </Style>
         
-        <Style Selector="ListBoxItem:selected">
+        <Style Selector="Button.MediaTileButton:focus">
             <Setter Property="BorderBrush" Value="#eeeeee"/>
-        </Style>
-        <Style Selector="ListBoxItem:focus">
-            <Setter Property="BorderBrush" Value="#eeeeee"/>
-        </Style>
-        
-        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent"/>
-        </Style>
-        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent"/>
         </Style>
     </UserControl.Styles>
 
@@ -50,33 +41,29 @@
         <TextBlock Text="Continue Watching" FontSize="28" FontWeight="Bold" Foreground="White" Margin="20"/>
 
         <!-- History Grid -->
-        <ListBox Grid.Row="1" 
-                 Name="HistoryList" 
-                 Focusable="True"
-                 ItemsSource="{Binding HistoryItems}"
-                 SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
-                 Background="Transparent"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto">
-            <ListBox.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <WrapPanel ItemWidth="300" ItemHeight="240" HorizontalAlignment="Center"/>
-                </ItemsPanelTemplate>
-            </ListBox.ItemsPanel>
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <Button Background="Transparent" 
-                            Padding="0"
-                            BorderThickness="0"
-                            HorizontalAlignment="Stretch" 
-                            VerticalAlignment="Stretch"
-                            Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
-                            CommandParameter="{Binding}">
-                        <controls:MediaTileControl DataContext="{Binding}" />
-                    </Button>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+        <ScrollViewer Grid.Row="1"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <ItemsControl Name="HistoryList" 
+                          ItemsSource="{Binding HistoryItems}"
+                          Background="Transparent"
+                          XYFocus.NavigationModes="Enabled">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="6" HorizontalAlignment="Center"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Classes="MediaTileButton"
+                                Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
+                                CommandParameter="{Binding}">
+                            <controls:MediaTileControl DataContext="{Binding}" />
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
         
         <TextBlock Grid.Row="1" Text="No history items found." Foreground="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HistoryItems.Count}"/>
 

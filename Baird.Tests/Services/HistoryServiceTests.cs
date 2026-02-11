@@ -12,15 +12,15 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var service = new JsonHistoryService(); // This might try to write to disk. Ideally mock file system or use separate path.
-            // For unit test, JsonHistoryService writes to ~/.baird/history.json.
-            // We should use a temp path or mock. 
-            // Since JsonHistoryService hardcodes path in constructor, we can't easily test without side effects.
-            // I should have injected configuration or path.
-            // But for now, I can check logic by reflection or just reading the property if exposed?
-            // UPSERT updates internal cache.
-            // I can check GetProgress.
-            
-            var item = new MediaItem { Id = "test1", Name = "Short", IsLive = false, StreamUrl = "http://test" };
+                                                    // For unit test, JsonHistoryService writes to ~/.baird/history.json.
+                                                    // We should use a temp path or mock. 
+                                                    // Since JsonHistoryService hardcodes path in constructor, we can't easily test without side effects.
+                                                    // I should have injected configuration or path.
+                                                    // But for now, I can check logic by reflection or just reading the property if exposed?
+                                                    // UPSERT updates internal cache.
+                                                    // I can check GetProgress.
+
+            var item = new MediaItem { Id = "test1", Name = "Short", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
             var duration = TimeSpan.FromMinutes(5); // 300s
             var position = TimeSpan.FromSeconds(290); // 10s remaining. 5% of 300 is 15s. 
             // 10s < 15s -> Should be finished.
@@ -39,7 +39,7 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var service = new JsonHistoryService();
-            var item = new MediaItem { Id = "test2", Name = "Short2", IsLive = false, StreamUrl = "http://test" };
+            var item = new MediaItem { Id = "test2", Name = "Short2", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
             var duration = TimeSpan.FromMinutes(5); // 300s
             var position = TimeSpan.FromSeconds(270); // 30s remaining. 5% is 15s.
             // 30 > 15 -> Not finished.
@@ -58,10 +58,10 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var service = new JsonHistoryService();
-            var item = new MediaItem { Id = "test_long_1", Name = "LongDiff", IsLive = false, StreamUrl = "http://test" };
+            var item = new MediaItem { Id = "test_long_1", Name = "LongDiff", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
             var duration = TimeSpan.FromMinutes(100); // 6000s. > 90 mins.
             var position = TimeSpan.FromMinutes(91); // 9 mins remaining.
-            
+
             // 9 mins < 10 mins -> Finished.
 
             // Act
@@ -78,10 +78,10 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var service = new JsonHistoryService();
-            var item = new MediaItem { Id = "test_long_2", Name = "LongDiff2", IsLive = false, StreamUrl = "http://test" };
+            var item = new MediaItem { Id = "test_long_2", Name = "LongDiff2", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
             var duration = TimeSpan.FromMinutes(100); // 6000s
             var position = TimeSpan.FromMinutes(85); // 15 mins remaining.
-            
+
             // 15 > 10 -> Not Finished.
 
             // Act

@@ -19,13 +19,6 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _selectedProgramme, value);
         }
 
-        private MediaItem? _selectedEpisode;
-        public MediaItem? SelectedEpisode
-        {
-            get => _selectedEpisode;
-            set => this.RaiseAndSetIfChanged(ref _selectedEpisode, value);
-        }
-
         public ObservableCollection<MediaItem> ProgrammeChildren { get; } = new();
 
         public event EventHandler<MediaItem>? PlayRequested;
@@ -49,8 +42,7 @@ namespace Baird.ViewModels
             _providers = providers;
             _selectedProgramme = programme;
 
-            var canPlay = this.WhenAnyValue(x => x.SelectedEpisode, (MediaItem? item) => item != null);
-            PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay, canPlay);
+            PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay);
             BackCommand = ReactiveCommand.Create(RequestBack);
 
             _ = LoadChildren();
@@ -76,7 +68,6 @@ namespace Baird.ViewModels
                         ProgrammeChildren.Add(item);
                     }
                 }
-                SelectedEpisode = ProgrammeChildren.FirstOrDefault();
             }
             catch (Exception ex)
             {

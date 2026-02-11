@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System;
 
 namespace Baird.Controls
@@ -11,9 +12,9 @@ namespace Baird.Controls
         public HistoryControl()
         {
             InitializeComponent();
-            
+
             // Re-focus whenever visibility changes to true
-            this.GetObservable(IsVisibleProperty).Subscribe(visible => 
+            this.GetObservable(IsVisibleProperty).Subscribe(visible =>
             {
                 if (visible)
                 {
@@ -22,7 +23,7 @@ namespace Baird.Controls
             });
 
             // Focus on attach if visible
-            this.AttachedToVisualTree += (s, e) => 
+            this.AttachedToVisualTree += (s, e) =>
             {
                 if (IsVisible)
                 {
@@ -33,15 +34,18 @@ namespace Baird.Controls
 
         public void FocusHistoryList()
         {
-            var list = this.FindControl<ListBox>("HistoryList");
-            if (list == null) return;
-            
-            list.Focus();
-            
-            // If we have items, ensure one is selected to show the highlight
-            if (list.SelectedIndex < 0 && list.ItemCount > 0)
+            var itemsControl = this.FindControl<ItemsControl>("HistoryList");
+            if (itemsControl == null) return;
+
+            // Try to focus the first button in the grid
+            if (itemsControl.ItemCount > 0)
             {
-                list.SelectedIndex = 0;
+                var container = itemsControl.ContainerFromIndex(0);
+                if (container is Visual visual)
+                {
+                    var button = visual.FindDescendantOfType<Button>();
+                    button?.Focus();
+                }
             }
         }
 

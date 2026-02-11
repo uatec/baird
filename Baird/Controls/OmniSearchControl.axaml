@@ -19,7 +19,6 @@
     <UserControl.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
         <KeyBinding Gesture="Back" Command="{Binding BackIfEmptyCommand}" />
-        <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedItem}" />
     </UserControl.KeyBindings>
 
     <UserControl.Styles>
@@ -28,31 +27,21 @@
             <Setter Property="BorderThickness" Value="4"/>
         </Style>
         
-        <!-- Tile Style for ListBoxItem -->
-        <Style Selector="ListBoxItem">
+        <!-- Tile Style for Buttons -->
+        <Style Selector="Button.MediaTileButton">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="4"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="10"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="VerticalContentAlignment" Value="Stretch"/>
         </Style>
         
-        <!-- Selected or Focused -> Highlight Border -->
-        <Style Selector="ListBoxItem:selected">
+        <Style Selector="Button.MediaTileButton:focus">
             <Setter Property="BorderBrush" Value="#eeeeee"/>
-        </Style>
-        <Style Selector="ListBoxItem:focus">
-            <Setter Property="BorderBrush" Value="#eeeeee"/>
-        </Style>
-        
-        <!-- Remove default blue background for selection -->
-        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent"/>
-        </Style>
-        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent"/>
         </Style>
     </UserControl.Styles>
 
@@ -71,7 +60,7 @@
                          FontSize="24" 
                          Watermark="Search...">
                     <TextBox.KeyBindings>
-                        <KeyBinding Gesture="Enter" Command="{Binding PlayCommand}" CommandParameter="{Binding SelectedItem}" />
+                        <KeyBinding Gesture="Enter" Command="{Binding PlayFirstResultCommand}" />
                     </TextBox.KeyBindings>
                 </TextBox>
                 
@@ -90,37 +79,29 @@
         </Border>
 
         <!-- Row 1: Search Results -->
-        <ListBox Grid.Row="1" 
-                 Name="ResultsList" 
-                 ItemsSource="{Binding SearchResults}"
-                 SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
-                 Background="Transparent"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto">
-            <ListBox.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <WrapPanel ItemWidth="300" 
-                               ItemHeight="240" 
-                               HorizontalAlignment="Center"
-                               Width="{Binding $parent[controls:OmniSearchControl].CalculatedWidth}"/>
-                </ItemsPanelTemplate>
-            </ListBox.ItemsPanel>
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <Button Background="Transparent" 
-                            Padding="0"
-                            BorderThickness="0"
-                            HorizontalAlignment="Stretch" 
-                            VerticalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch" 
-                            VerticalContentAlignment="Stretch"
-                            Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
-                            CommandParameter="{Binding}">
-                        <controls:MediaTileControl DataContext="{Binding}" />
-                    </Button>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+        <ScrollViewer Grid.Row="1"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <ItemsControl Name="ResultsList" 
+                          ItemsSource="{Binding SearchResults}"
+                          Background="Transparent"
+                          XYFocus.NavigationModes="Enabled">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="6" HorizontalAlignment="Center"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Classes="MediaTileButton"
+                                Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
+                                CommandParameter="{Binding}">
+                            <controls:MediaTileControl DataContext="{Binding}" />
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
         
         <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsVisible="{Binding IsSearching}">
             <TextBlock Text="Searching..." FontSize="20" Foreground="#AAAAAA" HorizontalAlignment="Center"/>

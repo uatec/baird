@@ -19,6 +19,7 @@ namespace Baird.ViewModels
         public event EventHandler? BackRequested;
 
         public ReactiveCommand<MediaItem, Unit> PlayCommand { get; }
+        public ReactiveCommand<Unit, Unit> PlayFirstResultCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
         public ReactiveCommand<Unit, Unit> BackIfEmptyCommand { get; }
 
@@ -53,13 +54,6 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isSearching, value);
         }
 
-        private MediaItem? _selectedItem;
-        public MediaItem? SelectedItem
-        {
-            get => _selectedItem;
-            set => this.RaiseAndSetIfChanged(ref _selectedItem, value);
-        }
-
         private bool _isAutoActivationPending;
         public bool IsAutoActivationPending
         {
@@ -85,8 +79,18 @@ namespace Baird.ViewModels
             _providers = providers;
             _getAllChannels = getAllChannels;
 
-            var canPlay = this.WhenAnyValue(x => x.SelectedItem, (MediaItem? item) => item != null);
-            PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay, canPlay);
+            PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay);
+
+            // PlayFirstResultCommand plays the first result when Enter is pressed on search textbox
+            var canPlayFirst = this.WhenAnyValue(x => x.SearchResults.Count, count => count > 0);
+            PlayFirstResultCommand = ReactiveCommand.Create(() =>
+            {
+                if (SearchResults.FirstOrDefault() is MediaItem firstItem)
+                {
+                    RequestPlay(firstItem);
+                }
+            }, canPlayFirst);
+
             BackCommand = ReactiveCommand.Create(RequestBack);
 
             // BackIfEmptyCommand only executes when search text is empty
@@ -99,7 +103,6 @@ namespace Baird.ViewModels
             textChanges.Subscribe(_ =>
             {
                 IsSearching = true;
-                SelectedItem = null;
                 SearchResults.Clear();
                 StopAutoActivationTimer();
             });
@@ -148,15 +151,10 @@ namespace Baird.ViewModels
 
                 SearchResults.AddRange(matchingChannels);
 
-                if (matchingChannels.Any())
-                {
-                    SelectedItem = SearchResults.FirstOrDefault();
-                }
-
                 IsSearching = false;
 
                 // Start timer only if we found matching channels
-                if (SelectedItem != null)
+                if (matchingChannels.Any())
                 {
                     StartAutoActivationTimer();
                 }
@@ -198,12 +196,6 @@ namespace Baird.ViewModels
                                 var sorted = sorter.Sort(accumulatedResults, query);
                                 SearchResults.Clear();
                                 SearchResults.AddRange(sorted);
-
-                                // Auto-select first if nothing selected or selection lost
-                                if (SelectedItem == null)
-                                {
-                                    SelectedItem = SearchResults.FirstOrDefault();
-                                }
                             }
                             else
                             {
@@ -293,10 +285,10 @@ namespace Baird.ViewModels
             {
                 StopAutoActivationTimer();
 
-                // Auto-activate the selected item
-                if (SelectedItem != null)
+                // Auto-activate the first result
+                if (SearchResults.FirstOrDefault() is MediaItem firstItem)
                 {
-                    RequestPlay(SelectedItem);
+                    RequestPlay(firstItem);
                 }
             }
         }
@@ -305,7 +297,6 @@ namespace Baird.ViewModels
         {
             SearchText = "";
             SearchResults.Clear();
-            SelectedItem = null;
             IsSearching = false;
             StopAutoActivationTimer();
         }
