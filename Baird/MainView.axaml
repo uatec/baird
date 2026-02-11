@@ -33,6 +33,11 @@
                 <DataTemplate DataType="{x:Type vm:HistoryViewModel}">
                     <c:HistoryControl/>
                 </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:ShowingVideoPlayerViewModel}">
+                    <!-- Empty template - the video player is always rendered on the base layer -->
+                    <!-- IsHitTestVisible="False" ensures keyboard/mouse input passes through to the video player -->
+                    <Grid IsHitTestVisible="False" Focusable="False"/>
+                </DataTemplate>
             </ContentControl.DataTemplates>
         </ContentControl>
 

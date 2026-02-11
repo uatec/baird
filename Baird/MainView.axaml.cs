@@ -46,11 +46,11 @@ namespace Baird
                     topLevel.KeyDown += InputCoordinator;
                 }
 
-                // Restore focus to VideoPlayer when CurrentPage is cleared
+                // Restore focus to VideoPlayer when CurrentPage is cleared or showing video player
                 _viewModel.ObservableForProperty(x => x.CurrentPage)
                     .Subscribe(change =>
                     {
-                        if (change.Value == null)
+                        if (change.Value == null || change.Value is ShowingVideoPlayerViewModel)
                         {
                             Dispatcher.UIThread.Post(() =>
                             {
@@ -58,7 +58,7 @@ namespace Baird
                                 var player = videoLayer?.GetPlayer();
                                 if (player != null)
                                 {
-                                    Console.WriteLine("[MainView] CurrentPage is null, forcing focus to VideoPlayer");
+                                    Console.WriteLine("[MainView] CurrentPage is null or ShowingVideoPlayerViewModel, forcing focus to VideoPlayer");
                                     player.Focus();
                                 }
                             });

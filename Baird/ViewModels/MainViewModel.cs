@@ -125,23 +125,16 @@ namespace Baird.ViewModels
 
                 ActivateChannel(item, resumeTime);
 
-                // Set CurrentPage to null to show video player, but preserve navigation history
-                // so user can navigate back to their previous page
-                CurrentPage = null;
+                // Push ShowingVideoPlayerViewModel to navigation stack
+                // This represents "showing video player" as a proper page
+                PushViewModel(new ShowingVideoPlayerViewModel());
             }
         }
 
         public void GoBack()
         {
-            // If we're on the video player (CurrentPage == null) and there's history,
-            // restore the previous page
-            if (CurrentPage == null && NavigationHistory.Count > 0)
-            {
-                CurrentPage = NavigationHistory.Peek();
-                return;
-            }
-
-            // Otherwise, pop the current page to go back
+            // Pop the current page to go back
+            // This works for ShowingVideoPlayerViewModel too - it will pop back to the previous page
             PopViewModel();
         }
 
@@ -156,6 +149,7 @@ namespace Baird.ViewModels
 
         public void PushViewModel(ReactiveObject viewModel)
         {
+            Console.WriteLine($"[Navigation] Pushing {viewModel.GetType().Name}");
             NavigationHistory.Push(viewModel);
             CurrentPage = viewModel;
         }
@@ -166,9 +160,11 @@ namespace Baird.ViewModels
             {
                 NavigationHistory.Pop();
                 CurrentPage = NavigationHistory.Count > 0 ? NavigationHistory.Peek() : null;
+                Console.WriteLine($"[Navigation] Popping to {CurrentPage?.GetType().Name}");
             }
             else
             {
+                Console.WriteLine("[Navigation] No pages to pop");
                 CurrentPage = null;
             }
         }
@@ -321,9 +317,11 @@ namespace Baird.ViewModels
             var vm = new ProgrammeDetailViewModel(_providers, programme);
             vm.PlayRequested += (s, item) =>
             {
+                // TODO: this is generic?
                 PlayItem(item);
                 // Set current episode list for auto-play next episode
                 // (after PlayItem, which clears it to handle Search/History plays correctly)
+                // TODO: Dont' use episode list, go straight to the datastore
                 _currentEpisodeList = vm.ProgrammeChildren.ToList();
                 Console.WriteLine($"[MainViewModel] Set episode list with {_currentEpisodeList.Count} episodes");
             };
