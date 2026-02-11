@@ -134,19 +134,27 @@ namespace Baird.Services
             return _historyService.GetProgress(id);
         }
 
+        private readonly Dictionary<string, MediaItem> _itemCache = new();
+
         public async Task<MediaItem?> GetItemAsync(string id)
         {
-            // Iterate providers to find the item.
-            // Optimized approach: 
-            // 1. Check if ID pattern matches specific provider? (UUID -> Jellyfin/TVH) (YouTube ID -> YT)
+            // 1. Check cache
+            if (_itemCache.TryGetValue(id, out var cachedItem))
+            {
+                // Ensure history is up to date even if item is cached
+                cachedItem.History = _historyService.GetProgress(id);
+                return cachedItem;
+            }
 
-            // For now, simple iteration.
+            // 2. Iterate providers to find the item.
             foreach (var provider in _providers)
             {
                 var item = await provider.GetItemAsync(id);
                 if (item != null)
                 {
                     item.History = _historyService.GetProgress(id);
+                    // 3. Cache the item
+                    _itemCache[id] = item;
                     return item;
                 }
             }
@@ -155,16 +163,14 @@ namespace Baird.Services
 
         private void AttachHistory(IEnumerable<MediaItem> items)
         {
-            // Optimization: Fetch all history once?
-            // HistoryService.GetHistoryAsync() returns the list.
-            // Since we have a local cache in HistoryService, searching by ID is fast if implemented with Dictionary.
-            // Current HistoryService implementation uses List.FirstOrDefault, which is O(N).
-            // For large listings, this is slow.
-            // But for now, let's just loop.
-
             foreach (var item in items)
             {
                 item.History = _historyService.GetProgress(item.Id);
+                // Cache items found in listings to speed up future GetItemAsync calls
+                if (!string.IsNullOrEmpty(item.Id) && !_itemCache.ContainsKey(item.Id))
+                {
+                    _itemCache[item.Id] = item;
+                }
             }
         }
     }

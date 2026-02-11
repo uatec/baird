@@ -37,12 +37,46 @@ namespace Baird.ViewModels
 
         public async Task RefreshAsync()
         {
-            HistoryItems.Clear();
-            var items = await _dataService.GetHistoryItemsAsync();
+            // Fetch latest history
+            var newItems = await _dataService.GetHistoryItemsAsync();
 
-            foreach (var item in items)
+            // Sync with existing collection to avoid full clear/add (reduces flicker)
+            // 1. Remove items not in new list
+            var toRemove = HistoryItems.Where(i => !newItems.Any(n => n.Id == i.Id)).ToList();
+            foreach (var item in toRemove)
             {
-                HistoryItems.Add(item);
+                HistoryItems.Remove(item);
+            }
+
+            // 2. Add or update items
+            int index = 0;
+            foreach (var newItem in newItems)
+            {
+                // If item exists, update properties if needed (e.g. progress)
+                // Since MediaItem is a class and GetHistoryItemsAsync wraps the same objects if cached in DataService,
+                // we might have reference equality if we are lucky, or ID match.
+
+                var existing = HistoryItems.FirstOrDefault(x => x.Id == newItem.Id);
+                if (existing != null)
+                {
+                    // Update history property if reference changed (unlikely with DataService cache, but good for safety)
+                    if (existing.History != newItem.History)
+                    {
+                        existing.History = newItem.History;
+                    }
+
+                    // Ensure order
+                    int oldIndex = HistoryItems.IndexOf(existing);
+                    if (oldIndex != index)
+                    {
+                        HistoryItems.Move(oldIndex, index);
+                    }
+                }
+                else
+                {
+                    HistoryItems.Insert(index, newItem);
+                }
+                index++;
             }
         }
     }
