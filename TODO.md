@@ -5,7 +5,7 @@
     - [x] warning/cancel button before playing next episode
 - [x] after video finishes with nothing next, go back to previous page
 ### Programme Details
-- [ ] fix nested programme details navigation
+- [x] fix nested programme details navigation
 ### Search
 - [x] timeout on 3 digit search
 

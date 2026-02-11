@@ -149,6 +149,17 @@ namespace Baird.ViewModels
 
         public void PushViewModel(ReactiveObject viewModel)
         {
+            // Deduplicate ShowingVideoPlayerViewModel - if we're pushing one and the top of the stack
+            // is already ShowingVideoPlayerViewModel, replace it instead of stacking
+            // This prevents back navigation from going through each episode when auto-playing
+            if (viewModel is ShowingVideoPlayerViewModel &&
+                NavigationHistory.Count > 0 &&
+                NavigationHistory.Peek() is ShowingVideoPlayerViewModel)
+            {
+                Console.WriteLine($"[Navigation] Replacing existing ShowingVideoPlayerViewModel");
+                NavigationHistory.Pop();
+            }
+
             Console.WriteLine($"[Navigation] Pushing {viewModel.GetType().Name}");
             NavigationHistory.Push(viewModel);
             CurrentPage = viewModel;
