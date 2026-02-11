@@ -64,6 +64,11 @@ namespace Baird.Services
 
             UpdateItem(item, position, duration);
 
+            Console.WriteLine($"Updating item: {item.Name}");
+            Console.WriteLine($"Position: {position.TotalSeconds}");
+            Console.WriteLine($"Duration: {duration.TotalSeconds}");
+            Console.WriteLine($"IsFinished: {item.IsFinished}");
+
             await SaveHistoryAsync();
         }
 
@@ -111,7 +116,7 @@ namespace Baird.Services
                 if (remainingSeconds < (duration.TotalSeconds * 0.05)) isFinished = true;
             }
 
-            existing.IsFinished = existing.IsLive || isFinished;
+            existing.IsFinished = isFinished;
         }
 
         public async Task<List<MediaItem>> GetHistoryAsync()

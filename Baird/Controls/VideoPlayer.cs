@@ -29,6 +29,18 @@ namespace Baird.Controls
             _player.StreamEnded += (sender, args) =>
             {
                 Console.WriteLine("[VideoPlayer] StreamEnded event received from MpvPlayer");
+                // Save progress immediately when stream ends naturally (EOF)
+                // This ensures the final position/duration is captured before auto-play starts next episode
+
+                if (_currentMediaItem == null)
+                {
+                    Console.WriteLine("[VideoPlayer] _currentMediaItem is null. Skipping SaveProgress.");
+                    return;
+                }
+
+                // ensure we appear to have watched the entire video
+                _currentMediaItem.LastPosition = _currentMediaItem.Duration;
+                SaveProgress();
                 StreamEnded?.Invoke(this, EventArgs.Empty);
             };
 
@@ -184,19 +196,19 @@ namespace Baird.Controls
         }
 
         // Helper to track current media item ID for history
-        private string? _currentMediaId;
-        private Baird.Services.MediaItem? _currentMediaItem;
+        private Services.MediaItem? _currentMediaItem;
 
-        public void SetCurrentMediaItem(Baird.Services.MediaItem item)
+        public void SetCurrentMediaItem(Services.MediaItem item)
         {
-            if (item == null) throw new ArgumentNullException(nameof(item));
+            ArgumentNullException.ThrowIfNull(item);
+
             // Save progress of previous item before switching
             if (_currentMediaItem != null && _currentMediaItem.Id != item.Id)
             {
+                Console.WriteLine($"[VideoPlayer] Switching to new item. Saving progress for {_currentMediaItem.Name}");
                 SaveProgress();
             }
             _currentMediaItem = item;
-            _currentMediaId = item.Id;
         }
 
         public static readonly StyledProperty<bool> IsLiveProperty =
@@ -375,21 +387,8 @@ namespace Baird.Controls
                 return;
             }
 
-            // Get current pos/dur
-            var posStr = _player.TimePosition;
-            var durStr = _player.Duration;
-
-            Console.WriteLine($"[VideoPlayer] SaveProgress Raw: Pos='{posStr}', Dur='{durStr}'");
-
-            if (double.TryParse(posStr, out double pos) && double.TryParse(durStr, out double dur))
-            {
-                Console.WriteLine($"[VideoPlayer] Saving {pos} / {dur} for {_currentMediaItem.Name}");
-                await HistoryService.UpsertAsync(_currentMediaItem, TimeSpan.FromSeconds(pos), TimeSpan.FromSeconds(dur));
-            }
-            else
-            {
-                Console.WriteLine($"[VideoPlayer] Failed to parse pos/dur.");
-            }
+            Console.WriteLine($"[VideoPlayer] Saving {_currentMediaItem.LastPosition} / {_currentMediaItem.Duration} for {_currentMediaItem.Name}");
+            await HistoryService.UpsertAsync(_currentMediaItem, _currentMediaItem.LastPosition, _currentMediaItem.Duration);
         }
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -450,7 +449,11 @@ namespace Baird.Controls
                     }
 
                     // Save progress on Pause
-                    if (paused) SaveProgress();
+                    if (paused)
+                    {
+                        Console.WriteLine("[VideoPlayer] Saving progress on Pause");
+                        SaveProgress();
+                    }
                 }
             }
         }
@@ -484,6 +487,7 @@ namespace Baird.Controls
         public void Seek(double s) => _player.Seek(s);
         public void Stop()
         {
+            Console.WriteLine("[VideoPlayer] Stopping");
             SaveProgress();
             _player.Stop();
             IsPaused = true;
