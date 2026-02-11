@@ -19,5 +19,7 @@ dotnet publish Baird/Baird.csproj \
     -p:Version="${BUILD_VERSION:-1.0.0}" \
     -o "$OUTPUT_DIR/linux-arm64"
     
-cp 99-baird.rules "$OUTPUT_DIR/"
-cp install_deps.sh "$OUTPUT_DIR/"
+cp 99-baird.rules "$OUTPUT_DIR/linux-arm64/"
+cp install_deps.sh "$OUTPUT_DIR/linux-arm64/"
+cp baird.service "$OUTPUT_DIR/linux-arm64/"
+cp install_service.sh "$OUTPUT_DIR/linux-arm64/"

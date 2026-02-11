@@ -1,0 +1,20 @@
+[Unit]
+Description=Baird Media Player
+# Binds the service to the graphical session. 
+# If you log out (stop the GUI), this service will automatically stop.
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/home/linuxbrew/.linuxbrew/bin/baird
+Restart=always
+RestartSec=5
+Environment=DISPLAY=:0
+# This is usually unnecessary in user services as systemd inherits it, 
+# but keeping it doesn't hurt if your setup is unique.
+Environment=XAUTHORITY=/home/%u/.Xauthority
+
+[Install]
+# Starts the service when the Graphical Interface is ready, 
+# rather than just when the "User" is ready.
+WantedBy=graphical-session.target
