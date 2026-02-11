@@ -32,6 +32,7 @@ namespace Baird.Services
         public bool IsFinished { get; set; }
         public DateTime LastWatched { get; set; }
 
+        [System.Text.Json.Serialization.JsonIgnore]
         public double Progress => LastPosition.TotalSeconds / Duration.TotalSeconds;
     }
 }
