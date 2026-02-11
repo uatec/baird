@@ -45,17 +45,29 @@ namespace Baird.ViewModels
         }
 
         public string AppVersion { get; }
-        public IHistoryService HistoryService { get; } // Exposed for now, or just internal use
+        // Actually MainViewModel uses HistoryService in PlayItem.
+        // Let's keep a private reference to DataService.
+        private readonly IDataService _dataService;
 
         // Track current episode list for auto-play next episode
         private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
 
-        public MainViewModel(System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> providers, IHistoryService historyService)
+        public MainViewModel(IDataService dataService)
         {
-            _providers = providers;
-            HistoryService = historyService;
-            OmniSearch = new OmniSearchViewModel(providers, () => AllChannels);
-            History = new HistoryViewModel(historyService);
+            _dataService = dataService;
+            // HistoryService = historyService; // Remove property? 
+            // VideoPlayer layer needs HistoryService? 
+            // MainView sets vLayer.HistoryService.
+            // We need to exposing IHistoryService or IDataService to View?
+            // User asked to encapsulate.
+            // But if VideoPlayer needs HistoryService...
+            // Let's check MainView again. 
+            // MainView created HistoryService and passed it to VM AND VideoLayer.
+            // Now MainView will create DataService.
+            // VideoLayer likely needs updates too.
+
+            OmniSearch = new OmniSearchViewModel(dataService, () => AllChannels);
+            History = new HistoryViewModel(dataService);
 
             History.PlayRequested += (s, item) => PlayItem(item);
             History.BackRequested += (s, e) => GoBack();
@@ -87,7 +99,7 @@ namespace Baird.ViewModels
         }
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
-        private readonly System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> _providers;
+        // private readonly System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> _providers; // Removed
 
         public void ResetHudTimer()
         {
@@ -113,7 +125,7 @@ namespace Baird.ViewModels
             if (!string.IsNullOrEmpty(item.StreamUrl))
             {
                 // Check for resume progress
-                var history = HistoryService.GetProgress(item.Id);
+                var history = _dataService.GetHistory(item.Id);
                 TimeSpan? resumeTime = null;
 
                 if (history != null && !history.IsFinished && !item.IsLive)
@@ -233,22 +245,11 @@ namespace Baird.ViewModels
 
         public async System.Threading.Tasks.Task RefreshChannels()
         {
-            var tasks = new System.Collections.Generic.List<System.Threading.Tasks.Task<System.Collections.Generic.IEnumerable<Baird.Services.MediaItem>>>();
-            foreach (var provider in _providers)
-            {
-                tasks.Add(provider.GetListingAsync());
-            }
-
             try
             {
-                var results = await System.Threading.Tasks.Task.WhenAll(tasks);
-                var allItems = new System.Collections.Generic.List<Baird.Services.MediaItem>();
-                foreach (var list in results)
-                {
-                    allItems.AddRange(list);
-                }
+                var results = await _dataService.GetListingAsync(); // Replaces tasks loop
 
-                AllChannels = allItems
+                AllChannels = results
                     .Where(i => i.IsLive)
                     .Where(i => i.ChannelNumber != null && i.ChannelNumber != "0")
                     .OrderBy(i =>
@@ -304,28 +305,37 @@ namespace Baird.ViewModels
         private void ActivateChannel(Baird.Services.MediaItem item, TimeSpan? resumeTime = null)
         {
             ActiveItem = item;
-            // ActiveItem = new ActiveMedia
-            // {
-            //     Id = item.Id,
-            //     Name = item.Name,
-            //     Details = item.Details,
-            //     ImageUrl = item.ImageUrl,
-            //     Source = item.Source,
-            //     Type = item.Type,
-            //     Synopsis = item.Synopsis,
-            //     Subtitle = item.Subtitle,
-            //     StreamUrl = item.StreamUrl,
-            //     IsLive = item.IsLive,
-            //     ChannelNumber = item.ChannelNumber,
-            //     ResumeTime = resumeTime
-            // };
+            // ActiveItem = new ActiveMedia... 
+            // We use MediaItem directly now.
+            // If resumeTime is needed, user might use a global property or pass it to player differently.
+            // "VideoPlayer.SetCurrentMediaItem(mediaItem)" handles it.
+            // BUT wait. Previously MainView.axaml.cs subscribed to ActiveItem changes and called SetCurrentMediaItem.
+            // How does it pass resumeTime?
+            // "VideoPlayer.SetCurrentMediaItem" might check History itself?
+            // Or MainViewModel logic needs to ensure the item has history attached?
+            // Since we use DataService and calling GetHistory, we should Attach history to the item if not present.
+            // The item passed to ActiveItem should have History populated if we want the player to see it?
+            // But History is now on MediaItem.History property.
+            // So if `item` has `History` populated with `LastPosition`, the player can read it.
+
+            // Wait, I fetched `history` in `PlayItem`.
+            // I should assign it to `item.History` before setting `ActiveItem`?
+            // Yes.
+            if (resumeTime.HasValue)
+            {
+                // Ensure history is attached locally for this play session
+                if (item.History == null)
+                {
+                    item.History = _dataService.GetHistory(item.Id);
+                }
+            }
 
             ResetHudTimer();
         }
 
         public void OpenProgramme(Baird.Services.MediaItem programme)
         {
-            var vm = new ProgrammeDetailViewModel(_providers, programme);
+            var vm = new ProgrammeDetailViewModel(_dataService, programme);
             vm.PlayRequested += (s, item) =>
             {
                 // TODO: this is generic?

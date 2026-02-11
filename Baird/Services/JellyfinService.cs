@@ -207,6 +207,33 @@ namespace Baird.Services
             }
         }
 
+        public async Task<MediaItem?> GetItemAsync(string id)
+        {
+            await EnsureAuthenticatedAsync();
+            if (!IsAuthenticated) return null;
+
+            try
+            {
+                var url = $"Users/{_userId}/Items/{id}?Fields=ProductionYear,RunTimeTicks,ProviderIds";
+                var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode) return null;
+
+                var json = await response.Content.ReadAsStringAsync();
+                var item = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieItem);
+
+                if (item != null)
+                {
+                    return MapJellyfinItem(item);
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Jellyfin GetItemAsync failed for {id}: {ex.Message}");
+                return null;
+            }
+        }
+
         public async Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
         {
             await EnsureAuthenticatedAsync();

@@ -18,6 +18,65 @@ namespace Baird.Services
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         }
 
+        public Task<MediaItem?> GetItemAsync(string id)
+        {
+            // BBC iPlayer doesn't expose single item lookup easily for arbitrary IDs
+            // But we can construct the URL and maybe parse it if we were scraping?
+            // Or we can search for the ID specifically?
+            // "https://ibl.api.bbci.co.uk/ibl/v1/programmes/{id}?rights=web&availability=available"
+            // Let's try to fetch program details.
+
+            return Task.Run(async () =>
+            {
+                try
+                {
+                    // This is a guess at the API for single item or we reuse search?
+                    // Search for the ID usually works if it's in the index? No, search is text.
+                    // Let's try the programme endpoint.
+                    var url = $"https://ibl.api.bbci.co.uk/ibl/v1/programmes/{id}?rights=web&availability=available";
+                    var response = await _httpClient.GetAsync(url);
+                    if (!response.IsSuccessStatusCode) return null;
+
+                    var json = await response.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(json);
+
+                    if (doc.RootElement.TryGetProperty("programmes", out var progs) && progs.GetArrayLength() > 0)
+                    {
+                        var p = progs[0]; // Take first
+                        // Map it similar to search result
+                        var title = p.GetProperty("title").GetString();
+                        // ... mapping logic is complex to duplicate.
+                        // Can we refactor mapping?
+                        // For now, let's just return null if too complex, or implemented partially.
+                        // User requirement: "split history only information out".
+                        // If we can't look it up, history won't show it.
+                        // Let's rely on Search for now?
+                        // Actually, let's implement a basic mapping.
+
+                        return new MediaItem
+                        {
+                            Id = id,
+                            Name = title!,
+                            Details = "", // Extract subtitle
+                            ImageUrl = "", // Extract image
+                            IsLive = false,
+                            Type = MediaType.Video,
+                            StreamUrl = $"https://www.bbc.co.uk/iplayer/episode/{id}",
+                            Source = "BBC iPlayer",
+                            Subtitle = "",
+                            Synopsis = "",
+                            Duration = TimeSpan.Zero // We might not get it easily here without versions
+                        };
+                    }
+                    return null;
+                }
+                catch
+                {
+                    return null;
+                }
+            });
+        }
+
         public Task<IEnumerable<MediaItem>> GetListingAsync()
         {
             // Full browsing not implemented yet

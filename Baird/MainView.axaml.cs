@@ -19,6 +19,7 @@ namespace Baird
         private List<IMediaProvider> _providers = new();
         private ICecService _cecService;
         private IHistoryService _historyService;
+        private IDataService _dataService;
 
         public MainView()
         {
@@ -32,7 +33,10 @@ namespace Baird
             _cecService = new CecService();
             _historyService = new JsonHistoryService();
 
-            _viewModel = new MainViewModel(_providers, _historyService);
+            // Create DataService encapsulating providers and history
+            _dataService = new DataService(_providers, _historyService);
+
+            _viewModel = new MainViewModel(_dataService);
 
             DataContext = _viewModel;
 
@@ -93,11 +97,11 @@ namespace Baird
                     }
                 }, DispatcherPriority.Input);
 
-                // Inject HistoryService into VideoLayer/Player
+                // Inject DataService into VideoLayer/Player
                 var vLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
                 if (vLayer != null)
                 {
-                    vLayer.HistoryService = _historyService;
+                    vLayer.DataService = _dataService;
                 }
 
                 // Subscribe to ActiveItem changes to notify VideoPlayer of current item identity

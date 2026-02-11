@@ -10,6 +10,19 @@ namespace Baird.Services
 {
     public class YouTubeService : IMediaProvider
     {
+        public Task<MediaItem?> GetItemAsync(string id)
+        {
+            // For now, return null as we don't have a direct lookup without search
+            // Or we could run yt-dlp on the ID?
+            // "https://www.youtube.com/watch?v={id}"
+            // Let's implement a quick lookup
+            return Task.Run(async () =>
+            {
+                var items = await SearchAsync(id);
+                return items.FirstOrDefault(i => i.Id == id);
+            });
+        }
+
         public Task<IEnumerable<MediaItem>> GetListingAsync()
         {
             // Browsing YouTube without a query is not supported in this simple implementation

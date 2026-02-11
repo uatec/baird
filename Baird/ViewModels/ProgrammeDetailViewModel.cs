@@ -10,7 +10,7 @@ namespace Baird.ViewModels
 {
     public class ProgrammeDetailViewModel : ReactiveObject
     {
-        private readonly IEnumerable<IMediaProvider> _providers;
+        private readonly IDataService _dataService;
 
         private MediaItem _selectedProgramme;
         public MediaItem SelectedProgramme
@@ -37,9 +37,9 @@ namespace Baird.ViewModels
             BackRequested?.Invoke(this, EventArgs.Empty);
         }
 
-        public ProgrammeDetailViewModel(IEnumerable<IMediaProvider> providers, MediaItem programme)
+        public ProgrammeDetailViewModel(IDataService dataService, MediaItem programme)
         {
-            _providers = providers;
+            _dataService = dataService;
             _selectedProgramme = programme;
 
             PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay);
@@ -52,21 +52,12 @@ namespace Baird.ViewModels
         {
             ProgrammeChildren.Clear();
 
-            var tasks = new List<Task<IEnumerable<MediaItem>>>();
-            foreach (var p in _providers)
-            {
-                tasks.Add(p.GetChildrenAsync(SelectedProgramme.Id));
-            }
-
             try
             {
-                var results = await Task.WhenAll(tasks);
-                foreach (var list in results)
+                var children = await _dataService.GetChildrenAsync(SelectedProgramme.Id);
+                foreach (var item in children)
                 {
-                    foreach (var item in list)
-                    {
-                        ProgrammeChildren.Add(item);
-                    }
+                    ProgrammeChildren.Add(item);
                 }
             }
             catch (Exception ex)

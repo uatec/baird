@@ -11,7 +11,7 @@ namespace Baird.ViewModels
 {
     public class HistoryViewModel : ReactiveObject
     {
-        private readonly IHistoryService _historyService;
+        private readonly IDataService _dataService;
         public ObservableCollection<MediaItem> HistoryItems { get; } = new();
 
         public event EventHandler<MediaItem>? PlayRequested;
@@ -20,9 +20,9 @@ namespace Baird.ViewModels
         public ReactiveCommand<MediaItem, Unit> PlayCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
 
-        public HistoryViewModel(IHistoryService historyService)
+        public HistoryViewModel(IDataService dataService)
         {
-            _historyService = historyService;
+            _dataService = dataService;
 
             PlayCommand = ReactiveCommand.Create<MediaItem>(item =>
             {
@@ -38,9 +38,8 @@ namespace Baird.ViewModels
         public async Task RefreshAsync()
         {
             HistoryItems.Clear();
-            var items = await _historyService.GetHistoryAsync();
+            var items = await _dataService.GetHistoryItemsAsync();
 
-            // They are already sorted by LastWatched Descending in Service
             foreach (var item in items)
             {
                 HistoryItems.Add(item);

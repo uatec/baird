@@ -69,14 +69,15 @@ namespace Baird.ViewModels
         }
 
         public ObservableCollection<MediaItem> SearchResults { get; } = new();
-        private readonly IEnumerable<IMediaProvider> _providers;
+        // private readonly IEnumerable<IMediaProvider> _providers; // Removed
+        private readonly IDataService _dataService;
         private readonly Func<List<MediaItem>> _getAllChannels;
         private DispatcherTimer? _autoActivationTimer;
         private DateTime _timerStartTime;
 
-        public OmniSearchViewModel(IEnumerable<IMediaProvider> providers, Func<List<MediaItem>> getAllChannels)
+        public OmniSearchViewModel(IDataService dataService, Func<List<MediaItem>> getAllChannels)
         {
-            _providers = providers;
+            _dataService = dataService;
             _getAllChannels = getAllChannels;
 
             PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay);
@@ -172,60 +173,24 @@ namespace Baird.ViewModels
             var accumulatedResults = new List<MediaItem>();
             var sorter = new SearchResultSorter();
 
-            // Create tasks for each provider
-            var tasks = _providers.Select(async provider =>
-            {
-                try
-                {
-                    var results = await provider.SearchAsync(query, token);
-
-                    if (token.IsCancellationRequested) return;
-
-                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
-                    {
-                        if (token.IsCancellationRequested) return;
-
-                        var newItems = results.ToList();
-                        if (newItems.Any())
-                        {
-                            accumulatedResults.AddRange(newItems);
-
-                            if (IsSearchFieldFocused)
-                            {
-                                // Re-sort everything
-                                var sorted = sorter.Sort(accumulatedResults, query);
-                                SearchResults.Clear();
-                                SearchResults.AddRange(sorted);
-                            }
-                            else
-                            {
-                                // Append only
-                                // We might want to sort the *new* batch? 
-                                // Or just append them raw?
-                                // "if the focus has moved to the list items, please append only so items don't move under the user"
-                                // Appending raw preserves "accumulated" order, which is "arrival time".
-                                // But if a provider returns a mix of "High Priority" and "Low Priority", we should probably sort the *batch*?
-                                // Let's sort the batch using the same logic, but just for this batch.
-                                var sortedBatch = sorter.Sort(newItems, query);
-                                SearchResults.AddRange(sortedBatch);
-                            }
-                        }
-                    });
-                }
-                catch (OperationCanceledException) { }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Search provider error: {ex}");
-                }
-            }).ToList();
-
             try
             {
-                await Task.WhenAll(tasks);
+                var results = await _dataService.SearchAsync(query, token);
+                if (token.IsCancellationRequested) return;
+
+                var items = results.ToList();
+                if (items.Any())
+                {
+                    // Sort and add
+                    var sorted = sorter.Sort(items, query);
+                    SearchResults.Clear();
+                    SearchResults.AddRange(sorted);
+                }
             }
-            catch (Exception)
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
             {
-                // Ignore aggregate exceptions from cancellation 
+                Console.WriteLine($"Search error: {ex}");
             }
             finally
             {

@@ -32,7 +32,7 @@ namespace Baird.Tests.Mocks
                 return Task.FromResult((IEnumerable<MediaItem>)_items);
             }
 
-            var results = _items.Where(i => 
+            var results = _items.Where(i =>
                 (i.Name?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                 (i.ChannelNumber?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
             );
@@ -43,6 +43,11 @@ namespace Baird.Tests.Mocks
         public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
         {
             return Task.FromResult(Enumerable.Empty<MediaItem>());
+        }
+
+        public Task<MediaItem?> GetItemAsync(string id)
+        {
+            return Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
         }
     }
 }

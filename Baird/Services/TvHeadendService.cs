@@ -62,6 +62,16 @@ namespace Baird.Services
         }
 
 
+        public async Task<MediaItem?> GetItemAsync(string id)
+        {
+            // TVHeadend doesn't have a direct lookup API easily exposed without grid
+            // But we can fetch the grid and filter?
+            // Or rely on search?
+            // Let's fetch grid and find it. It's cached by TVH usually.
+            var all = await GetListingAsync();
+            return all.FirstOrDefault(x => x.Id == id);
+        }
+
         public async Task<IEnumerable<MediaItem>> GetListingAsync()
         {
             try

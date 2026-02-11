@@ -18,7 +18,7 @@ namespace Baird.Controls
         private bool _isScanning;
         private string _lastLoggedState = "Idle";
 
-        public Baird.Services.IHistoryService? HistoryService { get; set; }
+        public Baird.Services.IDataService? DataService { get; set; }
 
         public VideoPlayer()
         {
@@ -39,8 +39,8 @@ namespace Baird.Controls
                 }
 
                 // ensure we appear to have watched the entire video
-                _currentMediaItem.LastPosition = _currentMediaItem.Duration;
-                SaveProgress();
+                // We pass Duration as override to SaveProgress to ensure it marks as finished
+                SaveProgress(this.Duration);
                 StreamEnded?.Invoke(this, EventArgs.Empty);
             };
 
@@ -352,8 +352,22 @@ namespace Baird.Controls
                 // Sync to MediaItem if we have one
                 if (_currentMediaItem != null && dur > 0)
                 {
-                    _currentMediaItem.LastPosition = tsPos;
-                    _currentMediaItem.Duration = tsDur;
+                    if (_currentMediaItem.History == null)
+                    {
+                        _currentMediaItem.History = new Baird.Models.HistoryItem
+                        {
+                            Id = _currentMediaItem.Id,
+                            LastPosition = tsPos,
+                            Duration = tsDur,
+                            IsFinished = false,
+                            LastWatched = DateTime.Now
+                        };
+                    }
+                    else
+                    {
+                        _currentMediaItem.History.LastPosition = tsPos;
+                        _currentMediaItem.History.Duration = tsDur;
+                    }
                 }
 
                 Position = tsPos;
@@ -386,16 +400,19 @@ namespace Baird.Controls
             // And maybe periodically in case of crash?
         }
 
-        public async void SaveProgress()
+        public async void SaveProgress(TimeSpan? positionOverride = null)
         {
-            if (HistoryService == null || _currentMediaItem == null)
+            if (DataService == null || _currentMediaItem == null)
             {
-                Console.WriteLine($"[VideoPlayer] SaveProgress skipped. Service={HistoryService != null}, Item={_currentMediaItem?.Name}");
+                Console.WriteLine($"[VideoPlayer] SaveProgress skipped. Service={DataService != null}, Item={_currentMediaItem?.Name}");
                 return;
             }
 
-            Console.WriteLine($"[VideoPlayer] Saving {_currentMediaItem.LastPosition} / {_currentMediaItem.Duration} for {_currentMediaItem.Name}");
-            await HistoryService.UpsertAsync(_currentMediaItem, _currentMediaItem.LastPosition, _currentMediaItem.Duration);
+            var position = positionOverride ?? Position;
+            var duration = Duration;
+
+            Console.WriteLine($"[VideoPlayer] Saving {position} / {duration} for {_currentMediaItem.Name}");
+            await DataService.UpsertHistoryAsync(_currentMediaItem, position, duration);
         }
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -568,11 +585,5 @@ namespace Baird.Controls
 
             _player.Render(fb, w, h);
         }
-
-        // private void UpdateCallback(IntPtr ctx)
-        // {
-        //     // Request render
-        //     Avalonia.Threading.Dispatcher.UIThread.Post(RequestNextFrameRendering, Avalonia.Threading.DispatcherPriority.Render);
-        // }
     }
 }

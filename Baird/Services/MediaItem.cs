@@ -26,16 +26,58 @@ namespace Baird.Services
         public required string Synopsis { get; set; } // keep this?
         public required string Subtitle { get; set; } // e.g. "Series 1: Episode 1"
 
-        // History Tracking
-        public TimeSpan LastPosition { get; set; }
+        public Baird.Models.HistoryItem? History { get; set; }
+
         public TimeSpan Duration { get; set; }
-        public bool IsFinished { get; set; }
-        public DateTime LastWatched { get; set; }
-
-        [System.Text.Json.Serialization.JsonIgnore]
-        public double Progress => LastPosition.TotalSeconds / Duration.TotalSeconds;
-
-        [System.Text.Json.Serialization.JsonIgnore]
         public bool HasDuration => Duration > TimeSpan.Zero;
+
+        // Computed properties for compatibility and ease of binding
+        public bool IsFinished
+        {
+            get => History?.IsFinished ?? false;
+            set
+            {
+                if (History == null)
+                {
+                    History = new Baird.Models.HistoryItem
+                    {
+                        Id = Id,
+                        LastPosition = value ? Duration : TimeSpan.Zero,
+                        Duration = Duration,
+                        IsFinished = value,
+                        LastWatched = DateTime.Now
+                    };
+                }
+                else
+                {
+                    History.IsFinished = value;
+                }
+            }
+        }
+
+        public TimeSpan LastPosition
+        {
+            get => History?.LastPosition ?? TimeSpan.Zero;
+            set
+            {
+                if (History == null)
+                {
+                    History = new Baird.Models.HistoryItem
+                    {
+                        Id = Id,
+                        LastPosition = value,
+                        Duration = Duration,
+                        IsFinished = false,
+                        LastWatched = DateTime.Now
+                    };
+                }
+                else
+                {
+                    History.LastPosition = value;
+                }
+            }
+        }
+
+        public double Progress => History?.Progress ?? 0;
     }
 }

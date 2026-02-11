@@ -4,20 +4,21 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Baird.Models;
 
 namespace Baird.Services
 {
     public interface IHistoryService
     {
-        Task UpsertAsync(MediaItem item, TimeSpan position, TimeSpan duration);
-        Task<List<MediaItem>> GetHistoryAsync();
-        MediaItem? GetProgress(string id);
+        Task UpsertAsync(MediaItem media, TimeSpan position, TimeSpan duration);
+        Task<List<HistoryItem>> GetHistoryAsync();
+        HistoryItem? GetProgress(string id);
     }
 
     public class JsonHistoryService : IHistoryService
     {
         private readonly string _filePath;
-        private List<MediaItem> _historyCache;
+        private List<HistoryItem> _historyCache;
 
         public JsonHistoryService()
         {
@@ -26,22 +27,22 @@ namespace Baird.Services
             {
                 Directory.CreateDirectory(folder);
             }
-            _filePath = Path.Combine(folder, "history.json");
+            _filePath = Path.Combine(folder, "history_v4.json"); // Bump version for new format
             _historyCache = LoadHistory();
         }
 
-        private List<MediaItem> LoadHistory()
+        private List<HistoryItem> LoadHistory()
         {
-            if (!File.Exists(_filePath)) return new List<MediaItem>();
+            if (!File.Exists(_filePath)) return new List<HistoryItem>();
             try
             {
                 var json = File.ReadAllText(_filePath);
-                return JsonSerializer.Deserialize<List<MediaItem>>(json) ?? new List<MediaItem>();
+                return JsonSerializer.Deserialize<List<HistoryItem>>(json) ?? new List<HistoryItem>();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading history: {ex}");
-                return new List<MediaItem>();
+                Console.WriteLine($"Error loading history (v4): {ex}");
+                return new List<HistoryItem>();
             }
         }
 
@@ -58,78 +59,54 @@ namespace Baird.Services
             }
         }
 
-        public async Task UpsertAsync(MediaItem item, TimeSpan position, TimeSpan duration)
+        public async Task UpsertAsync(MediaItem media, TimeSpan position, TimeSpan duration)
         {
-            if (item == null || string.IsNullOrEmpty(item.Id)) return;
+            if (media == null || string.IsNullOrEmpty(media.Id)) return;
 
-            UpdateItem(item, position, duration);
-
-            Console.WriteLine($"Updating item: {item.Name}");
-            Console.WriteLine($"Position: {position.TotalSeconds}");
-            Console.WriteLine($"Duration: {duration.TotalSeconds}");
-            Console.WriteLine($"IsFinished: {item.IsFinished}");
-
+            UpdateItem(media.Id, position, duration);
             await SaveHistoryAsync();
         }
 
-        private void UpdateItem(MediaItem item, TimeSpan position, TimeSpan duration)
+        private void UpdateItem(string id, TimeSpan position, TimeSpan duration)
         {
-            var existing = _historyCache.FirstOrDefault(x => x.Id == item.Id);
+            var existing = _historyCache.FirstOrDefault(x => x.Id == id);
             if (existing == null)
             {
-                existing = new MediaItem
+                existing = new HistoryItem
                 {
-                    Id = item.Id,
-                    Name = item.Name,
-                    Details = item.Details,
-                    ImageUrl = item.ImageUrl,
-                    IsLive = item.IsLive,
-                    StreamUrl = item.StreamUrl,
-                    Source = item.Source,
-                    ChannelNumber = item.ChannelNumber,
-                    Type = item.Type,
-                    Synopsis = item.Synopsis,
-                    Subtitle = item.Subtitle,
-                    Duration = duration,
+                    Id = id,
+                    Duration = duration
                 };
                 _historyCache.Add(existing);
             }
 
             existing.LastWatched = DateTime.Now;
-            existing.LastPosition = existing.IsLive ? TimeSpan.Zero : position;
-
-            // Finished Logic
-            // Came within 5% of end for short videos
-            // Came within 10 minutes of end for longer videos (e.g. Movies > 90 mins)
+            existing.LastPosition = position;
+            existing.Duration = duration;
 
             double remainingSeconds = duration.TotalSeconds - position.TotalSeconds;
             bool isFinished = false;
 
             if (duration.TotalMinutes > 90)
             {
-                // Long video: 10 minute threshold
                 if (remainingSeconds < 600) isFinished = true;
             }
             else
             {
-                // Short/Medium video: 5% threshold
                 if (remainingSeconds < (duration.TotalSeconds * 0.05)) isFinished = true;
             }
 
             existing.IsFinished = isFinished;
         }
 
-        public async Task<List<MediaItem>> GetHistoryAsync()
+        public async Task<List<HistoryItem>> GetHistoryAsync()
         {
-            // Requirement: "show a grid of each video that is not finished"
-            // And "order the grid by most recent first"
             return _historyCache
-                // .Where(x => !x.IsFinished || x.IsLive)
                 .OrderByDescending(x => x.LastWatched)
                 .ToList();
         }
 
-        public MediaItem? GetProgress(string id)
+        public HistoryItem? GetProgress(string id)
         {
             return _historyCache.FirstOrDefault(x => x.Id == id);
         }

@@ -10,13 +10,13 @@ namespace Baird.Controls
             InitializeComponent();
         }
 
-        public Baird.Services.IHistoryService? HistoryService
+        public Baird.Services.IDataService? DataService
         {
-            get => GetPlayer()?.HistoryService;
+            get => GetPlayer()?.DataService;
             set
             {
                 var player = GetPlayer();
-                if (player != null) player.HistoryService = value;
+                if (player != null) player.DataService = value;
             }
         }
 
