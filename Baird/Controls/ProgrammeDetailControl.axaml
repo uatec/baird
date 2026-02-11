@@ -87,7 +87,23 @@
                             <Button Classes="MediaTileButton"
                                     Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
                                     CommandParameter="{Binding}">
-                                <controls:MediaTileControl DataContext="{Binding}" />
+                                <Grid>
+                                    <controls:MediaTileControl DataContext="{Binding}" />
+                                    <!-- Finished indicator -->
+                                    <Border Background="#4CAF50" 
+                                            CornerRadius="0,0,0,12"
+                                            Width="40" Height="40"
+                                            HorizontalAlignment="Right" 
+                                            VerticalAlignment="Top"
+                                            IsVisible="{Binding IsFinished}">
+                                        <Path Data="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z" 
+                                              Fill="White" 
+                                              Stretch="Uniform"
+                                              Width="24" Height="24"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                                    </Border>
+                                </Grid>
                             </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

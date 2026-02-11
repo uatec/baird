@@ -61,7 +61,7 @@ namespace Baird.Services
         public async Task UpsertAsync(MediaItem item, TimeSpan position, TimeSpan duration)
         {
             if (item == null || string.IsNullOrEmpty(item.Id)) return;
-    
+
             UpdateItem(item, position, duration);
 
             await SaveHistoryAsync();
@@ -92,25 +92,25 @@ namespace Baird.Services
 
             existing.LastWatched = DateTime.Now;
             existing.LastPosition = existing.IsLive ? TimeSpan.Zero : position;
-            
+
             // Finished Logic
             // Came within 5% of end for short videos
             // Came within 10 minutes of end for longer videos (e.g. Movies > 90 mins)
-            
+
             double remainingSeconds = duration.TotalSeconds - position.TotalSeconds;
             bool isFinished = false;
 
             if (duration.TotalMinutes > 90)
             {
                 // Long video: 10 minute threshold
-                if (remainingSeconds < 600) isFinished = true; 
+                if (remainingSeconds < 600) isFinished = true;
             }
             else
             {
                 // Short/Medium video: 5% threshold
                 if (remainingSeconds < (duration.TotalSeconds * 0.05)) isFinished = true;
             }
-            
+
             existing.IsFinished = existing.IsLive || isFinished;
         }
 
@@ -119,7 +119,7 @@ namespace Baird.Services
             // Requirement: "show a grid of each video that is not finished"
             // And "order the grid by most recent first"
             return _historyCache
-                .Where(x => !x.IsFinished || x.IsLive)
+                // .Where(x => !x.IsFinished || x.IsLive)
                 .OrderByDescending(x => x.LastWatched)
                 .ToList();
         }
