@@ -44,4 +44,4 @@
 ## History
 - [x] When i press Down to load the history page, the keyboard input still goes to the video player. 
 - [x] Up from the history view should hide history, not open search
-- [ ] crash when saving infinite as a progress.
+- [x] crash when saving infinite as a progress.
