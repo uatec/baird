@@ -7,15 +7,15 @@ using System.Threading.Tasks;
 
 namespace Baird.Services
 {
+    internal class SearchTermItem
+    {
+        public string Term { get; set; } = "";
+        public DateTime LastUsed { get; set; }
+        public int UseCount { get; set; }
+    }
+
     public class SearchHistoryService : ISearchHistoryService
     {
-        private class SearchTermItem
-        {
-            public string Term { get; set; } = "";
-            public DateTime LastUsed { get; set; }
-            public int UseCount { get; set; }
-        }
-
         private readonly string _filePath;
         private List<SearchTermItem> _cache;
 
@@ -36,7 +36,7 @@ namespace Baird.Services
             try
             {
                 var json = File.ReadAllText(_filePath);
-                return JsonSerializer.Deserialize<List<SearchTermItem>>(json) ?? new List<SearchTermItem>();
+                return JsonSerializer.Deserialize(json, BairdJsonContext.Default.ListSearchTermItem) ?? new List<SearchTermItem>();
             }
             catch (Exception ex)
             {
@@ -49,7 +49,7 @@ namespace Baird.Services
         {
             try
             {
-                var json = JsonSerializer.Serialize(_cache, new JsonSerializerOptions { WriteIndented = true });
+                var json = JsonSerializer.Serialize(_cache, BairdJsonContext.Default.ListSearchTermItem);
                 await File.WriteAllTextAsync(_filePath, json);
             }
             catch (Exception ex)

@@ -37,7 +37,7 @@ namespace Baird.Services
             try
             {
                 var json = File.ReadAllText(_filePath);
-                return JsonSerializer.Deserialize<List<HistoryItem>>(json) ?? new List<HistoryItem>();
+                return JsonSerializer.Deserialize(json, BairdJsonContext.Default.ListHistoryItem) ?? new List<HistoryItem>();
             }
             catch (Exception ex)
             {
@@ -50,7 +50,7 @@ namespace Baird.Services
         {
             try
             {
-                var json = JsonSerializer.Serialize(_historyCache, new JsonSerializerOptions { WriteIndented = true });
+                var json = JsonSerializer.Serialize(_historyCache, BairdJsonContext.Default.ListHistoryItem);
                 await File.WriteAllTextAsync(_filePath, json);
             }
             catch (Exception ex)
