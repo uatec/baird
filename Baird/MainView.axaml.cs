@@ -32,11 +32,12 @@ namespace Baird
 
             _cecService = new CecService();
             _historyService = new JsonHistoryService();
+            var searchHistoryService = new SearchHistoryService();
 
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService);
 
-            _viewModel = new MainViewModel(_dataService);
+            _viewModel = new MainViewModel(_dataService, searchHistoryService);
 
             DataContext = _viewModel;
 

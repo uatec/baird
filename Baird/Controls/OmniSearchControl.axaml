@@ -54,28 +54,53 @@
         
         <!-- Row 0: SearchBox -->
         <Border Grid.Row="0" Padding="20">
-            <Grid>
-                <TextBox Name="SearchBox" 
-                         Text="{Binding SearchText}" 
-                         FontSize="24" 
-                         Watermark="Search...">
-                    <TextBox.KeyBindings>
-                        <KeyBinding Gesture="Enter" Command="{Binding PlayFirstResultCommand}" />
-                    </TextBox.KeyBindings>
-                </TextBox>
-                
-                <!-- Progress bar along bottom border -->
-                <ProgressBar Height="4" 
-                             VerticalAlignment="Bottom" 
-                             HorizontalAlignment="Stretch"
-                             IsVisible="{Binding IsAutoActivationPending}"
-                             Minimum="0"
-                             Maximum="1"
-                             Value="{Binding AutoActivationProgress}"
-                             Margin="0,0,0,-4"
-                             Foreground="#4CAF50"
-                             Background="Transparent" />
-            </Grid>
+            <StackPanel Spacing="10">
+                <Grid>
+                    <TextBox Name="SearchBox" 
+                             Text="{Binding SearchText}" 
+                             FontSize="24" 
+                             Watermark="Search...">
+                        <TextBox.KeyBindings>
+                            <KeyBinding Gesture="Enter" Command="{Binding PlayFirstResultCommand}" />
+                        </TextBox.KeyBindings>
+                    </TextBox>
+                    
+                    <!-- Progress bar along bottom border -->
+                    <ProgressBar Height="4" 
+                                 VerticalAlignment="Bottom" 
+                                 HorizontalAlignment="Stretch"
+                                 IsVisible="{Binding IsAutoActivationPending}"
+                                 Minimum="0"
+                                 Maximum="1"
+                                 Value="{Binding AutoActivationProgress}"
+                                 Margin="0,0,0,-4"
+                                 Foreground="#4CAF50"
+                                 Background="Transparent" />
+                </Grid>
+
+                <!-- Suggested Terms Pills -->
+                <ItemsControl ItemsSource="{Binding SuggestedTerms}"
+                              IsVisible="{Binding !IsSearching}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="8"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding}" 
+                                    Command="{Binding $parent[UserControl].DataContext.SearchTermCommand}"
+                                    CommandParameter="{Binding}"
+                                    CornerRadius="16"
+                                    BorderThickness="1"
+                                    BorderBrush="#555555"
+                                    Background="#222222"
+                                    Foreground="White"
+                                    Padding="15,5"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
         </Border>
 
         <!-- Row 1: Search Results -->

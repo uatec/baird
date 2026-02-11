@@ -52,7 +52,7 @@ namespace Baird.ViewModels
         // Track current episode list for auto-play next episode
         private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
 
-        public MainViewModel(IDataService dataService)
+        public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService)
         {
             _dataService = dataService;
             // HistoryService = historyService; // Remove property? 
@@ -66,7 +66,7 @@ namespace Baird.ViewModels
             // Now MainView will create DataService.
             // VideoLayer likely needs updates too.
 
-            OmniSearch = new OmniSearchViewModel(dataService, () => AllChannels);
+            OmniSearch = new OmniSearchViewModel(dataService, searchHistoryService, () => AllChannels);
             History = new HistoryViewModel(dataService);
 
             History.PlayRequested += (s, item) => PlayItem(item);

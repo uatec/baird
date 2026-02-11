@@ -69,25 +69,45 @@ namespace Baird.ViewModels
         }
 
         public ObservableCollection<MediaItem> SearchResults { get; } = new();
+        public ObservableCollection<string> SuggestedTerms { get; } = new();
+
         // private readonly IEnumerable<IMediaProvider> _providers; // Removed
         private readonly IDataService _dataService;
+        private readonly ISearchHistoryService _searchHistoryService;
         private readonly Func<List<MediaItem>> _getAllChannels;
         private DispatcherTimer? _autoActivationTimer;
         private DateTime _timerStartTime;
 
-        public OmniSearchViewModel(IDataService dataService, Func<List<MediaItem>> getAllChannels)
+        public ReactiveCommand<string, Unit> SearchTermCommand { get; }
+
+        public OmniSearchViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, Func<List<MediaItem>> getAllChannels)
         {
             _dataService = dataService;
+            _searchHistoryService = searchHistoryService;
             _getAllChannels = getAllChannels;
 
-            PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay);
+            PlayCommand = ReactiveCommand.CreateFromTask<MediaItem>(async item =>
+            {
+                // Record search term if we are currently searching and result is clicked
+                if (!string.IsNullOrWhiteSpace(SearchText))
+                {
+                    await _searchHistoryService.AddSearchTermAsync(SearchText);
+                    // Refresh suggestions logic can happen next time or now?
+                    // Let's defer refresh to next open or explicit refresh
+                }
+                RequestPlay(item);
+            });
 
             // PlayFirstResultCommand plays the first result when Enter is pressed on search textbox
             var canPlayFirst = this.WhenAnyValue(x => x.SearchResults.Count, count => count > 0);
-            PlayFirstResultCommand = ReactiveCommand.Create(() =>
+            PlayFirstResultCommand = ReactiveCommand.CreateFromTask(async () =>
             {
                 if (SearchResults.FirstOrDefault() is MediaItem firstItem)
                 {
+                    if (!string.IsNullOrWhiteSpace(SearchText))
+                    {
+                        await _searchHistoryService.AddSearchTermAsync(SearchText);
+                    }
                     RequestPlay(firstItem);
                 }
             }, canPlayFirst);
@@ -97,6 +117,15 @@ namespace Baird.ViewModels
             // BackIfEmptyCommand only executes when search text is empty
             var canBackIfEmpty = this.WhenAnyValue(x => x.SearchText, (string? text) => string.IsNullOrEmpty(text));
             BackIfEmptyCommand = ReactiveCommand.Create(RequestBack, canBackIfEmpty);
+
+            SearchTermCommand = ReactiveCommand.CreateFromTask<string>(async term =>
+            {
+                SearchText = term;
+                // Focus search box? Or just perform search?
+                // SearchText change triggers search automatically.
+                // But we might want to ensure focus is correct or something?
+                await PerformSearch(term);
+            });
 
             var textChanges = this.WhenAnyValue(x => x.SearchText).Skip(1);
 
@@ -119,6 +148,26 @@ namespace Baird.ViewModels
                 .Where(q => string.IsNullOrEmpty(q) || q.Length > 3 || !q.All(char.IsDigit))
                 .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
                 .Subscribe(async (q) => await PerformSearch(q));
+
+            // Initial load of suggestions
+            RefreshSuggestions();
+        }
+
+        public async void RefreshSuggestions()
+        {
+            try
+            {
+                var terms = await _searchHistoryService.GetSuggestedTermsAsync(5);
+                SuggestedTerms.Clear();
+                foreach (var term in terms)
+                {
+                    SuggestedTerms.Add(term);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error refreshing suggestions: {ex}");
+            }
         }
 
         private CancellationTokenSource? _searchCts;
@@ -253,6 +302,13 @@ namespace Baird.ViewModels
                 // Auto-activate the first result
                 if (SearchResults.FirstOrDefault() is MediaItem firstItem)
                 {
+                    // Record search term for auto-activation?
+                    // "Only record a search term as used when an item is actually actived (played or opened) from that search term."
+                    // Yes, auto-activation counts as activation.
+                    if (!string.IsNullOrWhiteSpace(SearchText))
+                    {
+                        _searchHistoryService.AddSearchTermAsync(SearchText);
+                    }
                     RequestPlay(firstItem);
                 }
             }
@@ -264,12 +320,15 @@ namespace Baird.ViewModels
             SearchResults.Clear();
             IsSearching = false;
             StopAutoActivationTimer();
+            // Refresh suggestions on clear/open
+            RefreshSuggestions();
         }
 
         public async Task ClearAndSearch()
         {
             SearchText = "";
             await PerformSearch("");
+            RefreshSuggestions();
         }
     }
 }
