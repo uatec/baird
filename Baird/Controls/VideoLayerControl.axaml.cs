@@ -9,11 +9,11 @@ namespace Baird.Controls
         {
             InitializeComponent();
         }
-        
+
         public Baird.Services.IHistoryService? HistoryService
         {
             get => GetPlayer()?.HistoryService;
-            set 
+            set
             {
                 var player = GetPlayer();
                 if (player != null) player.HistoryService = value;
@@ -24,7 +24,7 @@ namespace Baird.Controls
         {
             AvaloniaXamlLoader.Load(this);
         }
-        
+
         // Expose Player for external control if needed, or binding
         public VideoPlayer? GetPlayer()
         {
@@ -47,7 +47,7 @@ namespace Baird.Controls
         protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
         {
             base.OnDetachedFromVisualTree(e);
-             var player = GetPlayer();
+            var player = GetPlayer();
             if (player != null)
             {
                 player.SearchRequested -= OnSearchRequested;
@@ -58,10 +58,10 @@ namespace Baird.Controls
 
         private void OnUserActivity(object? sender, EventArgs e)
         {
-             if (DataContext is ViewModels.MainViewModel vm)
-             {
-                 vm.ResetHudTimer();
-             }
+            if (DataContext is ViewModels.MainViewModel vm)
+            {
+                vm.ResetHudTimer();
+            }
         }
 
         private void OnSearchRequested(object? sender, string text)
@@ -70,7 +70,7 @@ namespace Baird.Controls
             {
                 vm.OmniSearch.Clear();
                 vm.PushViewModel(vm.OmniSearch);
-                
+
                 if (!string.IsNullOrEmpty(text))
                 {
                     vm.OmniSearch.SearchText = text;
@@ -81,8 +81,9 @@ namespace Baird.Controls
         private void OnStreamEnded(object? sender, EventArgs e)
         {
             Console.WriteLine("[VideoLayerControl] StreamEnded event received, checking for next episode");
-            
+
             // Ensure we're on the UI thread before calling navigation
+            // TODO; why on UI thread?
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 if (DataContext is ViewModels.MainViewModel vm)

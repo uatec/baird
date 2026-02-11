@@ -211,6 +211,7 @@ namespace Baird
                 Console.WriteLine("[InputCoordinator] Q pressed. Exiting application.");
                 // Try to save progress before exit
                 var vLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                // TODO: Move this to unload in the player itself?
                 vLayer?.GetPlayer()?.SaveProgress();
 
                 // Allow a small delay for async save? Or just hope it writes fast enough?

@@ -94,6 +94,7 @@ namespace Baird.Mpv
 
                     var evt = Marshal.PtrToStructure<LibMpv.MpvEvent>(eventPtr);
 
+                    // TODO: Convert to event handlers
                     if (evt.EventId == LibMpv.MpvEventId.EndFile)
                     {
                         if (evt.Data != IntPtr.Zero)
