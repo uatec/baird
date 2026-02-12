@@ -41,6 +41,15 @@
             </ContentControl.DataTemplates>
         </ContentControl>
 
+        <!-- Layer 3: Screensaver Overlay -->
+        <ContentControl Name="ScreensaverLayer" Content="{Binding Screensaver}" IsVisible="{Binding Screensaver.IsActive}">
+             <ContentControl.DataTemplates>
+                <DataTemplate DataType="{x:Type vm:ScreensaverViewModel}">
+                    <c:ScreensaverControl/>
+                </DataTemplate>
+             </ContentControl.DataTemplates>
+        </ContentControl>
+
         <!-- Layer 4: Version Info (Top Right) -->
         <TextBlock Text="{Binding AppVersion}" 
                    Foreground="White" 

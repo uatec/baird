@@ -1,6 +1,7 @@
 using ReactiveUI;
 using System.Runtime.InteropServices;
 using Baird.Services;
+using Baird.Models; // For potentially reused types, though ScreensaverViewModel handles it.
 
 namespace Baird.ViewModels
 {
@@ -55,9 +56,12 @@ namespace Baird.ViewModels
         public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectNextChannelCommand { get; }
         public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectPreviousChannelCommand { get; }
 
-        public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService)
+        public ScreensaverViewModel Screensaver { get; }
+
+        public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService)
         {
             _dataService = dataService;
+            Screensaver = new ScreensaverViewModel(screensaverService);
             // HistoryService = historyService; // Remove property? 
             // VideoPlayer layer needs HistoryService? 
             // MainView sets vLayer.HistoryService.

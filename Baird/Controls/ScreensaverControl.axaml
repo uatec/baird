@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:c="using:Baird.Controls"
+             xmlns:vm="using:Baird.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Baird.Controls.ScreensaverControl"
+             x:DataType="vm:ScreensaverViewModel">
+
+    <Grid Background="Black">
+        <!-- Screensaver Video Player -->
+        <!-- We reuse VideoPlayer but ensure it is robust for screensaver usage -->
+        <c:VideoPlayer Name="ScreensaverPlayer"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Stretch"
+                       Source="{Binding CurrentAsset.VideoUrl}"
+                       IsLive="False"
+                       IsSubtitlesEnabled="False"
+                       IsHitTestVisible="False"/>
+
+        <!-- Overlay Text -->
+        <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="40" Background="#66000000" CornerRadius="8" Padding="15,10">
+            <TextBlock Text="{Binding CurrentName}" 
+                       Foreground="White" 
+                       FontSize="24" 
+                       FontWeight="SemiBold"
+                       Opacity="0.8"/>
+        </Border>
+    </Grid>
+</UserControl>

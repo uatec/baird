@@ -7,9 +7,7 @@ using Baird.ViewModels;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-
 using ReactiveUI;
-
 using Microsoft.Extensions.Configuration;
 
 namespace Baird
@@ -17,11 +15,14 @@ namespace Baird
     public partial class MainView : UserControl
     {
         private MainViewModel _viewModel;
-        // private IMediaProvider _mediaProvider; // Removed single provider
         private List<IMediaProvider> _providers = new();
         private ICecService _cecService;
         private IHistoryService _historyService;
         private IDataService _dataService;
+
+        // Screensaver & Idle
+        private ScreensaverService _screensaverService;
+        private DispatcherTimer _idleTimer;
 
         public MainView()
         {
@@ -42,20 +43,29 @@ namespace Baird
             _historyService = new JsonHistoryService();
             var searchHistoryService = new SearchHistoryService();
 
+            _screensaverService = new ScreensaverService();
+
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService);
 
-            _viewModel = new MainViewModel(_dataService, searchHistoryService);
+            _viewModel = new MainViewModel(_dataService, searchHistoryService, _screensaverService);
 
             DataContext = _viewModel;
 
             this.AttachedToVisualTree += async (s, e) =>
             {
+                await _screensaverService.InitializeAsync();
+                SetupIdleTimer();
+
                 // TopLevel for global input hook? Or just hook on UserControl?
                 // UserControl KeyDown bubbles, so focusing Root is important.
                 var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
                 if (topLevel != null)
                 {
+                    // Global Input Handler (Tunneling) to catch wake-up events
+                    topLevel.AddHandler(InputElement.KeyDownEvent, OnGlobalKeyDown, RoutingStrategies.Tunnel);
+
+                    // Existing InputCoordinator (Bubbling)
                     topLevel.KeyDown += InputCoordinator;
                 }
 
@@ -120,30 +130,6 @@ namespace Baird
                         var item = change.Value;
                         if (vLayer != null && item != null)
                         {
-                            // ActiveMedia is a subclass or similar to MediaItem? 
-                            // Wait, ActiveMedia is defined where? In MainViewModel.cs?
-                            // Let's check MainViewModel.cs for ActiveMedia definition.
-                            // It seems to be a local class or struct, or reusing MediaItem.
-
-                            // If ActiveMedia is compatible or we can map it.
-                            // MainViewModel.cs: private ActiveMedia? _activeItem;
-                            // We probably need to map it back to MediaItem or just pass the ID/Name/etc.
-                            // VideoPlayer.SetCurrentMediaItem takes MediaItem.
-
-                            // Let's assume for now we construct a MediaItem from ActiveMedia
-                            //  var mediaItem = new MediaItem 
-                            //  {
-                            //      Id = item.Id,
-                            //      Name = item.Name,
-                            //      Details = item.Details,
-                            //      ImageUrl = item.ImageUrl,
-                            //      Source = item.Source,
-                            //      Type = item.Type,
-                            //      Synopsis = item.Synopsis,
-                            //      Subtitle = item.Subtitle,
-                            //      IsLive = item.IsLive,
-                            //      StreamUrl = item.StreamUrl
-                            //  };
                             var mediaItem = item;
                             vLayer.GetPlayer()?.SetCurrentMediaItem(mediaItem);
                         }
@@ -178,9 +164,49 @@ namespace Baird
             };
         }
 
+        private void SetupIdleTimer()
+        {
+            _idleTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(30)
+            };
+            _idleTimer.Tick += (s, e) =>
+            {
+                Console.WriteLine("[MainView] Idle timeout reached. Activating screensaver.");
+
+                // Pause Main Player
+                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                videoLayer?.GetPlayer()?.Pause();
+
+                _viewModel.Screensaver.Activate();
+            };
+            _idleTimer.Start();
+        }
+
+        private void ResetIdleTimer()
+        {
+            _idleTimer?.Stop();
+            _idleTimer?.Start();
+        }
+
+        private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
+        {
+            // Reset timer on ANY activity
+            ResetIdleTimer();
+
+            if (_viewModel.Screensaver.IsActive)
+            {
+                Console.WriteLine("[MainView] Screensaver active. Waking up.");
+                _viewModel.Screensaver.Deactivate();
+
+                // Consume the event so it doesn't trigger search, pause, quit, etc.
+                e.Handled = true;
+            }
+        }
+
         private void InputCoordinator(object? sender, KeyEventArgs e)
         {
-            // If the event was already handled (e.g. by a focused TextBox), don't trigger global logic
+            // If the event was already handled (e.g. by a focused TextBox or OnGlobalKeyDown), don't trigger global logic
             if (e.Handled) return;
 
             // Reset HUD Timer on any interaction
@@ -188,14 +214,6 @@ namespace Baird
 
             // Debug key press
             Console.WriteLine($"Key: {e.Key}");
-
-
-
-
-
-
-
-
 
             // Back/Esc Trigger
             if (e.Key == Key.Escape || e.Key == Key.Back)
@@ -215,10 +233,6 @@ namespace Baird
                 vLayer?.GetPlayer()?.SaveProgress();
 
                 // Allow a small delay for async save? Or just hope it writes fast enough?
-                // UpsertAsync writes to file.
-                // We should probably wait a bit or make SaveProgress synchronous-ish or blocking?
-                // But SaveProgress is async void.
-                // For now, let's just call it and sleep slightly.
                 System.Threading.Thread.Sleep(500);
 
                 Environment.Exit(0);
@@ -233,15 +247,7 @@ namespace Baird
                 e.Handled = true;
                 return;
             }
-
-
         }
-
-
-
-
-
-
 
         private void HandleBackTrigger(KeyEventArgs e)
         {

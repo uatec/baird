@@ -16,6 +16,7 @@
 - [ ] This Video options: fav, subtitles 
 - [ ] When streaming on raspberry pi 5, the image is tearing. 
 - [ ] after video ends, continue to next season.
+- [ ] subtitle hint
 
 ## Search
 - [x] don't search episodes
@@ -33,7 +34,7 @@
 - [ ] auto-restart
 - [x] 69 errors
 - [ ] general navigation weirdness
-- [ ] built in screensaver
+- [x] built in screensaver
 - [ ] built in power saving
 
 ## Programme Details
