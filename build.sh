@@ -10,6 +10,9 @@ set -e
 #   - ARM64 cross-compilation toolchain
 #
 # On Ubuntu/Debian: sudo apt-get install clang lld gcc-aarch64-linux-gnu
+# On Fedora/RHEL:   sudo dnf install clang lld gcc-aarch64-linux-gnu
+# On Arch Linux:    sudo pacman -S clang lld aarch64-linux-gnu-gcc
+# (Package names may vary - consult your distribution's documentation)
 #
 # Set TARGET_PLATFORM environment variable to override the target platform.
 # Default: linux-arm64
@@ -48,8 +51,8 @@ echo "Verifying AOT artifact creation..."
 if [ -f "$OUTPUT_DIR/$TARGET_PLATFORM/Baird" ]; then
     echo "✓ AOT binary 'Baird' successfully created"
     echo "  Location: $OUTPUT_DIR/$TARGET_PLATFORM/Baird"
-    # Show size of the binary
-    SIZE=$(ls -lh "$OUTPUT_DIR/$TARGET_PLATFORM/Baird" | awk '{print $5}')
+    # Show size of the binary using du for reliable parsing
+    SIZE=$(du -h "$OUTPUT_DIR/$TARGET_PLATFORM/Baird" | cut -f1)
     echo "  Size: $SIZE"
     # Verify it's an ELF binary for the target platform
     FILE_TYPE=$(file "$OUTPUT_DIR/$TARGET_PLATFORM/Baird" 2>/dev/null || echo "file command not available")
