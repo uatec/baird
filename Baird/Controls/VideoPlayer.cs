@@ -58,6 +58,7 @@ namespace Baird.Controls
         public event EventHandler? UserActivity;
         public event EventHandler? HistoryRequested;
         public event EventHandler? StreamEnded;
+        public event EventHandler? ConfigurationToggleRequested;
 
         protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
         {
@@ -125,6 +126,12 @@ namespace Baird.Controls
                 case Avalonia.Input.Key.Right:
                     PerformScan(10);
                     // PerformScan invokes UserActivity
+                    e.Handled = true;
+                    break;
+
+                case Avalonia.Input.Key.S:
+                    ConfigurationToggleRequested?.Invoke(this, EventArgs.Empty);
+                    UserActivity?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;
                     break;
             }

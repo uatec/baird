@@ -91,5 +91,21 @@
                  </Border>
              </Grid>
         </Border>
+
+        <!-- Layer 3: Configuration Overlay -->
+        <Border Name="ConfigLayer" Background="#DD000000" IsVisible="False">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="40">
+                <ItemsControl Name="ConfigItemsControl">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:CompileBindings="False">
+                            <Grid ColumnDefinitions="400, *" Margin="0,2">
+                                <TextBlock Text="{Binding Key}" FontWeight="Bold" Foreground="#00FFFF" Margin="0,0,20,0" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Value}" Foreground="White" TextWrapping="Wrap"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
     </Grid>
 </UserControl>

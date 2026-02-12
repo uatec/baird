@@ -1,5 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Microsoft.Extensions.Configuration;
+using System.Linq;
+using Avalonia;
 
 namespace Baird.Controls
 {
@@ -40,6 +43,7 @@ namespace Baird.Controls
                 player.SearchRequested += OnSearchRequested;
                 player.UserActivity += OnUserActivity;
                 player.StreamEnded += OnStreamEnded;
+                player.ConfigurationToggleRequested += OnConfigurationToggleRequested;
                 player.Focus(); // Ensure player gets focus when layer is active
             }
         }
@@ -53,6 +57,7 @@ namespace Baird.Controls
                 player.SearchRequested -= OnSearchRequested;
                 player.UserActivity -= OnUserActivity;
                 player.StreamEnded -= OnStreamEnded;
+                player.ConfigurationToggleRequested -= OnConfigurationToggleRequested;
             }
         }
 
@@ -91,6 +96,29 @@ namespace Baird.Controls
                     vm.PlayNextEpisodeOrGoBack();
                 }
             });
+        }
+        private void OnConfigurationToggleRequested(object? sender, EventArgs e)
+        {
+            var configLayer = this.FindControl<Border>("ConfigLayer");
+            if (configLayer == null) return;
+
+            configLayer.IsVisible = !configLayer.IsVisible;
+
+            if (configLayer.IsVisible)
+            {
+                var app = (App)Application.Current!;
+                var config = app.Configuration;
+
+                var items = config.AsEnumerable()
+                    .OrderBy(x => x.Key)
+                    .ToList();
+
+                var itemsControl = this.FindControl<ItemsControl>("ConfigItemsControl");
+                if (itemsControl != null)
+                {
+                    itemsControl.ItemsSource = items;
+                }
+            }
         }
     }
 }
