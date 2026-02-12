@@ -33,6 +33,8 @@
 - [ ] auto-restart
 - [x] 69 errors
 - [ ] general navigation weirdness
+- [ ] built in screensaver
+- [ ] built in power saving
 
 ## Programme Details
 - [ ] show series name etc in episode view
