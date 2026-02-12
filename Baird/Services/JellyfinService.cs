@@ -25,34 +25,12 @@ namespace Baird.Services
 
         public bool IsAuthenticated => !string.IsNullOrEmpty(_accessToken);
 
-        public JellyfinService()
+        public JellyfinService(Microsoft.Extensions.Configuration.IConfiguration config)
         {
-            // Load configuration locally
-            string serverUrl = Environment.GetEnvironmentVariable("JELLYFIN_URL") ?? "http://localhost:8096";
-            string username = Environment.GetEnvironmentVariable("JELLYFIN_USER") ?? "unknown";
-            string password = Environment.GetEnvironmentVariable("JELLYFIN_PASS") ?? "unknown";
-
-            // Support .env file if present (check current and parent dir)
-            var envPath = ".env";
-            if (!System.IO.File.Exists(envPath))
-            {
-                if (System.IO.File.Exists("../.env")) envPath = "../.env";
-            }
-
-            if (System.IO.File.Exists(envPath))
-            {
-                foreach (var line in System.IO.File.ReadAllLines(envPath))
-                {
-                    var parts = line.Split('=', 2);
-                    if (parts.Length != 2) continue;
-                    var key = parts[0].Trim();
-                    var val = parts[1].Trim();
-
-                    if (key == "JELLYFIN_URL") serverUrl = val;
-                    if (key == "JELLYFIN_USER") username = val;
-                    if (key == "JELLYFIN_PASS") password = val;
-                }
-            }
+            // Load configuration
+            string serverUrl = config["JELLYFIN_URL"] ?? "http://localhost:8096";
+            string username = config["JELLYFIN_USER"] ?? "unknown";
+            string password = config["JELLYFIN_PASS"] ?? "unknown";
 
             _serverUrl = serverUrl.TrimEnd('/');
             try { _serverHostname = new Uri(_serverUrl).Host; } catch { _serverHostname = "Jellyfin"; }

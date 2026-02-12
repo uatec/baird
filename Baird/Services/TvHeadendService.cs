@@ -16,34 +16,12 @@ namespace Baird.Services
         private readonly string _username;
         private readonly string _password;
 
-        public TvHeadendService()
+        public TvHeadendService(Microsoft.Extensions.Configuration.IConfiguration config)
         {
-            // Load configuration locally
-            string serverUrl = Environment.GetEnvironmentVariable("TVH_URL") ?? "http://localhost:9981";
-            string username = Environment.GetEnvironmentVariable("TVH_USER") ?? "unknown";
-            string password = Environment.GetEnvironmentVariable("TVH_PASS") ?? "unknown";
-
-            // Support .env file if present (check current and parent dir)
-            var envPath = ".env";
-            if (!System.IO.File.Exists(envPath))
-            {
-                if (System.IO.File.Exists("../.env")) envPath = "../.env";
-            }
-
-            if (System.IO.File.Exists(envPath))
-            {
-                foreach (var line in System.IO.File.ReadAllLines(envPath))
-                {
-                    var parts = line.Split('=', 2);
-                    if (parts.Length != 2) continue;
-                    var key = parts[0].Trim();
-                    var val = parts[1].Trim();
-
-                    if (key == "TVH_URL") serverUrl = val;
-                    if (key == "TVH_USER") username = val;
-                    if (key == "TVH_PASS") password = val;
-                }
-            }
+            // Load configuration
+            string serverUrl = config["TVH_URL"] ?? "http://localhost:9981";
+            string username = config["TVH_USER"] ?? "unknown";
+            string password = config["TVH_PASS"] ?? "unknown";
 
             _serverUrl = serverUrl.TrimEnd('/');
             _username = username;

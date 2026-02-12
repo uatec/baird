@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 
 using ReactiveUI;
 
+using Microsoft.Extensions.Configuration;
+
 namespace Baird
 {
     public partial class MainView : UserControl
@@ -23,10 +25,16 @@ namespace Baird
 
         public MainView()
         {
+            // Designer support
+            InitializeComponent();
+        }
+
+        public MainView(IConfiguration config)
+        {
             InitializeComponent();
 
-            _providers.Add(new TvHeadendService());
-            _providers.Add(new JellyfinService());
+            _providers.Add(new TvHeadendService(config));
+            _providers.Add(new JellyfinService(config));
             _providers.Add(new BbcIPlayerService());
             _providers.Add(new YouTubeService());
 

@@ -3,7 +3,26 @@
 An Avalonia UI application for Linux Framebuffer (Raspberry Pi).
 
 ## Prerequisites
-- [.NET 8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
+- [.NET 9 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/9.0)
+
+## Configuration
+
+Baird uses standard Microsoft.Extensions.Configuration for settings, prioritizing INI files. You can configure the application using:
+
+1.  **`config.ini`**: Create a file named `config.ini` in the application directory OR in `~/.baird/config.ini`. See `config.example.ini` for a template.
+2.  **Environment Variables**: Set environment variables matching the configuration keys.
+
+### Key Configuration Options
+
+| Key | Description | Default |
+| :--- | :--- | :--- |
+| `TVH_URL` | URL for TvHeadend server | `http://localhost:9981` |
+| `TVH_USER` | TvHeadend username | `unknown` |
+| `TVH_PASS` | TvHeadend password | `unknown` |
+| `JELLYFIN_URL` | URL for Jellyfin server | `http://localhost:8096` |
+| `JELLYFIN_USER` | Jellyfin username | `unknown` |
+| `JELLYFIN_PASS` | Jellyfin password | `unknown` |
+| `BAIRD_FULLSCREEN` | Set to `true` to force fullscreen mode | `false` |
 
 ## Testing on macOS
 While the production environment runs on Linux as a fullscreen framebuffer application, you can test the application on macOS in desktop mode.
