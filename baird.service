@@ -10,6 +10,7 @@ ExecStart=/home/linuxbrew/.linuxbrew/bin/baird
 Restart=always
 RestartSec=5
 Environment=DISPLAY=:0
+Environment=BAIRD_FULLSCREEN=True
 # This is usually unnecessary in user services as systemd inherits it, 
 # but keeping it doesn't hurt if your setup is unique.
 Environment=XAUTHORITY=/home/%u/.Xauthority
