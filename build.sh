@@ -23,3 +23,7 @@ cp 99-baird.rules "$OUTPUT_DIR/linux-arm64/"
 cp install_deps.sh "$OUTPUT_DIR/linux-arm64/"
 cp baird.service "$OUTPUT_DIR/linux-arm64/"
 cp install_service.sh "$OUTPUT_DIR/linux-arm64/"
+cp update_baird.sh "$OUTPUT_DIR/linux-arm64/"
+cp baird-updater.service "$OUTPUT_DIR/linux-arm64/"
+cp baird-updater.timer "$OUTPUT_DIR/linux-arm64/"
+
