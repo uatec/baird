@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for Baird Updates Every 2 Minutes
+
+[Timer]
+Unit=baird-updater.service
+OnBootSec=2m
+OnUnitInactiveSec=2m
+
+[Install]
+WantedBy=timers.target

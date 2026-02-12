@@ -1,23 +1,34 @@
 #!/bin/bash
 
-# Define the service name and file
-SERVICE_NAME="baird.service"
-SERVICE_FILE="baird.service"
 INSTALL_DIR="$HOME/.config/systemd/user"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Ensure the systemd user directory exists
 mkdir -p "$INSTALL_DIR"
 
-# Copy the service file to the install directory
-cp "$SCRIPT_DIR/$SERVICE_FILE" "$INSTALL_DIR/$SERVICE_NAME"
+function install_unit() {
+    local unit_file=$1
+    local unit_name=$(basename "$unit_file")
 
-# Reload systemd manager configuration
+    echo "Installing $unit_name..."
+    cp "$SCRIPT_DIR/$unit_file" "$INSTALL_DIR/"
+    systemctl --user enable "$unit_name"
+    systemctl --user restart "$unit_name"
+    echo "$unit_name installed and restarted."
+    echo "Status: systemctl --user status $unit_name"
+    echo "----------------------------------------"
+}
+
+# Install components
+# Note: We copy the service file for the updater but don't enable/start it directly; 
+# the timer handles that.
+cp "$SCRIPT_DIR/baird-updater.service" "$INSTALL_DIR/"
+
+# Reload systemd manager configuration to pick up new files
 systemctl --user daemon-reload
 
-# Enable and start the service
-systemctl --user enable "$SERVICE_NAME"
-systemctl --user restart "$SERVICE_NAME"
+# Install and start the main service and the updater timer
+install_unit "baird.service"
+install_unit "baird-updater.timer"
 
-echo "Baird service installed and started successfully."
-echo "You can check the status with: systemctl --user status $SERVICE_NAME"
+echo "All services installed successfully."

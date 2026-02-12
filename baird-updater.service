@@ -1,0 +1,8 @@
+[Unit]
+Description=Baird Update Service
+After=network.target
+
+[Service]
+Type=oneshot
+# Assuming the package installs scripts to libexec and linked to opt
+ExecStart=/home/linuxbrew/.linuxbrew/opt/baird/libexec/update_baird.sh
