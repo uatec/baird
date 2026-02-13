@@ -36,6 +36,11 @@ jobs:
           default_bump: patch
           release_branches: main
 
+      - name: Install LLVM (for objcopy)
+        run: |
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+
       - name: Build Application with AOT
         run: |
           export BUILD_VERSION=${{ steps.version.outputs.new_version }}
