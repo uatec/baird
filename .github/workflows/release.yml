@@ -41,8 +41,37 @@ jobs:
         env:
           BUILD_VERSION: ${{ steps.version.outputs.new_version }}
         run: |
-          chmod +x scripts/build_aot.sh
-          ./scripts/build_aot.sh
+          dotnet clean Baird/Baird.csproj
+          rm -rf ./publish
+          
+          dotnet publish Baird/Baird.csproj \
+            -c Release \
+            -r linux-arm64 \
+            --self-contained true \
+            -p:PublishAot=true \
+            -p:PublishTrimmed=true \
+            -p:Version="${BUILD_VERSION}" \
+            -o ./publish/linux-arm64
+            
+      - name: Package Application
+        run: |
+          # Copy deployment files from assets directory
+          cp assets/99-baird.rules ./publish/linux-arm64/ || true
+          cp assets/install_deps.sh ./publish/linux-arm64/ || true
+          cp assets/baird.service ./publish/linux-arm64/ || true
+          cp assets/install_service.sh ./publish/linux-arm64/ || true
+          cp assets/update_baird.sh ./publish/linux-arm64/ || true
+          cp assets/baird-updater.service ./publish/linux-arm64/ || true
+          cp assets/baird-updater.timer ./publish/linux-arm64/ || true
+          
+          # Verify AOT artifact creation
+          if [ -f "./publish/linux-arm64/Baird" ]; then
+            echo "✓ AOT binary 'Baird' successfully created"
+            ls -lh ./publish/linux-arm64/Baird
+          else
+            echo "✗ ERROR: AOT binary not found"
+            exit 1
+          fi
 
       - name: Zip Application
         id: zip
