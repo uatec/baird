@@ -36,7 +36,7 @@ namespace Baird.Mpv
             // which is often necessary when embedding mpv in Avalonia/OpenGL to avoid
             // DRM/KMS overlay issues that might bypass the UI.
             // "yes" for deinterlace is critical for 1080i50 broadcasts (UK Satellite/Terrestrial).
-            var hwdec = "auto-copy";
+            var hwdec = "no";
             SetPropertyString("hwdec", hwdec);
             SetPropertyString("deinterlace", "yes");
 
