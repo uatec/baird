@@ -39,7 +39,9 @@ namespace Baird.Mpv
             var hwdec = "no";
             SetPropertyString("hwdec", hwdec);
             SetPropertyString("deinterlace", "yes");
-
+            SetPropertyString("gpu-hwdec-interop", "no");
+            SetPropertyString("vd-lavc-dr", "no");
+            SetPropertyString("opengl-waitvsync", "no"); // Let Avalonia handle timing
             SetPropertyString("gpu-shader-cache-dir", "");
 
             // Generics Options
