@@ -50,6 +50,7 @@ jobs:
             --self-contained true \
             -p:PublishAot=true \
             -p:PublishTrimmed=true \
+            -p:ObjCopyName=aarch64-linux-gnu-objcopy \
             -p:Version="${BUILD_VERSION}" \
             -o ./publish/linux-arm64
             

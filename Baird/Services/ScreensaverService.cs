@@ -23,7 +23,7 @@ namespace Baird.Services
             {
                 using var client = new HttpClient();
                 var json = await client.GetStringAsync(JsonUrl);
-                var response = JsonSerializer.Deserialize<ScreensaverResponse>(json);
+                var response = JsonSerializer.Deserialize(json, ScreensaverJsonContext.Default.ScreensaverResponse);
 
                 if (response?.Success == true && response.Data != null)
                 {
