@@ -36,42 +36,11 @@ jobs:
           default_bump: patch
           release_branches: main
 
-      - name: Build Application with AOT
+      - name: Build Application
         run: |
           export BUILD_VERSION=${{ steps.version.outputs.new_version }}
-          
-          # Clean previous builds
-          dotnet clean Baird/Baird.csproj
-          rm -rf ./publish
-          
-          # Build for linux-arm64 with AOT compilation
-          # AOT provides improved startup performance and reduced memory usage
-          dotnet publish Baird/Baird.csproj \
-            -c Release \
-            -r linux-arm64 \
-            --self-contained true \
-            -p:PublishAot=true \
-            -p:PublishTrimmed=true \
-            -p:Version="${BUILD_VERSION}" \
-            -o ./publish/linux-arm64
-          
-          # Copy deployment files
-          cp 99-baird.rules ./publish/linux-arm64/
-          cp install_deps.sh ./publish/linux-arm64/
-          cp baird.service ./publish/linux-arm64/
-          cp install_service.sh ./publish/linux-arm64/
-          cp update_baird.sh ./publish/linux-arm64/
-          cp baird-updater.service ./publish/linux-arm64/
-          cp baird-updater.timer ./publish/linux-arm64/
-          
-          # Verify AOT artifact creation
-          if [ -f "./publish/linux-arm64/Baird" ]; then
-            echo "✓ AOT binary 'Baird' successfully created"
-            ls -lh ./publish/linux-arm64/Baird
-          else
-            echo "✗ ERROR: AOT binary not found"
-            exit 1
-          fi
+          chmod +x build.sh
+          ./build.sh
 
       - name: Zip Application
         id: zip
