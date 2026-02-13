@@ -626,7 +626,7 @@ namespace Baird.Controls
 
             // Force the driver to process commands immediately. 
             // This helps the Mesa driver release resources associated with the frame.
-            gl.Flush();
+            gl.Finish();
         }
     }
 }
