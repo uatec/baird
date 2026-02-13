@@ -623,6 +623,10 @@ namespace Baird.Controls
             int h = (int)(Bounds.Height * scaling);
 
             _player.Render(fb, w, h);
+
+            // Force the driver to process commands immediately. 
+            // This helps the Mesa driver release resources associated with the frame.
+            gl.Flush();
         }
     }
 }
