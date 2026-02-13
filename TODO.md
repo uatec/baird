@@ -9,6 +9,10 @@
 ### Search
 - [x] timeout on 3 digit search
 
+Phase 2
+- [x] subtitle hint
+- [x] show subtitle in player
+
 ## Playback
 - [x] loading screen
 - [x] press space to play/pause the stream.
@@ -16,7 +20,7 @@
 - [ ] This Video options: fav, subtitles 
 - [ ] When streaming on raspberry pi 5, the image is tearing. 
 - [ ] after video ends, continue to next season.
-- [ ] subtitle hint
+- [x] subtitle hint
 
 ## Search
 - [x] don't search episodes
@@ -30,8 +34,8 @@
 
 ## Runtime
 - [ ] Disable screensaver, energy saver
-- [ ] auto-update
-- [ ] auto-restart
+- [x] auto-update
+- [x] auto-restart
 - [x] 69 errors
 - [ ] general navigation weirdness
 - [x] built in screensaver
@@ -39,7 +43,7 @@
 
 ## Programme Details
 - [ ] show series name etc in episode view
-- [ ] show episode length
+- [x] show episode length
 
 ## New Features
 - [ ] faves - hold to add to faves, faves page

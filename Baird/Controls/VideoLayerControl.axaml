@@ -34,7 +34,7 @@
                        Source="{Binding ActiveItem.StreamUrl}"
                        IsLive="{Binding ActiveItem.IsLive}"
                        ResumeTime="{Binding ActiveItem.LastPosition}"
-                       IsSubtitlesEnabled="{Binding IsSubtitlesEnabled}"
+                       IsSubtitlesEnabled="{Binding IsSubtitlesEnabled, Mode=TwoWay}"
                        IsPaused="{Binding IsPaused, Mode=TwoWay}"/>
         
         <!-- Loading Overlay -->
