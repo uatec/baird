@@ -607,6 +607,7 @@ namespace Baird.Controls
             _player.Dispose(); // This frees the render context and the mpv handle
             base.OnOpenGlDeinit(gl);
         }
+        private int _renderCount = 0;
 
         protected override void OnOpenGlRender(GlInterface gl, int fb)
         {
@@ -627,6 +628,14 @@ namespace Baird.Controls
             // Force the driver to process commands immediately. 
             // This helps the Mesa driver release resources associated with the frame.
             gl.Finish();
+
+            _renderCount++;
+            if (_renderCount >= 60)
+            {
+                _renderCount = 0;
+                // This forces the release of the sync_file descriptors held by the runtime
+                GC.Collect(0, GCCollectionMode.Optimized);
+            }
         }
     }
 }
