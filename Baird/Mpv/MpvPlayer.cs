@@ -40,6 +40,8 @@ namespace Baird.Mpv
             SetPropertyString("hwdec", hwdec);
             SetPropertyString("deinterlace", "yes");
 
+            SetPropertyString("gpu-shader-cache-dir", "");
+
             // Generics Options
             SetPropertyString("terminal", "yes");
             SetPropertyString("msg-level", "all=warn");
