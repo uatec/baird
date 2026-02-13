@@ -29,7 +29,7 @@ namespace Baird.Controls
         public const int EGL_SYNC_CONDITION_KHR = 0x30F8;
         public const int EGL_SYNC_PRIOR_COMMANDS_COMPLETE_KHR = 0x30F0;
         public const int EGL_SYNC_FLUSH_COMMANDS_BIT_KHR = 0x0001;
-        public const long EGL_FOREVER_KHR = 0xFFFFFFFFFFFFFFFF;
+        public const long EGL_FOREVER_KHR = -1L;
     }
     public class VideoPlayer : OpenGlControlBase
     {
