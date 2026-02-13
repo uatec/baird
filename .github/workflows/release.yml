@@ -7,7 +7,8 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/dotnet/sdk:9.0
     permissions:
       contents: write
     steps:
@@ -16,10 +17,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x' 
 
       # Tests might fail due to missing libmpv on macos-latest if not installed. 
       # Attempting to run them, but allowing failure if it's just environment issues could be wise, 
@@ -36,47 +33,16 @@ jobs:
           default_bump: patch
           release_branches: main
 
-      - name: Install LLVM (for objcopy)
+      - name: Install Dependencies
         run: |
-          brew install llvm
-          echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
-
+          apt-get update
+          apt-get install -y clang zlib1g-dev gcc-aarch64-linux-gnu git zip
       - name: Build Application with AOT
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.new_version }}
         run: |
-          export BUILD_VERSION=${{ steps.version.outputs.new_version }}
-          
-          # Clean previous builds
-          dotnet clean Baird/Baird.csproj
-          rm -rf ./publish
-          
-          # Build for linux-arm64 with AOT compilation
-          # AOT provides improved startup performance and reduced memory usage
-          dotnet publish Baird/Baird.csproj \
-            -c Release \
-            -r linux-arm64 \
-            --self-contained true \
-            -p:PublishAot=true \
-            -p:PublishTrimmed=true \
-            -p:Version="${BUILD_VERSION}" \
-            -o ./publish/linux-arm64
-          
-          # Copy deployment files
-          cp 99-baird.rules ./publish/linux-arm64/
-          cp install_deps.sh ./publish/linux-arm64/
-          cp baird.service ./publish/linux-arm64/
-          cp install_service.sh ./publish/linux-arm64/
-          cp update_baird.sh ./publish/linux-arm64/
-          cp baird-updater.service ./publish/linux-arm64/
-          cp baird-updater.timer ./publish/linux-arm64/
-          
-          # Verify AOT artifact creation
-          if [ -f "./publish/linux-arm64/Baird" ]; then
-            echo "✓ AOT binary 'Baird' successfully created"
-            ls -lh ./publish/linux-arm64/Baird
-          else
-            echo "✗ ERROR: AOT binary not found"
-            exit 1
-          fi
+          chmod +x scripts/build_aot.sh
+          ./scripts/build_aot.sh
 
       - name: Zip Application
         id: zip
