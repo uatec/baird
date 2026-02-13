@@ -53,7 +53,8 @@
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
                             <TextBlock Text="SUB" FontSize="16" FontWeight="Bold" Foreground="#FFFF00" IsVisible="{Binding IsSubtitlesEnabled}" VerticalAlignment="Center" Margin="0,0,5,0"/>
                             <TextBlock Text="{Binding ActiveItem.ChannelNumber}" FontSize="24" FontWeight="ExtraBold" Foreground="#FFD700" IsVisible="{Binding ActiveItem.ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
-                            <TextBlock Text="{Binding ActiveItem.Name}" FontSize="24" FontWeight="Bold" Foreground="White"/>
+                            <TextBlock Text="{Binding ActiveItem.Name}" FontSize="24" FontWeight="Bold" Foreground="White" Margin="0,0,10,0"/>
+                            <TextBlock Text="{Binding ActiveItem.Subtitle}" FontSize="24" FontWeight="Light" Foreground="#DDDDDD" IsVisible="{Binding ActiveItem.Subtitle, Converter={StaticResource StringVisibilityConverter}}"/>
                         </StackPanel>
                         <TextBlock Text="{Binding #Player.PlayerState}" FontSize="14" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
                      </StackPanel>

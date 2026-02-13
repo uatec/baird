@@ -21,8 +21,8 @@ namespace Baird
         private IDataService _dataService;
 
         // Screensaver & Idle
-        private ScreensaverService _screensaverService;
-        private DispatcherTimer _idleTimer;
+        private ScreensaverService? _screensaverService;
+        private DispatcherTimer? _idleTimer;
 
         public MainView()
         {
