@@ -8,6 +8,29 @@ using System.Runtime.InteropServices;
 
 namespace Baird.Controls
 {
+    public static class LibEGL
+    {
+        // Add these imports to access low-level EGL functions
+        public const string LibEgl = "libEGL.so.1";
+
+        [DllImport(LibEgl)]
+        public static extern IntPtr eglGetCurrentDisplay();
+
+        [DllImport(LibEgl)]
+        public static extern IntPtr eglCreateSyncKHR(IntPtr dpy, int type, int[] attrib_list);
+
+        [DllImport(LibEgl)]
+        public static extern int eglDestroySyncKHR(IntPtr dpy, IntPtr sync);
+
+        [DllImport(LibEgl)]
+        public static extern int eglClientWaitSyncKHR(IntPtr dpy, IntPtr sync, int flags, long timeout);
+
+        public const int EGL_SYNC_FENCE_KHR = 0x30F9;
+        public const int EGL_SYNC_CONDITION_KHR = 0x30F8;
+        public const int EGL_SYNC_PRIOR_COMMANDS_COMPLETE_KHR = 0x30F0;
+        public const int EGL_SYNC_FLUSH_COMMANDS_BIT_KHR = 0x0001;
+        public const long EGL_FOREVER_KHR = 0xFFFFFFFFFFFFFFFF;
+    }
     public class VideoPlayer : OpenGlControlBase
     {
         private MpvPlayer _player;
@@ -611,31 +634,38 @@ namespace Baird.Controls
 
         protected override void OnOpenGlRender(GlInterface gl, int fb)
         {
-            // If Loading, clear to black
-            if (_player.State == PlaybackState.Loading)
-            {
-                gl.ClearColor(0f, 0f, 0f, 1f);
-                gl.Clear(GlConsts.GL_COLOR_BUFFER_BIT);
-                return;
-            }
+            // ... (Your existing loading check) ...
 
             var scaling = VisualRoot?.RenderScaling ?? 1.0;
             int w = (int)(Bounds.Width * scaling);
             int h = (int)(Bounds.Height * scaling);
 
+            // 1. Render the MPV frame
             _player.Render(fb, w, h);
 
-            // Force the driver to process commands immediately. 
-            // This helps the Mesa driver release resources associated with the frame.
-            gl.Finish();
+            // 2. Get the current EGL Display
+            var display = LibEGL.eglGetCurrentDisplay();
 
-            _renderCount++;
-            if (_renderCount >= 60)
+            if (display != IntPtr.Zero)
             {
-                _renderCount = 0;
-                // This forces the release of the sync_file descriptors held by the runtime
-                GC.Collect(0, GCCollectionMode.Optimized);
+                // 3. Create a fence sync object for this frame
+                // This effectively "captures" the current rendering state into a handle
+                var sync = LibEGL.eglCreateSyncKHR(display, LibEGL.EGL_SYNC_FENCE_KHR, null);
+
+                if (sync != IntPtr.Zero)
+                {
+                    // 4. Wait for the GPU to finish (similar to glFinish but strictly EGL)
+                    // This ensures the buffer is ready for display
+                    LibEGL.eglClientWaitSyncKHR(display, sync, LibEGL.EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 100000000); // 100ms timeout
+
+                    // 5. CRITICAL: Destroy the sync object immediately
+                    // This closes the 'sync_file' descriptor that is leaking
+                    LibEGL.eglDestroySyncKHR(display, sync);
+                }
             }
+
+            // Do NOT call gl.Finish() or gl.Flush() here if using the EGL method above, 
+            // as it is redundant and might create *another* fence.
         }
     }
 }
