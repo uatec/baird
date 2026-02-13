@@ -81,6 +81,7 @@ jobs:
           
           # Zip linux-arm64
           cd publish/linux-arm64
+          rm -f *.dbg
           zip -r ../../out/Baird-linux-arm64.zip .
           
           echo "Zipped artifacts created."
