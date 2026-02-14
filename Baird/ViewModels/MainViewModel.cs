@@ -53,7 +53,7 @@ namespace Baird.ViewModels
 
         // Track current episode list for auto-play next episode
         private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
-        
+
         // Track parent show/season context for season transitions
         private string? _currentShowId;  // The base show ID (without season suffix)
         private string? _currentSeasonId;  // The current season ID (with season suffix if applicable)
@@ -86,7 +86,7 @@ namespace Baird.ViewModels
 
             History.PlayRequested += (s, item) => PlayItem(item);
             History.BackRequested += (s, e) => GoBack();
-            
+
             // Subscribe to history updates to keep HistoryViewModel in sync
             _dataService.HistoryUpdated += async (s, e) =>
             {
@@ -97,7 +97,7 @@ namespace Baird.ViewModels
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error refreshing history after update: {ex.Message}");
+                    Console.WriteLine($"[MainViewModel] Error refreshing history after update: {ex.Message}");
                 }
             };
 
@@ -174,7 +174,7 @@ namespace Baird.ViewModels
                 {
                     // Resume logic
                     resumeTime = history.LastPosition;
-                    Console.WriteLine($"Resuming {item.Name} at {resumeTime}");
+                    Console.WriteLine($"[MainViewModel] Resuming {item.Name} at {resumeTime}");
                 }
 
                 ActivateChannel(item, resumeTime);
@@ -345,7 +345,7 @@ namespace Baird.ViewModels
                 // No more episodes in current season, try next season
                 Console.WriteLine("[MainViewModel] No next episode in current season, checking for next season");
                 var nextSeasonEpisode = await TryLoadNextSeasonFirstEpisode();
-                
+
                 if (nextSeasonEpisode != null)
                 {
                     Console.WriteLine($"[MainViewModel] Auto-playing first episode of next season: {nextSeasonEpisode.Name}");
@@ -380,13 +380,13 @@ namespace Baird.ViewModels
             }
             catch (System.Exception ex)
             {
-                System.Console.WriteLine($"Error refreshing channels: {ex.Message}");
+                System.Console.WriteLine($"[MainViewModel] Error refreshing channels: {ex.Message}");
             }
         }
 
         public void SelectNextChannel()
         {
-            Console.WriteLine($"SelectNextChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
+            Console.WriteLine($"[MainViewModel] SelectNextChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
             if (ActiveItem == null || AllChannels.Count == 0) return;
 
             var currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
@@ -404,7 +404,7 @@ namespace Baird.ViewModels
 
         public void SelectPreviousChannel()
         {
-            Console.WriteLine($"SelectPreviousChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
+            Console.WriteLine($"[MainViewModel] SelectPreviousChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
             if (ActiveItem == null || AllChannels.Count == 0) return;
 
             var currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
@@ -462,11 +462,11 @@ namespace Baird.ViewModels
                 // (after PlayItem, which clears it to handle Search/History plays correctly)
                 // TODO: Don't use episode list, go straight to the datastore
                 _currentEpisodeList = vm.ProgrammeChildren.ToList();
-                
+
                 // Set season context - programme.Id might be a season ID (showId|seasonNumber)
                 // or just a show ID if there's only one season
                 _currentSeasonId = programme.Id;
-                
+
                 // Extract base show ID (without season suffix)
                 if (programme.Id.Contains("|"))
                 {
@@ -477,7 +477,7 @@ namespace Baird.ViewModels
                 {
                     _currentShowId = programme.Id;
                 }
-                
+
                 Console.WriteLine($"[MainViewModel] Set episode list with {_currentEpisodeList.Count} episodes, showId={_currentShowId}, seasonId={_currentSeasonId}");
             };
             vm.BackRequested += (s, e) => GoBack();
@@ -495,7 +495,7 @@ namespace Baird.ViewModels
             }
         }
 
-        public void OpenHistory()
+        public void OpenMainMenu()
         {
             // History is now preloaded and maintained in memory, no need to refresh
             PushViewModel(History);

@@ -170,7 +170,7 @@ namespace Baird.ViewModels
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error refreshing suggestions: {ex}");
+                Console.WriteLine($"[OmniSearchViewModel] Error refreshing suggestions: {ex}");
             }
         }
 
@@ -243,7 +243,7 @@ namespace Baird.ViewModels
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                Console.WriteLine($"Search error: {ex}");
+                Console.WriteLine($"[OmniSearchViewModel] Search error: {ex}");
             }
             finally
             {

@@ -63,13 +63,13 @@ namespace Baird.Services
                         var id = root.GetProperty("id").GetString();
                         if (id == null)
                         {
-                            Console.WriteLine($"Invalid ID in yt-dlp output: {line}");
+                            Console.WriteLine($"[YouTubeService] Invalid ID in yt-dlp output: {line}");
                             continue;
                         }
                         var title = root.GetProperty("title").GetString();
                         if (title == null)
                         {
-                            Console.WriteLine($"Invalid title in yt-dlp output: {line}");
+                            Console.WriteLine($"[YouTubeService] Invalid title in yt-dlp output: {line}");
                             continue;
                         }
 
@@ -114,7 +114,7 @@ namespace Baird.Services
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Error parsing yt-dlp line: {ex.Message}");
+                        Console.WriteLine($"[YouTubeService] Error parsing yt-dlp line: {ex.Message}");
                     }
                 }
 
@@ -122,7 +122,7 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"YouTube search failed: {ex.Message}");
+                Console.WriteLine($"[YouTubeService] YouTube search failed: {ex.Message}");
                 return Enumerable.Empty<MediaItem>();
             }
         }

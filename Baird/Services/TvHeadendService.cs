@@ -27,7 +27,7 @@ namespace Baird.Services
             _username = username;
             _password = password;
 
-            Console.WriteLine($"Attempting connection to: {_serverUrl} as {_username}");
+            Console.WriteLine($"[TvHeadendService] Attempting connection to: {_serverUrl} as {_username}");
 
             // Configure Handler with Custom Digest Auth
             // TvHeadend often requires standard Digest processing which HttpClientHandler can struggle with
@@ -36,7 +36,7 @@ namespace Baird.Services
 
             _httpClient = new HttpClient(handler) { BaseAddress = new Uri(_serverUrl + "/") };
 
-            Console.WriteLine($"Initialized TVHeadend Service at {_serverUrl} with Custom Digest Auth support");
+            Console.WriteLine($"[TvHeadendService] Initialized TVHeadend Service at {_serverUrl} with Custom Digest Auth support");
         }
 
 
@@ -57,7 +57,7 @@ namespace Baird.Services
                 // API to get channel grid: /api/channel/grid
                 var url = "api/channel/grid?start=0&limit=9999";
 
-                Console.WriteLine($"Fetching channels from: {url}");
+                Console.WriteLine($"[TvHeadendService] Fetching channels from: {url}");
 
                 var response = await _httpClient.GetAsync(url);
                 response.EnsureSuccessStatusCode();
@@ -92,8 +92,8 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to fetch TV channels: {ex.Message}");
-                Console.WriteLine(ex.StackTrace);
+                Console.WriteLine($"[TvHeadendService] Failed to fetch TV channels: {ex.Message}");
+                Console.WriteLine($"[TvHeadendService] StackTrace: {ex.StackTrace}");
                 return Enumerable.Empty<MediaItem>();
             }
         }
@@ -166,7 +166,7 @@ namespace Baird.Services
                 // Check for 401 Unauthorized with Digest challenge
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && response.Headers.WwwAuthenticate.Any(h => h.Scheme.Equals("Digest", StringComparison.OrdinalIgnoreCase)))
                 {
-                    Console.WriteLine($"[TVHeadend] 401 Unauthorized with Digest challenge");
+                    Console.WriteLine($"[TvHeadendService] 401 Unauthorized with Digest challenge");
                     var authHeader = response.Headers.WwwAuthenticate.First(h => h.Scheme.Equals("Digest", StringComparison.OrdinalIgnoreCase));
                     ParseHeader(authHeader.Parameter ?? "");
 
@@ -176,7 +176,7 @@ namespace Baird.Services
 
                     // Retry with auth
                     response = await base.SendAsync(request, cancellationToken);
-                    Console.WriteLine($"[TVHeadend] Digest retry response received ({response.StatusCode})");
+                    Console.WriteLine($"[TvHeadendService] Digest retry response received ({response.StatusCode})");
                 }
 
                 return response;

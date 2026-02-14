@@ -153,7 +153,7 @@ namespace Baird
 
                 await _viewModel.OmniSearch.ClearAndSearch();
                 await _viewModel.RefreshChannels();
-                
+
                 // Preload history so it's ready when user opens it
                 await _viewModel.History.RefreshAsync();
 
@@ -161,7 +161,7 @@ namespace Baird
                 var firstChannel = _viewModel.AllChannels.FirstOrDefault();
                 if (firstChannel != null)
                 {
-                    Console.WriteLine($"Auto-playing channel: {firstChannel.Name}");
+                    Console.WriteLine($"[MainView] Auto-playing channel: {firstChannel.Name}");
                     _viewModel.PlayItem(firstChannel);
                 }
 
@@ -218,7 +218,7 @@ namespace Baird
             _viewModel.ResetHudTimer();
 
             // Debug key press
-            Console.WriteLine($"Key: {e.Key}");
+            Console.WriteLine($"[MainView] Key: {e.Key}");
 
             // Back/Esc Trigger
             if (e.Key == Key.Escape || e.Key == Key.Back)
@@ -274,7 +274,7 @@ namespace Baird
                     catch (Exception ex)
                     {
                         Console.WriteLine($"[InputCoordinator] Failed to attach DevTools: {ex}");
-                        Console.WriteLine(ex.StackTrace);
+                        Console.WriteLine($"[MainView] StackTrace: {ex.StackTrace}");
                     }
                 }
                 else

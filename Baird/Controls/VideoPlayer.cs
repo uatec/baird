@@ -82,7 +82,7 @@ namespace Baird.Controls
             // Numeric keys
             if (IsNumericKey(e.Key))
             {
-                Console.WriteLine("Numeric key pressed: " + e.Key);
+                Console.WriteLine($"[VideoPlayer] Numeric key pressed: {e.Key}");
                 var digit = GetNumericChar(e.Key);
                 SearchRequested?.Invoke(this, digit);
                 UserActivity?.Invoke(this, EventArgs.Empty);

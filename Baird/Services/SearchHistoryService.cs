@@ -40,7 +40,7 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading search history: {ex}");
+                Console.WriteLine($"[SearchHistoryService] Error loading search history: {ex}");
                 return new List<SearchTermItem>();
             }
         }
@@ -54,7 +54,7 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error saving search history: {ex}");
+                Console.WriteLine($"[SearchHistoryService] Error saving search history: {ex}");
             }
         }
 
