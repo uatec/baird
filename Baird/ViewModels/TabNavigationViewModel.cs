@@ -70,10 +70,30 @@ namespace Baird.ViewModels
             {
                 BackRequested?.Invoke(this, EventArgs.Empty);
             });
+
+            PreviousTabCommand = ReactiveCommand.Create(() =>
+            {
+                if (Tabs.Count > 0)
+                {
+                    var newIndex = (_selectedIndex - 1 + Tabs.Count) % Tabs.Count;
+                    SelectedIndex = newIndex;
+                }
+            });
+
+            NextTabCommand = ReactiveCommand.Create(() =>
+            {
+                if (Tabs.Count > 0)
+                {
+                    var newIndex = (_selectedIndex + 1) % Tabs.Count;
+                    SelectedIndex = newIndex;
+                }
+            });
         }
 
         public ReactiveCommand<TabItem, Unit> SelectTabCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
+        public ReactiveCommand<Unit, Unit> PreviousTabCommand { get; }
+        public ReactiveCommand<Unit, Unit> NextTabCommand { get; }
 
         public void AddTab(string title, ReactiveObject content)
         {

@@ -11,6 +11,8 @@
 
     <UserControl.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+        <KeyBinding Gesture="PageUp" Command="{Binding PreviousTabCommand}" />
+        <KeyBinding Gesture="PageDown" Command="{Binding NextTabCommand}" />
     </UserControl.KeyBindings>
 
     <UserControl.Styles>
