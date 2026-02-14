@@ -1,16 +1,12 @@
-using System;
-using System.Threading.Tasks;
-using Xunit;
 // using Baird.Mpv;
 
-namespace Baird.Tests
+namespace Baird.Tests;
+
+public class VideoIntegrationTests
 {
-    public class VideoIntegrationTests
+    [Fact]
+    public async Task TestStreamPlayback()
     {
-        [Fact]
-        public async Task TestStreamPlayback()
-        {
-            // Skipped to avoid libmpv crashes during search logic testing
-        }
+        // Skipped to avoid libmpv crashes during search logic testing
     }
 }

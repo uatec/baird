@@ -3,60 +3,58 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
-using System;
 
-namespace Baird.Controls
+namespace Baird.Controls;
+
+public partial class VirtualKeyboardControl : UserControl
 {
-    public partial class VirtualKeyboardControl : UserControl
+    public event Action<string>? KeyPressed;
+    public event Action? BackspacePressed;
+    public event Action? EnterPressed;
+
+    public VirtualKeyboardControl()
     {
-        public event Action<string>? KeyPressed;
-        public event Action? BackspacePressed;
-        public event Action? EnterPressed;
+        InitializeComponent();
+    }
 
-        public VirtualKeyboardControl()
-        {
-            InitializeComponent();
-        }
+    private void InitializeComponent()
+    {
+        AvaloniaXamlLoader.Load(this);
+    }
 
-        private void InitializeComponent()
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == IsVisibleProperty && change.NewValue is true)
         {
-            AvaloniaXamlLoader.Load(this);
-        }
-
-        protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
-        {
-            base.OnPropertyChanged(change);
-            if (change.Property == IsVisibleProperty && change.NewValue is true)
+            Dispatcher.UIThread.Post(() =>
             {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    var keyF = this.FindControl<Button>("KeyF");
-                    keyF?.Focus();
-                }, DispatcherPriority.Input);
-            }
+                Button? keyF = this.FindControl<Button>("KeyF");
+                keyF?.Focus();
+            }, DispatcherPriority.Input);
         }
+    }
 
-        private void OnKeyClick(object? sender, RoutedEventArgs e)
+    private void OnKeyClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Content is string key)
         {
-            if (sender is Button btn && btn.Content is string key)
-            {
-                KeyPressed?.Invoke(key);
-            }
+            KeyPressed?.Invoke(key);
         }
+    }
 
-        private void OnSpaceClick(object? sender, RoutedEventArgs e)
-        {
-            KeyPressed?.Invoke(" ");
-        }
+    private void OnSpaceClick(object? sender, RoutedEventArgs e)
+    {
+        KeyPressed?.Invoke(" ");
+    }
 
-        private void OnBackspaceClick(object? sender, RoutedEventArgs e)
-        {
-            BackspacePressed?.Invoke();
-        }
+    private void OnBackspaceClick(object? sender, RoutedEventArgs e)
+    {
+        BackspacePressed?.Invoke();
+    }
 
-        private void OnEnterClick(object? sender, RoutedEventArgs e)
-        {
-            EnterPressed?.Invoke();
-        }
+    private void OnEnterClick(object? sender, RoutedEventArgs e)
+    {
+        EnterPressed?.Invoke();
     }
 }

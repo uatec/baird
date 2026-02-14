@@ -1,381 +1,405 @@
-using ReactiveUI;
-using System.Runtime.InteropServices;
+using Baird.Models;
 using Baird.Services;
-using Baird.Models; // For potentially reused types, though ScreensaverViewModel handles it.
+using ReactiveUI;
 
-namespace Baird.ViewModels
+namespace Baird.ViewModels;
+
+public class MainViewModel : ReactiveObject
 {
-    public class MainViewModel : ReactiveObject
+    private bool _isEpgActive;
+    public bool IsEpgActive
     {
-        private bool _isEpgActive;
-        public bool IsEpgActive
+        get => _isEpgActive;
+        set => this.RaiseAndSetIfChanged(ref _isEpgActive, value);
+    }
+
+    private bool _isVideoHudVisible;
+    public bool IsVideoHudVisible
+    {
+        get => _isVideoHudVisible;
+        set => this.RaiseAndSetIfChanged(ref _isVideoHudVisible, value);
+    }
+
+    private bool _isSubtitlesEnabled;
+    public bool IsSubtitlesEnabled
+    {
+        get => _isSubtitlesEnabled;
+        set => this.RaiseAndSetIfChanged(ref _isSubtitlesEnabled, value);
+    }
+
+    private bool _isPaused;
+    public bool IsPaused
+    {
+        get => _isPaused;
+        set => this.RaiseAndSetIfChanged(ref _isPaused, value);
+    }
+
+    public OmniSearchViewModel OmniSearch { get; }
+    public HistoryViewModel History { get; }
+
+    private MediaItem? _activeItem;
+    public MediaItem? ActiveItem
+    {
+        get => _activeItem;
+        set => this.RaiseAndSetIfChanged(ref _activeItem, value);
+    }
+
+    public string AppVersion { get; }
+    // Actually MainViewModel uses HistoryService in PlayItem.
+    // Let's keep a private reference to DataService.
+    private readonly IDataService _dataService;
+
+    // Track current episode list for auto-play next episode
+    private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
+
+    public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectNextChannelCommand { get; }
+    public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectPreviousChannelCommand { get; }
+
+    public ScreensaverViewModel Screensaver { get; }
+
+    public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService)
+    {
+        _dataService = dataService;
+        Screensaver = new ScreensaverViewModel(screensaverService);
+        // HistoryService = historyService; // Remove property? 
+        // VideoPlayer layer needs HistoryService? 
+        // MainView sets vLayer.HistoryService.
+        // We need to exposing IHistoryService or IDataService to View?
+        // User asked to encapsulate.
+        // But if VideoPlayer needs HistoryService...
+        // Let's check MainView again. 
+        // MainView created HistoryService and passed it to VM AND VideoLayer.
+        // Now MainView will create DataService.
+        // VideoLayer likely needs updates too.
+
+        SelectNextChannelCommand = ReactiveCommand.Create(SelectNextChannel);
+        SelectPreviousChannelCommand = ReactiveCommand.Create(SelectPreviousChannel);
+
+        OmniSearch = new OmniSearchViewModel(dataService, searchHistoryService, () => AllChannels);
+        History = new HistoryViewModel(dataService);
+
+        History.PlayRequested += (s, item) => PlayItem(item);
+        History.BackRequested += (s, e) => GoBack();
+
+        IsVideoHudVisible = true;
+
+        IsSubtitlesEnabled = NativeUtils.GetCapsLockState();
+
+        // ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
+
+        Version? version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
+        AppVersion = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0";
+
+        // Initialize HUD Timer
+        _hudTimer = new Avalonia.Threading.DispatcherTimer
         {
-            get => _isEpgActive;
-            set => this.RaiseAndSetIfChanged(ref _isEpgActive, value);
-        }
-
-        private bool _isVideoHudVisible;
-        public bool IsVideoHudVisible
+            Interval = System.TimeSpan.FromSeconds(5)
+        };
+        _hudTimer.Tick += (s, e) =>
         {
-            get => _isVideoHudVisible;
-            set => this.RaiseAndSetIfChanged(ref _isVideoHudVisible, value);
-        }
-
-        private bool _isSubtitlesEnabled;
-        public bool IsSubtitlesEnabled
-        {
-            get => _isSubtitlesEnabled;
-            set => this.RaiseAndSetIfChanged(ref _isSubtitlesEnabled, value);
-        }
-
-        private bool _isPaused;
-        public bool IsPaused
-        {
-            get => _isPaused;
-            set => this.RaiseAndSetIfChanged(ref _isPaused, value);
-        }
-
-        public OmniSearchViewModel OmniSearch { get; }
-        public HistoryViewModel History { get; }
-
-        private MediaItem? _activeItem;
-        public MediaItem? ActiveItem
-        {
-            get => _activeItem;
-            set => this.RaiseAndSetIfChanged(ref _activeItem, value);
-        }
-
-        public string AppVersion { get; }
-        // Actually MainViewModel uses HistoryService in PlayItem.
-        // Let's keep a private reference to DataService.
-        private readonly IDataService _dataService;
-
-        // Track current episode list for auto-play next episode
-        private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
-
-        public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectNextChannelCommand { get; }
-        public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectPreviousChannelCommand { get; }
-
-        public ScreensaverViewModel Screensaver { get; }
-
-        public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService)
-        {
-            _dataService = dataService;
-            Screensaver = new ScreensaverViewModel(screensaverService);
-            // HistoryService = historyService; // Remove property? 
-            // VideoPlayer layer needs HistoryService? 
-            // MainView sets vLayer.HistoryService.
-            // We need to exposing IHistoryService or IDataService to View?
-            // User asked to encapsulate.
-            // But if VideoPlayer needs HistoryService...
-            // Let's check MainView again. 
-            // MainView created HistoryService and passed it to VM AND VideoLayer.
-            // Now MainView will create DataService.
-            // VideoLayer likely needs updates too.
-
-            SelectNextChannelCommand = ReactiveCommand.Create(SelectNextChannel);
-            SelectPreviousChannelCommand = ReactiveCommand.Create(SelectPreviousChannel);
-
-            OmniSearch = new OmniSearchViewModel(dataService, searchHistoryService, () => AllChannels);
-            History = new HistoryViewModel(dataService);
-
-            History.PlayRequested += (s, item) => PlayItem(item);
-            History.BackRequested += (s, e) => GoBack();
-
-            IsVideoHudVisible = true;
-
-            IsSubtitlesEnabled = NativeUtils.GetCapsLockState();
-
-            // ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
-
-            var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
-            AppVersion = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0";
-
-            // Initialize HUD Timer
-            _hudTimer = new Avalonia.Threading.DispatcherTimer
-            {
-                Interval = System.TimeSpan.FromSeconds(5)
-            };
-            _hudTimer.Tick += (s, e) =>
-            {
-                IsVideoHudVisible = false;
-                _hudTimer.Stop();
-            };
-            // Start it initially so it hides after 5s of startup
-            _hudTimer.Start();
-
-            OmniSearch.PlayRequested += (s, item) => PlayItem(item);
-            OmniSearch.BackRequested += (s, e) => GoBack();
-        }
-
-        private Avalonia.Threading.DispatcherTimer _hudTimer;
-        // private readonly System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> _providers; // Removed
-
-        public void ResetHudTimer()
-        {
-            IsVideoHudVisible = true;
+            IsVideoHudVisible = false;
             _hudTimer.Stop();
-            _hudTimer.Start();
-        }
+        };
+        // Start it initially so it hides after 5s of startup
+        _hudTimer.Start();
 
-        public void PlayItem(MediaItem item)
+        OmniSearch.PlayRequested += (s, item) => PlayItem(item);
+        OmniSearch.BackRequested += (s, e) => GoBack();
+    }
+
+    private readonly Avalonia.Threading.DispatcherTimer _hudTimer;
+    // private readonly System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> _providers; // Removed
+
+    public void ResetHudTimer()
+    {
+        IsVideoHudVisible = true;
+        _hudTimer.Stop();
+        _hudTimer.Start();
+    }
+
+    public void PlayItem(MediaItem item)
+    {
+        if (item.Type == MediaType.Brand)
         {
-            if (item.Type == MediaType.Brand)
-            {
-                // Clear episode list when opening a programme (not playing an episode)
-                _currentEpisodeList = null;
-                OpenProgramme(item);
-                return;
-            }
-
-            // Clear episode list for videos
-            // (will be set after by OpenProgramme.PlayRequested if playing from programme details)
+            // Clear episode list when opening a programme (not playing an episode)
             _currentEpisodeList = null;
-
-            if (!string.IsNullOrEmpty(item.StreamUrl))
-            {
-                // Check for resume progress
-                var history = _dataService.GetHistory(item.Id);
-                TimeSpan? resumeTime = null;
-
-                if (history != null && !history.IsFinished && !item.IsLive)
-                {
-                    // Resume logic
-                    resumeTime = history.LastPosition;
-                    Console.WriteLine($"Resuming {item.Name} at {resumeTime}");
-                }
-
-                ActivateChannel(item, resumeTime);
-
-                // Push ShowingVideoPlayerViewModel to navigation stack
-                // This represents "showing video player" as a proper page
-                PushViewModel(new ShowingVideoPlayerViewModel());
-            }
+            OpenProgramme(item);
+            return;
         }
 
-        public void GoBack()
+        // Clear episode list for videos
+        // (will be set after by OpenProgramme.PlayRequested if playing from programme details)
+        _currentEpisodeList = null;
+
+        if (!string.IsNullOrEmpty(item.StreamUrl))
         {
-            // Pop the current page to go back
-            // This works for ShowingVideoPlayerViewModel too - it will pop back to the previous page
+            // Check for resume progress
+            HistoryItem? history = _dataService.GetHistory(item.Id);
+            TimeSpan? resumeTime = null;
+
+            if (history != null && !history.IsFinished && !item.IsLive)
+            {
+                // Resume logic
+                resumeTime = history.LastPosition;
+                Console.WriteLine($"Resuming {item.Name} at {resumeTime}");
+            }
+
+            ActivateChannel(item, resumeTime);
+
+            // Push ShowingVideoPlayerViewModel to navigation stack
+            // This represents "showing video player" as a proper page
+            PushViewModel(new ShowingVideoPlayerViewModel());
+        }
+    }
+
+    public void GoBack()
+    {
+        // Pop the current page to go back
+        // This works for ShowingVideoPlayerViewModel too - it will pop back to the previous page
+        PopViewModel();
+    }
+
+    public Stack<ReactiveObject> NavigationHistory { get; } = new();
+
+    private ReactiveObject? _currentPage;
+    public ReactiveObject? CurrentPage
+    {
+        get => _currentPage;
+        private set => this.RaiseAndSetIfChanged(ref _currentPage, value);
+    }
+
+    public void PushViewModel(ReactiveObject viewModel)
+    {
+        // Deduplicate ShowingVideoPlayerViewModel - if we're pushing one and the top of the stack
+        // is already ShowingVideoPlayerViewModel, replace it instead of stacking
+        // This prevents back navigation from going through each episode when auto-playing
+        if (viewModel is ShowingVideoPlayerViewModel &&
+            NavigationHistory.Count > 0 &&
+            NavigationHistory.Peek() is ShowingVideoPlayerViewModel)
+        {
+            Console.WriteLine($"[Navigation] Replacing existing ShowingVideoPlayerViewModel");
+            NavigationHistory.Pop();
+        }
+
+        Console.WriteLine($"[Navigation] Pushing {viewModel.GetType().Name}");
+        NavigationHistory.Push(viewModel);
+        CurrentPage = viewModel;
+    }
+
+    public void PopViewModel()
+    {
+        if (NavigationHistory.Count > 0)
+        {
+            NavigationHistory.Pop();
+            CurrentPage = NavigationHistory.Count > 0 ? NavigationHistory.Peek() : null;
+            Console.WriteLine($"[Navigation] Popping to {CurrentPage?.GetType().Name}");
+        }
+        else
+        {
+            Console.WriteLine("[Navigation] No pages to pop");
+            CurrentPage = null;
+        }
+    }
+
+    private MediaItem? FindNextEpisode(MediaItem currentEpisode)
+    {
+        if (_currentEpisodeList == null || _currentEpisodeList.Count == 0)
+        {
+            return null;
+        }
+
+        int currentIndex = _currentEpisodeList.FindIndex(e => e.Id == currentEpisode.Id);
+        if (currentIndex == -1 || currentIndex >= _currentEpisodeList.Count - 1)
+        {
+            return null; // Not found or last episode
+        }
+
+        return _currentEpisodeList[currentIndex + 1];
+    }
+
+    public void PlayNextEpisodeOrGoBack()
+    {
+        if (ActiveItem == null)
+        {
+            PopViewModel();
+            return;
+        }
+
+        // Convert ActiveItem to MediaItem for searching
+        var currentItem = new MediaItem
+        {
+            Id = ActiveItem.Id,
+            Name = ActiveItem.Name,
+            Details = ActiveItem.Details,
+            ImageUrl = ActiveItem.ImageUrl,
+            Source = ActiveItem.Source,
+            Type = ActiveItem.Type,
+            Synopsis = ActiveItem.Synopsis,
+            Subtitle = ActiveItem.Subtitle,
+            StreamUrl = ActiveItem.StreamUrl,
+            IsLive = ActiveItem.IsLive,
+            ChannelNumber = ActiveItem.ChannelNumber
+        };
+
+        MediaItem? nextEpisode = FindNextEpisode(currentItem);
+        if (nextEpisode != null)
+        {
+            Console.WriteLine($"[MainViewModel] Auto-playing next episode: {nextEpisode.Name}");
+            PlayItem(nextEpisode);
+        }
+        else
+        {
+            Console.WriteLine("[MainViewModel] No next episode, navigating back");
             PopViewModel();
         }
+    }
 
-        public Stack<ReactiveObject> NavigationHistory { get; } = new();
+    public System.Collections.Generic.List<Baird.Services.MediaItem> AllChannels { get; private set; } = new();
 
-        private ReactiveObject? _currentPage;
-        public ReactiveObject? CurrentPage
+    public async System.Threading.Tasks.Task RefreshChannels()
+    {
+        try
         {
-            get => _currentPage;
-            private set => this.RaiseAndSetIfChanged(ref _currentPage, value);
-        }
+            IEnumerable<MediaItem> results = await _dataService.GetListingAsync(); // Replaces tasks loop
 
-        public void PushViewModel(ReactiveObject viewModel)
-        {
-            // Deduplicate ShowingVideoPlayerViewModel - if we're pushing one and the top of the stack
-            // is already ShowingVideoPlayerViewModel, replace it instead of stacking
-            // This prevents back navigation from going through each episode when auto-playing
-            if (viewModel is ShowingVideoPlayerViewModel &&
-                NavigationHistory.Count > 0 &&
-                NavigationHistory.Peek() is ShowingVideoPlayerViewModel)
-            {
-                Console.WriteLine($"[Navigation] Replacing existing ShowingVideoPlayerViewModel");
-                NavigationHistory.Pop();
-            }
-
-            Console.WriteLine($"[Navigation] Pushing {viewModel.GetType().Name}");
-            NavigationHistory.Push(viewModel);
-            CurrentPage = viewModel;
-        }
-
-        public void PopViewModel()
-        {
-            if (NavigationHistory.Count > 0)
-            {
-                NavigationHistory.Pop();
-                CurrentPage = NavigationHistory.Count > 0 ? NavigationHistory.Peek() : null;
-                Console.WriteLine($"[Navigation] Popping to {CurrentPage?.GetType().Name}");
-            }
-            else
-            {
-                Console.WriteLine("[Navigation] No pages to pop");
-                CurrentPage = null;
-            }
-        }
-
-        private MediaItem? FindNextEpisode(MediaItem currentEpisode)
-        {
-            if (_currentEpisodeList == null || _currentEpisodeList.Count == 0)
-                return null;
-
-            var currentIndex = _currentEpisodeList.FindIndex(e => e.Id == currentEpisode.Id);
-            if (currentIndex == -1 || currentIndex >= _currentEpisodeList.Count - 1)
-                return null; // Not found or last episode
-
-            return _currentEpisodeList[currentIndex + 1];
-        }
-
-        public void PlayNextEpisodeOrGoBack()
-        {
-            if (ActiveItem == null)
-            {
-                PopViewModel();
-                return;
-            }
-
-            // Convert ActiveItem to MediaItem for searching
-            var currentItem = new MediaItem
-            {
-                Id = ActiveItem.Id,
-                Name = ActiveItem.Name,
-                Details = ActiveItem.Details,
-                ImageUrl = ActiveItem.ImageUrl,
-                Source = ActiveItem.Source,
-                Type = ActiveItem.Type,
-                Synopsis = ActiveItem.Synopsis,
-                Subtitle = ActiveItem.Subtitle,
-                StreamUrl = ActiveItem.StreamUrl,
-                IsLive = ActiveItem.IsLive,
-                ChannelNumber = ActiveItem.ChannelNumber
-            };
-
-            var nextEpisode = FindNextEpisode(currentItem);
-            if (nextEpisode != null)
-            {
-                Console.WriteLine($"[MainViewModel] Auto-playing next episode: {nextEpisode.Name}");
-                PlayItem(nextEpisode);
-            }
-            else
-            {
-                Console.WriteLine("[MainViewModel] No next episode, navigating back");
-                PopViewModel();
-            }
-        }
-
-        public System.Collections.Generic.List<Baird.Services.MediaItem> AllChannels { get; private set; } = new();
-
-        public async System.Threading.Tasks.Task RefreshChannels()
-        {
-            try
-            {
-                var results = await _dataService.GetListingAsync(); // Replaces tasks loop
-
-                AllChannels = results
-                    .Where(i => i.IsLive)
-                    .Where(i => i.ChannelNumber != null && i.ChannelNumber != "0")
-                    .OrderBy(i =>
-                    {
-                        if (i.ChannelNumber == null) return int.MaxValue;
-                        if (int.TryParse(i.ChannelNumber, out var num)) return num;
-                        return int.MaxValue;
-                    })
-                    .ToList();
-            }
-            catch (System.Exception ex)
-            {
-                System.Console.WriteLine($"Error refreshing channels: {ex.Message}");
-            }
-        }
-
-        public void SelectNextChannel()
-        {
-            Console.WriteLine($"SelectNextChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
-            if (ActiveItem == null || AllChannels.Count == 0) return;
-
-            var currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
-            if (currentIndex == -1)
-            {
-                // Current item not in list (maybe VOD or Brand), jump to first channel?
-                // Or do nothing? Let's jump to first channel for now.
-                if (AllChannels.Count > 0) ActivateChannel(AllChannels[0]);
-                return;
-            }
-
-            var nextIndex = (currentIndex + 1) % AllChannels.Count;
-            ActivateChannel(AllChannels[nextIndex]);
-        }
-
-        public void SelectPreviousChannel()
-        {
-            Console.WriteLine($"SelectPreviousChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
-            if (ActiveItem == null || AllChannels.Count == 0) return;
-
-            var currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
-            if (currentIndex == -1)
-            {
-                if (AllChannels.Count > 0) ActivateChannel(AllChannels[0]);
-                return;
-            }
-
-            var prevIndex = (currentIndex - 1 + AllChannels.Count) % AllChannels.Count;
-            ActivateChannel(AllChannels[prevIndex]);
-        }
-
-        // Helper to activate a channel (similar to PlayItem in View, but VM based)
-        // Note: Actual playback starts because ActiveItem is bound in View.
-        private void ActivateChannel(Baird.Services.MediaItem item, TimeSpan? resumeTime = null)
-        {
-            ActiveItem = item;
-            // ActiveItem = new ActiveMedia... 
-            // We use MediaItem directly now.
-            // If resumeTime is needed, user might use a global property or pass it to player differently.
-            // "VideoPlayer.SetCurrentMediaItem(mediaItem)" handles it.
-            // BUT wait. Previously MainView.axaml.cs subscribed to ActiveItem changes and called SetCurrentMediaItem.
-            // How does it pass resumeTime?
-            // "VideoPlayer.SetCurrentMediaItem" might check History itself?
-            // Or MainViewModel logic needs to ensure the item has history attached?
-            // Since we use DataService and calling GetHistory, we should Attach history to the item if not present.
-            // The item passed to ActiveItem should have History populated if we want the player to see it?
-            // But History is now on MediaItem.History property.
-            // So if `item` has `History` populated with `LastPosition`, the player can read it.
-
-            // Wait, I fetched `history` in `PlayItem`.
-            // I should assign it to `item.History` before setting `ActiveItem`?
-            // Yes.
-            if (resumeTime.HasValue)
-            {
-                // Ensure history is attached locally for this play session
-                if (item.History == null)
+            AllChannels = results
+                .Where(i => i.IsLive)
+                .Where(i => i.ChannelNumber != null && i.ChannelNumber != "0")
+                .OrderBy(i =>
                 {
-                    item.History = _dataService.GetHistory(item.Id);
-                }
+                    if (i.ChannelNumber == null)
+                    {
+                        return int.MaxValue;
+                    }
+
+                    if (int.TryParse(i.ChannelNumber, out int num))
+                    {
+                        return num;
+                    }
+
+                    return int.MaxValue;
+                })
+                .ToList();
+        }
+        catch (System.Exception ex)
+        {
+            System.Console.WriteLine($"Error refreshing channels: {ex.Message}");
+        }
+    }
+
+    public void SelectNextChannel()
+    {
+        Console.WriteLine($"SelectNextChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
+        if (ActiveItem == null || AllChannels.Count == 0)
+        {
+            return;
+        }
+
+        int currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
+        if (currentIndex == -1)
+        {
+            // Current item not in list (maybe VOD or Brand), jump to first channel?
+            // Or do nothing? Let's jump to first channel for now.
+            if (AllChannels.Count > 0)
+            {
+                ActivateChannel(AllChannels[0]);
             }
 
-            ResetHudTimer();
+            return;
         }
 
-        public void OpenProgramme(Baird.Services.MediaItem programme)
+        int nextIndex = (currentIndex + 1) % AllChannels.Count;
+        ActivateChannel(AllChannels[nextIndex]);
+    }
+
+    public void SelectPreviousChannel()
+    {
+        Console.WriteLine($"SelectPreviousChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
+        if (ActiveItem == null || AllChannels.Count == 0)
         {
-            var vm = new ProgrammeDetailViewModel(_dataService, programme);
-            vm.PlayRequested += (s, item) =>
-            {
-                // TODO: this is generic?
-                PlayItem(item);
-                // Set current episode list for auto-play next episode
-                // (after PlayItem, which clears it to handle Search/History plays correctly)
-                // TODO: Dont' use episode list, go straight to the datastore
-                _currentEpisodeList = vm.ProgrammeChildren.ToList();
-                Console.WriteLine($"[MainViewModel] Set episode list with {_currentEpisodeList.Count} episodes");
-            };
-            vm.BackRequested += (s, e) => GoBack();
-            PushViewModel(vm);
+            return;
         }
 
-        public void CloseProgramme()
+        int currentIndex = AllChannels.FindIndex(c => c.Id == ActiveItem.Id);
+        if (currentIndex == -1)
         {
-            // Specifically pop if top is ProgrammeDetailViewModel?
-            // Or generically pop?
-            // Let's generically pop for now, assuming OpenProgramme pushed it last.
-            if (CurrentPage is ProgrammeDetailViewModel)
+            if (AllChannels.Count > 0)
             {
-                PopViewModel();
+                ActivateChannel(AllChannels[0]);
+            }
+
+            return;
+        }
+
+        int prevIndex = (currentIndex - 1 + AllChannels.Count) % AllChannels.Count;
+        ActivateChannel(AllChannels[prevIndex]);
+    }
+
+    // Helper to activate a channel (similar to PlayItem in View, but VM based)
+    // Note: Actual playback starts because ActiveItem is bound in View.
+    private void ActivateChannel(Baird.Services.MediaItem item, TimeSpan? resumeTime = null)
+    {
+        ActiveItem = item;
+        // ActiveItem = new ActiveMedia... 
+        // We use MediaItem directly now.
+        // If resumeTime is needed, user might use a global property or pass it to player differently.
+        // "VideoPlayer.SetCurrentMediaItem(mediaItem)" handles it.
+        // BUT wait. Previously MainView.axaml.cs subscribed to ActiveItem changes and called SetCurrentMediaItem.
+        // How does it pass resumeTime?
+        // "VideoPlayer.SetCurrentMediaItem" might check History itself?
+        // Or MainViewModel logic needs to ensure the item has history attached?
+        // Since we use DataService and calling GetHistory, we should Attach history to the item if not present.
+        // The item passed to ActiveItem should have History populated if we want the player to see it?
+        // But History is now on MediaItem.History property.
+        // So if `item` has `History` populated with `LastPosition`, the player can read it.
+
+        // Wait, I fetched `history` in `PlayItem`.
+        // I should assign it to `item.History` before setting `ActiveItem`?
+        // Yes.
+        if (resumeTime.HasValue)
+        {
+            // Ensure history is attached locally for this play session
+            if (item.History == null)
+            {
+                item.History = _dataService.GetHistory(item.Id);
             }
         }
 
-        public async void OpenHistory()
+        ResetHudTimer();
+    }
+
+    public void OpenProgramme(Baird.Services.MediaItem programme)
+    {
+        var vm = new ProgrammeDetailViewModel(_dataService, programme);
+        vm.PlayRequested += (s, item) =>
         {
-            // Refresh history before showing
-            await History.RefreshAsync();
-            PushViewModel(History);
+            // TODO: this is generic?
+            PlayItem(item);
+            // Set current episode list for auto-play next episode
+            // (after PlayItem, which clears it to handle Search/History plays correctly)
+            // TODO: Dont' use episode list, go straight to the datastore
+            _currentEpisodeList = vm.ProgrammeChildren.ToList();
+            Console.WriteLine($"[MainViewModel] Set episode list with {_currentEpisodeList.Count} episodes");
+        };
+        vm.BackRequested += (s, e) => GoBack();
+        PushViewModel(vm);
+    }
+
+    public void CloseProgramme()
+    {
+        // Specifically pop if top is ProgrammeDetailViewModel?
+        // Or generically pop?
+        // Let's generically pop for now, assuming OpenProgramme pushed it last.
+        if (CurrentPage is ProgrammeDetailViewModel)
+        {
+            PopViewModel();
         }
+    }
+
+    public async void OpenHistory()
+    {
+        // Refresh history before showing
+        await History.RefreshAsync();
+        PushViewModel(History);
     }
 }

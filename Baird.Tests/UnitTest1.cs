@@ -1,4 +1,4 @@
-﻿namespace Baird.Tests;
+namespace Baird.Tests;
 
 public class UnitTest1
 {

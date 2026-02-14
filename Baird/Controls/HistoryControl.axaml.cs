@@ -3,55 +3,56 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using System;
 
-namespace Baird.Controls
+namespace Baird.Controls;
+
+public partial class HistoryControl : UserControl
 {
-    public partial class HistoryControl : UserControl
+    public HistoryControl()
     {
-        public HistoryControl()
+        InitializeComponent();
+
+        // Re-focus whenever visibility changes to true
+        this.GetObservable(IsVisibleProperty).Subscribe(visible =>
         {
-            InitializeComponent();
-
-            // Re-focus whenever visibility changes to true
-            this.GetObservable(IsVisibleProperty).Subscribe(visible =>
+            if (visible)
             {
-                if (visible)
-                {
-                    Dispatcher.UIThread.Post(FocusHistoryList, DispatcherPriority.Input);
-                }
-            });
+                Dispatcher.UIThread.Post(FocusHistoryList, DispatcherPriority.Input);
+            }
+        });
 
-            // Focus on attach if visible
-            this.AttachedToVisualTree += (s, e) =>
+        // Focus on attach if visible
+        AttachedToVisualTree += (s, e) =>
+        {
+            if (IsVisible)
             {
-                if (IsVisible)
-                {
-                    Dispatcher.UIThread.Post(FocusHistoryList, DispatcherPriority.Input);
-                }
-            };
+                Dispatcher.UIThread.Post(FocusHistoryList, DispatcherPriority.Input);
+            }
+        };
+    }
+
+    public void FocusHistoryList()
+    {
+        ItemsControl? itemsControl = this.FindControl<ItemsControl>("HistoryList");
+        if (itemsControl == null)
+        {
+            return;
         }
 
-        public void FocusHistoryList()
+        // Try to focus the first button in the grid
+        if (itemsControl.ItemCount > 0)
         {
-            var itemsControl = this.FindControl<ItemsControl>("HistoryList");
-            if (itemsControl == null) return;
-
-            // Try to focus the first button in the grid
-            if (itemsControl.ItemCount > 0)
+            Control? container = itemsControl.ContainerFromIndex(0);
+            if (container is Visual visual)
             {
-                var container = itemsControl.ContainerFromIndex(0);
-                if (container is Visual visual)
-                {
-                    var button = visual.FindDescendantOfType<Button>();
-                    button?.Focus();
-                }
+                Button? button = visual.FindDescendantOfType<Button>();
+                button?.Focus();
             }
         }
+    }
 
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+    private void InitializeComponent()
+    {
+        AvaloniaXamlLoader.Load(this);
     }
 }

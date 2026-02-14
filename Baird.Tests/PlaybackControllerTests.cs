@@ -1,15 +1,12 @@
-using System;
-using Xunit;
 // using Baird.Mpv;
 
-namespace Baird.Tests
+namespace Baird.Tests;
+
+public class PlaybackControllerTests
 {
-    public class PlaybackControllerTests
+    [Fact]
+    public void TestStateTransitions()
     {
-        [Fact]
-        public void TestStateTransitions()
-        {
-            // Skipped to avoid libmpv crashes during search logic testing
-        }
+        // Skipped to avoid libmpv crashes during search logic testing
     }
 }

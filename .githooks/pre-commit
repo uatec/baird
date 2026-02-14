@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Pre-commit hook for code formatting validation
+# This hook prevents committing code that doesn't follow the formatting standards
+
+echo "🔍 Running code format check..."
+
+# Run dotnet format to check for formatting issues
+dotnet format --verify-no-changes --verbosity quiet
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ Code formatting issues detected!"
+    echo ""
+    echo "Please run the following command to fix formatting:"
+    echo "  dotnet format"
+    echo ""
+    echo "Then stage your changes and commit again."
+    exit 1
+fi
+
+echo "✅ Code formatting check passed!"
+exit 0

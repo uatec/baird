@@ -1,10 +1,7 @@
-using System.Threading.Tasks;
+namespace Baird.Services;
 
-namespace Baird.Services
+public interface ICecService
 {
-    public interface ICecService
-    {
-        Task StartAsync();
-        Task TogglePowerAsync();
-    }
+    Task StartAsync();
+    Task TogglePowerAsync();
 }

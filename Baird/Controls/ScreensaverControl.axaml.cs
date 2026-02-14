@@ -2,45 +2,43 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Baird.ViewModels;
-using System;
 
-namespace Baird.Controls
+namespace Baird.Controls;
+
+public partial class ScreensaverControl : UserControl
 {
-    public partial class ScreensaverControl : UserControl
+    public ScreensaverControl()
     {
-        public ScreensaverControl()
-        {
-            InitializeComponent();
-        }
+        InitializeComponent();
+    }
 
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+    private void InitializeComponent()
+    {
+        AvaloniaXamlLoader.Load(this);
+    }
 
-        protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
-        {
-            base.OnAttachedToVisualTree(e);
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
 
-            // Auto-play when attached
-            var player = this.FindControl<VideoPlayer>("ScreensaverPlayer");
-            if (player != null && DataContext is ScreensaverViewModel vm && vm.CurrentAsset?.VideoUrl != null)
-            {
-                Console.WriteLine($"[ScreensaverControl] Attached. Playing {vm.CurrentAsset.VideoUrl}");
-                player.Play(vm.CurrentAsset.VideoUrl);
-            }
-        }
-
-        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+        // Auto-play when attached
+        VideoPlayer? player = this.FindControl<VideoPlayer>("ScreensaverPlayer");
+        if (player != null && DataContext is ScreensaverViewModel vm && vm.CurrentAsset?.VideoUrl != null)
         {
-            // Ensure stop when detached
-            var player = this.FindControl<VideoPlayer>("ScreensaverPlayer");
-            if (player != null)
-            {
-                Console.WriteLine("[ScreensaverControl] Detached. Stopping player.");
-                player.Stop();
-            }
-            base.OnDetachedFromVisualTree(e);
+            Console.WriteLine($"[ScreensaverControl] Attached. Playing {vm.CurrentAsset.VideoUrl}");
+            player.Play(vm.CurrentAsset.VideoUrl);
         }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        // Ensure stop when detached
+        VideoPlayer? player = this.FindControl<VideoPlayer>("ScreensaverPlayer");
+        if (player != null)
+        {
+            Console.WriteLine("[ScreensaverControl] Detached. Stopping player.");
+            player.Stop();
+        }
+        base.OnDetachedFromVisualTree(e);
     }
 }
