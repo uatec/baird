@@ -1,4 +1,4 @@
-using Baird.Models;
+using Baird.Models; // For potentially reused types, though ScreensaverViewModel handles it.
 using Baird.Services;
 using ReactiveUI;
 
@@ -51,6 +51,10 @@ public class MainViewModel : ReactiveObject
 
     // Track current episode list for auto-play next episode
     private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
+
+    // Track parent show/season context for season transitions
+    private string? _currentShowId;  // The base show ID (without season suffix)
+    private string? _currentSeasonId;  // The current season ID (with season suffix if applicable)
 
     public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectNextChannelCommand { get; }
     public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> SelectPreviousChannelCommand { get; }
@@ -121,15 +125,19 @@ public class MainViewModel : ReactiveObject
     {
         if (item.Type == MediaType.Brand)
         {
-            // Clear episode list when opening a programme (not playing an episode)
+            // Clear episode list and context when opening a programme (not playing an episode)
             _currentEpisodeList = null;
+            _currentShowId = null;
+            _currentSeasonId = null;
             OpenProgramme(item);
             return;
         }
 
-        // Clear episode list for videos
+        // Clear episode list for media items
         // (will be set after by OpenProgramme.PlayRequested if playing from programme details)
         _currentEpisodeList = null;
+        _currentShowId = null;
+        _currentSeasonId = null;
 
         if (!string.IsNullOrEmpty(item.StreamUrl))
         {
@@ -217,7 +225,75 @@ public class MainViewModel : ReactiveObject
         return _currentEpisodeList[currentIndex + 1];
     }
 
-    public void PlayNextEpisodeOrGoBack()
+    // Extract the next season ID from a current season ID
+    // Format: "showId|seasonNumber" -> returns "showId|nextSeasonNumber"
+    private string? GetNextSeasonId(string? currentSeasonId)
+    {
+        if (string.IsNullOrEmpty(currentSeasonId) || !currentSeasonId.Contains("|"))
+        {
+            return null;
+        }
+
+        string[] parts = currentSeasonId.Split('|');
+        if (parts.Length != 2)
+        {
+            return null;
+        }
+
+        string showId = parts[0];
+        if (int.TryParse(parts[1], out int currentSeasonNum))
+        {
+            int nextSeasonNum = currentSeasonNum + 1;
+            return $"{showId}|{nextSeasonNum}";
+        }
+
+        return null;
+    }
+
+    // Try to load the next season and return its first episode
+    private async Task<MediaItem?> TryLoadNextSeasonFirstEpisode()
+    {
+        if (string.IsNullOrEmpty(_currentSeasonId))
+        {
+            Console.WriteLine("[MainViewModel] No current season ID, cannot load next season");
+            return null;
+        }
+
+        string? nextSeasonId = GetNextSeasonId(_currentSeasonId);
+        if (nextSeasonId == null)
+        {
+            Console.WriteLine("[MainViewModel] Could not determine next season ID");
+            return null;
+        }
+
+        Console.WriteLine($"[MainViewModel] Attempting to load next season: {nextSeasonId}");
+
+        try
+        {
+            IEnumerable<MediaItem> nextSeasonEpisodes = await _dataService.GetChildrenAsync(nextSeasonId);
+            var episodeList = nextSeasonEpisodes.Where(e => e.Type != MediaType.Brand && e.Type != MediaType.Folder).ToList();
+
+            if (episodeList.Count == 0)
+            {
+                Console.WriteLine($"[MainViewModel] Next season {nextSeasonId} has no episodes");
+                return null;
+            }
+
+            // Update context for the new season
+            _currentSeasonId = nextSeasonId;
+            _currentEpisodeList = episodeList;
+            Console.WriteLine($"[MainViewModel] Loaded {episodeList.Count} episodes from next season");
+
+            return episodeList[0];
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MainViewModel] Failed to load next season {nextSeasonId}: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task PlayNextEpisodeOrGoBack()
     {
         if (ActiveItem == null)
         {
@@ -244,13 +320,25 @@ public class MainViewModel : ReactiveObject
         MediaItem? nextEpisode = FindNextEpisode(currentItem);
         if (nextEpisode != null)
         {
-            Console.WriteLine($"[MainViewModel] Auto-playing next episode: {nextEpisode.Name}");
+            Console.WriteLine($"[MainViewModel] Auto-playing next episode in current season: {nextEpisode.Name}");
             PlayItem(nextEpisode);
         }
         else
         {
-            Console.WriteLine("[MainViewModel] No next episode, navigating back");
-            PopViewModel();
+            // No more episodes in current season, try next season
+            Console.WriteLine("[MainViewModel] No next episode in current season, checking for next season");
+            MediaItem? nextSeasonEpisode = await TryLoadNextSeasonFirstEpisode();
+
+            if (nextSeasonEpisode != null)
+            {
+                Console.WriteLine($"[MainViewModel] Auto-playing first episode of next season: {nextSeasonEpisode.Name}");
+                PlayItem(nextSeasonEpisode);
+            }
+            else
+            {
+                Console.WriteLine("[MainViewModel] No next season, navigating back");
+                PopViewModel();
+            }
         }
     }
 
@@ -377,9 +465,25 @@ public class MainViewModel : ReactiveObject
             PlayItem(item);
             // Set current episode list for auto-play next episode
             // (after PlayItem, which clears it to handle Search/History plays correctly)
-            // TODO: Dont' use episode list, go straight to the datastore
+            // TODO: Don't use episode list, go straight to the datastore
             _currentEpisodeList = vm.ProgrammeChildren.ToList();
-            Console.WriteLine($"[MainViewModel] Set episode list with {_currentEpisodeList.Count} episodes");
+
+            // Set season context - programme.Id might be a season ID (showId|seasonNumber)
+            // or just a show ID if there's only one season
+            _currentSeasonId = programme.Id;
+
+            // Extract base show ID (without season suffix)
+            if (programme.Id.Contains("|"))
+            {
+                string[] parts = programme.Id.Split('|');
+                _currentShowId = parts[0];
+            }
+            else
+            {
+                _currentShowId = programme.Id;
+            }
+
+            Console.WriteLine($"[MainViewModel] Set episode list with {_currentEpisodeList.Count} episodes, showId={_currentShowId}, seasonId={_currentSeasonId}");
         };
         vm.BackRequested += (s, e) => GoBack();
         PushViewModel(vm);

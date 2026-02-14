@@ -1,0 +1,492 @@
+using System.Reflection;
+using Baird.Models;
+using Baird.Services;
+using Baird.ViewModels;
+
+namespace Baird.Tests.ViewModels;
+
+public class ContinuousPlaybackTests
+{
+    private class TestMediaProvider : IMediaProvider
+    {
+        public string Name => "Test Provider";
+        private readonly Dictionary<string, List<MediaItem>> _childrenMap = new();
+
+        public void SetChildren(string parentId, List<MediaItem> children)
+        {
+            _childrenMap[parentId] = children;
+        }
+
+        public Task InitializeAsync() => Task.CompletedTask;
+        public Task<IEnumerable<MediaItem>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItem>());
+        public Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
+            => Task.FromResult(Enumerable.Empty<MediaItem>());
+
+        public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        {
+            if (_childrenMap.TryGetValue(id, out List<MediaItem>? children))
+            {
+                return Task.FromResult((IEnumerable<MediaItem>)children);
+            }
+            return Task.FromResult(Enumerable.Empty<MediaItem>());
+        }
+
+        public Task<MediaItem?> GetItemAsync(string id) => Task.FromResult<MediaItem?>(null);
+    }
+
+    private class TestHistoryService : IHistoryService
+    {
+        private readonly Dictionary<string, HistoryItem> _history = new();
+
+        public Task<List<HistoryItem>> GetHistoryAsync() => Task.FromResult(_history.Values.ToList());
+
+        public Task UpsertAsync(MediaItem item, TimeSpan position, TimeSpan duration)
+        {
+            _history[item.Id] = new HistoryItem
+            {
+                Id = item.Id,
+                LastPosition = position,
+                Duration = duration,
+                IsFinished = false,
+                LastWatched = DateTime.Now
+            };
+            return Task.CompletedTask;
+        }
+
+        public HistoryItem? GetProgress(string id)
+        {
+            return _history.TryGetValue(id, out HistoryItem? item) ? item : null;
+        }
+
+        public Task ClearHistoryAsync() => Task.CompletedTask;
+    }
+
+    private class TestSearchHistoryService : ISearchHistoryService
+    {
+        public Task AddSearchTermAsync(string term) => Task.CompletedTask;
+        public Task<IEnumerable<string>> GetSuggestedTermsAsync(int maxCount) => Task.FromResult(Enumerable.Empty<string>());
+    }
+
+    private MediaItem CreateEpisode(string id, string name, string subtitle = "")
+    {
+        return new MediaItem
+        {
+            Id = id,
+            Name = name,
+            Details = "",
+            ImageUrl = "",
+            IsLive = false,
+            StreamUrl = $"http://test.com/{id}",
+            Source = "Test",
+            Type = MediaType.Video,
+            Synopsis = "",
+            Subtitle = subtitle
+        };
+    }
+
+    private MediaItem CreateSeason(string id, string name)
+    {
+        return new MediaItem
+        {
+            Id = id,
+            Name = name,
+            Details = "",
+            ImageUrl = "",
+            IsLive = false,
+            StreamUrl = "",
+            Source = "Test",
+            Type = MediaType.Brand,
+            Synopsis = "",
+            Subtitle = ""
+        };
+    }
+
+    [Fact]
+    public async Task PlayNextEpisode_WithinSeason_PlaysNextEpisode()
+    {
+        // Arrange
+        var provider = new TestMediaProvider();
+        var historyService = new TestHistoryService();
+        var searchHistoryService = new TestSearchHistoryService();
+        var dataService = new DataService(new[] { provider }, historyService);
+
+        var season1Episodes = new List<MediaItem>
+        {
+            CreateEpisode("show1|1|ep1", "Episode 1", "Series 1: Episode 1"),
+            CreateEpisode("show1|1|ep2", "Episode 2", "Series 1: Episode 2"),
+            CreateEpisode("show1|1|ep3", "Episode 3", "Series 1: Episode 3")
+        };
+        provider.SetChildren("show1|1", season1Episodes);
+
+        var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+        // Simulate opening a season and playing first episode
+        MediaItem season = CreateSeason("show1|1", "Season 1");
+        var programmeVm = new ProgrammeDetailViewModel(dataService, season);
+
+        // Load children
+        await Task.Delay(100); // Let LoadChildren complete
+
+        // Simulate playing first episode from ProgrammeDetailViewModel
+        viewModel.PlayItem(season1Episodes[0]);
+
+        // Set up the episode list context (this is what OpenProgramme.PlayRequested does)
+        FieldInfo? currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentEpisodeListField?.SetValue(viewModel, season1Episodes);
+
+        FieldInfo? currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentSeasonIdField?.SetValue(viewModel, "show1|1");
+
+        // Act - simulate stream ending on first episode
+        MethodInfo? playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        playNextMethod?.Invoke(viewModel, null);
+
+        // Allow async operations to complete
+        await Task.Delay(100);
+
+        // Assert - should now be playing second episode
+        Assert.NotNull(viewModel.ActiveItem);
+        Assert.Equal("show1|1|ep2", viewModel.ActiveItem.Id);
+        Assert.Equal("Episode 2", viewModel.ActiveItem.Name);
+    }
+
+    [Fact]
+    public async Task PlayNextEpisode_AtEndOfSeason_TransitionsToNextSeason()
+    {
+        // Arrange
+        var provider = new TestMediaProvider();
+        var historyService = new TestHistoryService();
+        var searchHistoryService = new TestSearchHistoryService();
+        var dataService = new DataService(new[] { provider }, historyService);
+
+        var season1Episodes = new List<MediaItem>
+        {
+            CreateEpisode("show1|1|ep1", "S1 Episode 1", "Series 1: Episode 1"),
+            CreateEpisode("show1|1|ep2", "S1 Episode 2", "Series 1: Episode 2")
+        };
+        var season2Episodes = new List<MediaItem>
+        {
+            CreateEpisode("show1|2|ep1", "S2 Episode 1", "Series 2: Episode 1"),
+            CreateEpisode("show1|2|ep2", "S2 Episode 2", "Series 2: Episode 2")
+        };
+
+        provider.SetChildren("show1|1", season1Episodes);
+        provider.SetChildren("show1|2", season2Episodes);
+
+        var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+        // Simulate playing last episode of season 1
+        viewModel.PlayItem(season1Episodes[1]);
+
+        FieldInfo? currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentEpisodeListField?.SetValue(viewModel, season1Episodes);
+
+        FieldInfo? currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentSeasonIdField?.SetValue(viewModel, "show1|1");
+
+        FieldInfo? currentShowIdField = typeof(MainViewModel).GetField("_currentShowId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentShowIdField?.SetValue(viewModel, "show1");
+
+        // Act - simulate stream ending on last episode of season 1
+        MethodInfo? playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        playNextMethod?.Invoke(viewModel, null);
+
+        // Allow async operations to complete
+        await Task.Delay(200);
+
+        // Assert - should now be playing first episode of season 2
+        Assert.NotNull(viewModel.ActiveItem);
+        Assert.Equal("show1|2|ep1", viewModel.ActiveItem.Id);
+        Assert.Equal("S2 Episode 1", viewModel.ActiveItem.Name);
+    }
+
+    [Fact]
+    public async Task PlayNextEpisode_AtEndOfLastSeason_NavigatesBack()
+    {
+        // Arrange
+        var provider = new TestMediaProvider();
+        var historyService = new TestHistoryService();
+        var searchHistoryService = new TestSearchHistoryService();
+        var dataService = new DataService(new[] { provider }, historyService);
+
+        var season3Episodes = new List<MediaItem>
+        {
+            CreateEpisode("show1|3|ep1", "S3 Episode 1", "Series 3: Episode 1"),
+            CreateEpisode("show1|3|ep2", "S3 Episode 2", "Series 3: Episode 2")
+        };
+
+        provider.SetChildren("show1|3", season3Episodes);
+        // Season 4 does not exist - no children for "show1|4"
+
+        var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+        // Simulate playing last episode of season 3
+        viewModel.PlayItem(season3Episodes[1]);
+
+        FieldInfo? currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentEpisodeListField?.SetValue(viewModel, season3Episodes);
+
+        FieldInfo? currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentSeasonIdField?.SetValue(viewModel, "show1|3");
+
+        FieldInfo? currentShowIdField = typeof(MainViewModel).GetField("_currentShowId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentShowIdField?.SetValue(viewModel, "show1");
+
+        // Push a test ViewModel to navigation stack so we can verify PopViewModel was called
+        viewModel.PushViewModel(new ShowingVideoPlayerViewModel());
+        int initialStackCount = viewModel.NavigationHistory.Count;
+
+        // Act - simulate stream ending on last episode of last season
+        MethodInfo? playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        playNextMethod?.Invoke(viewModel, null);
+
+        // Allow async operations to complete
+        await Task.Delay(200);
+
+        // Assert - should have navigated back (popped from navigation stack)
+        Assert.True(viewModel.NavigationHistory.Count < initialStackCount,
+            "Navigation stack should have been popped");
+    }
+
+    [Fact]
+    public async Task GetNextSeasonId_ValidSeasonId_ReturnsNextSeason()
+    {
+        // Arrange
+        var provider = new TestMediaProvider();
+        var historyService = new TestHistoryService();
+        var searchHistoryService = new TestSearchHistoryService();
+        var dataService = new DataService(new[] { provider }, historyService);
+        var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+        MethodInfo? getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        // Act & Assert
+        string? result1 = getNextSeasonIdMethod?.Invoke(viewModel, new object[] { "show123|1" }) as string;
+        Assert.Equal("show123|2", result1);
+
+        string? result2 = getNextSeasonIdMethod?.Invoke(viewModel, new object[] { "myshow|5" }) as string;
+        Assert.Equal("myshow|6", result2);
+
+        string? result3 = getNextSeasonIdMethod?.Invoke(viewModel, new object[] { "show|10" }) as string;
+        Assert.Equal("show|11", result3);
+    }
+
+    [Fact]
+    public async Task GetNextSeasonId_InvalidSeasonId_ReturnsNull()
+    {
+        // Arrange
+        var provider = new TestMediaProvider();
+        var historyService = new TestHistoryService();
+        var searchHistoryService = new TestSearchHistoryService();
+        var dataService = new DataService(new[] { provider }, historyService);
+        var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+        MethodInfo? getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        // Act & Assert - no pipe separator
+        string? result1 = getNextSeasonIdMethod?.Invoke(viewModel, new object[] { "show123" }) as string;
+        Assert.Null(result1);
+
+        // Act & Assert - non-numeric season
+        string? result2 = getNextSeasonIdMethod?.Invoke(viewModel, new object[] { "show|abc" }) as string;
+        Assert.Null(result2);
+
+        // Act & Assert - null input
+        string? result3 = getNextSeasonIdMethod?.Invoke(viewModel, new object?[] { null }) as string;
+        Assert.Null(result3);
+    }
+
+    [Fact]
+    public async Task PlayNextEpisode_FlatEpisodeList_PlaysNextEpisodeWithinList()
+    {
+        // Arrange - single season show without season structure (no | in IDs)
+        var provider = new TestMediaProvider();
+        var historyService = new TestHistoryService();
+        var searchHistoryService = new TestSearchHistoryService();
+        var dataService = new DataService(new[] { provider }, historyService);
+
+        var episodes = new List<MediaItem>
+        {
+            CreateEpisode("show1-ep1", "Episode 1", "Episode 1"),
+            CreateEpisode("show1-ep2", "Episode 2", "Episode 2"),
+            CreateEpisode("show1-ep3", "Episode 3", "Episode 3")
+        };
+        provider.SetChildren("show1", episodes);
+
+        var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+        // Simulate playing first episode
+        viewModel.PlayItem(episodes[0]);
+
+        FieldInfo? currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentEpisodeListField?.SetValue(viewModel, episodes);
+
+        // Set season ID without pipe (flat structure)
+        FieldInfo? currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentSeasonIdField?.SetValue(viewModel, "show1");
+
+        // Act - simulate stream ending on first episode
+        MethodInfo? playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        playNextMethod?.Invoke(viewModel, null);
+
+        // Allow async operations to complete
+        await Task.Delay(100);
+
+        // Assert - should play next episode in list
+        Assert.NotNull(viewModel.ActiveItem);
+        Assert.Equal("show1-ep2", viewModel.ActiveItem.Id);
+        Assert.Equal("Episode 2", viewModel.ActiveItem.Name);
+    }
+
+    [Fact]
+    public async Task PlayNextEpisode_FlatEpisodeListLastEpisode_NavigatesBack()
+    {
+        // Arrange - last episode in a flat list (no seasons)
+        var provider = new TestMediaProvider();
+        var historyService = new TestHistoryService();
+        var searchHistoryService = new TestSearchHistoryService();
+        var dataService = new DataService(new[] { provider }, historyService);
+
+        var episodes = new List<MediaItem>
+        {
+            CreateEpisode("show1-ep1", "Episode 1", "Episode 1"),
+            CreateEpisode("show1-ep2", "Episode 2", "Episode 2")
+        };
+        provider.SetChildren("show1", episodes);
+
+        var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+        // Simulate playing last episode
+        viewModel.PlayItem(episodes[1]);
+
+        FieldInfo? currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentEpisodeListField?.SetValue(viewModel, episodes);
+
+        FieldInfo? currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentSeasonIdField?.SetValue(viewModel, "show1");
+
+        // Push a test ViewModel to navigation stack
+        viewModel.PushViewModel(new ShowingVideoPlayerViewModel());
+        int initialStackCount = viewModel.NavigationHistory.Count;
+
+        // Act - simulate stream ending on last episode
+        MethodInfo? playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        playNextMethod?.Invoke(viewModel, null);
+
+        // Allow async operations to complete
+        await Task.Delay(100);
+
+        // Assert - should have navigated back (no season to transition to)
+        Assert.True(viewModel.NavigationHistory.Count < initialStackCount,
+            "Navigation stack should have been popped when reaching end of flat episode list");
+    }
+
+    [Fact]
+    public async Task PlayNextEpisode_AudioContent_TransitionsToNextSeason()
+    {
+        // Arrange - test with audio content (audiobooks, music albums, etc.)
+        var provider = new TestMediaProvider();
+        var historyService = new TestHistoryService();
+        var searchHistoryService = new TestSearchHistoryService();
+        var dataService = new DataService(new[] { provider }, historyService);
+
+        var season1Tracks = new List<MediaItem>
+        {
+            new MediaItem
+            {
+                Id = "album1|1|track1",
+                Name = "Track 1",
+                Details = "",
+                ImageUrl = "",
+                IsLive = false,
+                StreamUrl = "http://test.com/track1",
+                Source = "Test",
+                Type = MediaType.Audio,  // Audio type instead of Video
+                Synopsis = "",
+                Subtitle = "Disc 1: Track 1"
+            },
+            new MediaItem
+            {
+                Id = "album1|1|track2",
+                Name = "Track 2",
+                Details = "",
+                ImageUrl = "",
+                IsLive = false,
+                StreamUrl = "http://test.com/track2",
+                Source = "Test",
+                Type = MediaType.Audio,
+                Synopsis = "",
+                Subtitle = "Disc 1: Track 2"
+            }
+        };
+
+        var season2Tracks = new List<MediaItem>
+        {
+            new MediaItem
+            {
+                Id = "album1|2|track1",
+                Name = "Track 1",
+                Details = "",
+                ImageUrl = "",
+                IsLive = false,
+                StreamUrl = "http://test.com/disc2track1",
+                Source = "Test",
+                Type = MediaType.Audio,
+                Synopsis = "",
+                Subtitle = "Disc 2: Track 1"
+            }
+        };
+
+        provider.SetChildren("album1|1", season1Tracks);
+        provider.SetChildren("album1|2", season2Tracks);
+
+        var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+        // Simulate playing last track of disc 1
+        viewModel.PlayItem(season1Tracks[1]);
+
+        FieldInfo? currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentEpisodeListField?.SetValue(viewModel, season1Tracks);
+
+        FieldInfo? currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentSeasonIdField?.SetValue(viewModel, "album1|1");
+
+        FieldInfo? currentShowIdField = typeof(MainViewModel).GetField("_currentShowId",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        currentShowIdField?.SetValue(viewModel, "album1");
+
+        // Act - simulate stream ending on last track of disc 1
+        MethodInfo? playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        playNextMethod?.Invoke(viewModel, null);
+
+        // Allow async operations to complete
+        await Task.Delay(200);
+
+        // Assert - should now be playing first track of disc 2
+        Assert.NotNull(viewModel.ActiveItem);
+        Assert.Equal("album1|2|track1", viewModel.ActiveItem.Id);
+        Assert.Equal(MediaType.Audio, viewModel.ActiveItem.Type);
+    }
+}

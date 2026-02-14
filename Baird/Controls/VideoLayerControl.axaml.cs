@@ -91,11 +91,11 @@ public partial class VideoLayerControl : UserControl
 
         // Ensure we're on the UI thread before calling navigation
         // TODO; why on UI thread?
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
         {
             if (DataContext is ViewModels.MainViewModel vm)
             {
-                vm.PlayNextEpisodeOrGoBack();
+                await vm.PlayNextEpisodeOrGoBack();
             }
         });
     }
