@@ -85,8 +85,15 @@ namespace Baird.ViewModels
             // Subscribe to history updates to keep HistoryViewModel in sync
             _dataService.HistoryUpdated += async (s, e) =>
             {
-                // Refresh history view when history is updated (video watched/resumed)
-                await History.RefreshAsync();
+                try
+                {
+                    // Refresh history view when history is updated (video watched/resumed)
+                    await History.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error refreshing history after update: {ex.Message}");
+                }
             };
 
             IsVideoHudVisible = true;
