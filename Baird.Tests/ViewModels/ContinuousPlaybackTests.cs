@@ -312,5 +312,96 @@ namespace Baird.Tests.ViewModels
             var result3 = getNextSeasonIdMethod?.Invoke(viewModel, new object?[] { null }) as string;
             Assert.Null(result3);
         }
+
+        [Fact]
+        public async Task PlayNextEpisode_FlatEpisodeList_PlaysNextEpisodeWithinList()
+        {
+            // Arrange - single season show without season structure (no | in IDs)
+            var provider = new TestMediaProvider();
+            var historyService = new TestHistoryService();
+            var searchHistoryService = new TestSearchHistoryService();
+            var dataService = new DataService(new[] { provider }, historyService);
+
+            var episodes = new List<MediaItem>
+            {
+                CreateEpisode("show1-ep1", "Episode 1", "Episode 1"),
+                CreateEpisode("show1-ep2", "Episode 2", "Episode 2"),
+                CreateEpisode("show1-ep3", "Episode 3", "Episode 3")
+            };
+            provider.SetChildren("show1", episodes);
+
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+            // Simulate playing first episode
+            viewModel.PlayItem(episodes[0]);
+            
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentEpisodeListField?.SetValue(viewModel, episodes);
+            
+            // Set season ID without pipe (flat structure)
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentSeasonIdField?.SetValue(viewModel, "show1");
+
+            // Act - simulate stream ending on first episode
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", 
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            playNextMethod?.Invoke(viewModel, null);
+
+            // Allow async operations to complete
+            await Task.Delay(100);
+
+            // Assert - should play next episode in list
+            Assert.NotNull(viewModel.ActiveItem);
+            Assert.Equal("show1-ep2", viewModel.ActiveItem.Id);
+            Assert.Equal("Episode 2", viewModel.ActiveItem.Name);
+        }
+
+        [Fact]
+        public async Task PlayNextEpisode_FlatEpisodeListLastEpisode_NavigatesBack()
+        {
+            // Arrange - last episode in a flat list (no seasons)
+            var provider = new TestMediaProvider();
+            var historyService = new TestHistoryService();
+            var searchHistoryService = new TestSearchHistoryService();
+            var dataService = new DataService(new[] { provider }, historyService);
+
+            var episodes = new List<MediaItem>
+            {
+                CreateEpisode("show1-ep1", "Episode 1", "Episode 1"),
+                CreateEpisode("show1-ep2", "Episode 2", "Episode 2")
+            };
+            provider.SetChildren("show1", episodes);
+
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+            // Simulate playing last episode
+            viewModel.PlayItem(episodes[1]);
+            
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentEpisodeListField?.SetValue(viewModel, episodes);
+            
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentSeasonIdField?.SetValue(viewModel, "show1");
+
+            // Push a test ViewModel to navigation stack
+            viewModel.PushViewModel(new ShowingVideoPlayerViewModel());
+            var initialStackCount = viewModel.NavigationHistory.Count;
+
+            // Act - simulate stream ending on last episode
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", 
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            playNextMethod?.Invoke(viewModel, null);
+
+            // Allow async operations to complete
+            await Task.Delay(100);
+
+            // Assert - should have navigated back (no season to transition to)
+            Assert.True(viewModel.NavigationHistory.Count < initialStackCount, 
+                "Navigation stack should have been popped when reaching end of flat episode list");
+        }
     }
 }
