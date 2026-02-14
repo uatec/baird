@@ -15,6 +15,12 @@ namespace Baird.Services
         private readonly string _serverUrl;
         private readonly string _username;
         private readonly string _password;
+        
+        // Cache fields
+        private IEnumerable<MediaItem>? _cachedListing;
+        private DateTime _cacheExpiry = DateTime.MinValue;
+        private readonly SemaphoreSlim _cacheLock = new SemaphoreSlim(1, 1);
+        private readonly TimeSpan _cacheTimeout = TimeSpan.FromSeconds(60);
 
         public TvHeadendService(Microsoft.Extensions.Configuration.IConfiguration config)
         {
@@ -52,50 +58,81 @@ namespace Baird.Services
 
         public async Task<IEnumerable<MediaItem>> GetListingAsync()
         {
+            // Check if cache is valid
+            if (_cachedListing != null && DateTime.UtcNow < _cacheExpiry)
+            {
+                return _cachedListing;
+            }
+
+            // Wait for the semaphore to ensure only one thread populates the cache
+            await _cacheLock.WaitAsync();
             try
             {
-                // API to get channel grid: /api/channel/grid
-                var url = "api/channel/grid?start=0&limit=9999";
-
-                Console.WriteLine($"[TvHeadendService] Fetching channels from: {url}");
-
-                var response = await _httpClient.GetAsync(url);
-                response.EnsureSuccessStatusCode();
-
-                var json = await response.Content.ReadAsStringAsync();
-
-                // Using Source Generator context
-                var grid = JsonSerializer.Deserialize(json, TvHeadendJsonContext.Default.TvHeadendGrid);
-
-                if (grid?.Entries != null)
+                // Double-check after acquiring lock (another thread might have populated it)
+                if (_cachedListing != null && DateTime.UtcNow < _cacheExpiry)
                 {
-                    Console.WriteLine($"[TvHeadendService] Fetched {grid.Entries.Count()} channels");
-                    return grid.Entries
-                        .Select(c => new MediaItem
-                        {
-                            Id = c.Uuid,
-                            Name = c.Name,
-                            Details = "", // Channel number moved to ChannelNumber
-                            ChannelNumber = c.Number > 0 ? c.Number.ToString() : "",
-                            // TVHeadend icon URL: /imagecache/{id}
-                            ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
-                            IsLive = true,
-                            StreamUrl = GetStreamUrlInternal(c.Uuid),
-                            Source = "Live TV",
-                            Type = MediaType.Channel,
-                            Subtitle = "",
-                            Synopsis = "",
-                        })
-                        .OrderBy(c => c.Name);
+                    Console.WriteLine($"[TvHeadendService] Returning cached channels (acquired after lock)");
+                    return _cachedListing;
                 }
 
-                return Enumerable.Empty<MediaItem>();
+                // Populate the cache
+                Console.WriteLine($"[TvHeadendService] Populating cache");
+                
+                try
+                {
+                    // API to get channel grid: /api/channel/grid
+                    var url = "api/channel/grid?start=0&limit=9999";
+
+                    Console.WriteLine($"[TvHeadendService] Fetching channels from: {url}");
+
+                    var response = await _httpClient.GetAsync(url);
+                    response.EnsureSuccessStatusCode();
+
+                    var json = await response.Content.ReadAsStringAsync();
+
+                    // Using Source Generator context
+                    var grid = JsonSerializer.Deserialize(json, TvHeadendJsonContext.Default.TvHeadendGrid);
+
+                    if (grid?.Entries != null)
+                    {
+                        Console.WriteLine($"[TvHeadendService] Fetched {grid.Entries.Count()} channels");
+                        _cachedListing = grid.Entries
+                            .Select(c => new MediaItem
+                            {
+                                Id = c.Uuid,
+                                Name = c.Name,
+                                Details = "", // Channel number moved to ChannelNumber
+                                ChannelNumber = c.Number > 0 ? c.Number.ToString() : "",
+                                // TVHeadend icon URL: /imagecache/{id}
+                                ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
+                                IsLive = true,
+                                StreamUrl = GetStreamUrlInternal(c.Uuid),
+                                Source = "Live TV",
+                                Type = MediaType.Channel,
+                                Subtitle = "",
+                                Synopsis = "",
+                            })
+                            .OrderBy(c => c.Name)
+                            .ToList(); // Materialize to avoid re-execution
+                        
+                        _cacheExpiry = DateTime.UtcNow.Add(_cacheTimeout);
+                        return _cachedListing;
+                    }
+
+                    _cachedListing = Enumerable.Empty<MediaItem>();
+                    _cacheExpiry = DateTime.UtcNow.Add(_cacheTimeout);
+                    return _cachedListing;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[TvHeadendService] Failed to fetch TV channels: {ex.Message}");
+                    Console.WriteLine($"[TvHeadendService] StackTrace: {ex.StackTrace}");
+                    return Enumerable.Empty<MediaItem>();
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                Console.WriteLine($"[TvHeadendService] Failed to fetch TV channels: {ex.Message}");
-                Console.WriteLine($"[TvHeadendService] StackTrace: {ex.StackTrace}");
-                return Enumerable.Empty<MediaItem>();
+                _cacheLock.Release();
             }
         }
 
