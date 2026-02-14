@@ -85,6 +85,20 @@ namespace Baird.ViewModels
 
             History.PlayRequested += (s, item) => PlayItem(item);
             History.BackRequested += (s, e) => GoBack();
+            
+            // Subscribe to history updates to keep HistoryViewModel in sync
+            _dataService.HistoryUpdated += async (s, e) =>
+            {
+                try
+                {
+                    // Refresh history view when history is updated (video watched/resumed)
+                    await History.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error refreshing history after update: {ex.Message}");
+                }
+            };
 
             IsVideoHudVisible = true;
 
@@ -471,10 +485,9 @@ namespace Baird.ViewModels
             }
         }
 
-        public async void OpenHistory()
+        public void OpenHistory()
         {
-            // Refresh history before showing
-            await History.RefreshAsync();
+            // History is now preloaded and maintained in memory, no need to refresh
             PushViewModel(History);
         }
     }
