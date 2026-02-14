@@ -153,6 +153,9 @@ namespace Baird
 
                 await _viewModel.OmniSearch.ClearAndSearch();
                 await _viewModel.RefreshChannels();
+                
+                // Preload history so it's ready when user opens it
+                await _viewModel.History.RefreshAsync();
 
                 // Auto-play first channel
                 var firstChannel = _viewModel.AllChannels.FirstOrDefault();
