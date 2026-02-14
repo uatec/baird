@@ -37,6 +37,7 @@ namespace Baird.ViewModels
 
         public OmniSearchViewModel OmniSearch { get; }
         public HistoryViewModel History { get; }
+        public TabNavigationViewModel MainMenu { get; }
 
         private MediaItem? _activeItem;
         public MediaItem? ActiveItem
@@ -124,6 +125,15 @@ namespace Baird.ViewModels
 
             OmniSearch.PlayRequested += (s, item) => PlayItem(item);
             OmniSearch.BackRequested += (s, e) => GoBack();
+
+            // Create MainMenu with History and Search tabs
+            var tabs = new[]
+            {
+                new TabItem("History", History),
+                new TabItem("Search", OmniSearch)
+            };
+            MainMenu = new TabNavigationViewModel(tabs);
+            MainMenu.BackRequested += (s, e) => GoBack();
         }
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;

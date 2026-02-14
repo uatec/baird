@@ -137,7 +137,7 @@ namespace Baird
                         }
                     });
 
-                // Hook up 'Down' key from player to OpenHistory
+                // Hook up 'Down' key from player to OpenMainMenu
                 if (vLayer != null)
                 {
                     var player = vLayer.GetPlayer();
@@ -145,7 +145,7 @@ namespace Baird
                     {
                         player.HistoryRequested += (sender, args) =>
                         {
-                            Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.OpenHistory());
+                            Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.OpenMainMenu());
                         };
                     }
                 }
