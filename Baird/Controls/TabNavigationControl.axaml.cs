@@ -14,25 +14,40 @@ namespace Baird.Controls
     public partial class TabNavigationControl : UserControl
     {
         private CompositeDisposable? _subscriptions;
+        private bool _hasBeenShownBefore = false;
 
         public TabNavigationControl()
         {
             InitializeComponent();
 
-            // Focus first tab when visible
+            // Focus handling when control becomes visible
             this.GetObservable(IsVisibleProperty).Subscribe(visible =>
             {
                 if (visible)
                 {
-                    Dispatcher.UIThread.Post(FocusContent, DispatcherPriority.Input);
+                    Dispatcher.UIThread.Post(() => 
+                    {
+                        if (!_hasBeenShownBefore)
+                        {
+                            // First time showing: focus on first tab button
+                            FocusFirstTabButton();
+                            _hasBeenShownBefore = true;
+                        }
+                        else
+                        {
+                            // Returning to this control: maintain state, just update tab styles
+                            UpdateTabStyles();
+                        }
+                    }, DispatcherPriority.Input);
                 }
             });
 
             this.AttachedToVisualTree += (s, e) =>
             {
-                if (IsVisible)
+                if (IsVisible && !_hasBeenShownBefore)
                 {
-                    Dispatcher.UIThread.Post(FocusContent, DispatcherPriority.Input);
+                    Dispatcher.UIThread.Post(FocusFirstTabButton, DispatcherPriority.Input);
+                    _hasBeenShownBefore = true;
                 }
             };
 
@@ -42,7 +57,7 @@ namespace Baird.Controls
                 _subscriptions = null;
             };
 
-            // Listen for tab changes to focus content
+            // Listen for tab changes to update styles
             this.DataContextChanged += OnDataContextChanged;
         }
 
@@ -58,18 +73,32 @@ namespace Baird.Controls
                     {
                         Dispatcher.UIThread.Post(() =>
                         {
-                            UpdateTabStyles(selectedTab);
-                            FocusContent();
+                            UpdateTabStyles();
                         }, DispatcherPriority.Input);
                     });
                 _subscriptions.Add(subscription);
             }
         }
 
-        private void UpdateTabStyles(ViewModels.TabItem? selectedTab)
+        private void FocusFirstTabButton()
         {
-            if (selectedTab == null) return;
+            var itemsControl = this.FindControl<ItemsControl>("TabBar");
+            if (itemsControl == null || itemsControl.ItemCount == 0) return;
 
+            var container = itemsControl.ContainerFromIndex(0);
+            if (container is Visual visual)
+            {
+                var button = visual.FindDescendantOfType<Button>();
+                button?.Focus();
+            }
+        }
+
+        private void UpdateTabStyles()
+        {
+            if (DataContext is not TabNavigationViewModel vm || vm.SelectedTab == null) 
+                return;
+
+            var selectedTab = vm.SelectedTab;
             var itemsControl = this.FindControl<ItemsControl>("TabBar");
             if (itemsControl == null) return;
 
@@ -92,28 +121,6 @@ namespace Baird.Controls
                         }
                     }
                 }
-            }
-        }
-
-        private void FocusContent()
-        {
-            if (DataContext is not TabNavigationViewModel vm || vm.SelectedTab == null)
-                return;
-
-            // Focus the appropriate control based on the selected tab's content
-            var content = vm.SelectedTab.Content;
-            
-            if (content is HistoryViewModel)
-            {
-                // Find and focus the HistoryControl
-                var historyControl = this.FindDescendantOfType<HistoryControl>();
-                historyControl?.FocusHistoryList();
-            }
-            else if (content is OmniSearchViewModel)
-            {
-                // Find and focus the OmniSearchControl
-                var searchControl = this.FindDescendantOfType<OmniSearchControl>();
-                searchControl?.FocusSearchBox();
             }
         }
 

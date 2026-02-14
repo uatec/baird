@@ -1,6 +1,8 @@
 using ReactiveUI;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Reactive;
 
 namespace Baird.ViewModels
@@ -30,7 +32,7 @@ namespace Baird.ViewModels
 
     public class TabNavigationViewModel : ReactiveObject
     {
-        public ObservableCollection<TabItem> Tabs { get; } = new();
+        public ObservableCollection<TabItem> Tabs { get; }
         
         public event EventHandler? BackRequested;
 
@@ -55,8 +57,16 @@ namespace Baird.ViewModels
             }
         }
 
-        public TabNavigationViewModel()
+        public TabNavigationViewModel(IEnumerable<TabItem> tabs)
         {
+            Tabs = new ObservableCollection<TabItem>(tabs);
+            
+            // Select first tab by default
+            if (Tabs.Count > 0)
+            {
+                SelectedIndex = 0;
+            }
+
             SelectTabCommand = ReactiveCommand.Create<TabItem>(tab =>
             {
                 var index = Tabs.IndexOf(tab);
@@ -70,46 +80,9 @@ namespace Baird.ViewModels
             {
                 BackRequested?.Invoke(this, EventArgs.Empty);
             });
-
-            PreviousTabCommand = ReactiveCommand.Create(() =>
-            {
-                if (Tabs.Count > 0)
-                {
-                    var newIndex = (_selectedIndex - 1 + Tabs.Count) % Tabs.Count;
-                    SelectedIndex = newIndex;
-                }
-            });
-
-            NextTabCommand = ReactiveCommand.Create(() =>
-            {
-                if (Tabs.Count > 0)
-                {
-                    var newIndex = (_selectedIndex + 1) % Tabs.Count;
-                    SelectedIndex = newIndex;
-                }
-            });
         }
 
         public ReactiveCommand<TabItem, Unit> SelectTabCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
-        public ReactiveCommand<Unit, Unit> PreviousTabCommand { get; }
-        public ReactiveCommand<Unit, Unit> NextTabCommand { get; }
-
-        public void AddTab(string title, ReactiveObject content)
-        {
-            var tab = new TabItem(title, content);
-            Tabs.Add(tab);
-            
-            // Select first tab by default
-            if (Tabs.Count == 1)
-            {
-                SelectedIndex = 0;
-            }
-        }
-
-        public void SelectTab(int index)
-        {
-            SelectedIndex = index;
-        }
     }
 }

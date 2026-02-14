@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Baird.ViewModels;
 using ReactiveUI;
 using Xunit;
@@ -8,14 +9,17 @@ namespace Baird.Tests.ViewModels
     public class TabNavigationViewModelTests
     {
         [Fact]
-        public void AddTab_FirstTab_ShouldBeSelected()
+        public void Constructor_WithTabs_ShouldSelectFirstTab()
         {
             // Arrange
-            var tabNav = new TabNavigationViewModel();
             var content1 = new TestViewModel { Name = "Content 1" };
+            var tabs = new[]
+            {
+                new TabItem("Tab 1", content1)
+            };
 
             // Act
-            tabNav.AddTab("Tab 1", content1);
+            var tabNav = new TabNavigationViewModel(tabs);
 
             // Assert
             Assert.Single(tabNav.Tabs);
@@ -25,16 +29,19 @@ namespace Baird.Tests.ViewModels
         }
 
         [Fact]
-        public void AddTab_MultipleTabs_FirstShouldRemainSelected()
+        public void Constructor_WithMultipleTabs_ShouldSelectFirstTab()
         {
             // Arrange
-            var tabNav = new TabNavigationViewModel();
             var content1 = new TestViewModel { Name = "Content 1" };
             var content2 = new TestViewModel { Name = "Content 2" };
+            var tabs = new[]
+            {
+                new TabItem("Tab 1", content1),
+                new TabItem("Tab 2", content2)
+            };
 
             // Act
-            tabNav.AddTab("Tab 1", content1);
-            tabNav.AddTab("Tab 2", content2);
+            var tabNav = new TabNavigationViewModel(tabs);
 
             // Assert
             Assert.Equal(2, tabNav.Tabs.Count);
@@ -43,17 +50,20 @@ namespace Baird.Tests.ViewModels
         }
 
         [Fact]
-        public void SelectTab_ValidIndex_ShouldUpdateSelectedTab()
+        public void SelectTab_ByChangingIndex_ShouldUpdateSelectedTab()
         {
             // Arrange
-            var tabNav = new TabNavigationViewModel();
             var content1 = new TestViewModel { Name = "Content 1" };
             var content2 = new TestViewModel { Name = "Content 2" };
-            tabNav.AddTab("Tab 1", content1);
-            tabNav.AddTab("Tab 2", content2);
+            var tabs = new[]
+            {
+                new TabItem("Tab 1", content1),
+                new TabItem("Tab 2", content2)
+            };
+            var tabNav = new TabNavigationViewModel(tabs);
 
             // Act
-            tabNav.SelectTab(1);
+            tabNav.SelectedIndex = 1;
 
             // Assert
             Assert.Equal(1, tabNav.SelectedIndex);
@@ -61,75 +71,36 @@ namespace Baird.Tests.ViewModels
         }
 
         [Fact]
-        public void NextTabCommand_ShouldCycleToNextTab()
+        public void SelectTabCommand_ShouldUpdateSelectedTab()
         {
             // Arrange
-            var tabNav = new TabNavigationViewModel();
-            tabNav.AddTab("Tab 1", new TestViewModel());
-            tabNav.AddTab("Tab 2", new TestViewModel());
-            tabNav.AddTab("Tab 3", new TestViewModel());
-            tabNav.SelectedIndex = 0;
+            var content1 = new TestViewModel { Name = "Content 1" };
+            var content2 = new TestViewModel { Name = "Content 2" };
+            var tabs = new[]
+            {
+                new TabItem("Tab 1", content1),
+                new TabItem("Tab 2", content2)
+            };
+            var tabNav = new TabNavigationViewModel(tabs);
+            var tab2 = tabNav.Tabs[1];
 
             // Act
-            tabNav.NextTabCommand.Execute().Subscribe();
+            tabNav.SelectTabCommand.Execute(tab2).Subscribe();
 
             // Assert
             Assert.Equal(1, tabNav.SelectedIndex);
-        }
-
-        [Fact]
-        public void NextTabCommand_AtLastTab_ShouldWrapToFirst()
-        {
-            // Arrange
-            var tabNav = new TabNavigationViewModel();
-            tabNav.AddTab("Tab 1", new TestViewModel());
-            tabNav.AddTab("Tab 2", new TestViewModel());
-            tabNav.SelectedIndex = 1; // Last tab
-
-            // Act
-            tabNav.NextTabCommand.Execute().Subscribe();
-
-            // Assert
-            Assert.Equal(0, tabNav.SelectedIndex);
-        }
-
-        [Fact]
-        public void PreviousTabCommand_ShouldCycleToPreviousTab()
-        {
-            // Arrange
-            var tabNav = new TabNavigationViewModel();
-            tabNav.AddTab("Tab 1", new TestViewModel());
-            tabNav.AddTab("Tab 2", new TestViewModel());
-            tabNav.SelectedIndex = 1;
-
-            // Act
-            tabNav.PreviousTabCommand.Execute().Subscribe();
-
-            // Assert
-            Assert.Equal(0, tabNav.SelectedIndex);
-        }
-
-        [Fact]
-        public void PreviousTabCommand_AtFirstTab_ShouldWrapToLast()
-        {
-            // Arrange
-            var tabNav = new TabNavigationViewModel();
-            tabNav.AddTab("Tab 1", new TestViewModel());
-            tabNav.AddTab("Tab 2", new TestViewModel());
-            tabNav.SelectedIndex = 0; // First tab
-
-            // Act
-            tabNav.PreviousTabCommand.Execute().Subscribe();
-
-            // Assert
-            Assert.Equal(1, tabNav.SelectedIndex);
+            Assert.Equal("Tab 2", tabNav.SelectedTab?.Title);
         }
 
         [Fact]
         public void BackCommand_ShouldRaiseBackRequestedEvent()
         {
             // Arrange
-            var tabNav = new TabNavigationViewModel();
+            var tabs = new[]
+            {
+                new TabItem("Tab 1", new TestViewModel())
+            };
+            var tabNav = new TabNavigationViewModel(tabs);
             var eventRaised = false;
             tabNav.BackRequested += (s, e) => eventRaised = true;
 

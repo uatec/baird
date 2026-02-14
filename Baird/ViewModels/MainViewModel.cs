@@ -37,6 +37,7 @@ namespace Baird.ViewModels
 
         public OmniSearchViewModel OmniSearch { get; }
         public HistoryViewModel History { get; }
+        public TabNavigationViewModel MainMenu { get; }
 
         private MediaItem? _activeItem;
         public MediaItem? ActiveItem
@@ -106,6 +107,15 @@ namespace Baird.ViewModels
 
             OmniSearch.PlayRequested += (s, item) => PlayItem(item);
             OmniSearch.BackRequested += (s, e) => GoBack();
+
+            // Create MainMenu with History and Search tabs
+            var tabs = new[]
+            {
+                new TabItem("History", History),
+                new TabItem("Search", OmniSearch)
+            };
+            MainMenu = new TabNavigationViewModel(tabs);
+            MainMenu.BackRequested += (s, e) => GoBack();
         }
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
@@ -191,14 +201,7 @@ namespace Baird.ViewModels
         {
             if (NavigationHistory.Count > 0)
             {
-                var popped = NavigationHistory.Pop();
-                
-                // Clean up event handlers for TabNavigationViewModel to prevent memory leaks
-                if (popped is TabNavigationViewModel tabNav)
-                {
-                    tabNav.BackRequested -= OnTabNavBackRequested;
-                }
-                
+                NavigationHistory.Pop();
                 CurrentPage = NavigationHistory.Count > 0 ? NavigationHistory.Peek() : null;
                 Console.WriteLine($"[Navigation] Popping to {CurrentPage?.GetType().Name}");
             }
@@ -207,11 +210,6 @@ namespace Baird.ViewModels
                 Console.WriteLine("[Navigation] No pages to pop");
                 CurrentPage = null;
             }
-        }
-
-        private void OnTabNavBackRequested(object? sender, EventArgs e)
-        {
-            GoBack();
         }
 
         private MediaItem? FindNextEpisode(MediaItem currentEpisode)
@@ -383,23 +381,13 @@ namespace Baird.ViewModels
             }
         }
 
-        public async void OpenHistory()
+        public async void OpenMainMenu()
         {
             // Refresh history before showing
             await History.RefreshAsync();
             
-            // Create a tab navigation with History and Search tabs
-            var tabNav = new TabNavigationViewModel();
-            tabNav.AddTab("History", History);
-            tabNav.AddTab("Search", OmniSearch);
-            
-            // Set History as the default selected tab
-            tabNav.SelectedIndex = 0;
-            
-            // Handle back navigation from the tab view
-            tabNav.BackRequested += OnTabNavBackRequested;
-            
-            PushViewModel(tabNav);
+            // Push the pre-created MainMenu to the navigation stack
+            PushViewModel(MainMenu);
         }
     }
 }
