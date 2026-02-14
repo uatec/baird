@@ -45,7 +45,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Name="OmniSearchGrid" RowDefinitions="Auto,*,Auto" Background="#DD000000"
+    <Grid Name="OmniSearchGrid" RowDefinitions="Auto,*,Auto" Background="Transparent"
           XYFocus.NavigationModes="Enabled"
           XYFocus.DownNavigationStrategy="Projection"
           XYFocus.UpNavigationStrategy="Projection"

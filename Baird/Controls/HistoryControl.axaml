@@ -35,7 +35,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Name="HistoryGrid" RowDefinitions="Auto,*" Background="#DD000000">
+    <Grid Name="HistoryGrid" RowDefinitions="Auto,*" Background="Transparent">
         
         <!-- Header -->
         <TextBlock Text="Continue Watching" FontSize="28" FontWeight="Bold" Foreground="White" Margin="20"/>

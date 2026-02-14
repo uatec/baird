@@ -375,7 +375,19 @@ namespace Baird.ViewModels
         {
             // Refresh history before showing
             await History.RefreshAsync();
-            PushViewModel(History);
+            
+            // Create a tab navigation with History and Search tabs
+            var tabNav = new TabNavigationViewModel();
+            tabNav.AddTab("History", History);
+            tabNav.AddTab("Search", OmniSearch);
+            
+            // Set History as the default selected tab
+            tabNav.SelectedIndex = 0;
+            
+            // Handle back navigation from the tab view
+            tabNav.BackRequested += (s, e) => GoBack();
+            
+            PushViewModel(tabNav);
         }
     }
 }

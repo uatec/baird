@@ -111,12 +111,6 @@ namespace Baird.Controls
                     e.Handled = true;
                     break;
 
-                case Avalonia.Input.Key.Up:
-                    SearchRequested?.Invoke(this, string.Empty);
-                    UserActivity?.Invoke(this, EventArgs.Empty);
-                    e.Handled = true;
-                    break;
-
                 case Avalonia.Input.Key.Left:
                     PerformScan(-10);
                     // PerformScan invokes UserActivity
