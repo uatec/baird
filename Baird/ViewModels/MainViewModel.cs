@@ -498,7 +498,7 @@ namespace Baird.ViewModels
         public void OpenMainMenu()
         {
             // History is now preloaded and maintained in memory, no need to refresh
-            PushViewModel(History);
+            PushViewModel(this.MainMenu);
         }
     }
 }
