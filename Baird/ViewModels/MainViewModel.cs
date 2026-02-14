@@ -134,7 +134,7 @@ namespace Baird.ViewModels
                 return;
             }
 
-            // Clear episode list for videos
+            // Clear episode list for media items
             // (will be set after by OpenProgramme.PlayRequested if playing from programme details)
             _currentEpisodeList = null;
             _currentShowId = null;
@@ -264,7 +264,7 @@ namespace Baird.ViewModels
             try
             {
                 var nextSeasonEpisodes = await _dataService.GetChildrenAsync(nextSeasonId);
-                var episodeList = nextSeasonEpisodes.Where(e => e.Type == MediaType.Video).ToList();
+                var episodeList = nextSeasonEpisodes.Where(e => e.Type != MediaType.Brand && e.Type != MediaType.Folder).ToList();
 
                 if (episodeList.Count == 0)
                 {

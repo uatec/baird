@@ -403,5 +403,95 @@ namespace Baird.Tests.ViewModels
             Assert.True(viewModel.NavigationHistory.Count < initialStackCount, 
                 "Navigation stack should have been popped when reaching end of flat episode list");
         }
+
+        [Fact]
+        public async Task PlayNextEpisode_AudioContent_TransitionsToNextSeason()
+        {
+            // Arrange - test with audio content (audiobooks, music albums, etc.)
+            var provider = new TestMediaProvider();
+            var historyService = new TestHistoryService();
+            var searchHistoryService = new TestSearchHistoryService();
+            var dataService = new DataService(new[] { provider }, historyService);
+
+            var season1Tracks = new List<MediaItem>
+            {
+                new MediaItem
+                {
+                    Id = "album1|1|track1",
+                    Name = "Track 1",
+                    Details = "",
+                    ImageUrl = "",
+                    IsLive = false,
+                    StreamUrl = "http://test.com/track1",
+                    Source = "Test",
+                    Type = MediaType.Audio,  // Audio type instead of Video
+                    Synopsis = "",
+                    Subtitle = "Disc 1: Track 1"
+                },
+                new MediaItem
+                {
+                    Id = "album1|1|track2",
+                    Name = "Track 2",
+                    Details = "",
+                    ImageUrl = "",
+                    IsLive = false,
+                    StreamUrl = "http://test.com/track2",
+                    Source = "Test",
+                    Type = MediaType.Audio,
+                    Synopsis = "",
+                    Subtitle = "Disc 1: Track 2"
+                }
+            };
+            
+            var season2Tracks = new List<MediaItem>
+            {
+                new MediaItem
+                {
+                    Id = "album1|2|track1",
+                    Name = "Track 1",
+                    Details = "",
+                    ImageUrl = "",
+                    IsLive = false,
+                    StreamUrl = "http://test.com/disc2track1",
+                    Source = "Test",
+                    Type = MediaType.Audio,
+                    Synopsis = "",
+                    Subtitle = "Disc 2: Track 1"
+                }
+            };
+            
+            provider.SetChildren("album1|1", season1Tracks);
+            provider.SetChildren("album1|2", season2Tracks);
+
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+
+            // Simulate playing last track of disc 1
+            viewModel.PlayItem(season1Tracks[1]);
+            
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentEpisodeListField?.SetValue(viewModel, season1Tracks);
+            
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentSeasonIdField?.SetValue(viewModel, "album1|1");
+            
+            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentShowIdField?.SetValue(viewModel, "album1");
+
+            // Act - simulate stream ending on last track of disc 1
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", 
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            playNextMethod?.Invoke(viewModel, null);
+
+            // Allow async operations to complete
+            await Task.Delay(200);
+
+            // Assert - should now be playing first track of disc 2
+            Assert.NotNull(viewModel.ActiveItem);
+            Assert.Equal("album1|2|track1", viewModel.ActiveItem.Id);
+            Assert.Equal(MediaType.Audio, viewModel.ActiveItem.Type);
+        }
     }
 }
