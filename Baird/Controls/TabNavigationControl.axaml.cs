@@ -7,11 +7,14 @@ using Baird.ViewModels;
 using ReactiveUI;
 using System;
 using System.Linq;
+using System.Reactive.Disposables;
 
 namespace Baird.Controls
 {
     public partial class TabNavigationControl : UserControl
     {
+        private CompositeDisposable? _subscriptions;
+
         public TabNavigationControl()
         {
             InitializeComponent();
@@ -33,15 +36,24 @@ namespace Baird.Controls
                 }
             };
 
+            this.DetachedFromVisualTree += (s, e) =>
+            {
+                _subscriptions?.Dispose();
+                _subscriptions = null;
+            };
+
             // Listen for tab changes to focus content
             this.DataContextChanged += OnDataContextChanged;
         }
 
         private void OnDataContextChanged(object? sender, EventArgs e)
         {
+            _subscriptions?.Dispose();
+            _subscriptions = new CompositeDisposable();
+
             if (DataContext is TabNavigationViewModel vm)
             {
-                vm.WhenAnyValue(x => x.SelectedTab)
+                var subscription = vm.WhenAnyValue(x => x.SelectedTab)
                     .Subscribe(selectedTab =>
                     {
                         Dispatcher.UIThread.Post(() =>
@@ -50,6 +62,7 @@ namespace Baird.Controls
                             FocusContent();
                         }, DispatcherPriority.Input);
                     });
+                _subscriptions.Add(subscription);
             }
         }
 

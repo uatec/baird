@@ -191,7 +191,14 @@ namespace Baird.ViewModels
         {
             if (NavigationHistory.Count > 0)
             {
-                NavigationHistory.Pop();
+                var popped = NavigationHistory.Pop();
+                
+                // Clean up event handlers for TabNavigationViewModel to prevent memory leaks
+                if (popped is TabNavigationViewModel tabNav)
+                {
+                    tabNav.BackRequested -= OnTabNavBackRequested;
+                }
+                
                 CurrentPage = NavigationHistory.Count > 0 ? NavigationHistory.Peek() : null;
                 Console.WriteLine($"[Navigation] Popping to {CurrentPage?.GetType().Name}");
             }
@@ -200,6 +207,11 @@ namespace Baird.ViewModels
                 Console.WriteLine("[Navigation] No pages to pop");
                 CurrentPage = null;
             }
+        }
+
+        private void OnTabNavBackRequested(object? sender, EventArgs e)
+        {
+            GoBack();
         }
 
         private MediaItem? FindNextEpisode(MediaItem currentEpisode)
@@ -385,7 +397,7 @@ namespace Baird.ViewModels
             tabNav.SelectedIndex = 0;
             
             // Handle back navigation from the tab view
-            tabNav.BackRequested += (s, e) => GoBack();
+            tabNav.BackRequested += OnTabNavBackRequested;
             
             PushViewModel(tabNav);
         }

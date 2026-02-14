@@ -103,8 +103,7 @@ namespace Baird.ViewModels
             // Select first tab by default
             if (Tabs.Count == 1)
             {
-                SelectedTab = tab;
-                _selectedIndex = 0;
+                SelectedIndex = 0;
             }
         }
 
