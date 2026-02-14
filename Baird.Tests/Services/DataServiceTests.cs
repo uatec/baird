@@ -138,5 +138,36 @@ namespace Baird.Tests.Services
             Assert.NotNull(item.History);
             Assert.Equal(TimeSpan.FromMinutes(5), item.History.LastPosition);
         }
+
+        [Fact]
+        public async Task UpsertHistoryAsync_RaisesHistoryUpdatedEvent()
+        {
+            // Arrange
+            var provider = new MockMediaProvider();
+            var historyService = new MockHistoryService();
+            var dataService = new DataService(new[] { provider }, historyService);
+
+            var item = new MediaItem
+            {
+                Id = "test1",
+                Name = "Test 1",
+                Source = "Mock",
+                Type = MediaType.Video,
+                Details = "Details Test",
+                ImageUrl = "http://mock/test.jpg",
+                IsLive = false,
+                Synopsis = "Synopsis Test",
+                Subtitle = "Subtitle Test"
+            };
+
+            var eventRaised = false;
+            dataService.HistoryUpdated += (sender, args) => eventRaised = true;
+
+            // Act
+            await dataService.UpsertHistoryAsync(item, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(10));
+
+            // Assert
+            Assert.True(eventRaised, "HistoryUpdated event should be raised when history is updated");
+        }
     }
 }
