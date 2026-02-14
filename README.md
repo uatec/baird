@@ -5,6 +5,40 @@ An Avalonia UI application for Linux Framebuffer (Raspberry Pi).
 ## Prerequisites
 - [.NET 9 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/9.0)
 
+## Development
+
+### Code Formatting
+
+This repository uses `.editorconfig` to enforce consistent code formatting standards. All code must follow these formatting rules before being committed.
+
+#### Setting Up Git Hooks (Recommended)
+
+To automatically check code formatting before each commit, run the setup script:
+
+```bash
+./setup-hooks.sh
+```
+
+This configures git to use pre-commit hooks that will prevent you from committing code that doesn't follow the formatting standards.
+
+#### Manual Formatting
+
+To format your code manually, run:
+
+```bash
+dotnet format
+```
+
+To check if your code follows the formatting rules without making changes:
+
+```bash
+dotnet format --verify-no-changes
+```
+
+#### CI Formatting Checks
+
+The CI pipeline automatically checks that all code follows the formatting standards. Pull requests with formatting issues will be rejected. If the CI reports formatting issues, run `dotnet format` locally and commit the changes.
+
 ## Configuration
 
 Baird uses standard Microsoft.Extensions.Configuration for settings, prioritizing INI files. You can configure the application using:
