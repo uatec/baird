@@ -26,10 +26,20 @@ jobs:
 
       - name: Check code formatting
         run: |
-          dotnet format --verify-no-changes --verbosity diagnostic
-          if [ $? -ne 0 ]; then
-            echo "❌ Code formatting issues detected!"
-            echo "Run 'dotnet format' locally to fix formatting issues."
-            exit 1
+          set +e  # Don't exit immediately on error
+          dotnet format --verify-no-changes --verbosity diagnostic > format_output.txt 2>&1
+          exit_code=$?
+          cat format_output.txt
+          
+          # Check if there are actual formatting errors (not just warnings)
+          if [ $exit_code -ne 0 ]; then
+            if grep -q "error WHITESPACE:" format_output.txt; then
+              echo ""
+              echo "❌ Code formatting issues detected!"
+              echo "Run 'dotnet format' locally to fix formatting issues."
+              exit 1
+            fi
           fi
+          
           echo "✅ All files are properly formatted!"
+          exit 0

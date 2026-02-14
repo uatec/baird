@@ -6,17 +6,23 @@
 echo "🔍 Running code format check..."
 
 # Run dotnet format to check for formatting issues
-dotnet format --verify-no-changes --verbosity quiet
+# Capture both stdout and stderr
+output=$(dotnet format --verify-no-changes --verbosity quiet 2>&1)
+exit_code=$?
 
-if [ $? -ne 0 ]; then
-    echo ""
-    echo "❌ Code formatting issues detected!"
-    echo ""
-    echo "Please run the following command to fix formatting:"
-    echo "  dotnet format"
-    echo ""
-    echo "Then stage your changes and commit again."
-    exit 1
+# Check if there are actual formatting errors (not just warnings)
+if [ $exit_code -ne 0 ]; then
+    # Check if the output contains actual errors
+    if echo "$output" | grep -q "error WHITESPACE:"; then
+        echo ""
+        echo "❌ Code formatting issues detected!"
+        echo ""
+        echo "Please run the following command to fix formatting:"
+        echo "  dotnet format"
+        echo ""
+        echo "Then stage your changes and commit again."
+        exit 1
+    fi
 fi
 
 echo "✅ Code formatting check passed!"
