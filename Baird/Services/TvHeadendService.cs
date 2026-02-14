@@ -69,6 +69,7 @@ namespace Baird.Services
 
                 if (grid?.Entries != null)
                 {
+                    Console.WriteLine($"[TvHeadendService] Fetched {grid.Entries.Count()} channels");
                     return grid.Entries
                         .Select(c => new MediaItem
                         {
@@ -160,6 +161,13 @@ namespace Baird.Services
 
             protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, System.Threading.CancellationToken cancellationToken)
             {
+                // Check if we have cached info to send pre-emptive auth
+                if (!string.IsNullOrEmpty(_nonce) && !string.IsNullOrEmpty(_realm))
+                {
+                    var headerValue = GetDigestHeader(request.Method.Method, request.RequestUri?.PathAndQuery ?? "/");
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Digest", headerValue);
+                }
+
                 // Send initial request
                 var response = await base.SendAsync(request, cancellationToken);
 
