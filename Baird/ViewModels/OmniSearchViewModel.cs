@@ -327,12 +327,5 @@ namespace Baird.ViewModels
             // Refresh suggestions on clear/open
             RefreshSuggestions();
         }
-
-        public async Task ClearAndSearch()
-        {
-            SearchText = "";
-            await PerformSearch("");
-            RefreshSuggestions();
-        }
     }
 }

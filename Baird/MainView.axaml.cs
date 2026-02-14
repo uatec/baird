@@ -151,7 +151,6 @@ namespace Baird
                 }
 
 
-                await _viewModel.OmniSearch.ClearAndSearch();
                 await _viewModel.RefreshChannels();
 
                 // Preload history so it's ready when user opens it
