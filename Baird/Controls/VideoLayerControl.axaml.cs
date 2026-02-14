@@ -112,7 +112,7 @@ public partial class VideoLayerControl : UserControl
         if (configLayer.IsVisible)
         {
             var app = (App)Application.Current!;
-            IConfiguration config = app.Configuration;
+            IConfiguration? config = app.Configuration;
 
             var items = config.AsEnumerable()
                 .OrderBy(x => x.Key)

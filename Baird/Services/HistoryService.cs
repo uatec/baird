@@ -40,7 +40,7 @@ public class JsonHistoryService : IHistoryService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading history (v4): {ex}");
+            Console.WriteLine($"[HistoryService] Error loading history (v4): {ex}");
             return new List<HistoryItem>();
         }
     }
@@ -54,7 +54,7 @@ public class JsonHistoryService : IHistoryService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error saving history: {ex}");
+            Console.WriteLine($"[HistoryService] Error saving history: {ex}");
         }
     }
 

@@ -165,7 +165,7 @@ public class OmniSearchViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error refreshing suggestions: {ex}");
+            Console.WriteLine($"[OmniSearchViewModel] Error refreshing suggestions: {ex}");
         }
     }
 
@@ -241,7 +241,7 @@ public class OmniSearchViewModel : ReactiveObject
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            Console.WriteLine($"Search error: {ex}");
+            Console.WriteLine($"[OmniSearchViewModel] Search error: {ex}");
         }
         finally
         {
@@ -323,13 +323,6 @@ public class OmniSearchViewModel : ReactiveObject
         IsSearching = false;
         StopAutoActivationTimer();
         // Refresh suggestions on clear/open
-        RefreshSuggestions();
-    }
-
-    public async Task ClearAndSearch()
-    {
-        SearchText = "";
-        await PerformSearch("");
         RefreshSuggestions();
     }
 }

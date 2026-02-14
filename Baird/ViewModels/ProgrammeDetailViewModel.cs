@@ -58,7 +58,7 @@ public class ProgrammeDetailViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error fetching children: {ex.Message}");
+            Console.WriteLine($"[ProgrammeDetailViewModel] Error fetching children: {ex.Message}");
         }
     }
 }

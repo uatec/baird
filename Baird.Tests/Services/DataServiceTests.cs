@@ -6,7 +6,7 @@ namespace Baird.Tests.Services;
 public class DataServiceTests
 {
     // Manual Mocks
-    private class MockMediaProvider : IMediaProvider
+    public class MockMediaProvider : IMediaProvider
     {
         public string Name { get; set; } = "MockProvider";
         public List<MediaItem> MemoryItems { get; set; } = new List<MediaItem>();
@@ -21,6 +21,37 @@ public class DataServiceTests
         public Task<MediaItem?> GetItemAsync(string id)
         {
             return Task.FromResult(MemoryItems.FirstOrDefault(x => x.Id == id));
+        }
+
+        [Fact]
+        public async Task UpsertHistoryAsync_RaisesHistoryUpdatedEvent()
+        {
+            // Arrange
+            var provider = new MockMediaProvider();
+            var historyService = new MockHistoryService();
+            var dataService = new DataService(new[] { provider }, historyService);
+
+            var item = new MediaItem
+            {
+                Id = "test1",
+                Name = "Test 1",
+                Source = "Mock",
+                Type = MediaType.Video,
+                Details = "Details Test",
+                ImageUrl = "http://mock/test.jpg",
+                IsLive = false,
+                Synopsis = "Synopsis Test",
+                Subtitle = "Subtitle Test"
+            };
+
+            bool eventRaised = false;
+            dataService.HistoryUpdated += (sender, args) => eventRaised = true;
+
+            // Act
+            await dataService.UpsertHistoryAsync(item, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(10));
+
+            // Assert
+            Assert.True(eventRaised, "HistoryUpdated event should be raised when history is updated");
         }
     }
 

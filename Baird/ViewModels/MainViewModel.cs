@@ -1,4 +1,4 @@
-using Baird.Models; // For potentially reused types, though ScreensaverViewModel handles it.
+using Baird.Models;
 using Baird.Services;
 using ReactiveUI;
 
@@ -36,6 +36,7 @@ public class MainViewModel : ReactiveObject
 
     public OmniSearchViewModel OmniSearch { get; }
     public HistoryViewModel History { get; }
+    public TabNavigationViewModel MainMenu { get; }
 
     private MediaItem? _activeItem;
     public MediaItem? ActiveItem
@@ -85,6 +86,20 @@ public class MainViewModel : ReactiveObject
         History.PlayRequested += (s, item) => PlayItem(item);
         History.BackRequested += (s, e) => GoBack();
 
+        // Subscribe to history updates to keep HistoryViewModel in sync
+        _dataService.HistoryUpdated += async (s, e) =>
+        {
+            try
+            {
+                // Refresh history view when history is updated (video watched/resumed)
+                await History.RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MainViewModel] Error refreshing history after update: {ex.Message}");
+            }
+        };
+
         IsVideoHudVisible = true;
 
         IsSubtitlesEnabled = NativeUtils.GetCapsLockState();
@@ -109,6 +124,15 @@ public class MainViewModel : ReactiveObject
 
         OmniSearch.PlayRequested += (s, item) => PlayItem(item);
         OmniSearch.BackRequested += (s, e) => GoBack();
+
+        // Create MainMenu with History and Search tabs
+        TabItem[] tabs = new[]
+        {
+            new TabItem("History", History),
+            new TabItem("Search", OmniSearch)
+        };
+        MainMenu = new TabNavigationViewModel(tabs);
+        MainMenu.BackRequested += (s, e) => GoBack();
     }
 
     private readonly Avalonia.Threading.DispatcherTimer _hudTimer;
@@ -149,7 +173,7 @@ public class MainViewModel : ReactiveObject
             {
                 // Resume logic
                 resumeTime = history.LastPosition;
-                Console.WriteLine($"Resuming {item.Name} at {resumeTime}");
+                Console.WriteLine($"[MainViewModel] Resuming {item.Name} at {resumeTime}");
             }
 
             ActivateChannel(item, resumeTime);
@@ -371,13 +395,13 @@ public class MainViewModel : ReactiveObject
         }
         catch (System.Exception ex)
         {
-            System.Console.WriteLine($"Error refreshing channels: {ex.Message}");
+            System.Console.WriteLine($"[MainViewModel] Error refreshing channels: {ex.Message}");
         }
     }
 
     public void SelectNextChannel()
     {
-        Console.WriteLine($"SelectNextChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
+        Console.WriteLine($"[MainViewModel] SelectNextChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
         if (ActiveItem == null || AllChannels.Count == 0)
         {
             return;
@@ -402,7 +426,7 @@ public class MainViewModel : ReactiveObject
 
     public void SelectPreviousChannel()
     {
-        Console.WriteLine($"SelectPreviousChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
+        Console.WriteLine($"[MainViewModel] SelectPreviousChannel: ActiveItem={ActiveItem?.Name}, AllChannels.Count={AllChannels.Count}");
         if (ActiveItem == null || AllChannels.Count == 0)
         {
             return;
@@ -500,10 +524,9 @@ public class MainViewModel : ReactiveObject
         }
     }
 
-    public async void OpenHistory()
+    public void OpenMainMenu()
     {
-        // Refresh history before showing
-        await History.RefreshAsync();
-        PushViewModel(History);
+        // History is now preloaded and maintained in memory, no need to refresh
+        PushViewModel(MainMenu);
     }
 }

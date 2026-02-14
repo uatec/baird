@@ -11,6 +11,12 @@ public class TvHeadendService : IMediaProvider, IDisposable
     private readonly string _username;
     private readonly string _password;
 
+    // Cache fields
+    private IEnumerable<MediaItem>? _cachedListing;
+    private DateTime _cacheExpiry = DateTime.MinValue;
+    private readonly SemaphoreSlim _cacheLock = new SemaphoreSlim(1, 1);
+    private readonly TimeSpan _cacheTimeout = TimeSpan.FromSeconds(60);
+
     public TvHeadendService(Microsoft.Extensions.Configuration.IConfiguration config)
     {
         // Load configuration
@@ -22,7 +28,7 @@ public class TvHeadendService : IMediaProvider, IDisposable
         _username = username;
         _password = password;
 
-        Console.WriteLine($"Attempting connection to: {_serverUrl} as {_username}");
+        Console.WriteLine($"[TvHeadendService] Attempting connection to: {_serverUrl} as {_username}");
 
         // Configure Handler with Custom Digest Auth
         // TvHeadend often requires standard Digest processing which HttpClientHandler can struggle with
@@ -31,7 +37,7 @@ public class TvHeadendService : IMediaProvider, IDisposable
 
         _httpClient = new HttpClient(handler) { BaseAddress = new Uri(_serverUrl + "/") };
 
-        Console.WriteLine($"Initialized TVHeadend Service at {_serverUrl} with Custom Digest Auth support");
+        Console.WriteLine($"[TvHeadendService] Initialized TVHeadend Service at {_serverUrl} with Custom Digest Auth support");
     }
 
 
@@ -47,49 +53,81 @@ public class TvHeadendService : IMediaProvider, IDisposable
 
     public async Task<IEnumerable<MediaItem>> GetListingAsync()
     {
+        // Check if cache is valid
+        if (_cachedListing != null && DateTime.UtcNow < _cacheExpiry)
+        {
+            return _cachedListing;
+        }
+
+        // Wait for the semaphore to ensure only one thread populates the cache
+        await _cacheLock.WaitAsync();
         try
         {
-            // API to get channel grid: /api/channel/grid
-            string url = "api/channel/grid?start=0&limit=9999";
-
-            Console.WriteLine($"Fetching channels from: {url}");
-
-            HttpResponseMessage response = await _httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-
-            string json = await response.Content.ReadAsStringAsync();
-
-            // Using Source Generator context
-            TvHeadendGrid? grid = JsonSerializer.Deserialize(json, TvHeadendJsonContext.Default.TvHeadendGrid);
-
-            if (grid?.Entries != null)
+            // Double-check after acquiring lock (another thread might have populated it)
+            if (_cachedListing != null && DateTime.UtcNow < _cacheExpiry)
             {
-                return grid.Entries
-                    .Select(c => new MediaItem
-                    {
-                        Id = c.Uuid,
-                        Name = c.Name,
-                        Details = "", // Channel number moved to ChannelNumber
-                        ChannelNumber = c.Number > 0 ? c.Number.ToString() : "",
-                        // TVHeadend icon URL: /imagecache/{id}
-                        ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
-                        IsLive = true,
-                        StreamUrl = GetStreamUrlInternal(c.Uuid),
-                        Source = "Live TV",
-                        Type = MediaType.Channel,
-                        Subtitle = "",
-                        Synopsis = "",
-                    })
-                    .OrderBy(c => c.Name);
+                Console.WriteLine($"[TvHeadendService] Returning cached channels (acquired after lock)");
+                return _cachedListing;
             }
 
-            return Enumerable.Empty<MediaItem>();
+            // Populate the cache
+            Console.WriteLine($"[TvHeadendService] Populating cache");
+
+            try
+            {
+                // API to get channel grid: /api/channel/grid
+                string url = "api/channel/grid?start=0&limit=9999";
+
+                Console.WriteLine($"[TvHeadendService] Fetching channels from: {url}");
+
+                HttpResponseMessage response = await _httpClient.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+
+                string json = await response.Content.ReadAsStringAsync();
+
+                // Using Source Generator context
+                TvHeadendGrid? grid = JsonSerializer.Deserialize(json, TvHeadendJsonContext.Default.TvHeadendGrid);
+
+                if (grid?.Entries != null)
+                {
+                    Console.WriteLine($"[TvHeadendService] Fetched {grid.Entries.Count()} channels");
+                    _cachedListing = grid.Entries
+                        .Select(c => new MediaItem
+                        {
+                            Id = c.Uuid,
+                            Name = c.Name,
+                            Details = "", // Channel number moved to ChannelNumber
+                            ChannelNumber = c.Number > 0 ? c.Number.ToString() : "",
+                            // TVHeadend icon URL: /imagecache/{id}
+                            ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
+                            IsLive = true,
+                            StreamUrl = GetStreamUrlInternal(c.Uuid),
+                            Source = "Live TV",
+                            Type = MediaType.Channel,
+                            Subtitle = "",
+                            Synopsis = "",
+                        })
+                        .OrderBy(c => c.Name)
+                        .ToList(); // Materialize to avoid re-execution
+
+                    _cacheExpiry = DateTime.UtcNow.Add(_cacheTimeout);
+                    return _cachedListing;
+                }
+
+                _cachedListing = Enumerable.Empty<MediaItem>();
+                _cacheExpiry = DateTime.UtcNow.Add(_cacheTimeout);
+                return _cachedListing;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TvHeadendService] Failed to fetch TV channels: {ex.Message}");
+                Console.WriteLine($"[TvHeadendService] StackTrace: {ex.StackTrace}");
+                return Enumerable.Empty<MediaItem>();
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            Console.WriteLine($"Failed to fetch TV channels: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
-            return Enumerable.Empty<MediaItem>();
+            _cacheLock.Release();
         }
     }
 
@@ -158,13 +196,20 @@ public class TvHeadendService : IMediaProvider, IDisposable
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, System.Threading.CancellationToken cancellationToken)
         {
+            // Check if we have cached info to send pre-emptive auth
+            if (!string.IsNullOrEmpty(_nonce) && !string.IsNullOrEmpty(_realm))
+            {
+                string headerValue = GetDigestHeader(request.Method.Method, request.RequestUri?.PathAndQuery ?? "/");
+                request.Headers.Authorization = new AuthenticationHeaderValue("Digest", headerValue);
+            }
+
             // Send initial request
             HttpResponseMessage response = await base.SendAsync(request, cancellationToken);
 
             // Check for 401 Unauthorized with Digest challenge
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && response.Headers.WwwAuthenticate.Any(h => h.Scheme.Equals("Digest", StringComparison.OrdinalIgnoreCase)))
             {
-                Console.WriteLine($"[TVHeadend] 401 Unauthorized with Digest challenge");
+                Console.WriteLine($"[TvHeadendService] 401 Unauthorized with Digest challenge");
                 AuthenticationHeaderValue authHeader = response.Headers.WwwAuthenticate.First(h => h.Scheme.Equals("Digest", StringComparison.OrdinalIgnoreCase));
                 ParseHeader(authHeader.Parameter ?? "");
 
@@ -174,7 +219,7 @@ public class TvHeadendService : IMediaProvider, IDisposable
 
                 // Retry with auth
                 response = await base.SendAsync(request, cancellationToken);
-                Console.WriteLine($"[TVHeadend] Digest retry response received ({response.StatusCode})");
+                Console.WriteLine($"[TvHeadendService] Digest retry response received ({response.StatusCode})");
             }
 
             return response;

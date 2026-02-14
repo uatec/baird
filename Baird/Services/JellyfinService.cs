@@ -58,7 +58,7 @@ public class JellyfinService : IMediaProvider, IDisposable
             _httpClient.DefaultRequestHeaders.Add("X-Emby-Authorization", authHeader);
         }
 
-        Console.WriteLine($"JellyfinService configured for {_serverUrl} (authentication will happen on first use)");
+        Console.WriteLine($"[JellyfinService] JellyfinService configured for {_serverUrl} (authentication will happen on first use)");
     }
 
     private async Task EnsureAuthenticatedAsync()
@@ -73,19 +73,19 @@ public class JellyfinService : IMediaProvider, IDisposable
         try
         {
             await AuthenticateAsync(_username, _password);
-            Console.WriteLine($"Jellyfin authenticated at {_serverUrl}");
+            Console.WriteLine($"[JellyfinService] Jellyfin authenticated at {_serverUrl}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Jellyfin Authentication Failed: {ex.Message}");
-            Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+            Console.WriteLine($"[JellyfinService] Jellyfin Authentication Failed: {ex.Message}");
+            Console.WriteLine($"[JellyfinService] Stack Trace: {ex.StackTrace}");
             throw;
         }
     }
 
     private async Task AuthenticateAsync(string username, string password)
     {
-        Console.WriteLine("Authenticating via manual HTTP request...");
+        Console.WriteLine("[JellyfinService] Authenticating via manual HTTP request...");
 
         string authUrl = $"{_serverUrl}/Users/AuthenticateByName";
         // Use Source Generated serialization to support AOT/Trimming
@@ -114,7 +114,7 @@ public class JellyfinService : IMediaProvider, IDisposable
             _userId = idProp.GetString() ?? "";
         }
 
-        Console.WriteLine($"Auth Success. Token: {_accessToken?.Substring(0, 5)}... User: {_userId}");
+        Console.WriteLine($"[JellyfinService] Auth Success. Token: {_accessToken?.Substring(0, 5)}... User: {_userId}");
 
         // 3. Update Headers with Token
         _httpClient.DefaultRequestHeaders.Remove("X-Emby-Authorization");
@@ -139,7 +139,7 @@ public class JellyfinService : IMediaProvider, IDisposable
             // Endpoint: /Users/{UserId}/Items
             string url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Fields=ProductionYear,ProviderIds,RunTimeTicks";
 
-            Console.WriteLine($"Fetching movies and shows from: {url}");
+            Console.WriteLine($"[JellyfinService] Fetching movies and shows from: {url}");
 
             HttpResponseMessage response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
@@ -155,8 +155,8 @@ public class JellyfinService : IMediaProvider, IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to fetch movies: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
+            Console.WriteLine($"[JellyfinService] Failed to fetch movies: {ex.Message}");
+            Console.WriteLine($"[JellyfinService] StackTrace: {ex.StackTrace}");
             return Enumerable.Empty<MediaItem>();
         }
     }
@@ -174,7 +174,7 @@ public class JellyfinService : IMediaProvider, IDisposable
             string q = Uri.EscapeDataString(query.Trim());
             string url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series&Recursive=true&SortBy=SortName&Fields=ProductionYear,RunTimeTicks&SearchTerm={q}";
 
-            Console.WriteLine($"Searching Jellyfin movies and shows with query '{query}': {url}");
+            Console.WriteLine($"[JellyfinService] Searching Jellyfin movies and shows with query '{query}': {url}");
 
             HttpResponseMessage response = await _httpClient.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -190,7 +190,7 @@ public class JellyfinService : IMediaProvider, IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Jellyfin search failed: {ex.Message}");
+            Console.WriteLine($"[JellyfinService] Jellyfin search failed: {ex.Message}");
             return Enumerable.Empty<MediaItem>();
         }
     }
@@ -223,7 +223,7 @@ public class JellyfinService : IMediaProvider, IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Jellyfin GetItemAsync failed for {id}: {ex.Message}");
+            Console.WriteLine($"[JellyfinService] Jellyfin GetItemAsync failed for {id}: {ex.Message}");
             return null;
         }
     }
@@ -321,7 +321,7 @@ public class JellyfinService : IMediaProvider, IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Jellyfin GetChildren failed: {ex.Message}");
+            Console.WriteLine($"[JellyfinService] Jellyfin GetChildren failed: {ex.Message}");
             return Enumerable.Empty<MediaItem>();
         }
     }

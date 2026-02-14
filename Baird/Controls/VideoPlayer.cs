@@ -83,7 +83,7 @@ public class VideoPlayer : OpenGlControlBase, IDisposable
         // Numeric keys
         if (IsNumericKey(e.Key))
         {
-            Console.WriteLine("Numeric key pressed: " + e.Key);
+            Console.WriteLine($"[VideoPlayer] Numeric key pressed: {e.Key}");
             string digit = GetNumericChar(e.Key);
             SearchRequested?.Invoke(this, digit);
             UserActivity?.Invoke(this, EventArgs.Empty);
@@ -108,12 +108,6 @@ public class VideoPlayer : OpenGlControlBase, IDisposable
 
             case Avalonia.Input.Key.CapsLock:
                 IsSubtitlesEnabled = !IsSubtitlesEnabled;
-                UserActivity?.Invoke(this, EventArgs.Empty);
-                e.Handled = true;
-                break;
-
-            case Avalonia.Input.Key.Up:
-                SearchRequested?.Invoke(this, string.Empty);
                 UserActivity?.Invoke(this, EventArgs.Empty);
                 e.Handled = true;
                 break;

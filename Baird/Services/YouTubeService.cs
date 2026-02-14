@@ -64,13 +64,13 @@ public class YouTubeService : IMediaProvider
                     string? id = root.GetProperty("id").GetString();
                     if (id == null)
                     {
-                        Console.WriteLine($"Invalid ID in yt-dlp output: {line}");
+                        Console.WriteLine($"[YouTubeService] Invalid ID in yt-dlp output: {line}");
                         continue;
                     }
                     string? title = root.GetProperty("title").GetString();
                     if (title == null)
                     {
-                        Console.WriteLine($"Invalid title in yt-dlp output: {line}");
+                        Console.WriteLine($"[YouTubeService] Invalid title in yt-dlp output: {line}");
                         continue;
                     }
 
@@ -115,7 +115,7 @@ public class YouTubeService : IMediaProvider
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error parsing yt-dlp line: {ex.Message}");
+                    Console.WriteLine($"[YouTubeService] Error parsing yt-dlp line: {ex.Message}");
                 }
             }
 
@@ -123,7 +123,7 @@ public class YouTubeService : IMediaProvider
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"YouTube search failed: {ex.Message}");
+            Console.WriteLine($"[YouTubeService] YouTube search failed: {ex.Message}");
             return Enumerable.Empty<MediaItem>();
         }
     }
