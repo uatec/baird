@@ -286,7 +286,7 @@ namespace Baird.ViewModels
             }
         }
 
-        public async void PlayNextEpisodeOrGoBack()
+        public async Task PlayNextEpisodeOrGoBack()
         {
             if (ActiveItem == null)
             {
@@ -436,7 +436,7 @@ namespace Baird.ViewModels
                 PlayItem(item);
                 // Set current episode list for auto-play next episode
                 // (after PlayItem, which clears it to handle Search/History plays correctly)
-                // TODO: Dont' use episode list, go straight to the datastore
+                // TODO: Don't use episode list, go straight to the datastore
                 _currentEpisodeList = vm.ProgrammeChildren.ToList();
                 
                 // Set season context - programme.Id might be a season ID (showId|seasonNumber)
