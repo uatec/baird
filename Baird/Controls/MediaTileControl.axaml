@@ -59,7 +59,7 @@
                                    FontWeight="SemiBold"/>
                     </Border>
                     
-                    <!-- Progress Bar Overlay (History) -->
+                    <!-- Playback Progress Bar Overlay (History) -->
                     <ProgressBar Value="{Binding Progress}" 
                                  Maximum="1.0" 
                                  Minimum="0.0" 
@@ -86,6 +86,17 @@
                     </Border>
                 </Grid>
             </Border>
+            
+            <!-- Long Press Progress Indicator -->
+            <ProgressBar Grid.Row="0"
+                         VerticalAlignment="Bottom"
+                         Height="4"
+                         Background="Transparent"
+                         Foreground="#4CAF50"
+                         Maximum="1.0"
+                         Value="{Binding LongPressProgress, RelativeSource={RelativeSource AncestorType=controls:MediaButton}}"
+                         IsHitTestVisible="False"
+                         Margin="8,0,8,4"/>
             
             <!-- Row 1: Channel/Name -->
             <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">

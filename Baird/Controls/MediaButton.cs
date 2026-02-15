@@ -28,9 +28,19 @@ namespace Baird.Controls
             set => SetValue(LongPressCommandParameterProperty, value);
         }
 
+        public static readonly StyledProperty<double> LongPressProgressProperty =
+            AvaloniaProperty.Register<MediaButton, double>(nameof(LongPressProgress));
+
+        public double LongPressProgress
+        {
+            get => GetValue(LongPressProgressProperty);
+            set => SetValue(LongPressProgressProperty, value);
+        }
+
         private DispatcherTimer? _longPressTimer;
         private bool _isLongPressTriggered;
         private TimeSpan _longPressDuration = TimeSpan.FromMilliseconds(800);
+        private DateTime _pressStartTime;
         private bool _isKeyDownCaptured; // Prevent "ghost clicks" from navigation events
 
         protected override Type StyleKeyOverride => typeof(Button);
@@ -39,21 +49,30 @@ namespace Baird.Controls
         {
             _longPressTimer = new DispatcherTimer
             {
-                Interval = _longPressDuration
+                Interval = TimeSpan.FromMilliseconds(50) // Update frequently for smooth progress
             };
             _longPressTimer.Tick += OnLongPressTimerTick;
         }
 
         private void OnLongPressTimerTick(object? sender, EventArgs e)
         {
-            _longPressTimer?.Stop();
-            _isLongPressTriggered = true;
+            var elapsed = DateTime.Now - _pressStartTime;
+            var progress = elapsed.TotalMilliseconds / _longPressDuration.TotalMilliseconds;
 
-            if (LongPressCommand?.CanExecute(LongPressCommandParameter) == true)
+            LongPressProgress = Math.Clamp(progress, 0.0, 1.0);
+
+            if (LongPressProgress >= 1.0)
             {
-                LongPressCommand.Execute(LongPressCommandParameter);
-                // Visual feedback could be added here
-                Console.WriteLine("[MediaButton] Long Press Triggered");
+                _longPressTimer?.Stop();
+                _isLongPressTriggered = true;
+                LongPressProgress = 0; // Reset progress on completion
+
+                if (LongPressCommand?.CanExecute(LongPressCommandParameter) == true)
+                {
+                    LongPressCommand.Execute(LongPressCommandParameter);
+                    // Visual feedback could be added here
+                    Console.WriteLine("[MediaButton] Long Press Triggered");
+                }
             }
         }
 
@@ -62,15 +81,15 @@ namespace Baird.Controls
             if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             {
                 _isLongPressTriggered = false;
-                _longPressTimer?.Stop();
-                _longPressTimer?.Start();
+                _fileResetTimer();
+                _startLongPress();
             }
             base.OnPointerPressed(e);
         }
 
         protected override void OnPointerReleased(PointerReleasedEventArgs e)
         {
-            _longPressTimer?.Stop();
+            _stopLongPress();
             if (_isLongPressTriggered)
             {
                 e.Handled = true; // Prevent Click
@@ -91,7 +110,7 @@ namespace Baird.Controls
                 if (!_longPressTimer!.IsEnabled && !_isLongPressTriggered)
                 {
                     _isLongPressTriggered = false;
-                    _longPressTimer.Start();
+                    _startLongPress();
                 }
 
                 // CRITICIAL: Prevent base Button from handling Enter and triggering Click immediately
@@ -105,7 +124,7 @@ namespace Baird.Controls
         {
             if (e.Key == Key.Enter)
             {
-                _longPressTimer?.Stop();
+                _stopLongPress();
 
                 // Only handle if we captured the KeyDown (prevents executing when navigating TO this button with Enter held/released)
                 if (!_isKeyDownCaptured)
@@ -147,7 +166,25 @@ namespace Baird.Controls
         {
             base.OnLostFocus(e);
             _isKeyDownCaptured = false;
-            _isLongPressTriggered = false;
+            _stopLongPress();
+        }
+
+        private void _startLongPress()
+        {
+            _pressStartTime = DateTime.Now;
+            LongPressProgress = 0;
+            _longPressTimer?.Start();
+        }
+
+        private void _stopLongPress()
+        {
+            _longPressTimer?.Stop();
+            LongPressProgress = 0;
+        }
+
+        // Helper to reset timer state properly
+        private void _fileResetTimer()
+        {
             _longPressTimer?.Stop();
         }
     }
