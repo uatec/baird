@@ -14,51 +14,36 @@ namespace Baird.Controls
     public partial class TabNavigationControl : UserControl
     {
         private CompositeDisposable? _subscriptions;
-        private bool _hasBeenShownBefore = false;
+        private bool _hasAutoFocused = false;
 
         public TabNavigationControl()
         {
             InitializeComponent();
 
-            // Focus handling when control becomes visible
-            this.GetObservable(IsVisibleProperty).Subscribe(visible =>
-            {
-                if (visible)
-                {
-                    Dispatcher.UIThread.Post(() => 
-                    {
-                        if (!_hasBeenShownBefore)
-                        {
-                            // First time showing: focus on first tab button
-                            FocusFirstTabButton();
-                            _hasBeenShownBefore = true;
-                        }
-                        else
-                        {
-                            // Returning to this control: maintain state, just update tab styles
-                            UpdateTabStyles();
-                        }
-                    }, DispatcherPriority.Input);
-                }
-            });
-
-            this.AttachedToVisualTree += (s, e) =>
-            {
-                if (IsVisible && !_hasBeenShownBefore)
-                {
-                    Dispatcher.UIThread.Post(FocusFirstTabButton, DispatcherPriority.Input);
-                    _hasBeenShownBefore = true;
-                }
-            };
-
-            this.DetachedFromVisualTree += (s, e) =>
-            {
-                _subscriptions?.Dispose();
-                _subscriptions = null;
-            };
-
-            // Listen for tab changes to update styles
+            this.AttachedToVisualTree += OnAttachedToVisualTree;
+            this.DetachedFromVisualTree += OnDetachedFromVisualTree;
             this.DataContextChanged += OnDataContextChanged;
+        }
+
+        private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+        {
+            _hasAutoFocused = false;
+            this.LayoutUpdated += OnLayoutUpdated;
+            Console.WriteLine("[TabNav] Attached to visual tree, waiting for layout...");
+        }
+
+        private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+        {
+            this.LayoutUpdated -= OnLayoutUpdated;
+            _subscriptions?.Dispose();
+            _subscriptions = null;
+        }
+
+        private void OnLayoutUpdated(object? sender, EventArgs e)
+        {
+            if (_hasAutoFocused || !this.IsVisible) return;
+
+            AttemptFocusFirstTab();
         }
 
         private void OnDataContextChanged(object? sender, EventArgs e)
@@ -68,19 +53,16 @@ namespace Baird.Controls
 
             if (DataContext is TabNavigationViewModel vm)
             {
-                var subscription = vm.WhenAnyValue(x => x.SelectedTab)
+                vm.WhenAnyValue(x => x.SelectedTab)
                     .Subscribe(selectedTab =>
                     {
-                        Dispatcher.UIThread.Post(() =>
-                        {
-                            UpdateTabStyles();
-                        }, DispatcherPriority.Input);
-                    });
-                _subscriptions.Add(subscription);
+                        Dispatcher.UIThread.Post(() => UpdateTabStyles(), DispatcherPriority.Input);
+                    })
+                    .DisposeWith(_subscriptions);
             }
         }
 
-        private void FocusFirstTabButton()
+        private void AttemptFocusFirstTab()
         {
             var itemsControl = this.FindControl<ItemsControl>("TabBar");
             if (itemsControl == null || itemsControl.ItemCount == 0) return;
@@ -89,13 +71,21 @@ namespace Baird.Controls
             if (container is Visual visual)
             {
                 var button = visual.FindDescendantOfType<Button>();
-                button?.Focus();
+                if (button != null && button.IsEffectivelyVisible)
+                {
+                    button.Focus();
+                    _hasAutoFocused = true;
+                    this.LayoutUpdated -= OnLayoutUpdated; // Stop listening once focused
+
+                    Console.WriteLine("[TabNav] Auto-focused first tab button.");
+                    UpdateTabStyles();
+                }
             }
         }
 
         private void UpdateTabStyles()
         {
-            if (DataContext is not TabNavigationViewModel vm || vm.SelectedTab == null) 
+            if (DataContext is not TabNavigationViewModel vm || vm.SelectedTab == null)
                 return;
 
             var selectedTab = vm.SelectedTab;
@@ -110,14 +100,17 @@ namespace Baird.Controls
                     var button = visual.FindDescendantOfType<Button>();
                     if (button != null)
                     {
-                        var tabItem = itemsControl.Items.Cast<ViewModels.TabItem>().ElementAtOrDefault(i);
-                        if (tabItem == selectedTab)
+                        var tabItem = itemsControl.Items.Cast<Baird.ViewModels.TabItem>().ElementAtOrDefault(i);
+                        if (tabItem != null)
                         {
-                            button.Classes.Add("selected");
-                        }
-                        else
-                        {
-                            button.Classes.Remove("selected");
+                            if (tabItem == selectedTab)
+                            {
+                                button.Classes.Add("selected");
+                            }
+                            else
+                            {
+                                button.Classes.Remove("selected");
+                            }
                         }
                     }
                 }

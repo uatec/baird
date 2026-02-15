@@ -16,21 +16,8 @@ namespace Baird.Controls
         {
             InitializeComponent();
 
-            this.GetObservable(IsVisibleProperty).Subscribe(visible =>
-            {
-                if (visible)
-                {
-                    Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
-                }
-            });
-
             this.AttachedToVisualTree += (s, e) =>
             {
-                if (IsVisible)
-                {
-                    Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
-                }
-
                 var box = this.FindControl<TextBox>("SearchBox");
                 if (box != null)
                 {

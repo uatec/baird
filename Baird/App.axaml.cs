@@ -1,8 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.Configuration;
+using System;
 using System.IO;
 
 namespace Baird
@@ -42,6 +45,21 @@ namespace Baird
                     Content = new MainView(Configuration),
                     Title = "Baird"
                 };
+
+                // Add Global Focus Logging
+                // Use AddClassHandler to capture all events, but filter in the lambda to reduce noise.
+                InputElement.GotFocusEvent.AddClassHandler<InputElement>((sender, e) =>
+                {
+                    // Only log if the sender is the element that actually received focus (prevent bubbling noise)
+                    if (sender != e.Source) return;
+
+                    var source = e.Source as Control;
+                    var name = source?.Name ?? "Unnamed";
+                    var type = e.Source?.GetType().Name ?? "null";
+
+                    Console.WriteLine($"[Focus Event] GotFocus: {type} ({name})");
+
+                }, RoutingStrategies.Bubble, handledEventsToo: true);
 
                 var fullScreenEnv = Configuration["BAIRD_FULLSCREEN"];
                 if (!string.IsNullOrEmpty(fullScreenEnv) && bool.TryParse(fullScreenEnv, out bool isFullScreen) && isFullScreen)

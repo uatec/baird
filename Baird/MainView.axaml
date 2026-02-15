@@ -11,7 +11,7 @@
     <!-- Root Grid with Z-Layers -->
     <Grid>
         <!-- Layer 0: Base Layer (Video) -->
-        <c:VideoLayerControl Name="VideoLayer" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        <c:VideoLayerControl Name="VideoLayer" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Focusable="False"/>
 
         <!-- Layer 1: EPG Overlay (Bottom Up) -->
         <Border Name="EpgLayer" Background="#CC000000" VerticalAlignment="Bottom" Height="300" IsVisible="{Binding IsEpgActive}">
@@ -19,10 +19,12 @@
         </Border>
 
         <!-- Layer 2: Navigation Content -->
+        <!-- Focusable=False ensures the container itself cannot grab focus when we want its children to have it -->
         <ContentControl Name="PageFrame" 
                         Content="{Binding CurrentPage}" 
                         HorizontalAlignment="Stretch" 
-                        VerticalAlignment="Stretch">
+                        VerticalAlignment="Stretch"
+                        Focusable="False">
             <ContentControl.DataTemplates>
                 <DataTemplate DataType="{x:Type vm:OmniSearchViewModel}">
                     <c:OmniSearchControl/>
@@ -45,7 +47,7 @@
         </ContentControl>
 
         <!-- Layer 3: Screensaver Overlay -->
-        <ContentControl Name="ScreensaverLayer" Content="{Binding Screensaver}" IsVisible="{Binding Screensaver.IsActive}">
+        <ContentControl Name="ScreensaverLayer" Content="{Binding Screensaver}" IsVisible="{Binding Screensaver.IsActive}" Focusable="False">
              <ContentControl.DataTemplates>
                 <DataTemplate DataType="{x:Type vm:ScreensaverViewModel}">
                     <c:ScreensaverControl/>

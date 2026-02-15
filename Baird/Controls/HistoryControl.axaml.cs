@@ -12,24 +12,6 @@ namespace Baird.Controls
         public HistoryControl()
         {
             InitializeComponent();
-
-            // Re-focus whenever visibility changes to true
-            this.GetObservable(IsVisibleProperty).Subscribe(visible =>
-            {
-                if (visible)
-                {
-                    Dispatcher.UIThread.Post(FocusHistoryList, DispatcherPriority.Input);
-                }
-            });
-
-            // Focus on attach if visible
-            this.AttachedToVisualTree += (s, e) =>
-            {
-                if (IsVisible)
-                {
-                    Dispatcher.UIThread.Post(FocusHistoryList, DispatcherPriority.Input);
-                }
-            };
         }
 
         public void FocusHistoryList()
