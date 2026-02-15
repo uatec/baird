@@ -73,7 +73,7 @@ namespace Baird.Controls
                         if (button != null)
                         {
                             Console.WriteLine($"[ProgrammeDetailControl] Focusing Button: {button.GetType().Name}");
-                            button.Focus();
+                            button.Focus(NavigationMethod.Directional);
                             return;
                         }
                     }

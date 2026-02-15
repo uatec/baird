@@ -31,6 +31,7 @@ namespace Baird.Controls
         private DispatcherTimer? _longPressTimer;
         private bool _isLongPressTriggered;
         private TimeSpan _longPressDuration = TimeSpan.FromMilliseconds(800);
+        private bool _isKeyDownCaptured; // Prevent "ghost clicks" from navigation events
 
         protected override Type StyleKeyOverride => typeof(Button);
 
@@ -83,6 +84,9 @@ namespace Baird.Controls
         {
             if (e.Key == Key.Enter)
             {
+                // Capture the key down event so we know we initiated this action
+                _isKeyDownCaptured = true;
+
                 // Start timer if not running and not already triggered
                 if (!_longPressTimer!.IsEnabled && !_isLongPressTriggered)
                 {
@@ -103,11 +107,19 @@ namespace Baird.Controls
             {
                 _longPressTimer?.Stop();
 
+                // Only handle if we captured the KeyDown (prevents executing when navigating TO this button with Enter held/released)
+                if (!_isKeyDownCaptured)
+                {
+                    e.Handled = true;
+                    return;
+                }
+
                 if (_isLongPressTriggered)
                 {
                     // It was a long press, already handled by timer tick
                     e.Handled = true;
                     _isLongPressTriggered = false;
+                    _isKeyDownCaptured = false;
                     return;
                 }
                 else
@@ -120,31 +132,23 @@ namespace Baird.Controls
                     }
                     else
                     {
-                        // Fallback to Click event if no Command? 
-                        // Button.OnClick() is protected, can we call it? 
-                        // No, but usually Command is enough for this app.
-                        // Can simulate Click via raising even but let's stick to Command first as that's what is used.
-                        // Actually, let's call OnClick() via reflection or just Command.
-                        // MediaButton inherits Button, lets check if we can call OnClick()
-                        // OnClick() handles Command execution internally usually.
-                        // Base Button.OnClick() calls Command.Execute.
-                        // Since we are in the class, we can call a method that calls base.OnClick()?
-                        // Button.OnClick is protected virtual void OnClick(). We can call it!
-
-                        // BUT: We need to be careful about state. 
-                        // If we just call Command.Execute, we miss the Click event.
-                        // However, application uses Command binding mostly.
-                        // Let's try calling generic Click handling logic or just Command. 
-
-                        // Given usage in MediaTileControl: Command="{Binding ...}"
-                        // Command execution is sufficient.
+                        // Fallback to Click event if needed
                     }
 
                     e.Handled = true;
+                    _isKeyDownCaptured = false;
                     return;
                 }
             }
             base.OnKeyUp(e);
+        }
+
+        protected override void OnLostFocus(RoutedEventArgs e)
+        {
+            base.OnLostFocus(e);
+            _isKeyDownCaptured = false;
+            _isLongPressTriggered = false;
+            _longPressTimer?.Stop();
         }
     }
 }
