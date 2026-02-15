@@ -51,10 +51,10 @@
         <!-- Tab Bar -->
         <Border Grid.Row="0" Background="#222222" BorderBrush="#333333" BorderThickness="0,0,0,2" ClipToBounds="True" Height="60">
             <!-- Enabled XYFocus for directional navigation (useful for remote/keyboard) -->
-             <Canvas Name="CarouselContainer">
+             <Canvas Name="CarouselContainer" Background="Transparent" PointerEntered="OnTabBarPointerEntered">
                 <ItemsControl Name="TabBar" 
                               ItemsSource="{Binding Tabs}" 
-                              KeyboardNavigation.TabNavigation="Cycle"
+                              KeyboardNavigation.TabNavigation="Once"
                               XYFocus.NavigationModes="Enabled">
                     <ItemsControl.Transitions>
                         <Transitions>
@@ -87,7 +87,8 @@
                         HorizontalAlignment="Stretch" 
                         VerticalAlignment="Stretch"
                         IsTabStop="False"
-                        Focusable="False">
+                        Focusable="False"
+                        GotFocus="OnContentGotFocus">
             <ContentControl.DataTemplates>
                 <DataTemplate DataType="{x:Type vm:HistoryViewModel}">
                     <controls:HistoryControl/>

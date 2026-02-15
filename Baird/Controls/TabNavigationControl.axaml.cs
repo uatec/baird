@@ -45,7 +45,7 @@ namespace Baird.Controls
 
             if (!_hasAutoFocused)
             {
-                AttemptFocusFirstTab();
+                FocusSelectedTab();
             }
 
             // Ensure the selected tab is centered, e.g. after a resize
@@ -72,12 +72,22 @@ namespace Baird.Controls
             }
         }
 
-        private void AttemptFocusFirstTab()
+        private void FocusSelectedTab()
         {
+            if (DataContext is not TabNavigationViewModel vm) return;
+
             var itemsControl = this.FindControl<ItemsControl>("TabBar");
             if (itemsControl == null || itemsControl.ItemCount == 0) return;
 
-            var container = itemsControl.ContainerFromIndex(0);
+            var selectedTab = vm.SelectedTab;
+            int index = 0;
+            if (selectedTab != null)
+            {
+                index = vm.Tabs.IndexOf(selectedTab);
+                if (index < 0) index = 0;
+            }
+
+            var container = itemsControl.ContainerFromIndex(index);
             if (container is Visual visual)
             {
                 var button = visual.FindDescendantOfType<Button>();
@@ -85,9 +95,8 @@ namespace Baird.Controls
                 {
                     button.Focus();
                     _hasAutoFocused = true;
-                    // Note: We don't unsubscribe from LayoutUpdated anymore because we need it for re-centering on resize
 
-                    Console.WriteLine("[TabNav] Auto-focused first tab button.");
+                    Console.WriteLine($"[TabNav] Auto-focused tab button: {index}");
                     UpdateTabStyles();
                     CenterSelectedTab();
                 }
@@ -164,7 +173,50 @@ namespace Baird.Controls
             if (DataContext is TabNavigationViewModel vm && sender is Control control && control.DataContext is Baird.ViewModels.TabItem tabItem)
             {
                 vm.SelectedTab = tabItem;
-                //Console.WriteLine($"[TabNav] Auto-selected tab on focus: {tabItem.Title}");
+                // Once a tab is focused, allow moving to siblings
+                SetSiblingsFocusable(true);
+            }
+        }
+
+        private void OnContentGotFocus(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            // When focus enters the content area, restrict tab focus to ONLY the selected tab.
+            // This ensures navigating UP from content always hits the selected tab.
+            SetSiblingsFocusable(false);
+        }
+
+        private void OnTabBarPointerEntered(object? sender, Avalonia.Input.PointerEventArgs e)
+        {
+            // If mouse enters the tab bar, allow clicking any tab
+            SetSiblingsFocusable(true);
+        }
+
+        private void SetSiblingsFocusable(bool allowAll)
+        {
+            if (DataContext is not TabNavigationViewModel vm) return;
+            var selectedTab = vm.SelectedTab;
+
+            var itemsControl = this.FindControl<ItemsControl>("TabBar");
+            if (itemsControl == null) return;
+
+            for (int i = 0; i < itemsControl.ItemCount; i++)
+            {
+                var container = itemsControl.ContainerFromIndex(i);
+                if (container is Visual visual)
+                {
+                    var button = visual.FindDescendantOfType<Button>();
+                    if (button != null)
+                    {
+                        var tabItem = itemsControl.Items.Cast<Baird.ViewModels.TabItem>().ElementAtOrDefault(i);
+                        if (tabItem != null)
+                        {
+                            bool isSelected = (tabItem == selectedTab);
+                            // If allowAll is true, everyone is focusable.
+                            // If allowAll is false, only the selected one is focusable.
+                            button.Focusable = allowAll || isSelected;
+                        }
+                    }
+                }
             }
         }
 
