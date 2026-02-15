@@ -10,6 +10,7 @@ namespace Baird.Services
 {
     public class YouTubeService : IMediaProvider
     {
+        public string Name => "YouTube";
         public Task<MediaItem?> GetItemAsync(string id)
         {
             // For now, return null as we don't have a direct lookup without search

@@ -20,11 +20,16 @@ namespace Baird.Services
 
         // Event to notify when history is updated
         event EventHandler? HistoryUpdated;
+
+        IEnumerable<IMediaProvider> Providers { get; }
+        void AttachHistory(IEnumerable<MediaItem> items);
     }
 
     public class DataService : IDataService
     {
         private readonly IEnumerable<IMediaProvider> _providers;
+        public IEnumerable<IMediaProvider> Providers => _providers;
+
         private readonly IHistoryService _historyService;
 
         public event EventHandler? HistoryUpdated;
@@ -169,7 +174,7 @@ namespace Baird.Services
             return null;
         }
 
-        private void AttachHistory(IEnumerable<MediaItem> items)
+        public void AttachHistory(IEnumerable<MediaItem> items)
         {
             foreach (var item in items)
             {

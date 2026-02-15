@@ -13,6 +13,52 @@ using Avalonia.Threading;
 
 namespace Baird.ViewModels
 {
+    public class ProviderSearchStatus : ReactiveObject
+    {
+        private string _name = "";
+        public string Name
+        {
+            get => _name;
+            set => this.RaiseAndSetIfChanged(ref _name, value);
+        }
+
+        private bool _isLoading;
+        public bool IsLoading
+        {
+            get => _isLoading;
+            set => this.RaiseAndSetIfChanged(ref _isLoading, value);
+        }
+
+        private bool _isSuccess;
+        public bool IsSuccess
+        {
+            get => _isSuccess;
+            set => this.RaiseAndSetIfChanged(ref _isSuccess, value);
+        }
+
+        private bool _isError;
+        public bool IsError
+        {
+            get => _isError;
+            set => this.RaiseAndSetIfChanged(ref _isError, value);
+        }
+
+        public void SetLoading() { IsLoading = true; IsSuccess = false; IsError = false; this.RaisePropertyChanged(nameof(StatusBrush)); }
+        public void SetSuccess() { IsLoading = false; IsSuccess = true; IsError = false; this.RaisePropertyChanged(nameof(StatusBrush)); }
+        public void SetError() { IsLoading = false; IsSuccess = false; IsError = true; this.RaisePropertyChanged(nameof(StatusBrush)); }
+        public void SetIdle() { IsLoading = false; IsSuccess = false; IsError = false; this.RaisePropertyChanged(nameof(StatusBrush)); }
+
+        public Avalonia.Media.IBrush StatusBrush
+        {
+            get
+            {
+                if (IsError) return Avalonia.Media.Brushes.Red;
+                if (IsSuccess) return Avalonia.Media.Brushes.Green;
+                return Avalonia.Media.Brushes.Gray;
+            }
+        }
+    }
+
     public class OmniSearchViewModel : ReactiveObject
     {
         public event EventHandler<MediaItem>? PlayRequested;
@@ -60,6 +106,8 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isSearching, value);
         }
 
+        public bool ShowSpinner => IsSearching && SearchResults.Count == 0;
+
         private bool _isAutoActivationPending;
         public bool IsAutoActivationPending
         {
@@ -76,6 +124,17 @@ namespace Baird.ViewModels
 
         public ObservableCollection<MediaItem> SearchResults { get; } = new();
         public ObservableCollection<string> SuggestedTerms { get; } = new();
+        public ObservableCollection<ProviderSearchStatus> ProviderStatuses { get; } = new();
+
+        private void InitializeProviderStatuses()
+        {
+            if (ProviderStatuses.Any()) return;
+
+            foreach (var provider in _dataService.Providers)
+            {
+                ProviderStatuses.Add(new ProviderSearchStatus { Name = provider.Name });
+            }
+        }
 
         // private readonly IEnumerable<IMediaProvider> _providers; // Removed
         private readonly IDataService _dataService;
@@ -141,6 +200,10 @@ namespace Baird.ViewModels
                 StopAutoActivationTimer();
             });
 
+            // Notification for ShowSpinner
+            this.WhenAnyValue(x => x.IsSearching).Subscribe(_ => this.RaisePropertyChanged(nameof(ShowSpinner)));
+            SearchResults.CollectionChanged += (s, e) => this.RaisePropertyChanged(nameof(ShowSpinner));
+
             // Branch 1: Short numeric (<= 3 digits) -> Immediate
             textChanges
                 .Where(q => !string.IsNullOrEmpty(q) && q.Length <= 3 && q.All(char.IsDigit))
@@ -155,6 +218,7 @@ namespace Baird.ViewModels
 
             // Initial load of suggestions
             RefreshSuggestions();
+            InitializeProviderStatuses();
         }
 
         public async void RefreshSuggestions()
@@ -189,6 +253,15 @@ namespace Baird.ViewModels
             IsSearching = true;
             SearchResults.Clear(); // Already on UI thread due to Throttle scheduler
 
+            // Initialize provider statuses if needed
+            InitializeProviderStatuses();
+
+            // Reset all to loading
+            foreach (var status in ProviderStatuses)
+            {
+                status.SetLoading();
+            }
+
             // For short numeric queries (1-3 digits), do in-memory channel search
             bool isShortNumericQuery = !string.IsNullOrEmpty(query) && query.Length <= 3 && query.All(char.IsDigit);
 
@@ -204,6 +277,9 @@ namespace Baird.ViewModels
                     .ToList();
 
                 SearchResults.AddRange(matchingChannels);
+
+                // Set providers to idle since we didn't use them
+                foreach (var status in ProviderStatuses) status.SetIdle();
 
                 IsSearching = false;
 
@@ -223,24 +299,61 @@ namespace Baird.ViewModels
                 return; // Skip provider search
             }
 
-            var accumulatedResults = new List<MediaItem>();
             var sorter = new SearchResultSorter();
 
             try
             {
-                var results = await _dataService.SearchAsync(query, token);
-                if (token.IsCancellationRequested) return;
-
-                var items = results.ToList();
-                if (items.Any())
+                // Create tasks for each provider
+                var tasks = _dataService.Providers.Select(async provider =>
                 {
-                    // Sort and add
-                    var sorted = sorter.Sort(items, query);
+                    var status = ProviderStatuses.FirstOrDefault(p => p.Name == provider.Name);
+
+                    try
+                    {
+                        var results = await provider.SearchAsync(query, token);
+                        if (token.IsCancellationRequested) return;
+
+                        var items = results.ToList();
+
+                        // Attach history (Hydrate)
+                        _dataService.AttachHistory(items);
+
+                        // Update Status
+                        if (status != null) Dispatcher.UIThread.Post(() => status.SetSuccess());
+
+                        // Update Results
+                        if (items.Any())
+                        {
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                SearchResults.AddRange(items);
+                            });
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Don't mark as error if canceled
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[OmniSearch] Provider {provider.Name} failed: {ex}");
+                        if (status != null) Dispatcher.UIThread.Post(() => status.SetError());
+                    }
+                });
+
+                await Task.WhenAll(tasks);
+
+                // Final sort after all results are in?
+                // For now, let's leave them appended as they come in. 
+                // Alternatively, we could re-sort:
+                if (SearchResults.Any())
+                {
+                    var allItems = SearchResults.ToList();
+                    var sorted = sorter.Sort(allItems, query);
                     SearchResults.Clear();
                     SearchResults.AddRange(sorted);
                 }
             }
-            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 Console.WriteLine($"[OmniSearchViewModel] Search error: {ex}");

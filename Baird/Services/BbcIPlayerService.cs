@@ -9,6 +9,7 @@ namespace Baird.Services
 {
     public class BbcIPlayerService : IMediaProvider
     {
+        public string Name => "BBC iPlayer";
         private static readonly HttpClient _httpClient;
         private const string SearchUrl = "https://ibl.api.bbci.co.uk/ibl/v1/new-search?q={0}&rights=web&mixin=live&lang=en&availability=available";
 

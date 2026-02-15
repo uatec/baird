@@ -11,6 +11,7 @@ namespace Baird.Services
 {
     public class TvHeadendService : IMediaProvider
     {
+        public string Name => "TvHeadend";
         private readonly HttpClient _httpClient;
         private readonly string _serverUrl;
         private readonly string _username;

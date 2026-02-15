@@ -13,6 +13,7 @@ namespace Baird.Services
 {
     public class JellyfinService : IMediaProvider
     {
+        public string Name => "Jellyfin";
         private readonly string _serverUrl;
         private readonly HttpClient _httpClient;
         private readonly HttpClientRequestAdapter _requestAdapter;
