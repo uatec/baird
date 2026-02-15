@@ -49,29 +49,35 @@
           XYFocus.UpNavigationStrategy="Projection">
         
         <!-- Tab Bar -->
-        <Border Grid.Row="0" Background="#222222" BorderBrush="#333333" BorderThickness="0,0,0,2">
+        <Border Grid.Row="0" Background="#222222" BorderBrush="#333333" BorderThickness="0,0,0,2" ClipToBounds="True" Height="60">
             <!-- Enabled XYFocus for directional navigation (useful for remote/keyboard) -->
-            <ItemsControl Name="TabBar" 
-                          ItemsSource="{Binding Tabs}" 
-                          Margin="20,0"
-                          KeyboardNavigation.TabNavigation="Cycle"
-                          XYFocus.NavigationModes="Enabled">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="0"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="vm:TabItem">
-                        <Button Classes="TabButton"
-                                Name="{Binding Title}"
-                                Content="{Binding Title}"
-                                GotFocus="OnTabButtonGotFocus"
-                                Command="{Binding $parent[UserControl].((vm:TabNavigationViewModel)DataContext).SelectTabCommand}"
-                                CommandParameter="{Binding}" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+             <Canvas Name="CarouselContainer">
+                <ItemsControl Name="TabBar" 
+                              ItemsSource="{Binding Tabs}" 
+                              KeyboardNavigation.TabNavigation="Cycle"
+                              XYFocus.NavigationModes="Enabled">
+                    <ItemsControl.Transitions>
+                        <Transitions>
+                            <DoubleTransition Property="Canvas.Left" Duration="0:0:0.3" Easing="CubicEaseOut"/>
+                        </Transitions>
+                    </ItemsControl.Transitions>
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="0"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:TabItem">
+                            <Button Classes="TabButton"
+                                    Name="{Binding Title}"
+                                    Content="{Binding Title}"
+                                    GotFocus="OnTabButtonGotFocus"
+                                    Command="{Binding $parent[UserControl].((vm:TabNavigationViewModel)DataContext).SelectTabCommand}"
+                                    CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Canvas>
         </Border>
 
         <!-- Tab Content -->

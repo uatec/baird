@@ -41,9 +41,15 @@ namespace Baird.Controls
 
         private void OnLayoutUpdated(object? sender, EventArgs e)
         {
-            if (_hasAutoFocused || !this.IsVisible) return;
+            if (!this.IsVisible) return;
 
-            AttemptFocusFirstTab();
+            if (!_hasAutoFocused)
+            {
+                AttemptFocusFirstTab();
+            }
+
+            // Ensure the selected tab is centered, e.g. after a resize
+            CenterSelectedTab();
         }
 
         private void OnDataContextChanged(object? sender, EventArgs e)
@@ -56,7 +62,11 @@ namespace Baird.Controls
                 vm.WhenAnyValue(x => x.SelectedTab)
                     .Subscribe(selectedTab =>
                     {
-                        Dispatcher.UIThread.Post(() => UpdateTabStyles(), DispatcherPriority.Input);
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            UpdateTabStyles();
+                            CenterSelectedTab();
+                        }, DispatcherPriority.Input);
                     })
                     .DisposeWith(_subscriptions);
             }
@@ -75,12 +85,44 @@ namespace Baird.Controls
                 {
                     button.Focus();
                     _hasAutoFocused = true;
-                    this.LayoutUpdated -= OnLayoutUpdated; // Stop listening once focused
+                    // Note: We don't unsubscribe from LayoutUpdated anymore because we need it for re-centering on resize
 
                     Console.WriteLine("[TabNav] Auto-focused first tab button.");
                     UpdateTabStyles();
+                    CenterSelectedTab();
                 }
             }
+        }
+
+        private void CenterSelectedTab()
+        {
+            if (DataContext is not TabNavigationViewModel vm || vm.SelectedTab == null)
+                return;
+
+            var itemsControl = this.FindControl<ItemsControl>("TabBar");
+            var canvas = this.FindControl<Canvas>("CarouselContainer");
+
+            if (itemsControl == null || canvas == null) return;
+
+            // Find index of selected tab
+            var index = vm.Tabs.IndexOf(vm.SelectedTab);
+            if (index < 0) return;
+
+            var container = itemsControl.ContainerFromIndex(index) as Control;
+            if (container == null) return;
+
+            // Calculate centers
+            // container.Bounds.X is relative to the StackPanel (ItemsControl content)
+            // We want to shift the ItemsControl (Canvas.Left) so that (container.X + container.Width/2) + Canvas.Left == Canvas.Width/2
+
+            double containerCenter = container.Bounds.Position.X + (container.Bounds.Width / 2);
+            double viewportCenter = canvas.Bounds.Width / 2;
+
+            double targetLeft = viewportCenter - containerCenter;
+
+            // Update Canvas.Left
+            // Use SetValue to trigger the transition
+            itemsControl.SetValue(Canvas.LeftProperty, targetLeft);
         }
 
         private void UpdateTabStyles()
