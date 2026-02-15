@@ -35,7 +35,9 @@
                        IsLive="{Binding ActiveItem.IsLive}"
                        ResumeTime="{Binding ActiveItem.LastPosition}"
                        IsSubtitlesEnabled="{Binding IsSubtitlesEnabled, Mode=TwoWay}"
-                       IsPaused="{Binding IsPaused, Mode=TwoWay}"/>
+                       IsPaused="{Binding IsPaused, Mode=TwoWay}"
+                       Focusable="{Binding IsVideoPlayerActive}"
+                       IsHitTestVisible="{Binding IsVideoPlayerActive}"/>
         
         <!-- Loading Overlay -->
         <Border Background="Black" IsVisible="{Binding #Player.IsLoading}">

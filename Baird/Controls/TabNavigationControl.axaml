@@ -18,20 +18,28 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0,0,0,4"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Padding" Value="20,10"/>
             <Setter Property="FontSize" Value="20"/>
             <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
         </Style>
         
         <Style Selector="Button.TabButton:focus">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderBrush" Value="#4CAF50"/>
+            <Setter Property="Background" Value="#333333"/>
         </Style>
 
         <Style Selector="Button.TabButton.selected">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderBrush" Value="#4CAF50"/>
+        </Style>
+        
+        <Style Selector="Button.TabButton.selected:focus">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#66BB6A"/>
+            <Setter Property="Background" Value="#444444"/>
         </Style>
     </UserControl.Styles>
 
@@ -39,7 +47,12 @@
         
         <!-- Tab Bar -->
         <Border Grid.Row="0" Background="#222222" BorderBrush="#333333" BorderThickness="0,0,0,2">
-            <ItemsControl Name="TabBar" ItemsSource="{Binding Tabs}" Margin="20,0">
+            <!-- Enabled XYFocus for directional navigation (useful for remote/keyboard) -->
+            <ItemsControl Name="TabBar" 
+                          ItemsSource="{Binding Tabs}" 
+                          Margin="20,0"
+                          KeyboardNavigation.TabNavigation="Cycle"
+                          XYFocus.NavigationModes="Enabled">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel Orientation="Horizontal" Spacing="0"/>
@@ -48,7 +61,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="vm:TabItem">
                         <Button Classes="TabButton"
-                                Name="TabItemButton"
+                                Name="{Binding Title}"
                                 Content="{Binding Title}"
                                 Command="{Binding $parent[UserControl].((vm:TabNavigationViewModel)DataContext).SelectTabCommand}"
                                 CommandParameter="{Binding}" />
@@ -61,7 +74,9 @@
         <ContentControl Grid.Row="1" 
                         Content="{Binding SelectedTab.Content}" 
                         HorizontalAlignment="Stretch" 
-                        VerticalAlignment="Stretch">
+                        VerticalAlignment="Stretch"
+                        IsTabStop="False"
+                        Focusable="False">
             <ContentControl.DataTemplates>
                 <DataTemplate DataType="{x:Type vm:HistoryViewModel}">
                     <controls:HistoryControl/>

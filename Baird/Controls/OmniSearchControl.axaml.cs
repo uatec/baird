@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -13,21 +12,8 @@ public partial class OmniSearchControl : UserControl
     {
         InitializeComponent();
 
-        this.GetObservable(IsVisibleProperty).Subscribe(visible =>
-        {
-            if (visible)
-            {
-                Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
-            }
-        });
-
         AttachedToVisualTree += (s, e) =>
         {
-            if (IsVisible)
-            {
-                Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
-            }
-
             TextBox? box = this.FindControl<TextBox>("SearchBox");
             if (box != null)
             {

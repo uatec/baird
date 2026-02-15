@@ -88,19 +88,9 @@ public partial class MainView : UserControl
                     }
                     else
                     {
-                        // When transitioning between overlay pages, temporarily focus the
-                        // PageFrame to prevent VideoPlayer from capturing focus while the
-                        // new control's FocusFirstItem() waits for data to load.
-                        Dispatcher.UIThread.Post(() =>
-                        {
-                            ContentControl? pageFrame = this.FindControl<ContentControl>("PageFrame");
-                            if (pageFrame != null)
-                            {
-                                Console.WriteLine("[MainView] CurrentPage changed to non-null, parking focus on PageFrame");
-                                pageFrame.Focusable = true;
-                                pageFrame.Focus();
-                            }
-                        });
+                        // When transitioning between overlay pages, we want the new page to take focus.
+                        // The logic that forced focus to PageFrame has been removed as it was stealing focus 
+                        // from controls (like TabNavigation) that handle their own initial focus.
                     }
                 });
 
