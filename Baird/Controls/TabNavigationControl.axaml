@@ -43,7 +43,10 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,*" Background="#DD000000">
+    <Grid RowDefinitions="Auto,*" Background="#DD000000"
+          XYFocus.NavigationModes="Enabled"
+          XYFocus.DownNavigationStrategy="Projection"
+          XYFocus.UpNavigationStrategy="Projection">
         
         <!-- Tab Bar -->
         <Border Grid.Row="0" Background="#222222" BorderBrush="#333333" BorderThickness="0,0,0,2">
@@ -71,7 +74,8 @@
         </Border>
 
         <!-- Tab Content -->
-        <ContentControl Grid.Row="1" 
+        <ContentControl Grid.Row="1"
+                        Name="TabContent"
                         Content="{Binding SelectedTab.Content}" 
                         HorizontalAlignment="Stretch" 
                         VerticalAlignment="Stretch"

@@ -59,7 +59,8 @@
                     <TextBox Name="SearchBox" 
                              Text="{Binding SearchText}" 
                              FontSize="24" 
-                             Watermark="Search...">
+                             Watermark="Search..."
+                             XYFocus.Down="{Binding #ResultsList}">
                         <TextBox.KeyBindings>
                             <KeyBinding Gesture="Enter" Command="{Binding PlayFirstResultCommand}" />
                         </TextBox.KeyBindings>
@@ -104,6 +105,7 @@
 
         <!-- Row 1: Search Results -->
         <ScrollViewer Grid.Row="1"
+                      Focusable="False"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
             <ItemsControl Name="ResultsList" 
