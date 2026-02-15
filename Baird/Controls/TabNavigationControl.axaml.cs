@@ -16,6 +16,8 @@ namespace Baird.Controls
         private CompositeDisposable? _subscriptions;
         private bool _hasAutoFocused = false;
 
+        private bool _hasCenteredOnce = false;
+
         public TabNavigationControl()
         {
             InitializeComponent();
@@ -28,6 +30,7 @@ namespace Baird.Controls
         private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
         {
             _hasAutoFocused = false;
+            _hasCenteredOnce = false; // Reset on re-attach
             this.LayoutUpdated += OnLayoutUpdated;
             Console.WriteLine("[TabNav] Attached to visual tree, waiting for layout...");
         }
@@ -96,14 +99,14 @@ namespace Baird.Controls
                     button.Focus();
                     _hasAutoFocused = true;
 
-                    Console.WriteLine($"[TabNav] Auto-focused tab button: {index}");
+                    //Console.WriteLine($"[TabNav] Auto-focused tab button: {index}");
                     UpdateTabStyles();
                     CenterSelectedTab();
                 }
             }
         }
 
-        private void CenterSelectedTab()
+        private void CenterSelectedTab(bool immediate = false)
         {
             if (DataContext is not TabNavigationViewModel vm || vm.SelectedTab == null)
                 return;
@@ -120,6 +123,9 @@ namespace Baird.Controls
             var container = itemsControl.ContainerFromIndex(index) as Control;
             if (container == null) return;
 
+            // Ensure we have valid geometry before attempting to center
+            if (container.Bounds.Width <= 0 || canvas.Bounds.Width <= 0) return;
+
             // Calculate centers
             // container.Bounds.X is relative to the StackPanel (ItemsControl content)
             // We want to shift the ItemsControl (Canvas.Left) so that (container.X + container.Width/2) + Canvas.Left == Canvas.Width/2
@@ -129,9 +135,30 @@ namespace Baird.Controls
 
             double targetLeft = viewportCenter - containerCenter;
 
-            // Update Canvas.Left
-            // Use SetValue to trigger the transition
-            itemsControl.SetValue(Canvas.LeftProperty, targetLeft);
+            // Force immediate update if this is the first time (to prevent "sliding in" animation)
+            if (!_hasCenteredOnce)
+            {
+                immediate = true;
+                _hasCenteredOnce = true;
+            }
+
+            if (immediate)
+            {
+                var currentTransitions = itemsControl.Transitions;
+                itemsControl.Transitions = null;
+                itemsControl.SetValue(Canvas.LeftProperty, targetLeft);
+
+                // Restore transitions after the layout settle
+                Dispatcher.UIThread.Post(() =>
+                {
+                    itemsControl.Transitions = currentTransitions;
+                }, DispatcherPriority.Input);
+            }
+            else
+            {
+                // Update Canvas.Left with transition
+                itemsControl.SetValue(Canvas.LeftProperty, targetLeft);
+            }
         }
 
         private void UpdateTabStyles()
