@@ -198,8 +198,14 @@ namespace Baird.ViewModels
         public ReactiveObject? CurrentPage
         {
             get => _currentPage;
-            private set => this.RaiseAndSetIfChanged(ref _currentPage, value);
+            private set
+            {
+                this.RaiseAndSetIfChanged(ref _currentPage, value);
+                this.RaisePropertyChanged(nameof(IsVideoPlayerActive));
+            }
         }
+
+        public bool IsVideoPlayerActive => CurrentPage is ShowingVideoPlayerViewModel || CurrentPage == null;
 
         public void PushViewModel(ReactiveObject viewModel)
         {
