@@ -10,7 +10,7 @@ namespace Baird;
 
 public partial class App : Application
 {
-    public IConfiguration Configuration { get; private set; }
+    public IConfiguration? Configuration { get; private set; }
 
     public override void Initialize()
     {

@@ -8,9 +8,12 @@ namespace Baird.Controls;
 
 public partial class OmniSearchControl : UserControl
 {
+    public System.Windows.Input.ICommand MoveFocusDownCommand { get; }
+
     public OmniSearchControl()
     {
         InitializeComponent();
+        MoveFocusDownCommand = ReactiveUI.ReactiveCommand.Create(MoveFocusDown);
 
         AttachedToVisualTree += (s, e) =>
         {
@@ -21,6 +24,28 @@ public partial class OmniSearchControl : UserControl
                 box.LostFocus += (sender, args) => UpdateFocusState(false);
             }
         };
+    }
+
+    private void MoveFocusDown()
+    {
+        // Try Suggestions First
+        ItemsControl? suggestions = this.FindControl<ItemsControl>("SuggestionsList");
+        if (suggestions != null && suggestions.ItemCount > 0 && suggestions.IsVisible)
+        {
+            Control? container = suggestions.ContainerFromIndex(0);
+            if (container is Visual visual)
+            {
+                Button? button = visual.FindDescendantOfType<Button>();
+                if (button != null && button.IsEffectivelyVisible)
+                {
+                    button.Focus();
+                    return;
+                }
+            }
+        }
+
+        // Fallback to Results
+        FocusResults();
     }
 
     protected override void OnDataContextChanged(EventArgs e)

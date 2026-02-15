@@ -126,6 +126,15 @@ public partial class TabNavigationControl : UserControl, IDisposable
         }
     }
 
+    private void OnTabButtonGotFocus(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is TabNavigationViewModel vm && sender is Control control && control.DataContext is Baird.ViewModels.TabItem tabItem)
+        {
+            vm.SelectedTab = tabItem;
+            //Console.WriteLine($"[TabNav] Auto-selected tab on focus: {tabItem.Title}");
+        }
+    }
+
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);

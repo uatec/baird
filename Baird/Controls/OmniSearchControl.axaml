@@ -62,6 +62,7 @@
                              Watermark="Search...">
                         <TextBox.KeyBindings>
                             <KeyBinding Gesture="Enter" Command="{Binding PlayFirstResultCommand}" />
+                            <KeyBinding Gesture="Down" Command="{Binding $parent[controls:OmniSearchControl].MoveFocusDownCommand}" />
                         </TextBox.KeyBindings>
                     </TextBox>
                     
@@ -79,7 +80,9 @@
                 </Grid>
 
                 <!-- Suggested Terms Pills -->
-                <ItemsControl ItemsSource="{Binding SuggestedTerms}">
+                <ItemsControl Name="SuggestionsList" 
+                              ItemsSource="{Binding SuggestedTerms}"
+                              XYFocus.Down="{Binding #ResultsList}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Orientation="Horizontal" Spacing="8"/>
@@ -104,6 +107,7 @@
 
         <!-- Row 1: Search Results -->
         <ScrollViewer Grid.Row="1"
+                      Focusable="False"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
             <ItemsControl Name="ResultsList" 
