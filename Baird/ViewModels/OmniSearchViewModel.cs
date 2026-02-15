@@ -318,17 +318,15 @@ namespace Baird.ViewModels
                         // Attach history (Hydrate)
                         _dataService.AttachHistory(items);
 
-                        // Update Status
-                        if (status != null) Dispatcher.UIThread.Post(() => status.SetSuccess());
-
-                        // Update Results
-                        if (items.Any())
+                        // Update UI atomically
+                        Dispatcher.UIThread.Post(() =>
                         {
-                            Dispatcher.UIThread.Post(() =>
+                            if (items.Any())
                             {
                                 SearchResults.AddRange(items);
-                            });
-                        }
+                            }
+                            if (status != null) status.SetSuccess();
+                        });
                     }
                     catch (OperationCanceledException)
                     {
