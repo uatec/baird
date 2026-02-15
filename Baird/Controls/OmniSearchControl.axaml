@@ -59,10 +59,10 @@
                     <TextBox Name="SearchBox" 
                              Text="{Binding SearchText}" 
                              FontSize="24" 
-                             Watermark="Search..."
-                             XYFocus.Down="{Binding #ResultsList}">
+                             Watermark="Search...">
                         <TextBox.KeyBindings>
                             <KeyBinding Gesture="Enter" Command="{Binding PlayFirstResultCommand}" />
+                            <KeyBinding Gesture="Down" Command="{Binding $parent[controls:OmniSearchControl].MoveFocusDownCommand}" />
                         </TextBox.KeyBindings>
                     </TextBox>
                     
@@ -80,7 +80,9 @@
                 </Grid>
 
                 <!-- Suggested Terms Pills -->
-                <ItemsControl ItemsSource="{Binding SuggestedTerms}">
+                <ItemsControl Name="SuggestionsList" 
+                              ItemsSource="{Binding SuggestedTerms}"
+                              XYFocus.Down="{Binding #ResultsList}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Orientation="Horizontal" Spacing="8"/>

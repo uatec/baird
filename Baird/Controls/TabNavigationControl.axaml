@@ -66,6 +66,7 @@
                         <Button Classes="TabButton"
                                 Name="{Binding Title}"
                                 Content="{Binding Title}"
+                                GotFocus="OnTabButtonGotFocus"
                                 Command="{Binding $parent[UserControl].((vm:TabNavigationViewModel)DataContext).SelectTabCommand}"
                                 CommandParameter="{Binding}" />
                     </DataTemplate>
