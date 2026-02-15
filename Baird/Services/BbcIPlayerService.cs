@@ -395,8 +395,8 @@ namespace Baird.Services
             return new MediaItem
             {
                 Id = x.Id,
-                Name = x.Title,
-                Details = x.Subtitle,
+                Name = x.Subtitle,
+                Details = x.Title,
                 Subtitle = x.Subtitle,
                 Synopsis = x.Synopsis,
                 ImageUrl = x.ImageUrl,

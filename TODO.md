@@ -37,12 +37,12 @@ Phase 2
 - [x] auto-update
 - [x] auto-restart
 - [x] 69 errors
-- [ ] general navigation weirdness
+- [x] general navigation weirdness
 - [x] built in screensaver
 - [ ] built in power saving
 
 ## Programme Details
-- [ ] show series name etc in episode view
+- [x] show series name etc in episode view
 - [x] show episode length
 
 ## New Features
