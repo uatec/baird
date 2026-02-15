@@ -33,7 +33,7 @@ namespace Baird.ViewModels
     public class TabNavigationViewModel : ReactiveObject
     {
         public ObservableCollection<TabItem> Tabs { get; }
-        
+
         public event EventHandler? BackRequested;
 
         private TabItem? _selectedTab;
@@ -60,7 +60,7 @@ namespace Baird.ViewModels
         public TabNavigationViewModel(IEnumerable<TabItem> tabs)
         {
             Tabs = new ObservableCollection<TabItem>(tabs);
-            
+
             // Select first tab by default
             if (Tabs.Count > 0)
             {

@@ -17,7 +17,7 @@ namespace Baird.Services
         Task<MediaItem?> GetItemAsync(string id); // Might be needed if not present in listings
         Task UpsertHistoryAsync(MediaItem item, TimeSpan position, TimeSpan duration);
         HistoryItem? GetHistory(string id);
-        
+
         // Event to notify when history is updated
         event EventHandler? HistoryUpdated;
     }
@@ -26,7 +26,7 @@ namespace Baird.Services
     {
         private readonly IEnumerable<IMediaProvider> _providers;
         private readonly IHistoryService _historyService;
-        
+
         public event EventHandler? HistoryUpdated;
 
         public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService)
@@ -132,7 +132,7 @@ namespace Baird.Services
             await _historyService.UpsertAsync(item, position, duration);
             // Also update the local item's history
             item.History = _historyService.GetProgress(item.Id);
-            
+
             // Notify that history was updated
             HistoryUpdated?.Invoke(this, EventArgs.Empty);
         }

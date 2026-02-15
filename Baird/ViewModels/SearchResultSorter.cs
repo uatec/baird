@@ -12,9 +12,9 @@ namespace Baird.ViewModels
         {
             var q = query ?? "";
             var allResults = items.ToList();
-            
+
             bool isNumericShort = !string.IsNullOrEmpty(q) && q.Length <= 3 && q.All(char.IsDigit);
-            
+
             if (isNumericShort)
             {
                 var priority = new List<MediaItem>();
@@ -22,10 +22,10 @@ namespace Baird.ViewModels
 
                 foreach (var item in allResults)
                 {
-                    bool isMatch = item.IsLive && 
-                                   item.ChannelNumber != null && 
-                                   (item.ChannelNumber == q || item.ChannelNumber.StartsWith(q)); 
-                    
+                    bool isMatch = item.IsLive &&
+                                   item.ChannelNumber != null &&
+                                   (item.ChannelNumber == q || item.ChannelNumber.StartsWith(q));
+
                     if (isMatch)
                     {
                         priority.Add(item);
@@ -35,7 +35,7 @@ namespace Baird.ViewModels
                         others.Add(item);
                     }
                 }
-                
+
                 return priority.Concat(others).ToList();
             }
             else

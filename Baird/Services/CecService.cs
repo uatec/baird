@@ -8,7 +8,7 @@ namespace Baird.Services
     {
         private const string CecCtlCommand = "cec-ctl";
         // Default to device 0 (TV) and adapter 0 (/dev/cec0)
-        private const string DeviceArg = "-d0"; 
+        private const string DeviceArg = "-d0";
         private const string TargetArg = "--to 0";
 
         public Task StartAsync()
@@ -43,14 +43,14 @@ namespace Baird.Services
         {
             // cec-ctl -d0 --to 0 --give-device-power-status
             var output = await RunCecCtlAsync($"{DeviceArg} {TargetArg} --give-device-power-status");
-            
+
             // Output example:
             // ...
             // CEC_MSG_REPORT_POWER_STATUS (0x90):
             //     pwr-state: on (0x00)
-            
+
             // or: pwr-state: standby (0x01)
-            
+
             return output.Contains("pwr-state: on", StringComparison.OrdinalIgnoreCase);
         }
 
@@ -86,7 +86,7 @@ namespace Baird.Services
 
                 process.Start();
                 await process.WaitForExitAsync();
-                
+
                 var output = await process.StandardOutput.ReadToEndAsync();
                 var error = await process.StandardError.ReadToEndAsync();
 
@@ -98,7 +98,7 @@ namespace Baird.Services
                         Console.WriteLine($"[CecService] Error Output: {error}");
                     }
                 }
-                
+
                 return output;
             }
             catch (System.ComponentModel.Win32Exception)

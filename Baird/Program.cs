@@ -18,7 +18,7 @@ namespace Baird
             Trace.Listeners.Add(new ConsoleTraceListener());
 
             var builder = BuildAvaloniaApp();
-                 
+
             builder.StartWithClassicDesktopLifetime(args);
         }
 

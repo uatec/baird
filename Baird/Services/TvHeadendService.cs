@@ -15,7 +15,7 @@ namespace Baird.Services
         private readonly string _serverUrl;
         private readonly string _username;
         private readonly string _password;
-        
+
         // Cache fields
         private IEnumerable<MediaItem>? _cachedListing;
         private DateTime _cacheExpiry = DateTime.MinValue;
@@ -77,7 +77,7 @@ namespace Baird.Services
 
                 // Populate the cache
                 Console.WriteLine($"[TvHeadendService] Populating cache");
-                
+
                 try
                 {
                     // API to get channel grid: /api/channel/grid
@@ -114,7 +114,7 @@ namespace Baird.Services
                             })
                             .OrderBy(c => c.Name)
                             .ToList(); // Materialize to avoid re-execution
-                        
+
                         _cacheExpiry = DateTime.UtcNow.Add(_cacheTimeout);
                         return _cachedListing;
                     }

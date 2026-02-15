@@ -21,7 +21,7 @@ namespace Baird.Mpv
                 if (OperatingSystem.IsMacOS())
                 {
                     platformLibrary = "libmpv.2.dylib";
-                    
+
                     // Try Homebrew paths first on macOS
                     string[] homebrewPaths = new[]
                     {
@@ -30,7 +30,7 @@ namespace Baird.Mpv
                         "/opt/homebrew/lib/libmpv.dylib",
                         "/usr/local/lib/libmpv.dylib"
                     };
-                    
+
                     foreach (var path in homebrewPaths)
                     {
                         if (File.Exists(path) && NativeLibrary.TryLoad(path, out IntPtr handle))
@@ -69,13 +69,13 @@ namespace Baird.Mpv
 
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern int mpv_command(IntPtr handle, IntPtr[] args);
-        
+
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern int mpv_command_string(IntPtr handle, string args);
 
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern int mpv_set_property(IntPtr handle, string name, MpvFormat format, ref int data);
-        
+
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern int mpv_set_property(IntPtr handle, string name, MpvFormat format, ref double data);
 
@@ -102,7 +102,7 @@ namespace Baird.Mpv
 
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern int mpv_render_context_render(IntPtr context, MpvRenderParam[] parameters);
-        
+
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern void mpv_set_wakeup_callback(IntPtr handle, MpvWakeupCallback cb, IntPtr d);
 
@@ -112,10 +112,10 @@ namespace Baird.Mpv
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void MpvRenderUpdateFn(IntPtr cb_ctx);
-        
+
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void MpvWakeupCallback(IntPtr d);
-        
+
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate IntPtr MpvGetProcAddressFn(IntPtr ctx, string name);
 
@@ -198,7 +198,7 @@ namespace Baird.Mpv
             public IntPtr UserData;
             public IntPtr ExtraParams;
         }
-        
+
         [StructLayout(LayoutKind.Sequential)]
         public struct MpvOpenglFbo
         {

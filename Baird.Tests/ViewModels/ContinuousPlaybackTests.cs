@@ -23,7 +23,7 @@ namespace Baird.Tests.ViewModels
 
             public Task InitializeAsync() => Task.CompletedTask;
             public Task<IEnumerable<MediaItem>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItem>());
-            public Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default) 
+            public Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
                 => Task.FromResult(Enumerable.Empty<MediaItem>());
 
             public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
@@ -43,7 +43,7 @@ namespace Baird.Tests.ViewModels
             private readonly Dictionary<string, HistoryItem> _history = new();
 
             public Task<List<HistoryItem>> GetHistoryAsync() => Task.FromResult(_history.Values.ToList());
-            
+
             public Task UpsertAsync(MediaItem item, TimeSpan position, TimeSpan duration)
             {
                 _history[item.Id] = new HistoryItem
@@ -127,24 +127,24 @@ namespace Baird.Tests.ViewModels
             // Simulate opening a season and playing first episode
             var season = CreateSeason("show1|1", "Season 1");
             var programmeVm = new ProgrammeDetailViewModel(dataService, season);
-            
+
             // Load children
             await Task.Delay(100); // Let LoadChildren complete
 
             // Simulate playing first episode from ProgrammeDetailViewModel
             viewModel.PlayItem(season1Episodes[0]);
-            
+
             // Set up the episode list context (this is what OpenProgramme.PlayRequested does)
-            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", 
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentEpisodeListField?.SetValue(viewModel, season1Episodes);
-            
-            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", 
+
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentSeasonIdField?.SetValue(viewModel, "show1|1");
 
             // Act - simulate stream ending on first episode
-            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", 
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             playNextMethod?.Invoke(viewModel, null);
 
@@ -176,7 +176,7 @@ namespace Baird.Tests.ViewModels
                 CreateEpisode("show1|2|ep1", "S2 Episode 1", "Series 2: Episode 1"),
                 CreateEpisode("show1|2|ep2", "S2 Episode 2", "Series 2: Episode 2")
             };
-            
+
             provider.SetChildren("show1|1", season1Episodes);
             provider.SetChildren("show1|2", season2Episodes);
 
@@ -184,21 +184,21 @@ namespace Baird.Tests.ViewModels
 
             // Simulate playing last episode of season 1
             viewModel.PlayItem(season1Episodes[1]);
-            
-            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", 
+
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentEpisodeListField?.SetValue(viewModel, season1Episodes);
-            
-            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", 
+
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentSeasonIdField?.SetValue(viewModel, "show1|1");
-            
-            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId", 
+
+            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentShowIdField?.SetValue(viewModel, "show1");
 
             // Act - simulate stream ending on last episode of season 1
-            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", 
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             playNextMethod?.Invoke(viewModel, null);
 
@@ -225,7 +225,7 @@ namespace Baird.Tests.ViewModels
                 CreateEpisode("show1|3|ep1", "S3 Episode 1", "Series 3: Episode 1"),
                 CreateEpisode("show1|3|ep2", "S3 Episode 2", "Series 3: Episode 2")
             };
-            
+
             provider.SetChildren("show1|3", season3Episodes);
             // Season 4 does not exist - no children for "show1|4"
 
@@ -233,16 +233,16 @@ namespace Baird.Tests.ViewModels
 
             // Simulate playing last episode of season 3
             viewModel.PlayItem(season3Episodes[1]);
-            
-            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", 
+
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentEpisodeListField?.SetValue(viewModel, season3Episodes);
-            
-            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", 
+
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentSeasonIdField?.SetValue(viewModel, "show1|3");
-            
-            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId", 
+
+            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentShowIdField?.SetValue(viewModel, "show1");
 
@@ -251,7 +251,7 @@ namespace Baird.Tests.ViewModels
             var initialStackCount = viewModel.NavigationHistory.Count;
 
             // Act - simulate stream ending on last episode of last season
-            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", 
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             playNextMethod?.Invoke(viewModel, null);
 
@@ -259,7 +259,7 @@ namespace Baird.Tests.ViewModels
             await Task.Delay(200);
 
             // Assert - should have navigated back (popped from navigation stack)
-            Assert.True(viewModel.NavigationHistory.Count < initialStackCount, 
+            Assert.True(viewModel.NavigationHistory.Count < initialStackCount,
                 "Navigation stack should have been popped");
         }
 
@@ -273,7 +273,7 @@ namespace Baird.Tests.ViewModels
             var dataService = new DataService(new[] { provider }, historyService);
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
-            var getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId", 
+            var getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
             // Act & Assert
@@ -297,7 +297,7 @@ namespace Baird.Tests.ViewModels
             var dataService = new DataService(new[] { provider }, historyService);
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
-            var getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId", 
+            var getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
             // Act & Assert - no pipe separator
@@ -334,18 +334,18 @@ namespace Baird.Tests.ViewModels
 
             // Simulate playing first episode
             viewModel.PlayItem(episodes[0]);
-            
-            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", 
+
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentEpisodeListField?.SetValue(viewModel, episodes);
-            
+
             // Set season ID without pipe (flat structure)
-            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", 
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentSeasonIdField?.SetValue(viewModel, "show1");
 
             // Act - simulate stream ending on first episode
-            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", 
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             playNextMethod?.Invoke(viewModel, null);
 
@@ -378,12 +378,12 @@ namespace Baird.Tests.ViewModels
 
             // Simulate playing last episode
             viewModel.PlayItem(episodes[1]);
-            
-            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", 
+
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentEpisodeListField?.SetValue(viewModel, episodes);
-            
-            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", 
+
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentSeasonIdField?.SetValue(viewModel, "show1");
 
@@ -392,7 +392,7 @@ namespace Baird.Tests.ViewModels
             var initialStackCount = viewModel.NavigationHistory.Count;
 
             // Act - simulate stream ending on last episode
-            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", 
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             playNextMethod?.Invoke(viewModel, null);
 
@@ -400,7 +400,7 @@ namespace Baird.Tests.ViewModels
             await Task.Delay(100);
 
             // Assert - should have navigated back (no season to transition to)
-            Assert.True(viewModel.NavigationHistory.Count < initialStackCount, 
+            Assert.True(viewModel.NavigationHistory.Count < initialStackCount,
                 "Navigation stack should have been popped when reaching end of flat episode list");
         }
 
@@ -442,7 +442,7 @@ namespace Baird.Tests.ViewModels
                     Subtitle = "Disc 1: Track 2"
                 }
             };
-            
+
             var season2Tracks = new List<MediaItem>
             {
                 new MediaItem
@@ -459,7 +459,7 @@ namespace Baird.Tests.ViewModels
                     Subtitle = "Disc 2: Track 1"
                 }
             };
-            
+
             provider.SetChildren("album1|1", season1Tracks);
             provider.SetChildren("album1|2", season2Tracks);
 
@@ -467,21 +467,21 @@ namespace Baird.Tests.ViewModels
 
             // Simulate playing last track of disc 1
             viewModel.PlayItem(season1Tracks[1]);
-            
-            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", 
+
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentEpisodeListField?.SetValue(viewModel, season1Tracks);
-            
-            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", 
+
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentSeasonIdField?.SetValue(viewModel, "album1|1");
-            
-            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId", 
+
+            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             currentShowIdField?.SetValue(viewModel, "album1");
 
             // Act - simulate stream ending on last track of disc 1
-            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", 
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             playNextMethod?.Invoke(viewModel, null);
 
