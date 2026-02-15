@@ -143,9 +143,6 @@ namespace Baird
 
                 await _viewModel.RefreshChannels();
 
-                // Preload history so it's ready when user opens it
-                await _viewModel.History.RefreshAsync();
-
                 // Auto-play first channel
                 var firstChannel = _viewModel.AllChannels.FirstOrDefault();
                 if (firstChannel != null)
@@ -153,6 +150,8 @@ namespace Baird
                     Console.WriteLine($"[MainView] Auto-playing channel: {firstChannel.Name}");
                     _viewModel.PlayItem(firstChannel);
                 }
+                // Preload history so it's ready when user opens it
+                await _viewModel.History.RefreshAsync();
 
                 await _cecService.StartAsync();
             };
