@@ -1,0 +1,95 @@
+using System.Collections.ObjectModel;
+using ReactiveUI;
+using System.Reactive;
+using System.Reactive.Linq;
+using Baird.Services;
+using System;
+using System.Threading.Tasks;
+using System.Linq;
+
+namespace Baird.ViewModels
+{
+    public class WatchlistViewModel : ReactiveObject
+    {
+        private readonly IDataService _dataService;
+        public ObservableCollection<MediaItem> WatchlistItems { get; } = new();
+
+        public event EventHandler<MediaItem>? PlayRequested;
+        public event EventHandler? BackRequested;
+
+        public ReactiveCommand<MediaItem, Unit> PlayCommand { get; }
+        public ReactiveCommand<Unit, Unit> BackCommand { get; }
+        public ReactiveCommand<MediaItem, Unit> RemoveCommand { get; }
+
+        public WatchlistViewModel(IDataService dataService)
+        {
+            _dataService = dataService;
+
+            PlayCommand = ReactiveCommand.Create<MediaItem>(item =>
+            {
+                PlayRequested?.Invoke(this, item);
+            });
+
+            BackCommand = ReactiveCommand.Create(() =>
+            {
+                BackRequested?.Invoke(this, EventArgs.Empty);
+            });
+
+            RemoveCommand = ReactiveCommand.CreateFromTask<MediaItem>(async item =>
+            {
+                await _dataService.RemoveFromWatchlistAsync(item.Id);
+                // The list will update via event or RefreshAsync
+                // We can manually remove it for instant feedback if we want, 
+                // but RefreshAsync is safer for sync. 
+                // However, since we listen to WatchlistUpdated in DataService/MainViewModel?
+                // Actually WatchlistViewModel should listen to DataService events.
+            });
+
+            // Subscribe to updates
+            _dataService.WatchlistUpdated += async (s, e) =>
+            {
+                // Dispatch to UI thread if needed
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(RefreshAsync);
+            };
+        }
+
+        public async Task RefreshAsync()
+        {
+            // Fetch latest watchlist
+            var newItems = await _dataService.GetWatchlistItemsAsync();
+
+            // Sync with existing collection
+            var toRemove = WatchlistItems.Where(i => !newItems.Any(n => n.Id == i.Id)).ToList();
+            foreach (var item in toRemove)
+            {
+                WatchlistItems.Remove(item);
+            }
+
+            int index = 0;
+            foreach (var newItem in newItems)
+            {
+                var existing = WatchlistItems.FirstOrDefault(x => x.Id == newItem.Id);
+                if (existing != null)
+                {
+                    // Update properties if needed
+                    if (existing.History != newItem.History)
+                    {
+                        existing.History = newItem.History;
+                    }
+
+                    // Order
+                    int oldIndex = WatchlistItems.IndexOf(existing);
+                    if (oldIndex != index)
+                    {
+                        WatchlistItems.Move(oldIndex, index);
+                    }
+                }
+                else
+                {
+                    WatchlistItems.Insert(index, newItem);
+                }
+                index++;
+            }
+        }
+    }
+}

@@ -39,6 +39,15 @@ namespace Baird.Tests.Services
             public HistoryItem? GetProgress(string id) => null;
         }
 
+        class MockWatchlistService : IWatchlistService
+        {
+            public event EventHandler? WatchlistUpdated;
+            public Task AddAsync(MediaItem item) => Task.CompletedTask;
+            public Task RemoveAsync(string id) => Task.CompletedTask;
+            public Task<List<MediaItem>> GetWatchlistAsync() => Task.FromResult(new List<MediaItem>());
+            public bool IsOnWatchlist(string id) => false;
+        }
+
         [Fact]
         public async Task GetItemAsync_CachesItem_SubsequentCallsDoNotHitProvider()
         {
@@ -58,7 +67,7 @@ namespace Baird.Tests.Services
             };
             provider.ItemToReturn = item;
 
-            var dataService = new DataService(new[] { provider }, new MockHistoryService());
+            var dataService = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService());
 
             // Act
             // First call - should hit provider
@@ -93,7 +102,7 @@ namespace Baird.Tests.Services
                 Subtitle = "Sub"
             };
             provider.ItemToReturn = item;
-            var dataService = new DataService(new[] { provider }, new MockHistoryService());
+            var dataService = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService());
 
             // Act
             var result = await dataService.GetItemAsync("test1");

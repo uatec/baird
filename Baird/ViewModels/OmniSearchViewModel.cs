@@ -144,6 +144,7 @@ namespace Baird.ViewModels
         private DateTime _timerStartTime;
 
         public ReactiveCommand<string, Unit> SearchTermCommand { get; }
+        public ReactiveCommand<MediaItem, Unit> AddToWatchlistCommand { get; }
 
         public OmniSearchViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, Func<List<MediaItem>> getAllChannels)
         {
@@ -188,6 +189,13 @@ namespace Baird.ViewModels
                 SearchText = term;
                 RequestSearchBoxFocus();
                 await PerformSearch(term);
+            });
+
+            AddToWatchlistCommand = ReactiveCommand.CreateFromTask<MediaItem>(async item =>
+            {
+                await _dataService.AddToWatchlistAsync(item);
+                Console.WriteLine($"[OmniSearch] Added {item.Name} to watchlist");
+                // TODO: Visual feedback?
             });
 
             var textChanges = this.WhenAnyValue(x => x.SearchText).Skip(1);

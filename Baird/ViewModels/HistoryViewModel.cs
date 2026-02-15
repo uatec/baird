@@ -19,6 +19,7 @@ namespace Baird.ViewModels
 
         public ReactiveCommand<MediaItem, Unit> PlayCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
+        public ReactiveCommand<MediaItem, Unit> AddToWatchlistCommand { get; }
 
         public HistoryViewModel(IDataService dataService)
         {
@@ -32,6 +33,12 @@ namespace Baird.ViewModels
             BackCommand = ReactiveCommand.Create(() =>
             {
                 BackRequested?.Invoke(this, EventArgs.Empty);
+            });
+
+            AddToWatchlistCommand = ReactiveCommand.CreateFromTask<MediaItem>(async item =>
+            {
+                await _dataService.AddToWatchlistAsync(item);
+                Console.WriteLine($"[History] Added {item.Name} to watchlist");
             });
         }
 

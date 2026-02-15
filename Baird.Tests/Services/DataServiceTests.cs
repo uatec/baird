@@ -50,6 +50,16 @@ namespace Baird.Tests.Services
             public Task<List<HistoryItem>> GetHistoryAsync() => Task.FromResult(History);
 
             public HistoryItem? GetProgress(string id) => History.FirstOrDefault(x => x.Id == id);
+            public Task ClearHistoryAsync() => Task.CompletedTask;
+        }
+
+        class MockWatchlistService : IWatchlistService
+        {
+            public event EventHandler? WatchlistUpdated;
+            public Task AddAsync(MediaItem item) => Task.CompletedTask;
+            public Task RemoveAsync(string id) => Task.CompletedTask;
+            public Task<List<MediaItem>> GetWatchlistAsync() => Task.FromResult(new List<MediaItem>());
+            public bool IsOnWatchlist(string id) => false;
         }
 
         [Fact]
@@ -90,7 +100,7 @@ namespace Baird.Tests.Services
             // item3 has history but no media (deleted item)
             historyService.History.Add(new HistoryItem { Id = "item3", LastPosition = TimeSpan.FromMinutes(5) });
 
-            var dataService = new DataService(new[] { provider }, historyService);
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
             // Act
             var results = (await dataService.GetHistoryItemsAsync()).ToList();
@@ -111,7 +121,7 @@ namespace Baird.Tests.Services
             // Arrange
             var provider = new MockMediaProvider();
             var historyService = new MockHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService);
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
             var item = new MediaItem
             {
@@ -145,7 +155,7 @@ namespace Baird.Tests.Services
             // Arrange
             var provider = new MockMediaProvider();
             var historyService = new MockHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService);
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
             var item = new MediaItem
             {

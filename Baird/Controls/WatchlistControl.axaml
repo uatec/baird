@@ -5,16 +5,12 @@
              xmlns:vm="using:Baird.ViewModels"
              xmlns:controls="using:Baird.Controls"
              xmlns:conv="using:Baird.Converters"
-             xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="Baird.Controls.HistoryControl"
+             x:Class="Baird.Controls.WatchlistControl"
              x:CompileBindings="True"
-             x:DataType="vm:HistoryViewModel">
+             x:DataType="vm:WatchlistViewModel"
+             Name="WatchlistRoot">
              
-    <UserControl.Resources>
-        <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
-    </UserControl.Resources>
-
     <UserControl.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
     </UserControl.KeyBindings>
@@ -23,18 +19,18 @@
         <!-- Styles removed -->
     </UserControl.Styles>
 
-    <Grid Name="HistoryGrid" RowDefinitions="Auto,*" Background="Transparent">
+    <Grid Name="WatchlistGrid" RowDefinitions="Auto,*" Background="Transparent">
         
         <!-- Header -->
-        <TextBlock Text="Continue Watching" FontSize="28" FontWeight="Bold" Foreground="White" Margin="20"/>
+        <TextBlock Text="My Watchlist" FontSize="28" FontWeight="Bold" Foreground="White" Margin="20"/>
 
-        <!-- History Grid -->
+        <!-- Watchlist Grid -->
         <ScrollViewer Grid.Row="1"
                       Focusable="False"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
-            <ItemsControl Name="HistoryList" 
-                          ItemsSource="{Binding HistoryItems}"
+            <ItemsControl Name="WatchlistList" 
+                          ItemsSource="{Binding WatchlistItems}"
                           Background="Transparent"
                           XYFocus.NavigationModes="Enabled">
                 <ItemsControl.ItemsPanel>
@@ -47,14 +43,22 @@
                         <controls:MediaTileControl DataContext="{Binding}"
                                                    Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
                                                    CommandParameter="{Binding}"
-                                                   LongPressCommand="{Binding $parent[UserControl].DataContext.AddToWatchlistCommand}"
-                                                   LongPressCommandParameter="{Binding}"/>
+                                                   LongPressCommand="{Binding $parent[UserControl].DataContext.RemoveCommand}"
+                                                   LongPressCommandParameter="{Binding}">
+                            <controls:MediaTileControl.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Remove from Watchlist" 
+                                              Command="{Binding #WatchlistRoot.DataContext.RemoveCommand}"
+                                              CommandParameter="{Binding}"/>
+                                </ContextMenu>
+                            </controls:MediaTileControl.ContextMenu>
+                        </controls:MediaTileControl>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
         
-        <TextBlock Grid.Row="1" Text="No history items found." Foreground="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HistoryItems.Count}"/>
+        <TextBlock Grid.Row="1" Text="Your watchlist is empty." Foreground="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !WatchlistItems.Count}"/>
 
     </Grid>
 </UserControl>

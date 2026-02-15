@@ -37,6 +37,7 @@ namespace Baird.ViewModels
 
         public OmniSearchViewModel OmniSearch { get; }
         public HistoryViewModel History { get; }
+        public WatchlistViewModel Watchlist { get; }
         public TabNavigationViewModel MainMenu { get; }
 
         private MediaItem? _activeItem;
@@ -83,9 +84,13 @@ namespace Baird.ViewModels
 
             OmniSearch = new OmniSearchViewModel(dataService, searchHistoryService, () => AllChannels);
             History = new HistoryViewModel(dataService);
+            Watchlist = new WatchlistViewModel(dataService);
 
             History.PlayRequested += (s, item) => PlayItem(item);
             History.BackRequested += (s, e) => GoBack();
+
+            Watchlist.PlayRequested += (s, item) => PlayItem(item);
+            Watchlist.BackRequested += (s, e) => GoBack();
 
             // Subscribe to history updates to keep HistoryViewModel in sync
             _dataService.HistoryUpdated += async (s, e) =>
@@ -100,6 +105,13 @@ namespace Baird.ViewModels
                     Console.WriteLine($"[MainViewModel] Error refreshing history after update: {ex.Message}");
                 }
             };
+
+            // Auto-refresh Watchlist?
+            // WatchlistViewModel subscribes to WatchlistUpdated internally. 
+            // But we might want initial load.
+            // Let's add initial load in attached logic or here.
+            // History is loaded in AttachedToVisualTree in MainView.
+            // We should do the same for Watchlist.
 
             IsVideoHudVisible = true;
 
@@ -130,6 +142,7 @@ namespace Baird.ViewModels
             var tabs = new[]
             {
                 new TabItem("History", History),
+                new TabItem("Watchlist", Watchlist),
                 new TabItem("Search", OmniSearch)
             };
             MainMenu = new TabNavigationViewModel(tabs);

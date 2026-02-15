@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Baird.ViewModels"
+             xmlns:controls="using:Baird.Controls"
              xmlns:services="using:Baird.Services"
              xmlns:conv="using:Baird.Converters"
              xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
@@ -15,59 +16,98 @@
         <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
     </UserControl.Resources>
 
-    <Grid RowDefinitions="*, Auto, Auto">
-        <!-- Image & Progress Overlay -->
-        <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="#333333">
-            <Grid>
-                <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" />
-                
-                <!-- Duration Badge (bottom-right) -->
-                <Border Background="#DD000000" 
-                        CornerRadius="3" 
-                        Padding="4,2"
-                        HorizontalAlignment="Right" 
-                        VerticalAlignment="Bottom"
-                        Margin="0,0,6,6"
-                        IsVisible="{Binding HasDuration}">
-                    <TextBlock Text="{Binding Duration, StringFormat='{}{0:h\\:mm\\:ss}'}" 
-                               Foreground="White" 
-                               FontSize="11"
-                               FontWeight="SemiBold"/>
-                </Border>
-                
-                <!-- Progress Bar Overlay (History) -->
-                <ProgressBar Value="{Binding Progress}" 
-                             Maximum="1.0" 
-                             Minimum="0.0" 
-                             Height="6" 
-                             VerticalAlignment="Bottom" 
-                             Background="#33000000" 
-                             Foreground="#E50914" 
-                             IsHitTestVisible="False"
-                             IsVisible="{Binding Progress, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-            </Grid>
-        </Border>
+    <UserControl.Styles>
+        <Style Selector="controls|MediaButton.MediaTileButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="4"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        </Style>
         
-        <!-- Row 1: Channel/Name -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
-             <TextBlock Text="{Binding ChannelNumber}" 
-                        Foreground="#FFD700" 
-                        FontWeight="ExtraBold" 
-                        Margin="0,0,6,0" 
-                        IsVisible="{Binding ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
-             <TextBlock Text="{Binding Name}" 
-                        Foreground="White" 
-                        FontWeight="Bold" 
-                        TextTrimming="CharacterEllipsis" 
-                        TextAlignment="Left"/>
-        </StackPanel>
-        
-        <!-- Row 2: Source Badge & Details -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
-            <Border Background="#333333" CornerRadius="4" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding Source, Converter={StaticResource StringVisibilityConverter}}">
-                <TextBlock Text="{Binding Source}" Foreground="#4CC9F0" FontSize="10" FontWeight="Bold"/>
+        <Style Selector="controls|MediaButton.MediaTileButton:focus">
+            <Setter Property="BorderBrush" Value="#eeeeee"/>
+        </Style>
+    </UserControl.Styles>
+
+    <controls:MediaButton Classes="MediaTileButton"
+                           Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:MediaTileControl}}"
+                           CommandParameter="{Binding CommandParameter, RelativeSource={RelativeSource AncestorType=controls:MediaTileControl}}"
+                           LongPressCommand="{Binding LongPressCommand, RelativeSource={RelativeSource AncestorType=controls:MediaTileControl}}"
+                           LongPressCommandParameter="{Binding LongPressCommandParameter, RelativeSource={RelativeSource AncestorType=controls:MediaTileControl}}">
+        <Grid RowDefinitions="*, Auto, Auto">
+            <!-- Image & Progress Overlay -->
+            <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="#333333">
+                <Grid>
+                    <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" />
+                    
+                    <!-- Duration Badge (bottom-right) -->
+                    <Border Background="#DD000000" 
+                            CornerRadius="3" 
+                            Padding="4,2"
+                            HorizontalAlignment="Right" 
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,6,6"
+                            IsVisible="{Binding HasDuration}">
+                        <TextBlock Text="{Binding Duration, StringFormat='{}{0:h\\:mm\\:ss}'}" 
+                                   Foreground="White" 
+                                   FontSize="11"
+                                   FontWeight="SemiBold"/>
+                    </Border>
+                    
+                    <!-- Progress Bar Overlay (History) -->
+                    <ProgressBar Value="{Binding Progress}" 
+                                 Maximum="1.0" 
+                                 Minimum="0.0" 
+                                 Height="6" 
+                                 VerticalAlignment="Bottom" 
+                                 Background="#33000000" 
+                                 Foreground="#E50914" 
+                                 IsHitTestVisible="False"
+                                 IsVisible="{Binding Progress, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                 
+                     <!-- Finished indicator -->
+                    <Border Background="#4CAF50" 
+                            CornerRadius="0,0,0,12"
+                            Width="40" Height="40"
+                            HorizontalAlignment="Right" 
+                            VerticalAlignment="Top"
+                            IsVisible="{Binding IsFinished}">
+                        <Path Data="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z" 
+                              Fill="White" 
+                              Stretch="Uniform"
+                              Width="24" Height="24"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"/>
+                    </Border>
+                </Grid>
             </Border>
-            <TextBlock Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left" VerticalAlignment="Center"/>
-        </StackPanel>
-    </Grid>
+            
+            <!-- Row 1: Channel/Name -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
+                 <TextBlock Text="{Binding ChannelNumber}" 
+                            Foreground="#FFD700" 
+                            FontWeight="ExtraBold" 
+                            Margin="0,0,6,0" 
+                            IsVisible="{Binding ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
+                 <TextBlock Text="{Binding Name}" 
+                            Foreground="White" 
+                            FontWeight="Bold" 
+                            TextTrimming="CharacterEllipsis" 
+                            TextAlignment="Left"/>
+            </StackPanel>
+            
+            <!-- Row 2: Source Badge & Details -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                <Border Background="#333333" CornerRadius="4" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding Source, Converter={StaticResource StringVisibilityConverter}}">
+                    <TextBlock Text="{Binding Source}" Foreground="#4CC9F0" FontSize="10" FontWeight="Bold"/>
+                </Border>
+                <TextBlock Text="{Binding Details}" Foreground="#AAAAAA"  FontSize="12" TextTrimming="CharacterEllipsis" TextAlignment="Left" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+    </controls:MediaButton>
 </UserControl>

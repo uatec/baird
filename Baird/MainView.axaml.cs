@@ -43,12 +43,13 @@ namespace Baird
 
             _cecService = new CecService();
             _historyService = new JsonHistoryService();
+            var watchlistService = new JsonWatchlistService();
             var searchHistoryService = new SearchHistoryService();
 
             _screensaverService = new ScreensaverService();
 
             // Create DataService encapsulating providers and history
-            _dataService = new DataService(_providers, _historyService);
+            _dataService = new DataService(_providers, _historyService, watchlistService);
 
             _viewModel = new MainViewModel(_dataService, searchHistoryService, _screensaverService);
 
@@ -152,6 +153,7 @@ namespace Baird
                 }
                 // Preload history so it's ready when user opens it
                 await _viewModel.History.RefreshAsync();
+                await _viewModel.Watchlist.RefreshAsync();
 
                 await _cecService.StartAsync();
             };

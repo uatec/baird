@@ -20,9 +20,15 @@ namespace Baird.Services
 
         // Event to notify when history is updated
         event EventHandler? HistoryUpdated;
+        event EventHandler? WatchlistUpdated;
 
         IEnumerable<IMediaProvider> Providers { get; }
         void AttachHistory(IEnumerable<MediaItem> items);
+
+        Task<IEnumerable<MediaItem>> GetWatchlistItemsAsync();
+        Task AddToWatchlistAsync(MediaItem item);
+        Task RemoveFromWatchlistAsync(string id);
+        bool IsOnWatchlist(string id);
     }
 
     public class DataService : IDataService
@@ -31,13 +37,18 @@ namespace Baird.Services
         public IEnumerable<IMediaProvider> Providers => _providers;
 
         private readonly IHistoryService _historyService;
+        private readonly IWatchlistService _watchlistService;
 
         public event EventHandler? HistoryUpdated;
+        public event EventHandler? WatchlistUpdated;
 
-        public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService)
+        public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService, IWatchlistService watchlistService)
         {
             _providers = providers;
             _historyService = historyService;
+            _watchlistService = watchlistService;
+
+            _watchlistService.WatchlistUpdated += (s, e) => WatchlistUpdated?.Invoke(this, EventArgs.Empty);
         }
 
         public async Task<IEnumerable<MediaItem>> GetListingAsync()
@@ -145,6 +156,43 @@ namespace Baird.Services
         public HistoryItem? GetHistory(string id)
         {
             return _historyService.GetProgress(id);
+        }
+
+        public async Task<IEnumerable<MediaItem>> GetWatchlistItemsAsync()
+        {
+            var savedItems = await _watchlistService.GetWatchlistAsync();
+
+            var tasks = savedItems.Select(async item =>
+            {
+                // Try to get fresh item from provider/cache
+                var freshItem = await GetItemAsync(item.Id);
+                if (freshItem != null)
+                {
+                    return freshItem;
+                }
+
+                // If provider fails, return the saved item but attach history manually
+                item.History = _historyService.GetProgress(item.Id);
+                return item;
+            });
+
+            var results = await Task.WhenAll(tasks);
+            return results;
+        }
+
+        public async Task AddToWatchlistAsync(MediaItem item)
+        {
+            await _watchlistService.AddAsync(item);
+        }
+
+        public async Task RemoveFromWatchlistAsync(string id)
+        {
+            await _watchlistService.RemoveAsync(id);
+        }
+
+        public bool IsOnWatchlist(string id)
+        {
+            return _watchlistService.IsOnWatchlist(id);
         }
 
         private readonly Dictionary<string, MediaItem> _itemCache = new();

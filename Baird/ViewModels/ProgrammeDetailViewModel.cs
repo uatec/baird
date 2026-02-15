@@ -26,6 +26,7 @@ namespace Baird.ViewModels
 
         public ReactiveCommand<MediaItem, System.Reactive.Unit> PlayCommand { get; }
         public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> BackCommand { get; }
+        public ReactiveCommand<MediaItem, System.Reactive.Unit> AddToWatchlistCommand { get; }
 
         public void RequestPlay(MediaItem item)
         {
@@ -44,6 +45,12 @@ namespace Baird.ViewModels
 
             PlayCommand = ReactiveCommand.Create<MediaItem>(RequestPlay);
             BackCommand = ReactiveCommand.Create(RequestBack);
+
+            AddToWatchlistCommand = ReactiveCommand.CreateFromTask<MediaItem>(async item =>
+            {
+                await _dataService.AddToWatchlistAsync(item);
+                Console.WriteLine($"[ProgrammeDetail] Added {item.Name} to watchlist");
+            });
 
             _ = LoadChildren();
         }

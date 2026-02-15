@@ -7,6 +7,7 @@ namespace Baird
 {
     [JsonSerializable(typeof(List<HistoryItem>))]
     [JsonSerializable(typeof(List<SearchTermItem>))]
+    [JsonSerializable(typeof(List<MediaItem>))]
     internal partial class BairdJsonContext : JsonSerializerContext
     {
     }

@@ -96,6 +96,9 @@
                 <DataTemplate DataType="{x:Type vm:OmniSearchViewModel}">
                     <controls:OmniSearchControl/>
                 </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:WatchlistViewModel}">
+                    <controls:WatchlistControl/>
+                </DataTemplate>
             </ContentControl.DataTemplates>
         </ContentControl>
 

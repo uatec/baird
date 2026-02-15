@@ -60,22 +60,7 @@
                               Background="Transparent"
                               XYFocus.NavigationModes="Enabled">
                     <ItemsControl.Styles>
-                        <!-- Tile Style for Buttons -->
-                        <Style Selector="Button.MediaTileButton">
-                            <Setter Property="Background" Value="Transparent"/>
-                            <Setter Property="BorderThickness" Value="4"/>
-                            <Setter Property="BorderBrush" Value="Transparent"/>
-                            <Setter Property="CornerRadius" Value="8"/>
-                            <Setter Property="Padding" Value="10"/>
-                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
-                            <Setter Property="VerticalAlignment" Value="Stretch"/>
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
-                        </Style>
-                        
-                        <Style Selector="Button.MediaTileButton:focus">
-                            <Setter Property="BorderBrush" Value="#eeeeee"/>
-                        </Style>
+        <!-- Styles removed -->
                     </ItemsControl.Styles>
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -84,28 +69,12 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Button Classes="MediaTileButton"
-                                    Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
-                                    CommandParameter="{Binding}">
-                                <Grid>
-                                    <controls:MediaTileControl DataContext="{Binding}" />
-                                    <!-- Finished indicator -->
-                                    <Border Background="#4CAF50" 
-                                            CornerRadius="0,0,0,12"
-                                            Width="40" Height="40"
-                                            HorizontalAlignment="Right" 
-                                            VerticalAlignment="Top"
-                                            IsVisible="{Binding IsFinished}">
-                                        <Path Data="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z" 
-                                              Fill="White" 
-                                              Stretch="Uniform"
-                                              Width="24" Height="24"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                                    </Border>
-                                </Grid>
-                            </Button>
-                        </DataTemplate>
+                            <controls:MediaTileControl DataContext="{Binding}"
+                                                   Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
+                                                   CommandParameter="{Binding}"
+                                                   LongPressCommand="{Binding $parent[UserControl].DataContext.AddToWatchlistCommand}"
+                                                   LongPressCommandParameter="{Binding}"/>
+                    </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
