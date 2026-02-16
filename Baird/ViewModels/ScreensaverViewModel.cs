@@ -59,6 +59,26 @@ namespace Baird.ViewModels
             }
         }
 
+        public void PlayNext()
+        {
+            if (!IsActive)
+            {
+                return;
+            }
+
+            var asset = _service.GetRandomScreensaver();
+            if (asset != null)
+            {
+                CurrentAsset = asset;
+                CurrentName = asset.CollectionName;
+                Console.WriteLine($"[ScreensaverViewModel] Playing next screensaver: {CurrentName} - {CurrentAsset.VideoUrl}");
+            }
+            else
+            {
+                Console.WriteLine("[ScreensaverViewModel] No screensavers available for next playback.");
+            }
+        }
+
         public void Deactivate()
         {
             IsActive = false;

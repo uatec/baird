@@ -8,6 +8,8 @@ namespace Baird.Controls
 {
     public partial class ScreensaverControl : UserControl
     {
+        private VideoPlayer? _player;
+
         public ScreensaverControl()
         {
             InitializeComponent();
@@ -23,24 +25,46 @@ namespace Baird.Controls
             base.OnAttachedToVisualTree(e);
 
             // Auto-play when attached
-            var player = this.FindControl<VideoPlayer>("ScreensaverPlayer");
-            if (player != null && DataContext is ScreensaverViewModel vm && vm.CurrentAsset?.VideoUrl != null)
+            _player = this.FindControl<VideoPlayer>("ScreensaverPlayer");
+            if (_player != null)
             {
-                Console.WriteLine($"[ScreensaverControl] Attached. Playing {vm.CurrentAsset.VideoUrl}");
-                player.Play(vm.CurrentAsset.VideoUrl);
+                // Subscribe to StreamEnded event
+                _player.StreamEnded += OnScreensaverEnded;
+
+                if (DataContext is ScreensaverViewModel vm && vm.CurrentAsset?.VideoUrl != null)
+                {
+                    Console.WriteLine($"[ScreensaverControl] Attached. Playing {vm.CurrentAsset.VideoUrl}");
+                    _player.Play(vm.CurrentAsset.VideoUrl);
+                }
             }
         }
 
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
-            // Ensure stop when detached
-            var player = this.FindControl<VideoPlayer>("ScreensaverPlayer");
-            if (player != null)
+            // Unsubscribe and ensure stop when detached
+            if (_player != null)
             {
+                _player.StreamEnded -= OnScreensaverEnded;
                 Console.WriteLine("[ScreensaverControl] Detached. Stopping player.");
-                player.Stop();
+                _player.Stop();
             }
             base.OnDetachedFromVisualTree(e);
+        }
+
+        private void OnScreensaverEnded(object? sender, EventArgs e)
+        {
+            Console.WriteLine("[ScreensaverControl] Screensaver video ended. Playing next random screensaver.");
+            
+            if (DataContext is ScreensaverViewModel vm)
+            {
+                vm.PlayNext();
+                
+                // Play the new video
+                if (_player != null && vm.CurrentAsset?.VideoUrl != null)
+                {
+                    _player.Play(vm.CurrentAsset.VideoUrl);
+                }
+            }
         }
     }
 }
