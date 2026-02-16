@@ -43,7 +43,7 @@
             <!-- Image & Progress Overlay -->
             <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="#333333">
                 <Grid>
-                    <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="UniformToFill" />
+                    <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="Uniform" />
                     
                     <!-- Duration Badge (bottom-right) -->
                     <Border Background="#DD000000" 
