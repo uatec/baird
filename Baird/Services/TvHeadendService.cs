@@ -104,8 +104,8 @@ namespace Baird.Services
                                 Name = c.Name,
                                 Details = "", // Channel number moved to ChannelNumber
                                 ChannelNumber = c.Number > 0 ? c.Number.ToString() : "",
-                                // TVHeadend icon URL: /imagecache/{id}
-                                ImageUrl = !string.IsNullOrEmpty(c.IconUrl) ? c.IconUrl : $"{_serverUrl}/imagecache/{c.IconId}",
+                                // TVHeadend icon URL: prefer icon_public_url, fallback to imagecache
+                                ImageUrl = GetChannelImageUrl(c),
                                 IsLive = true,
                                 StreamUrl = GetStreamUrlInternal(c.Uuid),
                                 Source = "Live TV",
@@ -161,6 +161,40 @@ namespace Baird.Services
         public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
         {
             return Task.FromResult(Enumerable.Empty<MediaItem>());
+        }
+
+        private string GetChannelImageUrl(TvHeadendEntry channel)
+        {
+            // Priority:
+            // 1. Use icon_public_url if it's a complete URL
+            // 2. Use icon field via imagecache endpoint with auth
+            // 3. Use imagecache with UUID as fallback
+
+            if (!string.IsNullOrEmpty(channel.IconPublicUrl))
+            {
+                // If icon_public_url is already a complete URL, use it
+                if (Uri.TryCreate(channel.IconPublicUrl, UriKind.Absolute, out _))
+                {
+                    return channel.IconPublicUrl;
+                }
+                // If it's a relative URL from this server
+                if (channel.IconPublicUrl.StartsWith("imagecache"))
+                {
+                    return $"{_serverUrl}/{channel.IconPublicUrl}";
+                }
+            }
+
+            if (!string.IsNullOrEmpty(channel.Icon))
+            {
+                // Icon field typically contains the imagecache ID
+                // TVHeadend serves icons via /imagecache/{id} endpoint
+                // This endpoint requires authentication
+                var iconPath = channel.Icon.TrimStart('/');
+                return $"{_serverUrl}/imagecache/{iconPath}";
+            }
+
+            // Fallback: try to use UUID (though this rarely works)
+            return $"{_serverUrl}/imagecache/{channel.Uuid}";
         }
 
         private string GetStreamUrlInternal(string itemId)
@@ -321,10 +355,10 @@ namespace Baird.Services
         public int Number { get; set; }
 
         [JsonPropertyName("icon")]
-        public string IconUrl { get; set; } = null!;
+        public string Icon { get; set; } = null!;
 
         [JsonPropertyName("icon_public_url")]
-        public string IconId { get; set; } = null!; // Sometimes useful if IconUrl is relative
+        public string IconPublicUrl { get; set; } = null!;
     }
 
     [JsonSerializable(typeof(TvHeadendGrid))]
