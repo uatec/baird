@@ -11,8 +11,15 @@ namespace Baird.Services
         Channel,
     }
 
-    public class MediaItem
+    public class MediaItem : System.ComponentModel.INotifyPropertyChanged
     {
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+        protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
+        }
+
         public required string Id { get; set; }
         public required string Name { get; set; }
         public required string Details { get; set; } // e.g. Year, Channel Number
@@ -27,6 +34,20 @@ namespace Baird.Services
         public required string Subtitle { get; set; } // e.g. "Series 1: Episode 1"
 
         public Baird.Models.HistoryItem? History { get; set; }
+
+        private bool _isOnWatchlist;
+        public bool IsOnWatchlist
+        {
+            get => _isOnWatchlist;
+            set
+            {
+                if (_isOnWatchlist != value)
+                {
+                    _isOnWatchlist = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         public TimeSpan Duration { get; set; }
         public bool HasDuration => Duration > TimeSpan.Zero;
@@ -52,6 +73,7 @@ namespace Baird.Services
                 {
                     History.IsFinished = value;
                 }
+                OnPropertyChanged();
             }
         }
 
@@ -75,6 +97,7 @@ namespace Baird.Services
                 {
                     History.LastPosition = value;
                 }
+                OnPropertyChanged();
             }
         }
 

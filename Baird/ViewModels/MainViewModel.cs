@@ -35,6 +35,8 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isPaused, value);
         }
 
+
+
         public OmniSearchViewModel OmniSearch { get; }
         public HistoryViewModel History { get; }
         public WatchlistViewModel Watchlist { get; }

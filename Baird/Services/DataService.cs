@@ -21,6 +21,7 @@ namespace Baird.Services
         // Event to notify when history is updated
         event EventHandler? HistoryUpdated;
         event EventHandler? WatchlistUpdated;
+        event EventHandler<MediaItem>? ItemAddedToWatchlist;
 
         IEnumerable<IMediaProvider> Providers { get; }
         void AttachHistory(IEnumerable<MediaItem> items);
@@ -41,6 +42,7 @@ namespace Baird.Services
 
         public event EventHandler? HistoryUpdated;
         public event EventHandler? WatchlistUpdated;
+        public event EventHandler<MediaItem>? ItemAddedToWatchlist;
 
         public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService, IWatchlistService watchlistService)
         {
@@ -56,8 +58,7 @@ namespace Baird.Services
             var tasks = _providers.Select(p => p.GetListingAsync());
             var results = await Task.WhenAll(tasks);
             var items = results.SelectMany(x => x).ToList();
-            AttachHistory(items);
-            return items;
+            return UnifyAndHydrate(items);
         }
 
         public async Task<IEnumerable<MediaItem>> SearchAsync(string query, CancellationToken cancellationToken = default)
@@ -65,8 +66,7 @@ namespace Baird.Services
             var tasks = _providers.Select(p => p.SearchAsync(query, cancellationToken));
             var results = await Task.WhenAll(tasks);
             var items = results.SelectMany(x => x).ToList();
-            AttachHistory(items);
-            return items;
+            return UnifyAndHydrate(items);
         }
 
         public async Task<IEnumerable<MediaItem>> GetContinueWatchingAsync()
@@ -76,8 +76,8 @@ namespace Baird.Services
             // Only unfinished items
             var unfinished = historyItems.Where(x => !x.IsFinished).ToList();
 
-            var mediaItems = await HydrateHistoryItems(unfinished);
-            return mediaItems;
+            var hydrated = await HydrateHistoryItems(unfinished);
+            return UnifyAndHydrate(hydrated);
         }
 
         public async Task<IEnumerable<MediaItem>> GetHistoryItemsAsync()
@@ -85,7 +85,7 @@ namespace Baird.Services
             var historyItems = await _historyService.GetHistoryAsync();
 
             var mediaItems = await HydrateHistoryItems(historyItems);
-            return mediaItems;
+            return UnifyAndHydrate(mediaItems);
         }
 
         // Helper to hydrate a list of history items
@@ -139,8 +139,7 @@ namespace Baird.Services
             var tasks = _providers.Select(p => p.GetChildrenAsync(id));
             var results = await Task.WhenAll(tasks);
             var items = results.SelectMany(x => x).ToList();
-            AttachHistory(items);
-            return items;
+            return UnifyAndHydrate(items);
         }
 
         public async Task UpsertHistoryAsync(MediaItem item, TimeSpan position, TimeSpan duration)
@@ -171,8 +170,9 @@ namespace Baird.Services
                     return freshItem;
                 }
 
-                // If provider fails, return the saved item but attach history manually
+                // If provider fails, return the saved item but attach history and watchlist status manually
                 item.History = _historyService.GetProgress(item.Id);
+                item.IsOnWatchlist = true;
                 return item;
             });
 
@@ -183,11 +183,26 @@ namespace Baird.Services
         public async Task AddToWatchlistAsync(MediaItem item)
         {
             await _watchlistService.AddAsync(item);
+
+            // Update the item passed in
+            item.IsOnWatchlist = true;
+
+            // Also update cache if different instance exists
+            if (_itemCache.TryGetValue(item.Id, out var cachedItem) && !ReferenceEquals(cachedItem, item))
+            {
+                cachedItem.IsOnWatchlist = true;
+            }
+
+            ItemAddedToWatchlist?.Invoke(this, item);
         }
 
         public async Task RemoveFromWatchlistAsync(string id)
         {
             await _watchlistService.RemoveAsync(id);
+            if (_itemCache.TryGetValue(id, out var item))
+            {
+                item.IsOnWatchlist = false;
+            }
         }
 
         public bool IsOnWatchlist(string id)
@@ -204,6 +219,7 @@ namespace Baird.Services
             {
                 // Ensure history is up to date even if item is cached
                 cachedItem.History = _historyService.GetProgress(id);
+                cachedItem.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
                 return cachedItem;
             }
 
@@ -214,6 +230,7 @@ namespace Baird.Services
                 if (item != null)
                 {
                     item.History = _historyService.GetProgress(id);
+                    item.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
                     // 3. Cache the item
                     _itemCache[id] = item;
                     return item;
@@ -224,14 +241,68 @@ namespace Baird.Services
 
         public void AttachHistory(IEnumerable<MediaItem> items)
         {
+            // Legacy or unused? Just calling UnifyAndHydrate but ignoring return likely won't work for unification.
+            // This method signature is void, so we can only hydrate.
+            // We should probably remove/deprecate this or warn that it doesn't unify.
             foreach (var item in items)
             {
-                item.History = _historyService.GetProgress(item.Id);
-                // Cache items found in listings to speed up future GetItemAsync calls
-                if (!string.IsNullOrEmpty(item.Id) && !_itemCache.ContainsKey(item.Id))
+                HydrateSingle(item);
+            }
+        }
+
+        private void HydrateSingle(MediaItem item)
+        {
+            item.History = _historyService.GetProgress(item.Id);
+            item.IsOnWatchlist = _watchlistService.IsOnWatchlist(item.Id);
+
+            if (!string.IsNullOrEmpty(item.Id) && !_itemCache.ContainsKey(item.Id))
+            {
+                _itemCache[item.Id] = item;
+            }
+        }
+
+        // Returns a list where items are replaced by cached versions if available
+        public IEnumerable<MediaItem> UnifyAndHydrate(IEnumerable<MediaItem> items)
+        {
+            var unifiedList = new List<MediaItem>();
+            foreach (var item in items)
+            {
+                if (string.IsNullOrEmpty(item.Id))
                 {
+                    unifiedList.Add(item);
+                    continue;
+                }
+
+                if (_itemCache.TryGetValue(item.Id, out var cachedItem))
+                {
+                    // Update cached item with latest properties?
+                    // For now, assume cached item is source of truth for state, 
+                    // but maybe we should update its mutable properties from the fresh fetch?
+                    // Let's at least make sure history/watchlist are current.
+                    cachedItem.History = _historyService.GetProgress(item.Id);
+                    cachedItem.IsOnWatchlist = _watchlistService.IsOnWatchlist(item.Id);
+                    unifiedList.Add(cachedItem);
+                }
+                else
+                {
+                    HydrateSingle(item);
+                    unifiedList.Add(item);
                     _itemCache[item.Id] = item;
                 }
+            }
+            return unifiedList;
+        }
+
+        public void HydrateItems(IEnumerable<MediaItem> items)
+        {
+            // This method was void, modifying items in place. 
+            // If we want unification, we need callers to use the return value of UnifyAndHydrate.
+            // But existing callers might rely on void.
+            // We've replaced callers to use UnifyAndHydrate's return value.
+            // Keeping this for compatibility if needed, but implementation matches Unify logic essentially.
+            foreach (var item in items)
+            {
+                HydrateSingle(item);
             }
         }
     }
