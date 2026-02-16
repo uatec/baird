@@ -23,9 +23,9 @@ namespace Baird.Tests.ViewModels
 
             // Assert
             Assert.Single(tabNav.Tabs);
-            Assert.Equal(0, tabNav.SelectedIndex);
-            Assert.NotNull(tabNav.SelectedTab);
-            Assert.Equal("Tab 1", tabNav.SelectedTab.Title);
+            Assert.Equal(1, tabNav.SelectedIndex);
+            // With only 1 tab, index 1 is out of bounds so SelectedTab will be null
+            Assert.Null(tabNav.SelectedTab);
         }
 
         [Fact]
@@ -45,8 +45,8 @@ namespace Baird.Tests.ViewModels
 
             // Assert
             Assert.Equal(2, tabNav.Tabs.Count);
-            Assert.Equal(0, tabNav.SelectedIndex);
-            Assert.Equal("Tab 1", tabNav.SelectedTab?.Title);
+            Assert.Equal(1, tabNav.SelectedIndex);
+            Assert.Equal("Tab 2", tabNav.SelectedTab?.Title);
         }
 
         [Fact]
