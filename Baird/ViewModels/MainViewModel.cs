@@ -154,7 +154,7 @@ namespace Baird.ViewModels
             };
             _versionCheckTimer.Tick += async (s, e) => await CheckForUpdatesAsync();
             _versionCheckTimer.Start();
-            
+
             // Check immediately on startup
             _ = CheckForUpdatesAsync();
 
@@ -165,8 +165,8 @@ namespace Baird.ViewModels
             var tabs = new[]
             {
                 new TabItem("History", History),
+                new TabItem("Search", OmniSearch),
                 new TabItem("Watchlist", Watchlist),
-                new TabItem("Search", OmniSearch)
             };
             MainMenu = new TabNavigationViewModel(tabs);
             MainMenu.BackRequested += (s, e) => GoBack();
@@ -181,13 +181,13 @@ namespace Baird.ViewModels
             try
             {
                 var latestVersion = await _versionCheckService.GetLatestVersionAsync();
-                
+
                 if (latestVersion != null && !string.IsNullOrEmpty(latestVersion))
                 {
                     // Normalize versions for comparison (remove 'v' prefix if present)
                     var currentVersionStr = _currentVersion.TrimStart('v');
                     var latestVersionStr = latestVersion.TrimStart('v');
-                    
+
                     // Simple string comparison (works for semantic versioning)
                     if (latestVersionStr != currentVersionStr)
                     {

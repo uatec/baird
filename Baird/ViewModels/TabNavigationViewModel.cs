@@ -64,7 +64,7 @@ namespace Baird.ViewModels
             // Select first tab by default
             if (Tabs.Count > 0)
             {
-                SelectedIndex = 0;
+                SelectedIndex = 1;
             }
 
             SelectTabCommand = ReactiveCommand.Create<TabItem>(tab =>
