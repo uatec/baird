@@ -54,11 +54,11 @@ namespace Baird.Controls
         private void OnScreensaverEnded(object? sender, EventArgs e)
         {
             Console.WriteLine("[ScreensaverControl] Screensaver video ended. Playing next random screensaver.");
-            
+
             if (DataContext is ScreensaverViewModel vm)
             {
                 vm.PlayNext();
-                
+
                 // Play the new video
                 if (_player != null && vm.CurrentAsset?.VideoUrl != null)
                 {

@@ -9,7 +9,7 @@ namespace Baird.Services
     {
         private const string TapName = "uatec/tools";
         private const string FormulaName = "baird";
-        
+
         public async Task<string?> GetLatestVersionAsync()
         {
             try
