@@ -49,7 +49,15 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _activeItem, value);
         }
 
-        public string AppVersion { get; }
+        private string _appVersion = "v0.0.0";
+        public string AppVersion
+        {
+            get => _appVersion;
+            set => this.RaiseAndSetIfChanged(ref _appVersion, value);
+        }
+
+        private string _currentVersion = "v0.0.0";
+        private readonly VersionCheckService _versionCheckService;
         // Actually MainViewModel uses HistoryService in PlayItem.
         // Let's keep a private reference to DataService.
         private readonly IDataService _dataService;
@@ -69,6 +77,7 @@ namespace Baird.ViewModels
         public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService)
         {
             _dataService = dataService;
+            _versionCheckService = new VersionCheckService();
             Screensaver = new ScreensaverViewModel(screensaverService);
             // HistoryService = historyService; // Remove property? 
             // VideoPlayer layer needs HistoryService? 
@@ -122,7 +131,8 @@ namespace Baird.ViewModels
             // ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
 
             var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
-            AppVersion = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0";
+            _currentVersion = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0";
+            AppVersion = _currentVersion;
 
             // Initialize HUD Timer
             _hudTimer = new Avalonia.Threading.DispatcherTimer
@@ -136,6 +146,17 @@ namespace Baird.ViewModels
             };
             // Start it initially so it hides after 5s of startup
             _hudTimer.Start();
+
+            // Initialize Version Check Timer
+            _versionCheckTimer = new Avalonia.Threading.DispatcherTimer
+            {
+                Interval = System.TimeSpan.FromSeconds(30)
+            };
+            _versionCheckTimer.Tick += async (s, e) => await CheckForUpdatesAsync();
+            _versionCheckTimer.Start();
+            
+            // Check immediately on startup
+            _ = CheckForUpdatesAsync();
 
             OmniSearch.PlayRequested += (s, item) => PlayItem(item);
             OmniSearch.BackRequested += (s, e) => GoBack();
@@ -152,7 +173,38 @@ namespace Baird.ViewModels
         }
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
+        private Avalonia.Threading.DispatcherTimer _versionCheckTimer;
         // private readonly System.Collections.Generic.IEnumerable<Baird.Services.IMediaProvider> _providers; // Removed
+
+        private async System.Threading.Tasks.Task CheckForUpdatesAsync()
+        {
+            try
+            {
+                var latestVersion = await _versionCheckService.GetLatestVersionAsync();
+                
+                if (latestVersion != null && !string.IsNullOrEmpty(latestVersion))
+                {
+                    // Normalize versions for comparison (remove 'v' prefix if present)
+                    var currentVersionStr = _currentVersion.TrimStart('v');
+                    var latestVersionStr = latestVersion.TrimStart('v');
+                    
+                    // Simple string comparison (works for semantic versioning)
+                    if (latestVersionStr != currentVersionStr)
+                    {
+                        AppVersion = $"{_currentVersion} (v{latestVersionStr} is available)";
+                        Console.WriteLine($"[MainViewModel] Update available: {latestVersionStr}");
+                    }
+                    else
+                    {
+                        AppVersion = _currentVersion;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MainViewModel] Error checking for updates: {ex.Message}");
+            }
+        }
 
         public void ResetHudTimer()
         {
