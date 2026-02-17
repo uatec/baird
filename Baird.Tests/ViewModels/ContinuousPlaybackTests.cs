@@ -74,9 +74,9 @@ namespace Baird.Tests.ViewModels
         private class MockWatchlistService : IWatchlistService
         {
             public event EventHandler? WatchlistUpdated;
-            public Task AddAsync(MediaItem item) => Task.CompletedTask;
+            public Task AddAsync(string id) => Task.CompletedTask;
             public Task RemoveAsync(string id) => Task.CompletedTask;
-            public Task<List<MediaItem>> GetWatchlistAsync() => Task.FromResult(new List<MediaItem>());
+            public Task<HashSet<string>> GetWatchlistIdsAsync() => Task.FromResult(new HashSet<string>());
             public bool IsOnWatchlist(string id) => false;
         }
 
@@ -121,7 +121,7 @@ namespace Baird.Tests.ViewModels
             var provider = new TestMediaProvider();
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
 
             var season1Episodes = new List<MediaItemData>
             {
@@ -174,7 +174,7 @@ namespace Baird.Tests.ViewModels
             var provider = new TestMediaProvider();
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
 
             var season1Episodes = new List<MediaItemData>
             {
@@ -228,7 +228,7 @@ namespace Baird.Tests.ViewModels
             var provider = new TestMediaProvider();
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
 
             var season3Episodes = new List<MediaItemData>
             {
@@ -280,7 +280,7 @@ namespace Baird.Tests.ViewModels
             var provider = new TestMediaProvider();
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             var getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId",
@@ -304,7 +304,7 @@ namespace Baird.Tests.ViewModels
             var provider = new TestMediaProvider();
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             var getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId",
@@ -330,7 +330,7 @@ namespace Baird.Tests.ViewModels
             var provider = new TestMediaProvider();
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
 
             var episodes = new List<MediaItemData>
             {
@@ -375,7 +375,7 @@ namespace Baird.Tests.ViewModels
             var provider = new TestMediaProvider();
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
 
             var episodes = new List<MediaItemData>
             {
@@ -421,7 +421,7 @@ namespace Baird.Tests.ViewModels
             var provider = new TestMediaProvider();
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
 
             var season1Tracks = new List<MediaItemData>
             {

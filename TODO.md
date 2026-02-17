@@ -40,14 +40,18 @@ Phase 2
 - [x] general navigation weirdness
 - [x] built in screensaver
 - [ ] built in power saving
+- [ ] restore state on restart
 
 ## Programme Details
 - [x] show series name etc in episode view
 - [x] show episode length
 
 ## New Features
-- [ ] faves - hold to add to faves, faves page
+- [x] faves - hold to add to faves, faves page
 - [ ] embedded encrypted videos
+- [ ] Downloads
+    - [ ] Search seer, request download
+    - [ ] Download progress
 
 ## History
 - [x] When i press Down to load the history page, the keyboard input still goes to the video player. 

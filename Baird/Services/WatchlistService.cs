@@ -10,9 +10,9 @@ namespace Baird.Services
 {
     public interface IWatchlistService
     {
-        Task AddAsync(MediaItem item);
+        Task AddAsync(string id);
         Task RemoveAsync(string id);
-        Task<List<MediaItem>> GetWatchlistAsync();
+        Task<HashSet<string>> GetWatchlistIdsAsync();
         bool IsOnWatchlist(string id);
         event EventHandler? WatchlistUpdated;
     }
@@ -20,7 +20,7 @@ namespace Baird.Services
     public class JsonWatchlistService : IWatchlistService
     {
         private readonly string _filePath;
-        private List<MediaItem> _watchlistCache;
+        private HashSet<string> _watchlistCache;
         public event EventHandler? WatchlistUpdated;
 
         public JsonWatchlistService()
@@ -34,18 +34,19 @@ namespace Baird.Services
             _watchlistCache = LoadWatchlist();
         }
 
-        private List<MediaItem> LoadWatchlist()
+        private HashSet<string> LoadWatchlist()
         {
-            if (!File.Exists(_filePath)) return new List<MediaItem>();
+            if (!File.Exists(_filePath)) return new HashSet<string>();
             try
             {
                 var json = File.ReadAllText(_filePath);
-                return JsonSerializer.Deserialize(json, BairdJsonContext.Default.ListMediaItem) ?? new List<MediaItem>();
+                var list = JsonSerializer.Deserialize(json, BairdJsonContext.Default.ListString);
+                return list != null ? new HashSet<string>(list) : new HashSet<string>();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WatchlistService] Error loading watchlist: {ex}");
-                return new List<MediaItem>();
+                Console.WriteLine($"[WatchlistService] Error loading watchlist: {ex.Message} - Starting with empty watchlist");
+                return new HashSet<string>();
             }
         }
 
@@ -53,7 +54,7 @@ namespace Baird.Services
         {
             try
             {
-                var json = JsonSerializer.Serialize(_watchlistCache, BairdJsonContext.Default.ListMediaItem);
+                var json = JsonSerializer.Serialize(_watchlistCache.ToList(), BairdJsonContext.Default.ListString);
                 await File.WriteAllTextAsync(_filePath, json);
             }
             catch (Exception ex)
@@ -62,34 +63,32 @@ namespace Baird.Services
             }
         }
 
-        public async Task AddAsync(MediaItem item)
+        public async Task AddAsync(string id)
         {
-            if (IsOnWatchlist(item.Id)) return;
+            if (IsOnWatchlist(id)) return;
 
-            _watchlistCache.Add(item);
+            _watchlistCache.Add(id);
             await SaveWatchlistAsync();
             WatchlistUpdated?.Invoke(this, EventArgs.Empty);
         }
 
         public async Task RemoveAsync(string id)
         {
-            var item = _watchlistCache.FirstOrDefault(x => x.Id == id);
-            if (item != null)
+            if (_watchlistCache.Remove(id))
             {
-                _watchlistCache.Remove(item);
                 await SaveWatchlistAsync();
                 WatchlistUpdated?.Invoke(this, EventArgs.Empty);
             }
         }
 
-        public Task<List<MediaItem>> GetWatchlistAsync()
+        public Task<HashSet<string>> GetWatchlistIdsAsync()
         {
-            return Task.FromResult(_watchlistCache.ToList());
+            return Task.FromResult(new HashSet<string>(_watchlistCache));
         }
 
         public bool IsOnWatchlist(string id)
         {
-            return _watchlistCache.Any(x => x.Id == id);
+            return _watchlistCache.Contains(id);
         }
     }
 }

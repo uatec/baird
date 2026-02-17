@@ -39,16 +39,18 @@ namespace Baird.Services
 
         private readonly IHistoryService _historyService;
         private readonly IWatchlistService _watchlistService;
+        private readonly IMediaItemCache _cache;
 
         public event EventHandler? HistoryUpdated;
         public event EventHandler? WatchlistUpdated;
         public event EventHandler<MediaItem>? ItemAddedToWatchlist;
 
-        public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService, IWatchlistService watchlistService)
+        public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService, IWatchlistService watchlistService, IMediaItemCache cache)
         {
             _providers = providers;
             _historyService = historyService;
             _watchlistService = watchlistService;
+            _cache = cache;
 
             _watchlistService.WatchlistUpdated += (s, e) => WatchlistUpdated?.Invoke(this, EventArgs.Empty);
         }
@@ -159,36 +161,34 @@ namespace Baird.Services
 
         public async Task<IEnumerable<MediaItem>> GetWatchlistItemsAsync()
         {
-            var savedItems = await _watchlistService.GetWatchlistAsync();
+            var watchlistIds = await _watchlistService.GetWatchlistIdsAsync();
 
-            var tasks = savedItems.Select(async item =>
+            var tasks = watchlistIds.Select(async id =>
             {
-                // Try to get fresh item from provider/cache
-                var freshItem = await GetItemAsync(item.Id);
-                if (freshItem != null)
+                // Try to get item from provider/cache
+                var item = await GetItemAsync(id);
+                if (item != null)
                 {
-                    return freshItem;
+                    return item;
                 }
 
-                // If provider fails, return the saved item but attach history and watchlist status manually
-                item.History = _historyService.GetProgress(item.Id);
-                item.IsOnWatchlist = true;
-                return item;
+                // If provider fails, return null and filter out
+                return null;
             });
 
             var results = await Task.WhenAll(tasks);
-            return results;
+            return results.Where(item => item != null)!;
         }
 
         public async Task AddToWatchlistAsync(MediaItem item)
         {
-            await _watchlistService.AddAsync(item);
+            await _watchlistService.AddAsync(item.Id);
 
             // Update the item passed in
             item.IsOnWatchlist = true;
 
             // Also update cache if different instance exists
-            if (_itemCache.TryGetValue(item.Id, out var cachedItem) && !ReferenceEquals(cachedItem, item))
+            if (_cache.TryGet(item.Id, out var cachedItem) && !ReferenceEquals(cachedItem, item))
             {
                 cachedItem.IsOnWatchlist = true;
             }
@@ -199,7 +199,7 @@ namespace Baird.Services
         public async Task RemoveFromWatchlistAsync(string id)
         {
             await _watchlistService.RemoveAsync(id);
-            if (_itemCache.TryGetValue(id, out var item))
+            if (_cache.TryGet(id, out var item))
             {
                 item.IsOnWatchlist = false;
             }
@@ -210,12 +210,10 @@ namespace Baird.Services
             return _watchlistService.IsOnWatchlist(id);
         }
 
-        private readonly Dictionary<string, MediaItem> _itemCache = new();
-
         public async Task<MediaItem?> GetItemAsync(string id)
         {
             // 1. Check cache
-            if (_itemCache.TryGetValue(id, out var cachedItem))
+            if (_cache.TryGet(id, out var cachedItem))
             {
                 // Ensure history is up to date even if item is cached
                 cachedItem.History = _historyService.GetProgress(id);
@@ -229,11 +227,9 @@ namespace Baird.Services
                 var data = await provider.GetItemAsync(id);
                 if (data != null)
                 {
-                    var item = new MediaItem(data);
+                    var item = _cache.GetOrCreate(id, () => new MediaItem(data));
                     item.History = _historyService.GetProgress(id);
                     item.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
-                    // 3. Cache the item
-                    _itemCache[id] = item;
                     return item;
                 }
             }
@@ -255,11 +251,6 @@ namespace Baird.Services
         {
             item.History = _historyService.GetProgress(item.Id);
             item.IsOnWatchlist = _watchlistService.IsOnWatchlist(item.Id);
-
-            if (!string.IsNullOrEmpty(item.Id) && !_itemCache.ContainsKey(item.Id))
-            {
-                _itemCache[item.Id] = item;
-            }
         }
 
         // Returns a list where items are replaced by cached versions if available
@@ -274,22 +265,14 @@ namespace Baird.Services
                     continue;
                 }
 
-                if (_itemCache.TryGetValue(item.Id, out var cachedItem))
-                {
-                    // Update cached item with latest properties?
-                    // For now, assume cached item is source of truth for state, 
-                    // but maybe we should update its mutable properties from the fresh fetch?
-                    // Let's at least make sure history/watchlist are current.
-                    cachedItem.History = _historyService.GetProgress(item.Id);
-                    cachedItem.IsOnWatchlist = _watchlistService.IsOnWatchlist(item.Id);
-                    unifiedList.Add(cachedItem);
-                }
-                else
-                {
-                    HydrateSingle(item);
-                    unifiedList.Add(item);
-                    _itemCache[item.Id] = item;
-                }
+                // Use cache to get or create the canonical instance
+                var cachedItem = _cache.GetOrCreate(item.Id, () => item);
+                
+                // Update state on the cached instance
+                cachedItem.History = _historyService.GetProgress(item.Id);
+                cachedItem.IsOnWatchlist = _watchlistService.IsOnWatchlist(item.Id);
+                
+                unifiedList.Add(cachedItem);
             }
             return unifiedList;
         }

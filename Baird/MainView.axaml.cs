@@ -45,11 +45,12 @@ namespace Baird
             _historyService = new JsonHistoryService();
             var watchlistService = new JsonWatchlistService();
             var searchHistoryService = new SearchHistoryService();
+            var mediaItemCache = new MediaItemCache();
 
             _screensaverService = new ScreensaverService();
 
             // Create DataService encapsulating providers and history
-            _dataService = new DataService(_providers, _historyService, watchlistService);
+            _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache);
 
             _viewModel = new MainViewModel(_dataService, searchHistoryService, _screensaverService);
 
