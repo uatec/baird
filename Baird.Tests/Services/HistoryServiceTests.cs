@@ -1,6 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using Baird.Models;
 using Baird.Services;
+using Baird.ViewModels;
 using Xunit;
 
 namespace Baird.Tests.Services

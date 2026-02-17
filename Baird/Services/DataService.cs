@@ -26,6 +26,7 @@ namespace Baird.Services
 
         IEnumerable<IMediaProvider> Providers { get; }
         void AttachHistory(IEnumerable<MediaItemViewModel> items);
+        IEnumerable<MediaItemViewModel> UnifyAndHydrate(IEnumerable<MediaItemViewModel> items);
 
         Task<IEnumerable<MediaItemViewModel>> GetWatchlistItemsAsync();
         Task AddToWatchlistAsync(MediaItemViewModel item);

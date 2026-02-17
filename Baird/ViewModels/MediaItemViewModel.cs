@@ -39,7 +39,14 @@ namespace Baird.ViewModels
         public HistoryItem? History
         {
             get => _history;
-            set => this.RaiseAndSetIfChanged(ref _history, value);
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _history, value);
+                // Raise notifications for computed properties
+                this.RaisePropertyChanged(nameof(IsFinished));
+                this.RaisePropertyChanged(nameof(LastPosition));
+                this.RaisePropertyChanged(nameof(Progress));
+            }
         }
 
         public bool IsOnWatchlist

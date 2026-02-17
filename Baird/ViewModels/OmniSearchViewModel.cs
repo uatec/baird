@@ -323,15 +323,15 @@ namespace Baird.ViewModels
 
                         var items = results.Select(data => new MediaItemViewModel(data)).ToList();
 
-                        // Attach history (Hydrate)
-                        _dataService.AttachHistory(items);
+                        // Use UnifyAndHydrate to get cached instances with history/watchlist attached
+                        var unifiedItems = _dataService.UnifyAndHydrate(items).ToList();
 
                         // Update UI atomically
                         Dispatcher.UIThread.Post(() =>
                         {
-                            if (items.Any())
+                            if (unifiedItems.Any())
                             {
-                                SearchResults.AddRange(items);
+                                SearchResults.AddRange(unifiedItems);
                             }
                             if (status != null) status.SetSuccess();
                         });

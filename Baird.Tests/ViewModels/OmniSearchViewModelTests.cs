@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Baird.Models;
 using Baird.Services;
 using Baird.Tests.Mocks;
 using Baird.ViewModels;

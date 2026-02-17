@@ -10,7 +10,7 @@
              mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="240"
              x:Class="Baird.Controls.MediaTileControl"
              x:CompileBindings="True"
-             x:DataType="services:MediaItem">
+             x:DataType="vm:MediaItemViewModel">
              
     <UserControl.Resources>
         <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
