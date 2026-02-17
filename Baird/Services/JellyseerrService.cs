@@ -151,7 +151,7 @@ namespace Baird.Services
                     requestBody["seasons"] = "all";
                 }
 
-                var json = JsonSerializer.Serialize(requestBody);
+                var json = JsonSerializer.Serialize(requestBody, BairdJsonContext.Default.DictionaryStringObject);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 var response = await _httpClient.PostAsync("api/v1/request", content, cancellationToken);
