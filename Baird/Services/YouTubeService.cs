@@ -5,13 +5,14 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using Baird.Models;
 
 namespace Baird.Services
 {
     public class YouTubeService : IMediaProvider
     {
         public string Name => "YouTube";
-        public Task<MediaItem?> GetItemAsync(string id)
+        public Task<MediaItemData?> GetItemAsync(string id)
         {
             // For now, return null as we don't have a direct lookup without search
             // Or we could run yt-dlp on the ID?
@@ -24,15 +25,15 @@ namespace Baird.Services
             });
         }
 
-        public Task<IEnumerable<MediaItem>> GetListingAsync()
+        public Task<IEnumerable<MediaItemData>> GetListingAsync()
         {
             // Browsing YouTube without a query is not supported in this simple implementation
-            return Task.FromResult(Enumerable.Empty<MediaItem>());
+            return Task.FromResult(Enumerable.Empty<MediaItemData>());
         }
 
-        public async Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItem>();
+            if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItemData>();
 
             try
             {
@@ -50,9 +51,9 @@ namespace Baird.Services
                 };
 
                 using var process = Process.Start(startInfo);
-                if (process == null) return Enumerable.Empty<MediaItem>();
+                if (process == null) return Enumerable.Empty<MediaItemData>();
 
-                var items = new List<MediaItem>();
+                var items = new List<MediaItemData>();
                 string? line;
                 while ((line = await process.StandardOutput.ReadLineAsync()) != null)
                 {
@@ -98,7 +99,7 @@ namespace Baird.Services
                             }
                         }
 
-                        items.Add(new MediaItem
+                        items.Add(new MediaItemData
                         {
                             Id = id,
                             Name = title,
@@ -124,13 +125,13 @@ namespace Baird.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"[YouTubeService] YouTube search failed: {ex.Message}");
-                return Enumerable.Empty<MediaItem>();
+                return Enumerable.Empty<MediaItemData>();
             }
         }
 
-        public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
         {
-            return Task.FromResult(Enumerable.Empty<MediaItem>());
+            return Task.FromResult(Enumerable.Empty<MediaItemData>());
         }
 
         private string GetStreamUrlInternal(string itemId)

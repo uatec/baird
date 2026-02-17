@@ -57,7 +57,7 @@ namespace Baird.Services
         {
             var tasks = _providers.Select(p => p.GetListingAsync());
             var results = await Task.WhenAll(tasks);
-            var items = results.SelectMany(x => x).ToList();
+            var items = results.SelectMany(x => x).Select(data => new MediaItem(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
@@ -65,7 +65,7 @@ namespace Baird.Services
         {
             var tasks = _providers.Select(p => p.SearchAsync(query, cancellationToken));
             var results = await Task.WhenAll(tasks);
-            var items = results.SelectMany(x => x).ToList();
+            var items = results.SelectMany(x => x).Select(data => new MediaItem(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
@@ -138,7 +138,7 @@ namespace Baird.Services
         {
             var tasks = _providers.Select(p => p.GetChildrenAsync(id));
             var results = await Task.WhenAll(tasks);
-            var items = results.SelectMany(x => x).ToList();
+            var items = results.SelectMany(x => x).Select(data => new MediaItem(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
@@ -226,9 +226,10 @@ namespace Baird.Services
             // 2. Iterate providers to find the item.
             foreach (var provider in _providers)
             {
-                var item = await provider.GetItemAsync(id);
-                if (item != null)
+                var data = await provider.GetItemAsync(id);
+                if (data != null)
                 {
+                    var item = new MediaItem(data);
                     item.History = _historyService.GetProgress(id);
                     item.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
                     // 3. Cache the item

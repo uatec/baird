@@ -1,4 +1,5 @@
 using System;
+using Baird.Models;
 
 namespace Baird.Services
 {
@@ -19,6 +20,27 @@ namespace Baird.Services
         {
             PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
         }
+
+        // Constructor for creating MediaItem from MediaItemData (temporary adapter)
+        [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+        public MediaItem(MediaItemData data)
+        {
+            Id = data.Id;
+            Name = data.Name;
+            Details = data.Details;
+            ImageUrl = data.ImageUrl;
+            IsLive = data.IsLive;
+            StreamUrl = data.StreamUrl;
+            Source = data.Source;
+            ChannelNumber = data.ChannelNumber;
+            Type = data.Type;
+            Synopsis = data.Synopsis;
+            Subtitle = data.Subtitle;
+            Duration = data.Duration;
+        }
+
+        // Parameterless constructor for object initializers
+        public MediaItem() { }
 
         public required string Id { get; set; }
         public required string Name { get; set; }

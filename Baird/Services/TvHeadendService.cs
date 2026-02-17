@@ -6,6 +6,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using Baird.Models;
 
 namespace Baird.Services
 {
@@ -18,7 +19,7 @@ namespace Baird.Services
         private readonly string _password;
 
         // Cache fields
-        private IEnumerable<MediaItem>? _cachedListing;
+        private IEnumerable<MediaItemData>? _cachedListing;
         private DateTime _cacheExpiry = DateTime.MinValue;
         private readonly SemaphoreSlim _cacheLock = new SemaphoreSlim(1, 1);
         private readonly TimeSpan _cacheTimeout = TimeSpan.FromSeconds(60);
@@ -47,7 +48,7 @@ namespace Baird.Services
         }
 
 
-        public async Task<MediaItem?> GetItemAsync(string id)
+        public async Task<MediaItemData?> GetItemAsync(string id)
         {
             // TVHeadend doesn't have a direct lookup API easily exposed without grid
             // But we can fetch the grid and filter?
@@ -57,7 +58,7 @@ namespace Baird.Services
             return all.FirstOrDefault(x => x.Id == id);
         }
 
-        public async Task<IEnumerable<MediaItem>> GetListingAsync()
+        public async Task<IEnumerable<MediaItemData>> GetListingAsync()
         {
             // Check if cache is valid
             if (_cachedListing != null && DateTime.UtcNow < _cacheExpiry)
@@ -98,7 +99,7 @@ namespace Baird.Services
                     {
                         Console.WriteLine($"[TvHeadendService] Fetched {grid.Entries.Count()} channels");
                         _cachedListing = grid.Entries
-                            .Select(c => new MediaItem
+                            .Select(c => new MediaItemData
                             {
                                 Id = c.Uuid,
                                 Name = c.Name,
@@ -120,7 +121,7 @@ namespace Baird.Services
                         return _cachedListing;
                     }
 
-                    _cachedListing = Enumerable.Empty<MediaItem>();
+                    _cachedListing = Enumerable.Empty<MediaItemData>();
                     _cacheExpiry = DateTime.UtcNow.Add(_cacheTimeout);
                     return _cachedListing;
                 }
@@ -128,7 +129,7 @@ namespace Baird.Services
                 {
                     Console.WriteLine($"[TvHeadendService] Failed to fetch TV channels: {ex.Message}");
                     Console.WriteLine($"[TvHeadendService] StackTrace: {ex.StackTrace}");
-                    return Enumerable.Empty<MediaItem>();
+                    return Enumerable.Empty<MediaItemData>();
                 }
             }
             finally
@@ -137,7 +138,7 @@ namespace Baird.Services
             }
         }
 
-        public async Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
             var all = await GetListingAsync();
             if (string.IsNullOrWhiteSpace(query)) return all;
@@ -158,9 +159,9 @@ namespace Baird.Services
             return channelMatches.Concat(nameMatches);
         }
 
-        public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
         {
-            return Task.FromResult(Enumerable.Empty<MediaItem>());
+            return Task.FromResult(Enumerable.Empty<MediaItemData>());
         }
 
         private string GetChannelImageUrl(TvHeadendEntry channel)

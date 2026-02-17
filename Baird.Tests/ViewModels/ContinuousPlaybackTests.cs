@@ -14,28 +14,28 @@ namespace Baird.Tests.ViewModels
         private class TestMediaProvider : IMediaProvider
         {
             public string Name => "Test Provider";
-            private readonly Dictionary<string, List<MediaItem>> _childrenMap = new();
+            private readonly Dictionary<string, List<MediaItemData>> _childrenMap = new();
 
-            public void SetChildren(string parentId, List<MediaItem> children)
+            public void SetChildren(string parentId, List<MediaItemData> children)
             {
                 _childrenMap[parentId] = children;
             }
 
             public Task InitializeAsync() => Task.CompletedTask;
-            public Task<IEnumerable<MediaItem>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItem>());
-            public Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
-                => Task.FromResult(Enumerable.Empty<MediaItem>());
+            public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItemData>());
+            public Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
+                => Task.FromResult(Enumerable.Empty<MediaItemData>());
 
-            public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
             {
                 if (_childrenMap.TryGetValue(id, out var children))
                 {
-                    return Task.FromResult((IEnumerable<MediaItem>)children);
+                    return Task.FromResult((IEnumerable<MediaItemData>)children);
                 }
-                return Task.FromResult(Enumerable.Empty<MediaItem>());
+                return Task.FromResult(Enumerable.Empty<MediaItemData>());
             }
 
-            public Task<MediaItem?> GetItemAsync(string id) => Task.FromResult<MediaItem?>(null);
+            public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult<MediaItemData?>(null);
         }
 
         private class TestHistoryService : IHistoryService
@@ -80,9 +80,9 @@ namespace Baird.Tests.ViewModels
             public bool IsOnWatchlist(string id) => false;
         }
 
-        private MediaItem CreateEpisode(string id, string name, string subtitle = "")
+        private MediaItemData CreateEpisode(string id, string name, string subtitle = "")
         {
-            return new MediaItem
+            return new MediaItemData
             {
                 Id = id,
                 Name = name,
@@ -97,9 +97,9 @@ namespace Baird.Tests.ViewModels
             };
         }
 
-        private MediaItem CreateSeason(string id, string name)
+        private MediaItemData CreateSeason(string id, string name)
         {
-            return new MediaItem
+            return new MediaItemData
             {
                 Id = id,
                 Name = name,
@@ -123,7 +123,7 @@ namespace Baird.Tests.ViewModels
             var searchHistoryService = new TestSearchHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
-            var season1Episodes = new List<MediaItem>
+            var season1Episodes = new List<MediaItemData>
             {
                 CreateEpisode("show1|1|ep1", "Episode 1", "Series 1: Episode 1"),
                 CreateEpisode("show1|1|ep2", "Episode 2", "Series 1: Episode 2"),
@@ -134,19 +134,20 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate opening a season and playing first episode
-            var season = CreateSeason("show1|1", "Season 1");
+            var seasonData = CreateSeason("show1|1", "Season 1");
+            var season = new MediaItem(seasonData);
             var programmeVm = new ProgrammeDetailViewModel(dataService, season);
 
             // Load children
             await Task.Delay(100); // Let LoadChildren complete
 
             // Simulate playing first episode from ProgrammeDetailViewModel
-            viewModel.PlayItem(season1Episodes[0]);
+            viewModel.PlayItem(new MediaItem(season1Episodes[0]));
 
             // Set up the episode list context (this is what OpenProgramme.PlayRequested does)
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, season1Episodes);
+            currentEpisodeListField?.SetValue(viewModel, season1Episodes.Select(d => new MediaItem(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -175,12 +176,12 @@ namespace Baird.Tests.ViewModels
             var searchHistoryService = new TestSearchHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
-            var season1Episodes = new List<MediaItem>
+            var season1Episodes = new List<MediaItemData>
             {
                 CreateEpisode("show1|1|ep1", "S1 Episode 1", "Series 1: Episode 1"),
                 CreateEpisode("show1|1|ep2", "S1 Episode 2", "Series 1: Episode 2")
             };
-            var season2Episodes = new List<MediaItem>
+            var season2Episodes = new List<MediaItemData>
             {
                 CreateEpisode("show1|2|ep1", "S2 Episode 1", "Series 2: Episode 1"),
                 CreateEpisode("show1|2|ep2", "S2 Episode 2", "Series 2: Episode 2")
@@ -192,11 +193,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing last episode of season 1
-            viewModel.PlayItem(season1Episodes[1]);
+            viewModel.PlayItem(new MediaItem(season1Episodes[1]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, season1Episodes);
+            currentEpisodeListField?.SetValue(viewModel, season1Episodes.Select(d => new MediaItem(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -229,7 +230,7 @@ namespace Baird.Tests.ViewModels
             var searchHistoryService = new TestSearchHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
-            var season3Episodes = new List<MediaItem>
+            var season3Episodes = new List<MediaItemData>
             {
                 CreateEpisode("show1|3|ep1", "S3 Episode 1", "Series 3: Episode 1"),
                 CreateEpisode("show1|3|ep2", "S3 Episode 2", "Series 3: Episode 2")
@@ -241,11 +242,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing last episode of season 3
-            viewModel.PlayItem(season3Episodes[1]);
+            viewModel.PlayItem(new MediaItem(season3Episodes[1]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, season3Episodes);
+            currentEpisodeListField?.SetValue(viewModel, season3Episodes.Select(d => new MediaItem(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -331,7 +332,7 @@ namespace Baird.Tests.ViewModels
             var searchHistoryService = new TestSearchHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
-            var episodes = new List<MediaItem>
+            var episodes = new List<MediaItemData>
             {
                 CreateEpisode("show1-ep1", "Episode 1", "Episode 1"),
                 CreateEpisode("show1-ep2", "Episode 2", "Episode 2"),
@@ -342,11 +343,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing first episode
-            viewModel.PlayItem(episodes[0]);
+            viewModel.PlayItem(new MediaItem(episodes[0]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, episodes);
+            currentEpisodeListField?.SetValue(viewModel, episodes.Select(d => new MediaItem(d)).ToList());
 
             // Set season ID without pipe (flat structure)
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
@@ -376,7 +377,7 @@ namespace Baird.Tests.ViewModels
             var searchHistoryService = new TestSearchHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
-            var episodes = new List<MediaItem>
+            var episodes = new List<MediaItemData>
             {
                 CreateEpisode("show1-ep1", "Episode 1", "Episode 1"),
                 CreateEpisode("show1-ep2", "Episode 2", "Episode 2")
@@ -386,11 +387,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing last episode
-            viewModel.PlayItem(episodes[1]);
+            viewModel.PlayItem(new MediaItem(episodes[1]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, episodes);
+            currentEpisodeListField?.SetValue(viewModel, episodes.Select(d => new MediaItem(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -422,9 +423,9 @@ namespace Baird.Tests.ViewModels
             var searchHistoryService = new TestSearchHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
-            var season1Tracks = new List<MediaItem>
+            var season1Tracks = new List<MediaItemData>
             {
-                new MediaItem
+                new MediaItemData
                 {
                     Id = "album1|1|track1",
                     Name = "Track 1",
@@ -437,7 +438,7 @@ namespace Baird.Tests.ViewModels
                     Synopsis = "",
                     Subtitle = "Disc 1: Track 1"
                 },
-                new MediaItem
+                new MediaItemData
                 {
                     Id = "album1|1|track2",
                     Name = "Track 2",
@@ -452,9 +453,9 @@ namespace Baird.Tests.ViewModels
                 }
             };
 
-            var season2Tracks = new List<MediaItem>
+            var season2Tracks = new List<MediaItemData>
             {
-                new MediaItem
+                new MediaItemData
                 {
                     Id = "album1|2|track1",
                     Name = "Track 1",
@@ -475,11 +476,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing last track of disc 1
-            viewModel.PlayItem(season1Tracks[1]);
+            viewModel.PlayItem(new MediaItem(season1Tracks[1]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, season1Tracks);
+            currentEpisodeListField?.SetValue(viewModel, season1Tracks.Select(d => new MediaItem(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);

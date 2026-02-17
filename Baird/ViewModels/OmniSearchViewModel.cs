@@ -321,7 +321,7 @@ namespace Baird.ViewModels
                         var results = await provider.SearchAsync(query, token);
                         if (token.IsCancellationRequested) return;
 
-                        var items = results.ToList();
+                        var items = results.Select(data => new MediaItem(data)).ToList();
 
                         // Attach history (Hydrate)
                         _dataService.AttachHistory(items);

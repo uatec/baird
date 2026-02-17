@@ -15,16 +15,16 @@ namespace Baird.Tests.Services
         class MockMediaProvider : IMediaProvider
         {
             public string Name { get; set; } = "MockProvider";
-            public List<MediaItem> MemoryItems { get; set; } = new List<MediaItem>();
+            public List<MediaItemData> MemoryItems { get; set; } = new List<MediaItemData>();
 
-            public Task<IEnumerable<MediaItem>> GetListingAsync() => Task.FromResult<IEnumerable<MediaItem>>(MemoryItems);
+            public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult<IEnumerable<MediaItemData>>(MemoryItems);
 
-            public Task<IEnumerable<MediaItem>> SearchAsync(string query, CancellationToken cancellationToken = default)
-                => Task.FromResult<IEnumerable<MediaItem>>(MemoryItems.Where(x => x.Name.Contains(query)));
+            public Task<IEnumerable<MediaItemData>> SearchAsync(string query, CancellationToken cancellationToken = default)
+                => Task.FromResult<IEnumerable<MediaItemData>>(MemoryItems.Where(x => x.Name.Contains(query)));
 
-            public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id) => Task.FromResult(Enumerable.Empty<MediaItem>());
+            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Task.FromResult(Enumerable.Empty<MediaItemData>());
 
-            public Task<MediaItem?> GetItemAsync(string id)
+            public Task<MediaItemData?> GetItemAsync(string id)
             {
                 return Task.FromResult(MemoryItems.FirstOrDefault(x => x.Id == id));
             }
@@ -67,7 +67,7 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var provider = new MockMediaProvider();
-            var item1 = new MediaItem
+            var item1data = new MediaItemData
             {
                 Id = "item1",
                 Name = "Movie 1",
@@ -79,7 +79,8 @@ namespace Baird.Tests.Services
                 Synopsis = "Synopsis 1",
                 Subtitle = "Subtitle 1"
             };
-            var item2 = new MediaItem
+            var item1 = new MediaItem(item1data);
+            var item2data = new MediaItemData
             {
                 Id = "item2",
                 Name = "Movie 2",
@@ -91,8 +92,9 @@ namespace Baird.Tests.Services
                 Synopsis = "Synopsis 2",
                 Subtitle = "Subtitle 2"
             };
-            provider.MemoryItems.Add(item1);
-            provider.MemoryItems.Add(item2);
+            var item2 = new MediaItem(item2data);
+            provider.MemoryItems.Add(item1data);
+            provider.MemoryItems.Add(item2data);
 
             var historyService = new MockHistoryService();
             historyService.History.Add(new HistoryItem { Id = "item1", LastPosition = TimeSpan.FromMinutes(10), Duration = TimeSpan.FromMinutes(100) });
@@ -157,7 +159,7 @@ namespace Baird.Tests.Services
             var historyService = new MockHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService());
 
-            var item = new MediaItem
+            var itemData = new MediaItemData
             {
                 Id = "test1",
                 Name = "Test 1",
@@ -169,6 +171,7 @@ namespace Baird.Tests.Services
                 Synopsis = "Synopsis Test",
                 Subtitle = "Subtitle Test"
             };
+            var item = new MediaItem(itemData);
 
             var eventRaised = false;
             dataService.HistoryUpdated += (sender, args) => eventRaised = true;

@@ -74,7 +74,8 @@ namespace Baird.Controls
             if (DataContext is ViewModels.MainViewModel vm)
             {
                 vm.OmniSearch.Clear();
-                vm.PushViewModel(vm.OmniSearch);
+                // Open MainMenu focused on Search tab (index 1)
+                vm.OpenMainMenu(tabIndex: 1);
 
                 if (!string.IsNullOrEmpty(text))
                 {

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Baird.Models;
 
 namespace Baird.Services
 {
@@ -19,7 +20,7 @@ namespace Baird.Services
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         }
 
-        public Task<MediaItem?> GetItemAsync(string id)
+        public Task<MediaItemData?> GetItemAsync(string id)
         {
             // BBC iPlayer doesn't expose single item lookup easily for arbitrary IDs
             // But we can construct the URL and maybe parse it if we were scraping?
@@ -54,7 +55,7 @@ namespace Baird.Services
                         // Let's rely on Search for now?
                         // Actually, let's implement a basic mapping.
 
-                        return new MediaItem
+                        return new MediaItemData
                         {
                             Id = id,
                             Name = title!,
@@ -78,15 +79,15 @@ namespace Baird.Services
             });
         }
 
-        public Task<IEnumerable<MediaItem>> GetListingAsync()
+        public Task<IEnumerable<MediaItemData>> GetListingAsync()
         {
             // Full browsing not implemented yet
-            return Task.FromResult(Enumerable.Empty<MediaItem>());
+            return Task.FromResult(Enumerable.Empty<MediaItemData>());
         }
 
-        public async Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItem>();
+            if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItemData>();
 
             try
             {
@@ -100,16 +101,16 @@ namespace Baird.Services
                 if (!doc.RootElement.TryGetProperty("new_search", out var newSearch))
                 {
                     Console.WriteLine("[BBCiPlayer] 'new_search' property not found in JSON");
-                    return Enumerable.Empty<MediaItem>();
+                    return Enumerable.Empty<MediaItemData>();
                 }
 
                 if (!newSearch.TryGetProperty("results", out var results))
                 {
                     Console.WriteLine("[BBCiPlayer] 'results' property not found in JSON");
-                    return Enumerable.Empty<MediaItem>();
+                    return Enumerable.Empty<MediaItemData>();
                 }
 
-                var items = new List<MediaItem>();
+                var items = new List<MediaItemData>();
                 Console.WriteLine($"[BBCiPlayer] Found {results.GetArrayLength()} results");
 
                 foreach (var item in results.EnumerateArray())
@@ -178,7 +179,7 @@ namespace Baird.Services
 
                             var mediaType = (type == "brand" || type == "programme") ? MediaType.Brand : MediaType.Video;
 
-                            items.Add(new MediaItem
+                            items.Add(new MediaItemData
                             {
                                 Id = id,
                                 Name = title,
@@ -207,11 +208,11 @@ namespace Baird.Services
             {
                 Console.WriteLine($"[BBCiPlayer] Search failed: {ex.Message}");
                 if (ex.InnerException != null) Console.WriteLine($"[BBCiPlayer] Inner: {ex.InnerException.Message}");
-                return Enumerable.Empty<MediaItem>();
+                return Enumerable.Empty<MediaItemData>();
             }
         }
 
-        public async Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        public async Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
         {
             try
             {
@@ -240,7 +241,7 @@ namespace Baird.Services
                     if (!doc.RootElement.TryGetProperty("episodes", out progEpisodes))
                     {
                         Console.WriteLine("[BBCiPlayer] 'programme_episodes' or 'episodes' property not found");
-                        return Enumerable.Empty<MediaItem>();
+                        return Enumerable.Empty<MediaItemData>();
                     }
                 }
 
@@ -260,7 +261,7 @@ namespace Baird.Services
                 else
                 {
                     Console.WriteLine("[BBCiPlayer] Could not find array of episodes");
-                    return Enumerable.Empty<MediaItem>();
+                    return Enumerable.Empty<MediaItemData>();
                 }
 
                 var allEpisodes = new List<(string Id, string Title, string Subtitle, string ImageUrl, string Synopsis, string Season, TimeSpan Duration)>();
@@ -353,13 +354,13 @@ namespace Baird.Services
                 if (realSeasons.Count > 1)
                 {
                     // Return Season Folders
-                    var seasonItems = new List<MediaItem>();
+                    var seasonItems = new List<MediaItemData>();
                     foreach (var s in realSeasons)
                     {
                         // Find first episode to get an image?
                         var firstEp = allEpisodes.FirstOrDefault(x => x.Season == s);
 
-                        seasonItems.Add(new MediaItem
+                        seasonItems.Add(new MediaItemData
                         {
                             Id = $"{brandId}|{s}",
                             Name = $"Series {s}",
@@ -387,13 +388,13 @@ namespace Baird.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"[BBCiPlayer] Failed to get children for {id}: {ex.Message}");
-                return Enumerable.Empty<MediaItem>();
+                return Enumerable.Empty<MediaItemData>();
             }
         }
 
-        private MediaItem CreateEpisodeItem((string Id, string Title, string Subtitle, string ImageUrl, string Synopsis, string Season, TimeSpan Duration) x, string brandId)
+        private MediaItemData CreateEpisodeItem((string Id, string Title, string Subtitle, string ImageUrl, string Synopsis, string Season, TimeSpan Duration) x, string brandId)
         {
-            return new MediaItem
+            return new MediaItemData
             {
                 Id = x.Id,
                 Name = x.Subtitle,

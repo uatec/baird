@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
 using Jellyfin.Sdk; // Keeping for now if minimal types needed, but trying to avoid usage
+using Baird.Models;
 
 namespace Baird.Services
 {
@@ -121,10 +122,10 @@ namespace Baird.Services
             _httpClient.DefaultRequestHeaders.Add("X-Emby-Token", _accessToken);
         }
 
-        public async Task<IEnumerable<MediaItem>> GetListingAsync()
+        public async Task<IEnumerable<MediaItemData>> GetListingAsync()
         {
             await EnsureAuthenticatedAsync();
-            if (!IsAuthenticated) return Enumerable.Empty<MediaItem>();
+            if (!IsAuthenticated) return Enumerable.Empty<MediaItemData>();
 
             try
             {
@@ -144,17 +145,17 @@ namespace Baird.Services
                 {
                     return result.Items.Select(MapJellyfinItem);
                 }
-                return Enumerable.Empty<MediaItem>();
+                return Enumerable.Empty<MediaItemData>();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[JellyfinService] Failed to fetch movies: {ex.Message}");
                 Console.WriteLine($"[JellyfinService] StackTrace: {ex.StackTrace}");
-                return Enumerable.Empty<MediaItem>();
+                return Enumerable.Empty<MediaItemData>();
             }
         }
 
-        public async Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
             await EnsureAuthenticatedAsync();
             if (!IsAuthenticated || string.IsNullOrWhiteSpace(query))
@@ -177,16 +178,16 @@ namespace Baird.Services
                 {
                     return result.Items.Select(MapJellyfinItem);
                 }
-                return Enumerable.Empty<MediaItem>();
+                return Enumerable.Empty<MediaItemData>();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[JellyfinService] Jellyfin search failed: {ex.Message}");
-                return Enumerable.Empty<MediaItem>();
+                return Enumerable.Empty<MediaItemData>();
             }
         }
 
-        public async Task<MediaItem?> GetItemAsync(string id)
+        public async Task<MediaItemData?> GetItemAsync(string id)
         {
             await EnsureAuthenticatedAsync();
             if (!IsAuthenticated) return null;
@@ -213,10 +214,10 @@ namespace Baird.Services
             }
         }
 
-        public async Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        public async Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
         {
             await EnsureAuthenticatedAsync();
-            if (!IsAuthenticated) return Enumerable.Empty<MediaItem>();
+            if (!IsAuthenticated) return Enumerable.Empty<MediaItemData>();
 
             try
             {
@@ -244,7 +245,7 @@ namespace Baird.Services
 
                 var result = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult);
 
-                if (result?.Items == null) return Enumerable.Empty<MediaItem>();
+                if (result?.Items == null) return Enumerable.Empty<MediaItemData>();
 
                 var items = result.Items;
 
@@ -257,7 +258,7 @@ namespace Baird.Services
                            .Where(i => (i.ParentIndexNumber ?? 1) == seasonNum)
                            .Select(MapJellyfinItem);
                     }
-                    return Enumerable.Empty<MediaItem>();
+                    return Enumerable.Empty<MediaItemData>();
                 }
 
                 // 2. If we found actual Seasons/Folders, just return them (Native Structure)
@@ -277,7 +278,7 @@ namespace Baird.Services
                 if (seasons.Count > 1)
                 {
                     // Create Virtual Season Folders
-                    return seasons.Select(s => new MediaItem
+                    return seasons.Select(s => new MediaItemData
                     {
                         Id = $"{itemId}|{s}",
                         Name = $"Season {s}",
@@ -298,11 +299,11 @@ namespace Baird.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"[JellyfinService] Jellyfin GetChildren failed: {ex.Message}");
-                return Enumerable.Empty<MediaItem>();
+                return Enumerable.Empty<MediaItemData>();
             }
         }
 
-        private MediaItem MapJellyfinItem(MovieItem m)
+        private MediaItemData MapJellyfinItem(MovieItem m)
         {
             // Treat Series, Season, and generic Folder as "Brand" (navigable container)
             var isContainer = m.Type != null && (
@@ -322,7 +323,7 @@ namespace Baird.Services
                 ? TimeSpan.FromTicks(m.RunTimeTicks.Value)
                 : TimeSpan.Zero;
 
-            return new MediaItem
+            return new MediaItemData
             {
                 Id = m.Id,
                 Name = m.Name,

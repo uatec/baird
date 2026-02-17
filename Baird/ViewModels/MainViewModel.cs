@@ -568,9 +568,13 @@ namespace Baird.ViewModels
             }
         }
 
-        public void OpenMainMenu()
+        public void OpenMainMenu(int? tabIndex = null)
         {
             // History is now preloaded and maintained in memory, no need to refresh
+            if (tabIndex.HasValue && tabIndex.Value >= 0 && tabIndex.Value < MainMenu.Tabs.Count)
+            {
+                MainMenu.SelectedIndex = tabIndex.Value;
+            }
             PushViewModel(this.MainMenu);
         }
     }

@@ -1,14 +1,15 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Baird.Models;
 
 namespace Baird.Services
 {
     public interface IMediaProvider
     {
         string Name { get; }
-        Task<IEnumerable<MediaItem>> GetListingAsync();
-        Task<IEnumerable<MediaItem>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default);
-        Task<IEnumerable<MediaItem>> GetChildrenAsync(string id);
-        Task<MediaItem?> GetItemAsync(string id);
+        Task<IEnumerable<MediaItemData>> GetListingAsync();
+        Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default);
+        Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id);
+        Task<MediaItemData?> GetItemAsync(string id);
     }
 }

@@ -15,20 +15,20 @@ namespace Baird.Tests.Services
         {
             public string Name { get; set; } = "Mock";
             public int CallCount { get; private set; } = 0;
-            public MediaItem? ItemToReturn { get; set; }
+            public MediaItemData? ItemToReturn { get; set; }
 
-            public Task<IEnumerable<MediaItem>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItem>());
-            public Task<IEnumerable<MediaItem>> SearchAsync(string query, CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<MediaItem>());
-            public Task<IEnumerable<MediaItem>> GetChildrenAsync(string id) => Task.FromResult(Enumerable.Empty<MediaItem>());
+            public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItemData>());
+            public Task<IEnumerable<MediaItemData>> SearchAsync(string query, CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<MediaItemData>());
+            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Task.FromResult(Enumerable.Empty<MediaItemData>());
 
-            public Task<MediaItem?> GetItemAsync(string id)
+            public Task<MediaItemData?> GetItemAsync(string id)
             {
                 CallCount++;
                 if (ItemToReturn != null && ItemToReturn.Id == id)
                 {
-                    return Task.FromResult<MediaItem?>(ItemToReturn);
+                    return Task.FromResult<MediaItemData?>(ItemToReturn);
                 }
-                return Task.FromResult<MediaItem?>(null);
+                return Task.FromResult<MediaItemData?>(null);
             }
         }
 
@@ -53,7 +53,7 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var provider = new MockMediaProvider();
-            var item = new MediaItem
+            var itemData = new MediaItemData
             {
                 Id = "test1",
                 Name = "Cached Item",
@@ -65,7 +65,7 @@ namespace Baird.Tests.Services
                 Synopsis = "S",
                 Subtitle = "Sub"
             };
-            provider.ItemToReturn = item;
+            provider.ItemToReturn = itemData;
 
             var dataService = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService());
 
@@ -78,7 +78,7 @@ namespace Baird.Tests.Services
 
             // Assert
             Assert.NotNull(result1);
-            Assert.Same(item, result1); // Should return exact instance
+            Assert.Equal(itemData.Id, result1.Id);
             Assert.Same(result1, result2); // Second call should return same instance
 
             Assert.Equal(1, provider.CallCount); // Provider should only be called once
@@ -89,7 +89,7 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var provider = new MockMediaProvider();
-            var item = new MediaItem
+            var itemData = new MediaItemData
             {
                 Id = "test1",
                 Name = "Cached Item",
@@ -101,7 +101,7 @@ namespace Baird.Tests.Services
                 Synopsis = "S",
                 Subtitle = "Sub"
             };
-            provider.ItemToReturn = item;
+            provider.ItemToReturn = itemData;
             var dataService = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService());
 
             // Act
