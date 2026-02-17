@@ -180,7 +180,7 @@ namespace Baird.ViewModels
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 LogEntries.Insert(0, logEntry); // Add to beginning so newest is on top
-                
+
                 // Keep only last 50 entries to avoid memory issues
                 while (LogEntries.Count > 50)
                 {

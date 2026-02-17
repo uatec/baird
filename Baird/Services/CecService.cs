@@ -230,7 +230,7 @@ namespace Baird.Services
             {
                 var errorMsg = $"'{CecCtlCommand}' not found. Ensure v4l-utils is installed.";
                 Console.WriteLine($"[CecService] {errorMsg}");
-                
+
                 CommandLogged?.Invoke(this, new CecCommandLoggedEventArgs
                 {
                     Command = fullCommand,
@@ -238,13 +238,13 @@ namespace Baird.Services
                     Success = false,
                     Timestamp = DateTime.Now
                 });
-                
+
                 return string.Empty;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[CecService] Execution error: {ex.Message}");
-                
+
                 CommandLogged?.Invoke(this, new CecCommandLoggedEventArgs
                 {
                     Command = fullCommand,
@@ -252,7 +252,7 @@ namespace Baird.Services
                     Success = false,
                     Timestamp = DateTime.Now
                 });
-                
+
                 return string.Empty;
             }
         }
