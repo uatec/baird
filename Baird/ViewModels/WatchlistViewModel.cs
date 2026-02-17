@@ -12,20 +12,20 @@ namespace Baird.ViewModels
     public class WatchlistViewModel : ReactiveObject
     {
         private readonly IDataService _dataService;
-        public ObservableCollection<MediaItem> WatchlistItems { get; } = new();
+        public ObservableCollection<MediaItemViewModel> WatchlistItems { get; } = new();
 
-        public event EventHandler<MediaItem>? PlayRequested;
+        public event EventHandler<MediaItemViewModel>? PlayRequested;
         public event EventHandler? BackRequested;
 
-        public ReactiveCommand<MediaItem, Unit> PlayCommand { get; }
+        public ReactiveCommand<MediaItemViewModel, Unit> PlayCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
-        public ReactiveCommand<MediaItem, Unit> RemoveCommand { get; }
+        public ReactiveCommand<MediaItemViewModel, Unit> RemoveCommand { get; }
 
         public WatchlistViewModel(IDataService dataService)
         {
             _dataService = dataService;
 
-            PlayCommand = ReactiveCommand.Create<MediaItem>(item =>
+            PlayCommand = ReactiveCommand.Create<MediaItemViewModel>(item =>
             {
                 PlayRequested?.Invoke(this, item);
             });
@@ -35,7 +35,7 @@ namespace Baird.ViewModels
                 BackRequested?.Invoke(this, EventArgs.Empty);
             });
 
-            RemoveCommand = ReactiveCommand.CreateFromTask<MediaItem>(async item =>
+            RemoveCommand = ReactiveCommand.CreateFromTask<MediaItemViewModel>(async item =>
             {
                 await _dataService.RemoveFromWatchlistAsync(item.Id);
                 // The list will update via event or RefreshAsync

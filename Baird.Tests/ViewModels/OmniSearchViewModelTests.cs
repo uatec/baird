@@ -18,17 +18,17 @@ namespace Baird.Tests.ViewModels
             // Provider 1: "VOD 1" (Not Live), "BBC One" (Live, Ch 1), "Channel 4" (Live, Ch 104)
             // Provider 2: "RTE One" (Live, Ch 1), "Video 1" (Not Live)
 
-            var provider1Items = new List<MediaItem>
+            var provider1Items = new List<MediaItemViewModel>
             {
-                new MediaItem { Id = "1", Name = "VOD 1", Details = "", ImageUrl = "", IsLive = false, Source = "P1", Type = MediaType.Video, Synopsis = "", Subtitle = "" },
-                new MediaItem { Id = "2", Name = "BBC One", Details = "", ImageUrl = "", ChannelNumber = "1", IsLive = true, Source = "P1", Type = MediaType.Channel, Synopsis = "", Subtitle = "" },
-                new MediaItem { Id = "3", Name = "Channel 4", Details = "", ImageUrl = "", ChannelNumber = "104", IsLive = true, Source = "P1", Type = MediaType.Channel, Synopsis = "", Subtitle = "" }
+                new MediaItemViewModel(new MediaItemData { Id = "1", Name = "VOD 1", Details = "", ImageUrl = "", IsLive = false, Source = "P1", Type = MediaType.Video, Synopsis = "", Subtitle = "" }),
+                new MediaItemViewModel(new MediaItemData { Id = "2", Name = "BBC One", Details = "", ImageUrl = "", ChannelNumber = "1", IsLive = true, Source = "P1", Type = MediaType.Channel, Synopsis = "", Subtitle = "" }),
+                new MediaItemViewModel(new MediaItemData { Id = "3", Name = "Channel 4", Details = "", ImageUrl = "", ChannelNumber = "104", IsLive = true, Source = "P1", Type = MediaType.Channel, Synopsis = "", Subtitle = "" })
             };
 
-            var provider2Items = new List<MediaItem>
+            var provider2Items = new List<MediaItemViewModel>
             {
-                new MediaItem { Id = "4", Name = "RTE One", Details = "", ImageUrl = "", ChannelNumber = "1", IsLive = true, Source = "P2", Type = MediaType.Channel, Synopsis = "", Subtitle = "" },
-                new MediaItem { Id = "5", Name = "Video 1", Details = "", ImageUrl = "", IsLive = false, Source = "P2", Type = MediaType.Video, Synopsis = "", Subtitle = "" }
+                new MediaItemViewModel(new MediaItemData { Id = "4", Name = "RTE One", Details = "", ImageUrl = "", ChannelNumber = "1", IsLive = true, Source = "P2", Type = MediaType.Channel, Synopsis = "", Subtitle = "" }),
+                new MediaItemViewModel(new MediaItemData { Id = "5", Name = "Video 1", Details = "", ImageUrl = "", IsLive = false, Source = "P2", Type = MediaType.Video, Synopsis = "", Subtitle = "" })
             };
 
             // Combine as if search results came in
@@ -66,16 +66,16 @@ namespace Baird.Tests.ViewModels
         public void Search_NonNumeric_PreservesProviderOrder()
         {
             // Arrange
-            var provider1Items = new List<MediaItem>
+            var provider1Items = new List<MediaItemViewModel>
             {
-                new MediaItem { Id = "1", Name = "Alpha", Details = "", ImageUrl = "", IsLive = false, Source = "P1", Type = MediaType.Video, Synopsis = "", Subtitle = "" },
-                new MediaItem { Id = "2", Name = "Charlie", Details = "", ImageUrl = "", IsLive = false, Source = "P1", Type = MediaType.Video, Synopsis = "", Subtitle = "" }
+                new MediaItemViewModel(new MediaItemData { Id = "1", Name = "Alpha", Details = "", ImageUrl = "", IsLive = false, Source = "P1", Type = MediaType.Video, Synopsis = "", Subtitle = "" }),
+                new MediaItemViewModel(new MediaItemData { Id = "2", Name = "Charlie", Details = "", ImageUrl = "", IsLive = false, Source = "P1", Type = MediaType.Video, Synopsis = "", Subtitle = "" })
             };
 
-            var provider2Items = new List<MediaItem>
+            var provider2Items = new List<MediaItemViewModel>
             {
-                new MediaItem { Id = "3", Name = "Bravo", Details = "", ImageUrl = "", IsLive = false, Source = "P2", Type = MediaType.Video, Synopsis = "", Subtitle = "" },
-                new MediaItem { Id = "4", Name = "Delta", Details = "", ImageUrl = "", IsLive = false, Source = "P2", Type = MediaType.Video, Synopsis = "", Subtitle = "" }
+                new MediaItemViewModel(new MediaItemData { Id = "3", Name = "Bravo", Details = "", ImageUrl = "", IsLive = false, Source = "P2", Type = MediaType.Video, Synopsis = "", Subtitle = "" }),
+                new MediaItemViewModel(new MediaItemData { Id = "4", Name = "Delta", Details = "", ImageUrl = "", IsLive = false, Source = "P2", Type = MediaType.Video, Synopsis = "", Subtitle = "" })
             };
 
             var allItems = provider1Items.Concat(provider2Items);

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Baird.Mpv;
+using Baird.ViewModels;
 using System;
 using System.Runtime.InteropServices;
 
@@ -195,9 +196,9 @@ namespace Baird.Controls
         }
 
         // Helper to track current media item ID for history
-        private Services.MediaItem? _currentMediaItem;
+        private MediaItemViewModel? _currentMediaItem;
 
-        public void SetCurrentMediaItem(Services.MediaItem item)
+        public void SetCurrentMediaItem(MediaItemViewModel item)
         {
             ArgumentNullException.ThrowIfNull(item);
 

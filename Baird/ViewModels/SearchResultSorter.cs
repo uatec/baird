@@ -8,7 +8,7 @@ namespace Baird.ViewModels
 {
     public class SearchResultSorter
     {
-        public List<MediaItem> Sort(IEnumerable<MediaItem> items, string query)
+        public List<MediaItemViewModel> Sort(IEnumerable<MediaItemViewModel> items, string query)
         {
             var q = query ?? "";
             var allResults = items.ToList();
@@ -17,8 +17,8 @@ namespace Baird.ViewModels
 
             if (isNumericShort)
             {
-                var priority = new List<MediaItem>();
-                var others = new List<MediaItem>();
+                var priority = new List<MediaItemViewModel>();
+                var others = new List<MediaItemViewModel>();
 
                 foreach (var item in allResults)
                 {

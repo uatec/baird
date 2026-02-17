@@ -12,20 +12,20 @@ namespace Baird.ViewModels
     public class HistoryViewModel : ReactiveObject
     {
         private readonly IDataService _dataService;
-        public ObservableCollection<MediaItem> HistoryItems { get; } = new();
+        public ObservableCollection<MediaItemViewModel> HistoryItems { get; } = new();
 
-        public event EventHandler<MediaItem>? PlayRequested;
+        public event EventHandler<MediaItemViewModel>? PlayRequested;
         public event EventHandler? BackRequested;
 
-        public ReactiveCommand<MediaItem, Unit> PlayCommand { get; }
+        public ReactiveCommand<MediaItemViewModel, Unit> PlayCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
-        public ReactiveCommand<MediaItem, Unit> AddToWatchlistCommand { get; }
+        public ReactiveCommand<MediaItemViewModel, Unit> AddToWatchlistCommand { get; }
 
         public HistoryViewModel(IDataService dataService)
         {
             _dataService = dataService;
 
-            PlayCommand = ReactiveCommand.Create<MediaItem>(item =>
+            PlayCommand = ReactiveCommand.Create<MediaItemViewModel>(item =>
             {
                 PlayRequested?.Invoke(this, item);
             });
@@ -35,7 +35,7 @@ namespace Baird.ViewModels
                 BackRequested?.Invoke(this, EventArgs.Empty);
             });
 
-            AddToWatchlistCommand = ReactiveCommand.CreateFromTask<MediaItem>(async item =>
+            AddToWatchlistCommand = ReactiveCommand.CreateFromTask<MediaItemViewModel>(async item =>
             {
                 await _dataService.AddToWatchlistAsync(item);
                 Console.WriteLine($"[History] Added {item.Name} to watchlist");

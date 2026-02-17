@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Baird.Models;
 using Baird.Services;
+using Baird.ViewModels;
 using Xunit;
 
 namespace Baird.Tests.Services
@@ -34,7 +35,7 @@ namespace Baird.Tests.Services
 
         class MockHistoryService : IHistoryService
         {
-            public Task UpsertAsync(MediaItem media, TimeSpan position, TimeSpan duration) => Task.CompletedTask;
+            public Task UpsertAsync(MediaItemViewModel media, TimeSpan position, TimeSpan duration) => Task.CompletedTask;
             public Task<List<HistoryItem>> GetHistoryAsync() => Task.FromResult(new List<HistoryItem>());
             public HistoryItem? GetProgress(string id) => null;
         }

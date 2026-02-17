@@ -61,16 +61,16 @@ namespace Baird.ViewModels
 
     public class OmniSearchViewModel : ReactiveObject
     {
-        public event EventHandler<MediaItem>? PlayRequested;
+        public event EventHandler<MediaItemViewModel>? PlayRequested;
         public event EventHandler? BackRequested;
         public event EventHandler? SearchBoxFocusRequested;
 
-        public ReactiveCommand<MediaItem, Unit> PlayCommand { get; }
+        public ReactiveCommand<MediaItemViewModel, Unit> PlayCommand { get; }
         public ReactiveCommand<Unit, Unit> PlayFirstResultCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
         public ReactiveCommand<Unit, Unit> BackIfEmptyCommand { get; }
 
-        public void RequestPlay(MediaItem item)
+        public void RequestPlay(MediaItemViewModel item)
         {
             PlayRequested?.Invoke(this, item);
         }
@@ -122,7 +122,7 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _autoActivationProgress, value);
         }
 
-        public ObservableCollection<MediaItem> SearchResults { get; } = new();
+        public ObservableCollection<MediaItemViewModel> SearchResults { get; } = new();
         public ObservableCollection<string> SuggestedTerms { get; } = new();
         public ObservableCollection<ProviderSearchStatus> ProviderStatuses { get; } = new();
 
@@ -139,20 +139,20 @@ namespace Baird.ViewModels
         // private readonly IEnumerable<IMediaProvider> _providers; // Removed
         private readonly IDataService _dataService;
         private readonly ISearchHistoryService _searchHistoryService;
-        private readonly Func<List<MediaItem>> _getAllChannels;
+        private readonly Func<List<MediaItemViewModel>> _getAllChannels;
         private DispatcherTimer? _autoActivationTimer;
         private DateTime _timerStartTime;
 
         public ReactiveCommand<string, Unit> SearchTermCommand { get; }
-        public ReactiveCommand<MediaItem, Unit> AddToWatchlistCommand { get; }
+        public ReactiveCommand<MediaItemViewModel, Unit> AddToWatchlistCommand { get; }
 
-        public OmniSearchViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, Func<List<MediaItem>> getAllChannels)
+        public OmniSearchViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, Func<List<MediaItemViewModel>> getAllChannels)
         {
             _dataService = dataService;
             _searchHistoryService = searchHistoryService;
             _getAllChannels = getAllChannels;
 
-            PlayCommand = ReactiveCommand.CreateFromTask<MediaItem>(async item =>
+            PlayCommand = ReactiveCommand.CreateFromTask<MediaItemViewModel>(async item =>
             {
                 // Record search term if we are currently searching and result is clicked
                 if (!string.IsNullOrWhiteSpace(SearchText))
@@ -168,7 +168,7 @@ namespace Baird.ViewModels
             var canPlayFirst = this.WhenAnyValue(x => x.SearchResults.Count, count => count > 0);
             PlayFirstResultCommand = ReactiveCommand.CreateFromTask(async () =>
             {
-                if (SearchResults.FirstOrDefault() is MediaItem firstItem)
+                if (SearchResults.FirstOrDefault() is MediaItemViewModel firstItem)
                 {
                     if (!string.IsNullOrWhiteSpace(SearchText))
                     {
@@ -191,7 +191,7 @@ namespace Baird.ViewModels
                 await PerformSearch(term);
             });
 
-            AddToWatchlistCommand = ReactiveCommand.CreateFromTask<MediaItem>(async item =>
+            AddToWatchlistCommand = ReactiveCommand.CreateFromTask<MediaItemViewModel>(async item =>
             {
                 await _dataService.AddToWatchlistAsync(item);
                 Console.WriteLine($"[OmniSearch] Added {item.Name} to watchlist");
@@ -321,7 +321,7 @@ namespace Baird.ViewModels
                         var results = await provider.SearchAsync(query, token);
                         if (token.IsCancellationRequested) return;
 
-                        var items = results.Select(data => new MediaItem(data)).ToList();
+                        var items = results.Select(data => new MediaItemViewModel(data)).ToList();
 
                         // Attach history (Hydrate)
                         _dataService.AttachHistory(items);
@@ -423,7 +423,7 @@ namespace Baird.ViewModels
                 StopAutoActivationTimer();
 
                 // Auto-activate the first result
-                if (SearchResults.FirstOrDefault() is MediaItem firstItem)
+                if (SearchResults.FirstOrDefault() is MediaItemViewModel firstItem)
                 {
                     // Record search term for auto-activation?
                     // "Only record a search term as used when an item is actually actived (played or opened) from that search term."

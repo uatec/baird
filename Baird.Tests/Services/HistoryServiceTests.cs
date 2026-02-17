@@ -20,7 +20,8 @@ namespace Baird.Tests.Services
                                                     // UPSERT updates internal cache.
                                                     // I can check GetProgress.
 
-            var item = new MediaItem { Id = "test1", Name = "Short", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
+            var itemData = new MediaItemData { Id = "test1", Name = "Short", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
+            var item = new MediaItemViewModel(itemData);
             var duration = TimeSpan.FromMinutes(5); // 300s
             var position = TimeSpan.FromSeconds(290); // 10s remaining. 5% of 300 is 15s. 
             // 10s < 15s -> Should be finished.
@@ -39,7 +40,8 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var service = new JsonHistoryService();
-            var item = new MediaItem { Id = "test2", Name = "Short2", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
+            var itemData = new MediaItemData { Id = "test2", Name = "Short2", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
+            var item = new MediaItemViewModel(itemData);
             var duration = TimeSpan.FromMinutes(5); // 300s
             var position = TimeSpan.FromSeconds(270); // 30s remaining. 5% is 15s.
             // 30 > 15 -> Not finished.
@@ -58,7 +60,8 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var service = new JsonHistoryService();
-            var item = new MediaItem { Id = "test_long_1", Name = "LongDiff", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
+            var itemData = new MediaItemData { Id = "test_long_1", Name = "LongDiff", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
+            var item = new MediaItemViewModel(itemData);
             var duration = TimeSpan.FromMinutes(100); // 6000s. > 90 mins.
             var position = TimeSpan.FromMinutes(91); // 9 mins remaining.
 
@@ -78,7 +81,8 @@ namespace Baird.Tests.Services
         {
             // Arrange
             var service = new JsonHistoryService();
-            var item = new MediaItem { Id = "test_long_2", Name = "LongDiff2", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
+            var itemData = new MediaItemData { Id = "test_long_2", Name = "LongDiff2", Details = "", ImageUrl = "", IsLive = false, Source = "Test", Type = MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" };
+            var item = new MediaItemViewModel(itemData);
             var duration = TimeSpan.FromMinutes(100); // 6000s
             var position = TimeSpan.FromMinutes(85); // 15 mins remaining.
 

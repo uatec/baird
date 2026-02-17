@@ -44,7 +44,7 @@ namespace Baird.Tests.ViewModels
 
             public Task<List<HistoryItem>> GetHistoryAsync() => Task.FromResult(_history.Values.ToList());
 
-            public Task UpsertAsync(MediaItem item, TimeSpan position, TimeSpan duration)
+            public Task UpsertAsync(MediaItemViewModel item, TimeSpan position, TimeSpan duration)
             {
                 _history[item.Id] = new HistoryItem
                 {
@@ -135,19 +135,19 @@ namespace Baird.Tests.ViewModels
 
             // Simulate opening a season and playing first episode
             var seasonData = CreateSeason("show1|1", "Season 1");
-            var season = new MediaItem(seasonData);
+            var season = new MediaItemViewModel(seasonData);
             var programmeVm = new ProgrammeDetailViewModel(dataService, season);
 
             // Load children
             await Task.Delay(100); // Let LoadChildren complete
 
             // Simulate playing first episode from ProgrammeDetailViewModel
-            viewModel.PlayItem(new MediaItem(season1Episodes[0]));
+            viewModel.PlayItem(new MediaItemViewModel(season1Episodes[0]));
 
             // Set up the episode list context (this is what OpenProgramme.PlayRequested does)
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, season1Episodes.Select(d => new MediaItem(d)).ToList());
+            currentEpisodeListField?.SetValue(viewModel, season1Episodes.Select(d => new MediaItemViewModel(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -193,11 +193,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing last episode of season 1
-            viewModel.PlayItem(new MediaItem(season1Episodes[1]));
+            viewModel.PlayItem(new MediaItemViewModel(season1Episodes[1]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, season1Episodes.Select(d => new MediaItem(d)).ToList());
+            currentEpisodeListField?.SetValue(viewModel, season1Episodes.Select(d => new MediaItemViewModel(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -242,11 +242,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing last episode of season 3
-            viewModel.PlayItem(new MediaItem(season3Episodes[1]));
+            viewModel.PlayItem(new MediaItemViewModel(season3Episodes[1]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, season3Episodes.Select(d => new MediaItem(d)).ToList());
+            currentEpisodeListField?.SetValue(viewModel, season3Episodes.Select(d => new MediaItemViewModel(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -343,11 +343,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing first episode
-            viewModel.PlayItem(new MediaItem(episodes[0]));
+            viewModel.PlayItem(new MediaItemViewModel(episodes[0]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, episodes.Select(d => new MediaItem(d)).ToList());
+            currentEpisodeListField?.SetValue(viewModel, episodes.Select(d => new MediaItemViewModel(d)).ToList());
 
             // Set season ID without pipe (flat structure)
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
@@ -387,11 +387,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing last episode
-            viewModel.PlayItem(new MediaItem(episodes[1]));
+            viewModel.PlayItem(new MediaItemViewModel(episodes[1]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, episodes.Select(d => new MediaItem(d)).ToList());
+            currentEpisodeListField?.SetValue(viewModel, episodes.Select(d => new MediaItemViewModel(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -476,11 +476,11 @@ namespace Baird.Tests.ViewModels
             var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
 
             // Simulate playing last track of disc 1
-            viewModel.PlayItem(new MediaItem(season1Tracks[1]));
+            viewModel.PlayItem(new MediaItemViewModel(season1Tracks[1]));
 
             var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(viewModel, season1Tracks.Select(d => new MediaItem(d)).ToList());
+            currentEpisodeListField?.SetValue(viewModel, season1Tracks.Select(d => new MediaItemViewModel(d)).ToList());
 
             var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);

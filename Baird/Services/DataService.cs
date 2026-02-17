@@ -4,30 +4,31 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Baird.Models;
+using Baird.ViewModels;
 
 namespace Baird.Services
 {
     public interface IDataService
     {
-        Task<IEnumerable<MediaItem>> GetListingAsync();
-        Task<IEnumerable<MediaItem>> SearchAsync(string query, CancellationToken cancellationToken = default);
-        Task<IEnumerable<MediaItem>> GetContinueWatchingAsync();
-        Task<IEnumerable<MediaItem>> GetHistoryItemsAsync();
-        Task<IEnumerable<MediaItem>> GetChildrenAsync(string id);
-        Task<MediaItem?> GetItemAsync(string id); // Might be needed if not present in listings
-        Task UpsertHistoryAsync(MediaItem item, TimeSpan position, TimeSpan duration);
+        Task<IEnumerable<MediaItemViewModel>> GetListingAsync();
+        Task<IEnumerable<MediaItemViewModel>> SearchAsync(string query, CancellationToken cancellationToken = default);
+        Task<IEnumerable<MediaItemViewModel>> GetContinueWatchingAsync();
+        Task<IEnumerable<MediaItemViewModel>> GetHistoryItemsAsync();
+        Task<IEnumerable<MediaItemViewModel>> GetChildrenAsync(string id);
+        Task<MediaItemViewModel?> GetItemAsync(string id); // Might be needed if not present in listings
+        Task UpsertHistoryAsync(MediaItemViewModel item, TimeSpan position, TimeSpan duration);
         HistoryItem? GetHistory(string id);
 
         // Event to notify when history is updated
         event EventHandler? HistoryUpdated;
         event EventHandler? WatchlistUpdated;
-        event EventHandler<MediaItem>? ItemAddedToWatchlist;
+        event EventHandler<MediaItemViewModel>? ItemAddedToWatchlist;
 
         IEnumerable<IMediaProvider> Providers { get; }
-        void AttachHistory(IEnumerable<MediaItem> items);
+        void AttachHistory(IEnumerable<MediaItemViewModel> items);
 
-        Task<IEnumerable<MediaItem>> GetWatchlistItemsAsync();
-        Task AddToWatchlistAsync(MediaItem item);
+        Task<IEnumerable<MediaItemViewModel>> GetWatchlistItemsAsync();
+        Task AddToWatchlistAsync(MediaItemViewModel item);
         Task RemoveFromWatchlistAsync(string id);
         bool IsOnWatchlist(string id);
     }
@@ -43,7 +44,7 @@ namespace Baird.Services
 
         public event EventHandler? HistoryUpdated;
         public event EventHandler? WatchlistUpdated;
-        public event EventHandler<MediaItem>? ItemAddedToWatchlist;
+        public event EventHandler<MediaItemViewModel>? ItemAddedToWatchlist;
 
         public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService, IWatchlistService watchlistService, IMediaItemCache cache)
         {
@@ -55,23 +56,23 @@ namespace Baird.Services
             _watchlistService.WatchlistUpdated += (s, e) => WatchlistUpdated?.Invoke(this, EventArgs.Empty);
         }
 
-        public async Task<IEnumerable<MediaItem>> GetListingAsync()
+        public async Task<IEnumerable<MediaItemViewModel>> GetListingAsync()
         {
             var tasks = _providers.Select(p => p.GetListingAsync());
             var results = await Task.WhenAll(tasks);
-            var items = results.SelectMany(x => x).Select(data => new MediaItem(data)).ToList();
+            var items = results.SelectMany(x => x).Select(data => new MediaItemViewModel(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
-        public async Task<IEnumerable<MediaItem>> SearchAsync(string query, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<MediaItemViewModel>> SearchAsync(string query, CancellationToken cancellationToken = default)
         {
             var tasks = _providers.Select(p => p.SearchAsync(query, cancellationToken));
             var results = await Task.WhenAll(tasks);
-            var items = results.SelectMany(x => x).Select(data => new MediaItem(data)).ToList();
+            var items = results.SelectMany(x => x).Select(data => new MediaItemViewModel(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
-        public async Task<IEnumerable<MediaItem>> GetContinueWatchingAsync()
+        public async Task<IEnumerable<MediaItemViewModel>> GetContinueWatchingAsync()
         {
             var historyItems = await _historyService.GetHistoryAsync();
 
@@ -82,7 +83,7 @@ namespace Baird.Services
             return UnifyAndHydrate(hydrated);
         }
 
-        public async Task<IEnumerable<MediaItem>> GetHistoryItemsAsync()
+        public async Task<IEnumerable<MediaItemViewModel>> GetHistoryItemsAsync()
         {
             var historyItems = await _historyService.GetHistoryAsync();
 
@@ -91,7 +92,7 @@ namespace Baird.Services
         }
 
         // Helper to hydrate a list of history items
-        private async Task<IEnumerable<MediaItem>> HydrateHistoryItems(IEnumerable<HistoryItem> historyItems)
+        private async Task<IEnumerable<MediaItemViewModel>> HydrateHistoryItems(IEnumerable<HistoryItem> historyItems)
         {
             // This could be slow if we do it sequentially or naive parallel.
             // We should limit concurrency or be smart.
@@ -111,7 +112,7 @@ namespace Baird.Services
                 // For now, return null and filter out.
                 // Or maybe return a placeholder with ID?
                 // "Unknown Item"
-                return new MediaItem
+                var placeholderData = new MediaItemData
                 {
                     Id = h.Id,
                     Name = "Unknown Item",
@@ -123,9 +124,11 @@ namespace Baird.Services
                     StreamUrl = "",
                     Subtitle = "",
                     Synopsis = "",
-                    History = h,
                     Duration = h.Duration
                 };
+                var placeholder = new MediaItemViewModel(placeholderData);
+                placeholder.History = h;
+                return placeholder;
             });
 
             var results = await Task.WhenAll(tasks);
@@ -136,15 +139,15 @@ namespace Baird.Services
 
         // ...
 
-        public async Task<IEnumerable<MediaItem>> GetChildrenAsync(string id)
+        public async Task<IEnumerable<MediaItemViewModel>> GetChildrenAsync(string id)
         {
             var tasks = _providers.Select(p => p.GetChildrenAsync(id));
             var results = await Task.WhenAll(tasks);
-            var items = results.SelectMany(x => x).Select(data => new MediaItem(data)).ToList();
+            var items = results.SelectMany(x => x).Select(data => new MediaItemViewModel(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
-        public async Task UpsertHistoryAsync(MediaItem item, TimeSpan position, TimeSpan duration)
+        public async Task UpsertHistoryAsync(MediaItemViewModel item, TimeSpan position, TimeSpan duration)
         {
             await _historyService.UpsertAsync(item, position, duration);
             // Also update the local item's history
@@ -159,7 +162,7 @@ namespace Baird.Services
             return _historyService.GetProgress(id);
         }
 
-        public async Task<IEnumerable<MediaItem>> GetWatchlistItemsAsync()
+        public async Task<IEnumerable<MediaItemViewModel>> GetWatchlistItemsAsync()
         {
             var watchlistIds = await _watchlistService.GetWatchlistIdsAsync();
 
@@ -180,7 +183,7 @@ namespace Baird.Services
             return results.Where(item => item != null)!;
         }
 
-        public async Task AddToWatchlistAsync(MediaItem item)
+        public async Task AddToWatchlistAsync(MediaItemViewModel item)
         {
             await _watchlistService.AddAsync(item.Id);
 
@@ -210,7 +213,7 @@ namespace Baird.Services
             return _watchlistService.IsOnWatchlist(id);
         }
 
-        public async Task<MediaItem?> GetItemAsync(string id)
+        public async Task<MediaItemViewModel?> GetItemAsync(string id)
         {
             // 1. Check cache
             if (_cache.TryGet(id, out var cachedItem))
@@ -227,7 +230,7 @@ namespace Baird.Services
                 var data = await provider.GetItemAsync(id);
                 if (data != null)
                 {
-                    var item = _cache.GetOrCreate(id, () => new MediaItem(data));
+                    var item = _cache.GetOrCreate(id, () => new MediaItemViewModel(data));
                     item.History = _historyService.GetProgress(id);
                     item.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
                     return item;
@@ -236,7 +239,7 @@ namespace Baird.Services
             return null;
         }
 
-        public void AttachHistory(IEnumerable<MediaItem> items)
+        public void AttachHistory(IEnumerable<MediaItemViewModel> items)
         {
             // Legacy or unused? Just calling UnifyAndHydrate but ignoring return likely won't work for unification.
             // This method signature is void, so we can only hydrate.
@@ -247,16 +250,16 @@ namespace Baird.Services
             }
         }
 
-        private void HydrateSingle(MediaItem item)
+        private void HydrateSingle(MediaItemViewModel item)
         {
             item.History = _historyService.GetProgress(item.Id);
             item.IsOnWatchlist = _watchlistService.IsOnWatchlist(item.Id);
         }
 
         // Returns a list where items are replaced by cached versions if available
-        public IEnumerable<MediaItem> UnifyAndHydrate(IEnumerable<MediaItem> items)
+        public IEnumerable<MediaItemViewModel> UnifyAndHydrate(IEnumerable<MediaItemViewModel> items)
         {
-            var unifiedList = new List<MediaItem>();
+            var unifiedList = new List<MediaItemViewModel>();
             foreach (var item in items)
             {
                 if (string.IsNullOrEmpty(item.Id))
@@ -277,7 +280,7 @@ namespace Baird.Services
             return unifiedList;
         }
 
-        public void HydrateItems(IEnumerable<MediaItem> items)
+        public void HydrateItems(IEnumerable<MediaItemViewModel> items)
         {
             // This method was void, modifying items in place. 
             // If we want unification, we need callers to use the return value of UnifyAndHydrate.

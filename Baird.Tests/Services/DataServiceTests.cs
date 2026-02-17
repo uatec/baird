@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Baird.Models;
 using Baird.Services;
+using Baird.ViewModels;
 using Xunit;
 
 namespace Baird.Tests.Services
@@ -34,7 +35,7 @@ namespace Baird.Tests.Services
         {
             public List<HistoryItem> History { get; set; } = new List<HistoryItem>();
 
-            public Task UpsertAsync(MediaItem media, TimeSpan position, TimeSpan duration)
+            public Task UpsertAsync(MediaItemViewModel media, TimeSpan position, TimeSpan duration)
             {
                 var existing = History.FirstOrDefault(x => x.Id == media.Id);
                 if (existing == null)
@@ -79,7 +80,6 @@ namespace Baird.Tests.Services
                 Synopsis = "Synopsis 1",
                 Subtitle = "Subtitle 1"
             };
-            var item1 = new MediaItem(item1data);
             var item2data = new MediaItemData
             {
                 Id = "item2",
@@ -92,7 +92,6 @@ namespace Baird.Tests.Services
                 Synopsis = "Synopsis 2",
                 Subtitle = "Subtitle 2"
             };
-            var item2 = new MediaItem(item2data);
             provider.MemoryItems.Add(item1data);
             provider.MemoryItems.Add(item2data);
 
@@ -125,7 +124,7 @@ namespace Baird.Tests.Services
             var historyService = new MockHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
 
-            var item = new MediaItem
+            var itemData = new MediaItemData
             {
                 Id = "test1",
                 Name = "Test 1",
@@ -137,6 +136,7 @@ namespace Baird.Tests.Services
                 Synopsis = "Synopsis Test",
                 Subtitle = "Subtitle Test"
             };
+            var item = new MediaItemViewModel(itemData);
 
             // Act
             await dataService.UpsertHistoryAsync(item, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(10));
@@ -171,7 +171,7 @@ namespace Baird.Tests.Services
                 Synopsis = "Synopsis Test",
                 Subtitle = "Subtitle Test"
             };
-            var item = new MediaItem(itemData);
+            var item = new MediaItemViewModel(itemData);
 
             var eventRaised = false;
             dataService.HistoryUpdated += (sender, args) => eventRaised = true;

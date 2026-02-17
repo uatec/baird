@@ -42,8 +42,8 @@ namespace Baird.ViewModels
         public WatchlistViewModel Watchlist { get; }
         public TabNavigationViewModel MainMenu { get; }
 
-        private MediaItem? _activeItem;
-        public MediaItem? ActiveItem
+        private MediaItemViewModel? _activeItem;
+        public MediaItemViewModel? ActiveItem
         {
             get => _activeItem;
             set => this.RaiseAndSetIfChanged(ref _activeItem, value);
@@ -63,7 +63,7 @@ namespace Baird.ViewModels
         private readonly IDataService _dataService;
 
         // Track current episode list for auto-play next episode
-        private System.Collections.Generic.List<MediaItem>? _currentEpisodeList;
+        private System.Collections.Generic.List<MediaItemViewModel>? _currentEpisodeList;
 
         // Track parent show/season context for season transitions
         private string? _currentShowId;  // The base show ID (without season suffix)
@@ -213,7 +213,7 @@ namespace Baird.ViewModels
             _hudTimer.Start();
         }
 
-        public void PlayItem(MediaItem item)
+        public void PlayItem(MediaItemViewModel item)
         {
             if (item.Type == MediaType.Brand)
             {
@@ -307,7 +307,7 @@ namespace Baird.ViewModels
             }
         }
 
-        private MediaItem? FindNextEpisode(MediaItem currentEpisode)
+        private MediaItemViewModel? FindNextEpisode(MediaItemViewModel currentEpisode)
         {
             if (_currentEpisodeList == null || _currentEpisodeList.Count == 0)
                 return null;
@@ -341,7 +341,7 @@ namespace Baird.ViewModels
         }
 
         // Try to load the next season and return its first episode
-        private async Task<MediaItem?> TryLoadNextSeasonFirstEpisode()
+        private async Task<MediaItemViewModel?> TryLoadNextSeasonFirstEpisode()
         {
             if (string.IsNullOrEmpty(_currentSeasonId))
             {
@@ -391,23 +391,7 @@ namespace Baird.ViewModels
                 return;
             }
 
-            // Convert ActiveItem to MediaItem for searching
-            var currentItem = new MediaItem
-            {
-                Id = ActiveItem.Id,
-                Name = ActiveItem.Name,
-                Details = ActiveItem.Details,
-                ImageUrl = ActiveItem.ImageUrl,
-                Source = ActiveItem.Source,
-                Type = ActiveItem.Type,
-                Synopsis = ActiveItem.Synopsis,
-                Subtitle = ActiveItem.Subtitle,
-                StreamUrl = ActiveItem.StreamUrl,
-                IsLive = ActiveItem.IsLive,
-                ChannelNumber = ActiveItem.ChannelNumber
-            };
-
-            var nextEpisode = FindNextEpisode(currentItem);
+            var nextEpisode = FindNextEpisode(ActiveItem);
             if (nextEpisode != null)
             {
                 Console.WriteLine($"[MainViewModel] Auto-playing next episode in current season: {nextEpisode.Name}");
@@ -432,7 +416,7 @@ namespace Baird.ViewModels
             }
         }
 
-        public System.Collections.Generic.List<Baird.Services.MediaItem> AllChannels { get; private set; } = new();
+        public System.Collections.Generic.List<MediaItemViewModel> AllChannels { get; private set; } = new();
 
         public async System.Threading.Tasks.Task RefreshChannels()
         {
@@ -493,7 +477,7 @@ namespace Baird.ViewModels
 
         // Helper to activate a channel (similar to PlayItem in View, but VM based)
         // Note: Actual playback starts because ActiveItem is bound in View.
-        private void ActivateChannel(Baird.Services.MediaItem item, TimeSpan? resumeTime = null)
+        private void ActivateChannel(MediaItemViewModel item, TimeSpan? resumeTime = null)
         {
             ActiveItem = item;
             // ActiveItem = new ActiveMedia... 
@@ -524,7 +508,7 @@ namespace Baird.ViewModels
             ResetHudTimer();
         }
 
-        public void OpenProgramme(Baird.Services.MediaItem programme)
+        public void OpenProgramme(MediaItemViewModel programme)
         {
             var vm = new ProgrammeDetailViewModel(_dataService, programme);
             vm.PlayRequested += (s, item) =>

@@ -5,12 +5,13 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Baird.Models;
+using Baird.ViewModels;
 
 namespace Baird.Services
 {
     public interface IHistoryService
     {
-        Task UpsertAsync(MediaItem media, TimeSpan position, TimeSpan duration);
+        Task UpsertAsync(MediaItemViewModel media, TimeSpan position, TimeSpan duration);
         Task<List<HistoryItem>> GetHistoryAsync();
         HistoryItem? GetProgress(string id);
     }
@@ -59,7 +60,7 @@ namespace Baird.Services
             }
         }
 
-        public async Task UpsertAsync(MediaItem media, TimeSpan position, TimeSpan duration)
+        public async Task UpsertAsync(MediaItemViewModel media, TimeSpan position, TimeSpan duration)
         {
             if (media == null || string.IsNullOrEmpty(media.Id)) return;
 

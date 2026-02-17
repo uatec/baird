@@ -1,23 +1,24 @@
 using System;
 using System.Collections.Generic;
+using Baird.ViewModels;
 
 namespace Baird.Services
 {
     /// <summary>
-    /// Cache service for MediaItem instances to ensure reference equality across the application.
-    /// This is important for reactive UI updates - ViewModels need to share the same MediaItem instance.
+    /// Cache service for MediaItemViewModel instances to ensure reference equality across the application.
+    /// This is important for reactive UI updates - ViewModels need to share the same MediaItemViewModel instance.
     /// </summary>
     public interface IMediaItemCache
     {
         /// <summary>
         /// Gets a cached item by ID, or creates and caches it using the factory function.
         /// </summary>
-        MediaItem GetOrCreate(string id, Func<MediaItem> factory);
+        MediaItemViewModel GetOrCreate(string id, Func<MediaItemViewModel> factory);
         
         /// <summary>
         /// Tries to get a cached item by ID.
         /// </summary>
-        bool TryGet(string id, out MediaItem? item);
+        bool TryGet(string id, out MediaItemViewModel? item);
         
         /// <summary>
         /// Clears all cached items.
@@ -32,10 +33,10 @@ namespace Baird.Services
 
     public class MediaItemCache : IMediaItemCache
     {
-        private readonly Dictionary<string, MediaItem> _cache = new();
+        private readonly Dictionary<string, MediaItemViewModel> _cache = new();
         private readonly object _lock = new();
 
-        public MediaItem GetOrCreate(string id, Func<MediaItem> factory)
+        public MediaItemViewModel GetOrCreate(string id, Func<MediaItemViewModel> factory)
         {
             if (string.IsNullOrEmpty(id))
             {
@@ -55,7 +56,7 @@ namespace Baird.Services
             }
         }
 
-        public bool TryGet(string id, out MediaItem? item)
+        public bool TryGet(string id, out MediaItemViewModel? item)
         {
             if (string.IsNullOrEmpty(id))
             {
