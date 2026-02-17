@@ -41,6 +41,8 @@ namespace Baird.ViewModels
         public HistoryViewModel History { get; }
         public WatchlistViewModel Watchlist { get; }
         public CecDebugViewModel CecDebug { get; }
+        public SeerrchViewModel Seerrch { get; }
+        public RequestsViewModel Requests { get; }
         public TabNavigationViewModel MainMenu { get; }
 
         private MediaItemViewModel? _activeItem;
@@ -75,7 +77,7 @@ namespace Baird.ViewModels
 
         public ScreensaverViewModel Screensaver { get; }
 
-        public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService)
+        public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService, IJellyseerrService jellyseerrService)
         {
             _dataService = dataService;
             _versionCheckService = new VersionCheckService();
@@ -98,6 +100,10 @@ namespace Baird.ViewModels
             History = new HistoryViewModel(dataService);
             Watchlist = new WatchlistViewModel(dataService);
             CecDebug = new CecDebugViewModel(cecService);
+            
+            // Jellyseerr ViewModels
+            Seerrch = new SeerrchViewModel(jellyseerrService);
+            Requests = new RequestsViewModel(jellyseerrService, dataService);
 
             History.PlayRequested += (s, item) => PlayItem(item);
             History.BackRequested += (s, e) => GoBack();
@@ -106,6 +112,10 @@ namespace Baird.ViewModels
             Watchlist.BackRequested += (s, e) => GoBack();
 
             CecDebug.BackRequested += (s, e) => GoBack();
+            
+            Seerrch.BackRequested += (s, e) => GoBack();
+            
+            Requests.PlayRequested += (s, item) => PlayItem(item);
 
             // Subscribe to history updates to keep HistoryViewModel in sync
             _dataService.HistoryUpdated += async (s, e) =>
@@ -171,6 +181,8 @@ namespace Baird.ViewModels
                 new TabItem("History", History),
                 new TabItem("Search", OmniSearch),
                 new TabItem("Watchlist", Watchlist),
+                new TabItem("Seerrch", Seerrch),
+                new TabItem("Requests", Requests),
                 new TabItem("CEC Debug", CecDebug),
             };
             MainMenu = new TabNavigationViewModel(tabs);

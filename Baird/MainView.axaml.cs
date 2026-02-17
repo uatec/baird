@@ -21,6 +21,7 @@ namespace Baird
         private ICecService _cecService;
         private IHistoryService _historyService;
         private IDataService _dataService;
+        private IJellyseerrService _jellyseerrService;
 
         // Screensaver & Idle
         private ScreensaverService? _screensaverService;
@@ -48,11 +49,12 @@ namespace Baird
             var mediaItemCache = new MediaItemCache();
 
             _screensaverService = new ScreensaverService();
+            _jellyseerrService = new JellyseerrService(config);
 
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache);
 
-            _viewModel = new MainViewModel(_dataService, searchHistoryService, _screensaverService, _cecService);
+            _viewModel = new MainViewModel(_dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService);
 
             DataContext = _viewModel;
 
