@@ -187,7 +187,7 @@ namespace Baird
         {
             _idleTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromHours(2)
+                Interval = TimeSpan.FromMinutes(30)
             };
             _idleTimer.Tick += (s, e) =>
             {
