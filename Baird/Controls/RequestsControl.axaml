@@ -12,14 +12,15 @@
     <Grid RowDefinitions="Auto,*" Background="Transparent">
         
         <!-- Row 0: Header -->
-        <Border Grid.Row="0" Padding="20">
+        <Border Grid.Row="0" Padding="20" KeyboardNavigation.IsTabStop="False">
             <StackPanel Spacing="10">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" 
                                Text="Requests" 
                                FontSize="32" 
                                FontWeight="Bold" 
-                               Foreground="White"/>
+                               Foreground="White"
+                               IsTabStop="False"/>
                     
                     <Button Grid.Column="1" 
                             Content="↻ Refresh"
@@ -43,10 +44,12 @@
         <ScrollViewer Grid.Row="1"
                       Focusable="False"
                       HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
+                      VerticalScrollBarVisibility="Auto"
+                      KeyboardNavigation.TabNavigation="Contained">
             <ItemsControl Name="RequestsList" 
                           ItemsSource="{Binding Requests}"
-                          Background="Transparent">
+                          Background="Transparent"
+                          XYFocus.NavigationModes="Enabled">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <UniformGrid Columns="3" HorizontalAlignment="Center" VerticalAlignment="Top"/>
