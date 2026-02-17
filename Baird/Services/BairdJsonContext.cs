@@ -11,6 +11,11 @@ namespace Baird
     [JsonSerializable(typeof(List<MediaItemData>))]
     [JsonSerializable(typeof(MediaItemData))]
     [JsonSerializable(typeof(List<string>))]
+    [JsonSerializable(typeof(JellyseerrSearchResult))]
+    [JsonSerializable(typeof(List<JellyseerrSearchResult>))]
+    [JsonSerializable(typeof(JellyseerrRequest))]
+    [JsonSerializable(typeof(List<JellyseerrRequest>))]
+    [JsonSerializable(typeof(JellyseerrRequestResponse))]
     internal partial class BairdJsonContext : JsonSerializerContext
     {
     }
