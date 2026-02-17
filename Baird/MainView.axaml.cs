@@ -71,6 +71,22 @@ namespace Baird
 
                     // Existing InputCoordinator (Bubbling)
                     topLevel.KeyDown += InputCoordinator;
+
+                    try
+                    {
+                        var options = new DevToolsOptions
+                        {
+                            Gesture = new KeyGesture(Key.F12),
+                            ShowAsChildWindow = false
+                        };
+                        Dispatcher.UIThread.Post(() => topLevel.AttachDevTools(options));
+                        Console.WriteLine("[InputCoordinator] DevTools attach command sent.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[InputCoordinator] Failed to attach DevTools: {ex}");
+                        Console.WriteLine($"[MainView] StackTrace: {ex.StackTrace}");
+                    }
                 }
 
                 // Restore focus to VideoPlayer when CurrentPage is cleared or showing video player
@@ -235,46 +251,7 @@ namespace Baird
                 return;
             }
 
-            // Power Toggle (P)
-            if (e.Key == Key.P)
-            {
-                Console.WriteLine("[InputCoordinator] P pressed. Toggling TV Power via CEC.");
-                _ = _cecService.TogglePowerAsync(); // Fire and forget
-                e.Handled = true;
-                return;
-            }
-
-            // DevTools Toggle (D)
-            if (e.Key == Key.D)
-            {
-                Console.WriteLine("[InputCoordinator] D pressed. Attempting to toggle DevTools.");
-                var topLevel = TopLevel.GetTopLevel(this);
-                if (topLevel != null)
-                {
-                    Console.WriteLine($"[InputCoordinator] TopLevel found: {topLevel.GetType().Name}. Attaching...");
-                    try
-                    {
-                        var options = new DevToolsOptions
-                        {
-                            Gesture = new KeyGesture(Key.F12),
-                            ShowAsChildWindow = false
-                        };
-                        Dispatcher.UIThread.Post(() => topLevel.AttachDevTools(options));
-                        Console.WriteLine("[InputCoordinator] DevTools attach command sent.");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[InputCoordinator] Failed to attach DevTools: {ex}");
-                        Console.WriteLine($"[MainView] StackTrace: {ex.StackTrace}");
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("[InputCoordinator] TopLevel NOT found.");
-                }
-                e.Handled = true;
-                return;
-            }
+      
         }
 
         private void HandleBackTrigger(KeyEventArgs e)
