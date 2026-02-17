@@ -70,12 +70,7 @@ namespace Baird.Controls
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
-            
-            // Auto-focus search box when control is shown
-            Dispatcher.UIThread.Post(() =>
-            {
-                FocusSearchBox();
-            }, DispatcherPriority.Loaded);
+            // Don't auto-focus - let user press Down from tab navigation
         }
     }
 }

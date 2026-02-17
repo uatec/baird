@@ -35,8 +35,8 @@ namespace Baird.ViewModels
             get
             {
                 if (string.IsNullOrEmpty(PosterPath))
-                    return "https://via.placeholder.com/300x450?text=No+Poster";
-                return $"https://image.tmdb.org/t/p/w300{PosterPath}";
+                    return "";
+                return $"https://image.tmdb.org/t/p/w500{PosterPath}";
             }
         }
 

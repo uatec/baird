@@ -33,8 +33,8 @@ namespace Baird.ViewModels
             get
             {
                 if (string.IsNullOrEmpty(_request.PosterPath))
-                    return "https://via.placeholder.com/300x450?text=No+Poster";
-                return $"https://image.tmdb.org/t/p/w300{_request.PosterPath}";
+                    return "";
+                return $"https://image.tmdb.org/t/p/w500{_request.PosterPath}";
             }
         }
 
@@ -172,8 +172,13 @@ namespace Baird.ViewModels
 
         private async Task LoadRequests()
         {
-            IsLoading = true;
-            StatusMessage = "Loading requests...";
+            // Only show loading indicator if we have no data yet (first load)
+            bool isFirstLoad = !Requests.Any();
+            if (isFirstLoad)
+            {
+                IsLoading = true;
+                StatusMessage = "Loading requests...";
+            }
 
             try
             {
@@ -192,9 +197,12 @@ namespace Baird.ViewModels
                     }
 
                     IsLoading = false;
-                    StatusMessage = viewModels.Any() 
-                        ? $"Showing {viewModels.Count} request(s)" 
-                        : "No active or recent requests";
+                    if (isFirstLoad || viewModels.Any())
+                    {
+                        StatusMessage = viewModels.Any() 
+                            ? $"Showing {viewModels.Count} request(s)" 
+                            : "No active or recent requests";
+                    }
                 });
             }
             catch (Exception ex)

@@ -211,21 +211,9 @@ namespace Baird.Services
 
                         if (isInFlight || (isCompleted && isRecent))
                         {
-                            var title = "";
-                            var posterPath = "";
-
-                            // Try to get title and poster from media info
-                            if (mediaType == "movie")
-                            {
-                                title = mediaInfo.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? "" : "";
-                            }
-                            else
-                            {
-                                title = mediaInfo.TryGetProperty("name", out var nameProp) ? nameProp.GetString() ?? "" : "";
-                            }
-
-                            posterPath = mediaInfo.TryGetProperty("posterPath", out var posterProp) ? posterProp.GetString() ?? "" : "";
-
+                            // Fetch full media details using TMDB ID
+                            var (title, posterPath) = await GetMediaDetailsAsync(tmdbId, mediaType, cancellationToken);
+                            
                             var request = new JellyseerrRequest
                             {
                                 Id = item.GetProperty("id").GetInt32(),
@@ -251,6 +239,43 @@ namespace Baird.Services
             {
                 Console.WriteLine($"[JellyseerrService] Get requests error: {ex.Message}");
                 return Array.Empty<JellyseerrRequest>();
+            }
+        }
+
+        private async Task<(string title, string posterPath)> GetMediaDetailsAsync(int tmdbId, string mediaType, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var endpoint = mediaType == "movie" ? $"api/v1/movie/{tmdbId}" : $"api/v1/tv/{tmdbId}";
+                var response = await _httpClient.GetAsync(endpoint, cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[JellyseerrService] Failed to get {mediaType} details for TMDB ID {tmdbId}: {response.StatusCode}");
+                    return ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "");
+                }
+
+                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                using var doc = JsonDocument.Parse(json);
+
+                var title = "";
+                if (mediaType == "movie")
+                {
+                    title = doc.RootElement.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? "" : "";
+                }
+                else
+                {
+                    title = doc.RootElement.TryGetProperty("name", out var nameProp) ? nameProp.GetString() ?? "" : "";
+                }
+
+                var posterPath = doc.RootElement.TryGetProperty("posterPath", out var posterProp) ? posterProp.GetString() ?? "" : "";
+
+                return (title, posterPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[JellyseerrService] Error fetching media details: {ex.Message}");
+                return ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "");
             }
         }
     }

@@ -5,6 +5,7 @@
              xmlns:vm="using:Baird.ViewModels"
              xmlns:controls="using:Baird.Controls"
              xmlns:conv="using:Baird.Converters"
+             xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Baird.Controls.SeerrchControl"
              x:CompileBindings="True"
@@ -82,7 +83,7 @@
                                         CornerRadius="8,8,0,0" 
                                         ClipToBounds="True"
                                         Background="#1a1a1a">
-                                    <Image Source="{Binding FullPosterUrl}" 
+                                    <Image asyncImage:ImageLoader.Source="{Binding FullPosterUrl}" 
                                            Stretch="UniformToFill"
                                            Width="200"
                                            Height="300"/>

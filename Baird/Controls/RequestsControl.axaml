@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Baird.ViewModels"
+             xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Baird.Controls.RequestsControl"
              x:CompileBindings="True"
@@ -82,7 +83,7 @@
                                         Background="#1a1a1a"
                                         Height="350">
                                     <Panel>
-                                        <Image Source="{Binding FullPosterUrl}" 
+                                        <Image asyncImage:ImageLoader.Source="{Binding FullPosterUrl}" 
                                                Stretch="UniformToFill"/>
                                         
                                         <!-- Play Icon Overlay for Available Items -->
