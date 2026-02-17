@@ -163,7 +163,8 @@ namespace Baird.ViewModels
         {
             IsSearching = true;
             SearchResults.Clear();
-            ShowStatus = false;
+            ShowStatus = true;
+            StatusMessage = "Showing trending movies and TV shows";
 
             try
             {
