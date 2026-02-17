@@ -99,6 +99,9 @@
                 <DataTemplate DataType="{x:Type vm:WatchlistViewModel}">
                     <controls:WatchlistControl/>
                 </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:CecDebugViewModel}">
+                    <controls:CecDebugControl/>
+                </DataTemplate>
             </ContentControl.DataTemplates>
         </ContentControl>
 

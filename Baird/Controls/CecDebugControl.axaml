@@ -1,0 +1,197 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Baird.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Baird.Controls.CecDebugControl"
+             x:CompileBindings="True"
+             x:DataType="vm:CecDebugViewModel">
+
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+    </UserControl.KeyBindings>
+
+    <UserControl.Styles>
+        <Style Selector="Button.CecButton">
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#3F3F46"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="20,15"/>
+            <Setter Property="Margin" Value="10"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="MinWidth" Value="180"/>
+            <Setter Property="MinHeight" Value="50"/>
+        </Style>
+        
+        <Style Selector="Button.CecButton:focus">
+            <Setter Property="BorderBrush" Value="#4CAF50"/>
+            <Setter Property="Background" Value="#3D3D40"/>
+        </Style>
+
+        <Style Selector="Button.CecButton:disabled">
+            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="Foreground" Value="#666666"/>
+            <Setter Property="BorderBrush" Value="#2D2D30"/>
+        </Style>
+
+        <Style Selector="Button.PowerButton">
+            <Setter Property="Background" Value="#1976D2"/>
+        </Style>
+        
+        <Style Selector="Button.PowerButton:focus">
+            <Setter Property="BorderBrush" Value="#4CAF50"/>
+            <Setter Property="Background" Value="#2196F3"/>
+        </Style>
+
+        <Style Selector="Button.VolumeButton">
+            <Setter Property="Background" Value="#7B1FA2"/>
+        </Style>
+        
+        <Style Selector="Button.VolumeButton:focus">
+            <Setter Property="BorderBrush" Value="#4CAF50"/>
+            <Setter Property="Background" Value="#9C27B0"/>
+        </Style>
+
+        <Style Selector="Button.InputButton">
+            <Setter Property="Background" Value="#388E3C"/>
+        </Style>
+        
+        <Style Selector="Button.InputButton:focus">
+            <Setter Property="BorderBrush" Value="#4CAF50"/>
+            <Setter Property="Background" Value="#4CAF50"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="#1E1E1E" Padding="30">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Orientation="Vertical" Spacing="20">
+                
+                <!-- Header -->
+                <TextBlock Text="CEC Debug Panel" 
+                          FontSize="28" 
+                          FontWeight="Bold" 
+                          Foreground="White" 
+                          Margin="0,0,0,20"
+                          HorizontalAlignment="Center"/>
+
+                <!-- Status Display -->
+                <Border Background="#2D2D30" 
+                       BorderBrush="#3F3F46" 
+                       BorderThickness="1" 
+                       CornerRadius="4" 
+                       Padding="15"
+                       Margin="0,0,0,20">
+                    <StackPanel Orientation="Vertical" Spacing="10">
+                        <TextBlock Text="Status:" FontWeight="Bold" Foreground="White" FontSize="16"/>
+                        <TextBlock Text="{Binding StatusText}" 
+                                  Foreground="#CCCCCC" 
+                                  FontSize="14"
+                                  TextWrapping="Wrap"/>
+                        <Button Content="Refresh Status" 
+                               Classes="CecButton"
+                               Command="{Binding RefreshStatusCommand}"
+                               IsEnabled="{Binding !IsExecuting}"
+                               HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Power Controls -->
+                <Border Background="#2D2D30" 
+                       BorderBrush="#3F3F46" 
+                       BorderThickness="1" 
+                       CornerRadius="4" 
+                       Padding="20">
+                    <StackPanel Orientation="Vertical" Spacing="15">
+                        <TextBlock Text="Power Controls" FontWeight="Bold" Foreground="White" FontSize="18"/>
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Content="Power On" 
+                                   Classes="CecButton PowerButton"
+                                   Command="{Binding PowerOnCommand}"
+                                   IsEnabled="{Binding !IsExecuting}"/>
+                            <Button Content="Power Off" 
+                                   Classes="CecButton PowerButton"
+                                   Command="{Binding PowerOffCommand}"
+                                   IsEnabled="{Binding !IsExecuting}"/>
+                            <Button Content="Toggle Power" 
+                                   Classes="CecButton PowerButton"
+                                   Command="{Binding TogglePowerCommand}"
+                                   IsEnabled="{Binding !IsExecuting}"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Volume Controls -->
+                <Border Background="#2D2D30" 
+                       BorderBrush="#3F3F46" 
+                       BorderThickness="1" 
+                       CornerRadius="4" 
+                       Padding="20">
+                    <StackPanel Orientation="Vertical" Spacing="15">
+                        <TextBlock Text="Volume Controls" FontWeight="Bold" Foreground="White" FontSize="18"/>
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Content="Volume Up" 
+                                   Classes="CecButton VolumeButton"
+                                   Command="{Binding VolumeUpCommand}"
+                                   IsEnabled="{Binding !IsExecuting}"/>
+                            <Button Content="Volume Down" 
+                                   Classes="CecButton VolumeButton"
+                                   Command="{Binding VolumeDownCommand}"
+                                   IsEnabled="{Binding !IsExecuting}"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Input Controls -->
+                <Border Background="#2D2D30" 
+                       BorderBrush="#3F3F46" 
+                       BorderThickness="1" 
+                       CornerRadius="4" 
+                       Padding="20">
+                    <StackPanel Orientation="Vertical" Spacing="15">
+                        <TextBlock Text="Input Controls" FontWeight="Bold" Foreground="White" FontSize="18"/>
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Content="Change Input to THIS Device" 
+                                   Classes="CecButton InputButton"
+                                   Command="{Binding ChangeInputCommand}"
+                                   IsEnabled="{Binding !IsExecuting}"/>
+                            <Button Content="Cycle Inputs" 
+                                   Classes="CecButton InputButton"
+                                   Command="{Binding CycleInputsCommand}"
+                                   IsEnabled="{Binding !IsExecuting}"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Instructions -->
+                <Border Background="#2D2D30" 
+                       BorderBrush="#3F3F46" 
+                       BorderThickness="1" 
+                       CornerRadius="4" 
+                       Padding="15"
+                       Margin="0,20,0,0">
+                    <StackPanel Orientation="Vertical" Spacing="10">
+                        <TextBlock Text="Instructions:" FontWeight="Bold" Foreground="White" FontSize="16"/>
+                        <TextBlock Foreground="#CCCCCC" FontSize="12" TextWrapping="Wrap">
+                            <Run Text="• Use Power controls to turn the TV on/off"/>
+                            <LineBreak/>
+                            <Run Text="• Volume controls adjust TV volume"/>
+                            <LineBreak/>
+                            <Run Text="• 'Change Input to THIS Device' switches TV input to this device"/>
+                            <LineBreak/>
+                            <Run Text="• 'Cycle Inputs' cycles through available TV inputs"/>
+                            <LineBreak/>
+                            <Run Text="• Press ESC to go back to main menu"/>
+                            <LineBreak/>
+                            <Run Text="• Requires cec-ctl (v4l-utils) to be installed"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+
+</UserControl>

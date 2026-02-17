@@ -6,5 +6,12 @@ namespace Baird.Services
     {
         Task StartAsync();
         Task TogglePowerAsync();
+        Task PowerOnAsync();
+        Task PowerOffAsync();
+        Task VolumeUpAsync();
+        Task VolumeDownAsync();
+        Task ChangeInputToThisDeviceAsync();
+        Task CycleInputsAsync();
+        Task<string> GetPowerStatusAsync();
     }
 }

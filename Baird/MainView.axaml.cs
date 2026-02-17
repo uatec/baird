@@ -52,7 +52,7 @@ namespace Baird
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache);
 
-            _viewModel = new MainViewModel(_dataService, searchHistoryService, _screensaverService);
+            _viewModel = new MainViewModel(_dataService, searchHistoryService, _screensaverService, _cecService);
 
             DataContext = _viewModel;
 

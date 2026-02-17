@@ -40,6 +40,7 @@ namespace Baird.ViewModels
         public OmniSearchViewModel OmniSearch { get; }
         public HistoryViewModel History { get; }
         public WatchlistViewModel Watchlist { get; }
+        public CecDebugViewModel CecDebug { get; }
         public TabNavigationViewModel MainMenu { get; }
 
         private MediaItemViewModel? _activeItem;
@@ -74,7 +75,7 @@ namespace Baird.ViewModels
 
         public ScreensaverViewModel Screensaver { get; }
 
-        public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService)
+        public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService)
         {
             _dataService = dataService;
             _versionCheckService = new VersionCheckService();
@@ -96,12 +97,15 @@ namespace Baird.ViewModels
             OmniSearch = new OmniSearchViewModel(dataService, searchHistoryService, () => AllChannels);
             History = new HistoryViewModel(dataService);
             Watchlist = new WatchlistViewModel(dataService);
+            CecDebug = new CecDebugViewModel(cecService);
 
             History.PlayRequested += (s, item) => PlayItem(item);
             History.BackRequested += (s, e) => GoBack();
 
             Watchlist.PlayRequested += (s, item) => PlayItem(item);
             Watchlist.BackRequested += (s, e) => GoBack();
+
+            CecDebug.BackRequested += (s, e) => GoBack();
 
             // Subscribe to history updates to keep HistoryViewModel in sync
             _dataService.HistoryUpdated += async (s, e) =>
@@ -167,6 +171,7 @@ namespace Baird.ViewModels
                 new TabItem("History", History),
                 new TabItem("Search", OmniSearch),
                 new TabItem("Watchlist", Watchlist),
+                new TabItem("CEC Debug", CecDebug),
             };
             MainMenu = new TabNavigationViewModel(tabs);
             MainMenu.BackRequested += (s, e) => GoBack();

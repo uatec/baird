@@ -39,6 +39,116 @@ namespace Baird.Services
             }
         }
 
+        public async Task PowerOnAsync()
+        {
+            try
+            {
+                Console.WriteLine("[CecService] Sending Power On...");
+                await SendPowerOnAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CecService] Error powering on: {ex.Message}");
+            }
+        }
+
+        public async Task PowerOffAsync()
+        {
+            try
+            {
+                Console.WriteLine("[CecService] Sending Power Off...");
+                await SendStandbyAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CecService] Error powering off: {ex.Message}");
+            }
+        }
+
+        public async Task VolumeUpAsync()
+        {
+            try
+            {
+                Console.WriteLine("[CecService] Sending Volume Up...");
+                await RunCecCtlAsync($"{DeviceArg} {TargetArg} --volume-up");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CecService] Error increasing volume: {ex.Message}");
+            }
+        }
+
+        public async Task VolumeDownAsync()
+        {
+            try
+            {
+                Console.WriteLine("[CecService] Sending Volume Down...");
+                await RunCecCtlAsync($"{DeviceArg} {TargetArg} --volume-down");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CecService] Error decreasing volume: {ex.Message}");
+            }
+        }
+
+        public async Task ChangeInputToThisDeviceAsync()
+        {
+            try
+            {
+                Console.WriteLine("[CecService] Changing input to this device...");
+                // First wake up the TV if needed
+                await RunCecCtlAsync($"{DeviceArg} {TargetArg} --image-view-on");
+                // Then set active source to our device
+                await RunCecCtlAsync($"{DeviceArg} --active-source");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CecService] Error changing input: {ex.Message}");
+            }
+        }
+
+        public async Task CycleInputsAsync()
+        {
+            try
+            {
+                Console.WriteLine("[CecService] Cycling inputs...");
+                // Send the input select key which typically cycles through inputs
+                await RunCecCtlAsync($"{DeviceArg} {TargetArg} --user-control-pressed ui-cmd=input-select");
+                await Task.Delay(100); // Brief delay before release
+                await RunCecCtlAsync($"{DeviceArg} {TargetArg} --user-control-released");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CecService] Error cycling inputs: {ex.Message}");
+            }
+        }
+
+        public async Task<string> GetPowerStatusAsync()
+        {
+            try
+            {
+                var output = await RunCecCtlAsync($"{DeviceArg} {TargetArg} --give-device-power-status");
+                
+                if (output.Contains("pwr-state: on", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "On";
+                }
+                else if (output.Contains("pwr-state: standby", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "Standby";
+                }
+                else
+                {
+                    return "Unknown";
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CecService] Error getting power status: {ex.Message}");
+                return "Error";
+            }
+        }
+
         private async Task<bool> IsTvOnAsync()
         {
             // cec-ctl -d0 --to 0 --give-device-power-status
