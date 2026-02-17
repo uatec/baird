@@ -34,10 +34,7 @@
                             <Border Background="#0088DD" CornerRadius="3" Padding="6,2">
                                 <TextBlock Text="{Binding Item1.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/>
                             </Border>
-                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item1.IsAvailable}">
-                                <TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/>
-                            </Border>
-                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item1.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <Border Background="{Binding Item1.StatusColor}" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item1.ShowStatusBadge}">
                                 <TextBlock Text="{Binding Item1.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/>
                             </Border>
                         </StackPanel>
@@ -59,8 +56,7 @@
                         <TextBlock Grid.Row="0" Text="{Binding Item2.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
                             <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item2.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item2.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item2.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item2.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="{Binding Item2.StatusColor}" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item2.ShowStatusBadge}"><TextBlock Text="{Binding Item2.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -79,8 +75,7 @@
                         <TextBlock Grid.Row="0" Text="{Binding Item3.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
                             <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item3.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item3.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item3.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item3.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="{Binding Item3.StatusColor}" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item3.ShowStatusBadge}"><TextBlock Text="{Binding Item3.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -99,8 +94,7 @@
                         <TextBlock Grid.Row="0" Text="{Binding Item4.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
                             <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item4.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item4.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item4.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item4.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="{Binding Item4.StatusColor}" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item4.ShowStatusBadge}"><TextBlock Text="{Binding Item4.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -119,8 +113,7 @@
                         <TextBlock Grid.Row="0" Text="{Binding Item5.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
                             <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item5.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item5.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item5.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item5.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="{Binding Item5.StatusColor}" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item5.ShowStatusBadge}"><TextBlock Text="{Binding Item5.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -139,8 +132,7 @@
                         <TextBlock Grid.Row="0" Text="{Binding Item6.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
                             <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item6.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item6.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
-                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item6.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item6.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="{Binding Item6.StatusColor}" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item6.ShowStatusBadge}"><TextBlock Text="{Binding Item6.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
                         </StackPanel>
                     </Grid>
                 </Border>

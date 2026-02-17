@@ -29,6 +29,7 @@ namespace Baird.ViewModels
         public string? ReleaseDate => _result.ReleaseDate;
         public double VoteAverage => _result.VoteAverage;
         public bool IsAvailable => _result.IsAvailable;
+        public int MediaInfoStatus => _result.MediaInfoStatus;
 
         // For display in tile
         public string FullPosterUrl
@@ -55,6 +56,24 @@ namespace Baird.ViewModels
                 };
             }
         }
+
+        public string StatusColor
+        {
+            get
+            {
+                return _result.MediaInfoStatus switch
+                {
+                    5 => "#00AA00",  // Available - Green
+                    4 => "#00AA00",  // Partial - Green
+                    3 => "#0088DD",  // Processing - Blue
+                    2 => "#CCAA00",  // Pending - Yellow
+                    _ => "Transparent"
+                };
+            }
+        }
+
+        public bool HasRequest => _result.MediaInfoStatus >= 2;
+        public bool ShowStatusBadge => HasRequest;
 
         public string BadgeText => MediaType == "movie" ? "Movie" : "TV";
     }
@@ -130,6 +149,9 @@ namespace Baird.ViewModels
             // Track searching state for spinner
             this.WhenAnyValue(x => x.IsSearching).Subscribe(_ => this.RaisePropertyChanged(nameof(ShowSpinner)));
             SearchResults.CollectionChanged += (s, e) => this.RaisePropertyChanged(nameof(ShowSpinner));
+
+            // Load trending items on startup
+            _ = LoadTrending();
         }
 
         public void RequestSearchBoxFocus()
@@ -137,14 +159,44 @@ namespace Baird.ViewModels
             SearchBoxFocusRequested?.Invoke(this, EventArgs.Empty);
         }
 
+        private async Task LoadTrending()
+        {
+            IsSearching = true;
+            SearchResults.Clear();
+            ShowStatus = false;
+
+            try
+            {
+                var results = await _jellyseerrService.GetTrendingAsync(1);
+                var viewModels = results.Select(r => new SeerrchResultViewModel(r)).ToList();
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    SearchResults.Clear();
+                    foreach (var vm in viewModels)
+                    {
+                        SearchResults.Add(vm);
+                    }
+
+                    UpdateSearchResultRows();
+                    IsSearching = false;
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SeerrchViewModel] Load trending error: {ex.Message}");
+                IsSearching = false;
+                ShowStatus = true;
+                StatusMessage = $"Failed to load trending: {ex.Message}";
+            }
+        }
+
         private async Task PerformSearch(string? query)
         {
             if (string.IsNullOrWhiteSpace(query))
             {
-                SearchResults.Clear();
-                SearchResultRows.Clear();
-                IsSearching = false;
-                ShowStatus = false;
+                // Load trending when search box is empty
+                await LoadTrending();
                 return;
             }
 

@@ -51,60 +51,88 @@ namespace Baird.Services
                 }
 
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                using var doc = JsonDocument.Parse(json);
-
-                var results = new List<JellyseerrSearchResult>();
-
-                if (doc.RootElement.TryGetProperty("results", out var resultsArray))
-                {
-                    foreach (var item in resultsArray.EnumerateArray())
-                    {
-                        var mediaType = item.GetProperty("mediaType").GetString() ?? "";
-
-                        // Skip person results
-                        if (mediaType == "person") continue;
-
-                        var result = new JellyseerrSearchResult
-                        {
-                            Id = item.GetProperty("id").GetInt32(),
-                            MediaType = mediaType
-                        };
-
-                        // Movies have "title", TV shows have "name"
-                        if (mediaType == "movie")
-                        {
-                            result.Title = item.TryGetProperty("title", out var title) ? title.GetString() ?? "" : "";
-                            result.ReleaseDate = item.TryGetProperty("releaseDate", out var releaseDate) ? releaseDate.GetString() : null;
-                        }
-                        else if (mediaType == "tv")
-                        {
-                            result.Title = item.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "";
-                            result.ReleaseDate = item.TryGetProperty("firstAirDate", out var firstAirDate) ? firstAirDate.GetString() : null;
-                        }
-
-                        result.PosterPath = item.TryGetProperty("posterPath", out var posterPath) ? posterPath.GetString() : null;
-                        result.BackdropPath = item.TryGetProperty("backdropPath", out var backdropPath) ? backdropPath.GetString() : null;
-                        result.Overview = item.TryGetProperty("overview", out var overview) ? overview.GetString() : null;
-                        result.VoteAverage = item.TryGetProperty("voteAverage", out var voteAverage) ? voteAverage.GetDouble() : 0;
-
-                        // Get media info status
-                        if (item.TryGetProperty("mediaInfo", out var mediaInfo))
-                        {
-                            result.MediaInfoStatus = mediaInfo.TryGetProperty("status", out var status) ? status.GetInt32() : 1;
-                        }
-
-                        results.Add(result);
-                    }
-                }
-
-                Console.WriteLine($"[JellyseerrService] Search '{query}' returned {results.Count} results");
-                return results;
+                return ParseSearchResults(json, "Search");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[JellyseerrService] Search error: {ex.Message}");
                 return Array.Empty<JellyseerrSearchResult>();
             }
+        }
+
+        public async Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int page, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var url = $"api/v1/discover/trending?page={page}";
+                var response = await _httpClient.GetAsync(url, cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[JellyseerrService] Get trending failed: {response.StatusCode}");
+                    return Array.Empty<JellyseerrSearchResult>();
+                }
+
+                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                return ParseSearchResults(json, "Trending");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[JellyseerrService] Get trending error: {ex.Message}");
+                return Array.Empty<JellyseerrSearchResult>();
+            }
+        }
+
+        private List<JellyseerrSearchResult> ParseSearchResults(string json, string source)
+        {
+            using var doc = JsonDocument.Parse(json);
+
+            var results = new List<JellyseerrSearchResult>();
+
+            if (doc.RootElement.TryGetProperty("results", out var resultsArray))
+            {
+                foreach (var item in resultsArray.EnumerateArray())
+                {
+                    var mediaType = item.GetProperty("mediaType").GetString() ?? "";
+
+                    // Skip person results
+                    if (mediaType == "person") continue;
+
+                    var result = new JellyseerrSearchResult
+                    {
+                        Id = item.GetProperty("id").GetInt32(),
+                        MediaType = mediaType
+                    };
+
+                    // Movies have "title", TV shows have "name"
+                    if (mediaType == "movie")
+                    {
+                        result.Title = item.TryGetProperty("title", out var title) ? title.GetString() ?? "" : "";
+                        result.ReleaseDate = item.TryGetProperty("releaseDate", out var releaseDate) ? releaseDate.GetString() : null;
+                    }
+                    else if (mediaType == "tv")
+                    {
+                        result.Title = item.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "";
+                        result.ReleaseDate = item.TryGetProperty("firstAirDate", out var firstAirDate) ? firstAirDate.GetString() : null;
+                    }
+
+                    result.PosterPath = item.TryGetProperty("posterPath", out var posterPath) ? posterPath.GetString() : null;
+                    result.BackdropPath = item.TryGetProperty("backdropPath", out var backdropPath) ? backdropPath.GetString() : null;
+                    result.Overview = item.TryGetProperty("overview", out var overview) ? overview.GetString() : null;
+                    result.VoteAverage = item.TryGetProperty("voteAverage", out var voteAverage) ? voteAverage.GetDouble() : 0;
+
+                    // Get media info status
+                    if (item.TryGetProperty("mediaInfo", out var mediaInfo))
+                    {
+                        result.MediaInfoStatus = mediaInfo.TryGetProperty("status", out var status) ? status.GetInt32() : 1;
+                    }
+
+                    results.Add(result);
+                }
+            }
+
+            Console.WriteLine($"[JellyseerrService] {source} returned {results.Count} results");
+            return results;
         }
 
         public async Task<JellyseerrRequestResponse> CreateRequestAsync(int mediaId, string mediaType, CancellationToken cancellationToken = default)
