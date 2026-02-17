@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Baird.Models;
 using Baird.Services;
 using Baird.ViewModels;
+using Baird.Tests.Mocks;
 using Xunit;
 
 namespace Baird.Tests.ViewModels
@@ -131,7 +132,7 @@ namespace Baird.Tests.ViewModels
             };
             provider.SetChildren("show1|1", season1Episodes);
 
-            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService(), new MockCecService());
 
             // Simulate opening a season and playing first episode
             var seasonData = CreateSeason("show1|1", "Season 1");
@@ -190,7 +191,7 @@ namespace Baird.Tests.ViewModels
             provider.SetChildren("show1|1", season1Episodes);
             provider.SetChildren("show1|2", season2Episodes);
 
-            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService(), new MockCecService());
 
             // Simulate playing last episode of season 1
             viewModel.PlayItem(new MediaItemViewModel(season1Episodes[1]));
@@ -239,7 +240,7 @@ namespace Baird.Tests.ViewModels
             provider.SetChildren("show1|3", season3Episodes);
             // Season 4 does not exist - no children for "show1|4"
 
-            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService(), new MockCecService());
 
             // Simulate playing last episode of season 3
             viewModel.PlayItem(new MediaItemViewModel(season3Episodes[1]));
@@ -281,7 +282,7 @@ namespace Baird.Tests.ViewModels
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
-            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService(), new MockCecService());
 
             var getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -305,7 +306,7 @@ namespace Baird.Tests.ViewModels
             var historyService = new TestHistoryService();
             var searchHistoryService = new TestSearchHistoryService();
             var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
-            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService(), new MockCecService());
 
             var getNextSeasonIdMethod = typeof(MainViewModel).GetMethod("GetNextSeasonId",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -340,7 +341,7 @@ namespace Baird.Tests.ViewModels
             };
             provider.SetChildren("show1", episodes);
 
-            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService(), new MockCecService());
 
             // Simulate playing first episode
             viewModel.PlayItem(new MediaItemViewModel(episodes[0]));
@@ -384,7 +385,7 @@ namespace Baird.Tests.ViewModels
             };
             provider.SetChildren("show1", episodes);
 
-            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService(), new MockCecService());
 
             // Simulate playing last episode
             viewModel.PlayItem(new MediaItemViewModel(episodes[1]));
@@ -473,7 +474,7 @@ namespace Baird.Tests.ViewModels
             provider.SetChildren("album1|1", season1Tracks);
             provider.SetChildren("album1|2", season2Tracks);
 
-            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService());
+            var viewModel = new MainViewModel(dataService, searchHistoryService, new ScreensaverService(), new MockCecService());
 
             // Simulate playing last track of disc 1
             viewModel.PlayItem(new MediaItemViewModel(season1Tracks[1]));
