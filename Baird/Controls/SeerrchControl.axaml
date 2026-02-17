@@ -53,99 +53,35 @@
         </Border>
 
         <!-- Row 1: Search Results -->
-        <ScrollViewer Grid.Row="1"
-                      Focusable="False"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
-            <ItemsControl Name="ResultsList" 
-                          ItemsSource="{Binding SearchResults}"
-                          Background="Transparent">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <UniformGrid Columns="6" HorizontalAlignment="Center" VerticalAlignment="Top"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Button Background="Transparent"
-                                BorderBrush="#333333"
-                                BorderThickness="1"
-                                CornerRadius="8"
-                                Padding="0"
-                                Margin="8"
-                                Command="{Binding $parent[UserControl].DataContext.RequestItemCommand}"
-                                CommandParameter="{Binding}"
-                                HorizontalContentAlignment="Stretch"
-                                VerticalContentAlignment="Stretch">
-                            <Grid RowDefinitions="*,Auto">
-                                <!-- Poster Image -->
-                                <Border Grid.Row="0" 
-                                        CornerRadius="8,8,0,0" 
-                                        ClipToBounds="True"
-                                        Background="#1a1a1a">
-                                    <Image asyncImage:ImageLoader.Source="{Binding FullPosterUrl}" 
-                                           Stretch="UniformToFill"
-                                           Width="200"
-                                           Height="300"/>
-                                </Border>
-                                
-                                <!-- Info Panel -->
-                                <Border Grid.Row="1" Background="#222222" Padding="8">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-                                    
-                                    <!-- Title -->
-                                    <TextBlock Grid.Row="0" 
-                                               Text="{Binding Title}" 
-                                               FontSize="14" 
-                                               FontWeight="SemiBold"
-                                               Foreground="White"
-                                               TextTrimming="CharacterEllipsis"
-                                               MaxLines="2"
-                                               TextWrapping="Wrap"/>
-                                    
-                                    <!-- Badges -->
-                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
-                                        <Border Background="#0088DD" 
-                                                CornerRadius="3" 
-                                                Padding="6,2">
-                                            <TextBlock Text="{Binding BadgeText}" 
-                                                       FontSize="10" 
-                                                       Foreground="White"
-                                                       FontWeight="Bold"/>
-                                        </Border>
-                                        
-                                        <Border Background="#00AA00" 
-                                                CornerRadius="3" 
-                                                Padding="6,2"
-                                                IsVisible="{Binding IsAvailable}">
-                                            <TextBlock Text="Available" 
-                                                       FontSize="10" 
-                                                       Foreground="White"
-                                                       FontWeight="Bold"/>
-                                        </Border>
-                                        
-                                        <Border Background="#CCAA00" 
-                                                CornerRadius="3" 
-                                                Padding="6,2"
-                                                IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                            <TextBlock Text="{Binding StatusText}" 
-                                                       FontSize="10" 
-                                                       Foreground="White"
-                                                       FontWeight="Bold"/>
-                                        </Border>
-                                    </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </Grid>
-                        </Button>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+        <ListBox Grid.Row="1"
+                 Name="ResultsList"
+                 ItemsSource="{Binding SearchResultRows}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Margin" Value="0"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                </Style>
+                <Style Selector="ListBoxItem:selected">
+                    <Setter Property="Background" Value="Transparent"/>
+                </Style>
+                <Style Selector="ListBoxItem:pointerover">
+                    <Setter Property="Background" Value="Transparent"/>
+                </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <controls:SeerrchTileRow DataContext="{Binding}"
+                                            Command="{Binding $parent[UserControl].DataContext.RequestItemCommand}"/>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
         
         <!-- Loading Spinner -->
         <StackPanel Grid.Row="1" 

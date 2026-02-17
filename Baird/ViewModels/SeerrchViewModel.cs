@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using ReactiveUI;
 using Baird.Services;
+using DynamicData;
 
 namespace Baird.ViewModels
 {
@@ -97,6 +98,7 @@ namespace Baird.ViewModels
         public bool ShowSpinner => IsSearching && SearchResults.Count == 0;
 
         public ObservableCollection<SeerrchResultViewModel> SearchResults { get; } = new();
+        public ObservableCollection<SeerrchRowViewModel> SearchResultRows { get; } = new();
 
         public ReactiveCommand<SeerrchResultViewModel, Unit> RequestItemCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
@@ -140,6 +142,7 @@ namespace Baird.ViewModels
             if (string.IsNullOrWhiteSpace(query))
             {
                 SearchResults.Clear();
+                SearchResultRows.Clear();
                 IsSearching = false;
                 ShowStatus = false;
                 return;
@@ -172,6 +175,9 @@ namespace Baird.ViewModels
                     {
                         SearchResults.Add(vm);
                     }
+                    
+                    // Update row collection for virtualization
+                    UpdateSearchResultRows();
                     
                     IsSearching = false;
                 });
@@ -225,6 +231,13 @@ namespace Baird.ViewModels
                 StatusMessage = $"✗ Error: {ex.Message}";
                 Console.WriteLine($"[SeerrchViewModel] Request error: {ex.Message}");
             }
+        }
+
+        private void UpdateSearchResultRows()
+        {
+            var rows = SeerrchRowViewModel.CreateRows(SearchResults);
+            SearchResultRows.Clear();
+            SearchResultRows.AddRange(rows);
         }
     }
 }

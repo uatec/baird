@@ -6,6 +6,7 @@ using Baird.Services;
 using System;
 using System.Threading.Tasks;
 using System.Linq;
+using DynamicData;
 
 namespace Baird.ViewModels
 {
@@ -13,6 +14,7 @@ namespace Baird.ViewModels
     {
         private readonly IDataService _dataService;
         public ObservableCollection<MediaItemViewModel> WatchlistItems { get; } = new();
+        public ObservableCollection<MediaRowViewModel> WatchlistRows { get; } = new();
 
         public event EventHandler<MediaItemViewModel>? PlayRequested;
         public event EventHandler? BackRequested;
@@ -90,6 +92,16 @@ namespace Baird.ViewModels
                 }
                 index++;
             }
+            
+            // Update row collection for virtualization
+            UpdateWatchlistRows();
+        }
+
+        private void UpdateWatchlistRows()
+        {
+            var rows = MediaRowViewModel.CreateRows(WatchlistItems);
+            WatchlistRows.Clear();
+            WatchlistRows.AddRange(rows);
         }
     }
 }

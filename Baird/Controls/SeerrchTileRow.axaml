@@ -1,0 +1,150 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Baird.ViewModels"
+             xmlns:controls="using:Baird.Controls"
+             xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="400"
+             x:Class="Baird.Controls.SeerrchTileRow"
+             x:CompileBindings="True"
+             x:DataType="vm:SeerrchRowViewModel">
+    
+    <UniformGrid Columns="6" HorizontalAlignment="Center" VerticalAlignment="Top">
+        <!-- Item 1 -->
+        <Button Background="Transparent"
+                BorderBrush="#333333"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="0"
+                Margin="8"
+                Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:SeerrchTileRow}}"
+                CommandParameter="{Binding Item1}"
+                IsVisible="{Binding Item1, Converter={x:Static ObjectConverters.IsNotNull}}"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch">
+            <Grid RowDefinitions="*,Auto">
+                <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True" Background="#1a1a1a">
+                    <Image asyncImage:ImageLoader.Source="{Binding Item1.FullPosterUrl}" Stretch="UniformToFill" Width="200" Height="300"/>
+                </Border>
+                <Border Grid.Row="1" Background="#222222" Padding="8">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Row="0" Text="{Binding Item1.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
+                            <Border Background="#0088DD" CornerRadius="3" Padding="6,2">
+                                <TextBlock Text="{Binding Item1.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                            </Border>
+                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item1.IsAvailable}">
+                                <TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                            </Border>
+                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item1.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                <TextBlock Text="{Binding Item1.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Button>
+
+        <!-- Items 2-6: Similar structure -->
+        <Button Background="Transparent" BorderBrush="#333333" BorderThickness="1" CornerRadius="8" Padding="0" Margin="8" 
+                Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:SeerrchTileRow}}" CommandParameter="{Binding Item2}"
+                IsVisible="{Binding Item2, Converter={x:Static ObjectConverters.IsNotNull}}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <Grid RowDefinitions="*,Auto">
+                <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True" Background="#1a1a1a">
+                    <Image asyncImage:ImageLoader.Source="{Binding Item2.FullPosterUrl}" Stretch="UniformToFill" Width="200" Height="300"/>
+                </Border>
+                <Border Grid.Row="1" Background="#222222" Padding="8">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Row="0" Text="{Binding Item2.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
+                            <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item2.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item2.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item2.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item2.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Button>
+
+        <Button Background="Transparent" BorderBrush="#333333" BorderThickness="1" CornerRadius="8" Padding="0" Margin="8" 
+                Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:SeerrchTileRow}}" CommandParameter="{Binding Item3}"
+                IsVisible="{Binding Item3, Converter={x:Static ObjectConverters.IsNotNull}}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <Grid RowDefinitions="*,Auto">
+                <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True" Background="#1a1a1a">
+                    <Image asyncImage:ImageLoader.Source="{Binding Item3.FullPosterUrl}" Stretch="UniformToFill" Width="200" Height="300"/>
+                </Border>
+                <Border Grid.Row="1" Background="#222222" Padding="8">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Row="0" Text="{Binding Item3.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
+                            <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item3.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item3.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item3.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item3.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Button>
+
+        <Button Background="Transparent" BorderBrush="#333333" BorderThickness="1" CornerRadius="8" Padding="0" Margin="8" 
+                Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:SeerrchTileRow}}" CommandParameter="{Binding Item4}"
+                IsVisible="{Binding Item4, Converter={x:Static ObjectConverters.IsNotNull}}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <Grid RowDefinitions="*,Auto">
+                <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True" Background="#1a1a1a">
+                    <Image asyncImage:ImageLoader.Source="{Binding Item4.FullPosterUrl}" Stretch="UniformToFill" Width="200" Height="300"/>
+                </Border>
+                <Border Grid.Row="1" Background="#222222" Padding="8">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Row="0" Text="{Binding Item4.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
+                            <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item4.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item4.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item4.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item4.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Button>
+
+        <Button Background="Transparent" BorderBrush="#333333" BorderThickness="1" CornerRadius="8" Padding="0" Margin="8" 
+                Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:SeerrchTileRow}}" CommandParameter="{Binding Item5}"
+                IsVisible="{Binding Item5, Converter={x:Static ObjectConverters.IsNotNull}}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <Grid RowDefinitions="*,Auto">
+                <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True" Background="#1a1a1a">
+                    <Image asyncImage:ImageLoader.Source="{Binding Item5.FullPosterUrl}" Stretch="UniformToFill" Width="200" Height="300"/>
+                </Border>
+                <Border Grid.Row="1" Background="#222222" Padding="8">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Row="0" Text="{Binding Item5.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
+                            <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item5.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item5.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item5.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item5.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Button>
+
+        <Button Background="Transparent" BorderBrush="#333333" BorderThickness="1" CornerRadius="8" Padding="0" Margin="8" 
+                Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:SeerrchTileRow}}" CommandParameter="{Binding Item6}"
+                IsVisible="{Binding Item6, Converter={x:Static ObjectConverters.IsNotNull}}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <Grid RowDefinitions="*,Auto">
+                <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True" Background="#1a1a1a">
+                    <Image asyncImage:ImageLoader.Source="{Binding Item6.FullPosterUrl}" Stretch="UniformToFill" Width="200" Height="300"/>
+                </Border>
+                <Border Grid.Row="1" Background="#222222" Padding="8">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Row="0" Text="{Binding Item6.Title}" FontSize="14" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap"/>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
+                            <Border Background="#0088DD" CornerRadius="3" Padding="6,2"><TextBlock Text="{Binding Item6.BadgeText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#00AA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item6.IsAvailable}"><TextBlock Text="Available" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                            <Border Background="#CCAA00" CornerRadius="3" Padding="6,2" IsVisible="{Binding Item6.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><TextBlock Text="{Binding Item6.StatusText}" FontSize="10" Foreground="White" FontWeight="Bold"/></Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Button>
+    </UniformGrid>
+</UserControl>
