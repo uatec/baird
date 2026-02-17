@@ -95,8 +95,41 @@ namespace Baird.ViewModels
         private void UpdateHistoryRows()
         {
             var rows = MediaRowViewModel.CreateRows(HistoryItems);
-            HistoryRows.Clear();
-            HistoryRows.AddRange(rows);
+            
+            // Incrementally update rows to avoid disruption
+            // Remove excess rows if list shrunk
+            while (HistoryRows.Count > rows.Length)
+            {
+                HistoryRows.RemoveAt(HistoryRows.Count - 1);
+            }
+            
+            // Update existing rows and add new ones
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (i < HistoryRows.Count)
+                {
+                    // Replace existing row if items changed
+                    if (!AreSameRowItems(HistoryRows[i], rows[i]))
+                    {
+                        HistoryRows[i] = rows[i];
+                    }
+                }
+                else
+                {
+                    // Add new row
+                    HistoryRows.Add(rows[i]);
+                }
+            }
+        }
+
+        private bool AreSameRowItems(MediaRowViewModel row1, MediaRowViewModel row2)
+        {
+            return row1.Item1?.Id == row2.Item1?.Id &&
+                   row1.Item2?.Id == row2.Item2?.Id &&
+                   row1.Item3?.Id == row2.Item3?.Id &&
+                   row1.Item4?.Id == row2.Item4?.Id &&
+                   row1.Item5?.Id == row2.Item5?.Id &&
+                   row1.Item6?.Id == row2.Item6?.Id;
         }
     }
 }

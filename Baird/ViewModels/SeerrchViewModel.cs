@@ -236,8 +236,41 @@ namespace Baird.ViewModels
         private void UpdateSearchResultRows()
         {
             var rows = SeerrchRowViewModel.CreateRows(SearchResults);
-            SearchResultRows.Clear();
-            SearchResultRows.AddRange(rows);
+            
+            // Incrementally update rows to avoid disruption
+            // Remove excess rows if list shrunk
+            while (SearchResultRows.Count > rows.Length)
+            {
+                SearchResultRows.RemoveAt(SearchResultRows.Count - 1);
+            }
+            
+            // Update existing rows and add new ones
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (i < SearchResultRows.Count)
+                {
+                    // Replace existing row if items changed
+                    if (!AreSameRowItems(SearchResultRows[i], rows[i]))
+                    {
+                        SearchResultRows[i] = rows[i];
+                    }
+                }
+                else
+                {
+                    // Add new row
+                    SearchResultRows.Add(rows[i]);
+                }
+            }
+        }
+
+        private bool AreSameRowItems(SeerrchRowViewModel row1, SeerrchRowViewModel row2)
+        {
+            return row1.Item1?.Id == row2.Item1?.Id &&
+                   row1.Item2?.Id == row2.Item2?.Id &&
+                   row1.Item3?.Id == row2.Item3?.Id &&
+                   row1.Item4?.Id == row2.Item4?.Id &&
+                   row1.Item5?.Id == row2.Item5?.Id &&
+                   row1.Item6?.Id == row2.Item6?.Id;
         }
     }
 }
