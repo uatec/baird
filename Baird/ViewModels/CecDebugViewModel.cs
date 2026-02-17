@@ -125,7 +125,7 @@ namespace Baird.ViewModels
                 StatusText = message;
                 await action();
                 StatusText = $"{message} - Complete";
-                
+
                 // Refresh power status after commands
                 await Task.Delay(500); // Brief delay to allow command to process
                 var status = await _cecService.GetPowerStatusAsync();

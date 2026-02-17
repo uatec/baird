@@ -21,7 +21,7 @@ namespace Baird.Models
         public required string Synopsis { get; init; }
         public required string Subtitle { get; init; }
         public TimeSpan Duration { get; init; }
-        
+
         public bool HasDuration => Duration > TimeSpan.Zero;
     }
 }

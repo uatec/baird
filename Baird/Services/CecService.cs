@@ -128,7 +128,7 @@ namespace Baird.Services
             try
             {
                 var output = await RunCecCtlAsync($"{DeviceArg} {TargetArg} --give-device-power-status");
-                
+
                 if (output.Contains("pwr-state: on", StringComparison.OrdinalIgnoreCase))
                 {
                     return "On";

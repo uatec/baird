@@ -271,11 +271,11 @@ namespace Baird.Services
 
                 // Use cache to get or create the canonical instance
                 var cachedItem = _cache.GetOrCreate(item.Id, () => item);
-                
+
                 // Update state on the cached instance
                 cachedItem.History = _historyService.GetProgress(item.Id);
                 cachedItem.IsOnWatchlist = _watchlistService.IsOnWatchlist(item.Id);
-                
+
                 unifiedList.Add(cachedItem);
             }
             return unifiedList;

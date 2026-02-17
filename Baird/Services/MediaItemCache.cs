@@ -14,17 +14,17 @@ namespace Baird.Services
         /// Gets a cached item by ID, or creates and caches it using the factory function.
         /// </summary>
         MediaItemViewModel GetOrCreate(string id, Func<MediaItemViewModel> factory);
-        
+
         /// <summary>
         /// Tries to get a cached item by ID.
         /// </summary>
         bool TryGet(string id, out MediaItemViewModel? item);
-        
+
         /// <summary>
         /// Clears all cached items.
         /// </summary>
         void Clear();
-        
+
         /// <summary>
         /// Clears cached items from a specific source (e.g., "Live TV", "Jellyfin: home").
         /// </summary>

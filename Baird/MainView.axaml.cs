@@ -244,7 +244,7 @@ namespace Baird
 
             // Q key is now handled by VideoPlayer
 
-      
+
         }
 
         private void HandleBackTrigger(KeyEventArgs e)
