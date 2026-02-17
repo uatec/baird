@@ -59,7 +59,9 @@
                  Background="Transparent"
                  BorderThickness="0"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 SelectionMode="Single"
+                 Focusable="False">
             <ListBox.Styles>
                 <Style Selector="ListBoxItem">
                     <Setter Property="Padding" Value="0"/>
@@ -67,11 +69,21 @@
                     <Setter Property="Background" Value="Transparent"/>
                     <Setter Property="BorderThickness" Value="0"/>
                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Focusable" Value="False"/>
                 </Style>
                 <Style Selector="ListBoxItem:selected">
                     <Setter Property="Background" Value="Transparent"/>
                 </Style>
+                <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent"/>
+                </Style>
                 <Style Selector="ListBoxItem:pointerover">
+                    <Setter Property="Background" Value="Transparent"/>
+                </Style>
+                <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent"/>
+                </Style>
+                <Style Selector="ListBoxItem:focus">
                     <Setter Property="Background" Value="Transparent"/>
                 </Style>
             </ListBox.Styles>
