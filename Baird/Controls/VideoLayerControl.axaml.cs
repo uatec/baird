@@ -8,6 +8,8 @@ namespace Baird.Controls
 {
     public partial class VideoLayerControl : UserControl
     {
+        public event EventHandler? ExitRequested;
+
         public VideoLayerControl()
         {
             InitializeComponent();
@@ -44,6 +46,7 @@ namespace Baird.Controls
                 player.UserActivity += OnUserActivity;
                 player.StreamEnded += OnStreamEnded;
                 player.ConfigurationToggleRequested += OnConfigurationToggleRequested;
+                player.ExitRequested += OnExitRequested;
                 player.Focus(); // Ensure player gets focus when layer is active
             }
         }
@@ -58,6 +61,7 @@ namespace Baird.Controls
                 player.UserActivity -= OnUserActivity;
                 player.StreamEnded -= OnStreamEnded;
                 player.ConfigurationToggleRequested -= OnConfigurationToggleRequested;
+                player.ExitRequested -= OnExitRequested;
             }
         }
 
@@ -120,6 +124,12 @@ namespace Baird.Controls
                     itemsControl.ItemsSource = items;
                 }
             }
+        }
+
+        private void OnExitRequested(object? sender, EventArgs e)
+        {
+            Console.WriteLine("[VideoLayerControl] Exit requested, propagating to MainView");
+            ExitRequested?.Invoke(this, EventArgs.Empty);
         }
     }
 }

@@ -61,6 +61,13 @@ namespace Baird
                 await _screensaverService.InitializeAsync();
                 SetupIdleTimer();
 
+                // Subscribe to VideoLayer exit requests
+                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                if (videoLayer != null)
+                {
+                    videoLayer.ExitRequested += OnVideoLayerExitRequested;
+                }
+
                 // TopLevel for global input hook? Or just hook on UserControl?
                 // UserControl KeyDown bubbles, so focusing Root is important.
                 var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
@@ -235,21 +242,7 @@ namespace Baird
                 return;
             }
 
-            // Exit (Q)
-            if (e.Key == Key.Q)
-            {
-                Console.WriteLine("[InputCoordinator] Q pressed. Exiting application.");
-                // Try to save progress before exit
-                var vLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                // TODO: Move this to unload in the player itself?
-                vLayer?.GetPlayer()?.SaveProgress();
-
-                // Allow a small delay for async save? Or just hope it writes fast enough?
-                System.Threading.Thread.Sleep(500);
-
-                Environment.Exit(0);
-                return;
-            }
+            // Q key is now handled by VideoPlayer
 
       
         }
@@ -259,6 +252,14 @@ namespace Baird
             // Always handle back - GoBack() now handles both overlay pages and video player
             _viewModel.GoBack();
             e.Handled = true;
+        }
+
+        private void OnVideoLayerExitRequested(object? sender, EventArgs e)
+        {
+            Console.WriteLine("[MainView] Exit requested from VideoLayer. Exiting application.");
+            // Allow a small delay for any pending operations
+            System.Threading.Thread.Sleep(100);
+            Environment.Exit(0);
         }
 
         private void InitializeComponent()
