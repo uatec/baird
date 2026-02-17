@@ -31,6 +31,8 @@ Phase 2
 - [x] When searching right after the application opens, search box can be closed when the initial video starts
 - [x] show episode length
 - [x] cache TV channels inside tvheadend
+- [ ] channel number search doesn't focus on textbox when it loads
+- [ ] showing channels i don't have
 
 ## Runtime
 - [ ] Disable screensaver, energy saver
@@ -50,8 +52,13 @@ Phase 2
 - [x] faves - hold to add to faves, faves page
 - [ ] embedded encrypted videos
 - [ ] Downloads
-    - [ ] Search seer, request download
-    - [ ] Download progress
+    - [x] Search seer, request download
+    - [x] Download progress
+    - [ ] differentiate between the complete and non-complete films a bit more. it's not entirely obvious. Maybe put them in black and white?
+    - [ ] make the tiles appear the same size & shape as the mediaitemcontrol tiles in the omnisearch and programmedetails view.
+    - [ ] fix the progress bar, it's just rendering the same position for all completed and uncompleted items.
+    - [ ] currently uncomplete and completed requests both just show up with Approved, albeit in a different colour
+
 
 ## History
 - [x] When i press Down to load the history page, the keyboard input still goes to the video player. 
