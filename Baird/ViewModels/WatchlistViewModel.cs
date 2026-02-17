@@ -92,7 +92,7 @@ namespace Baird.ViewModels
                 }
                 index++;
             }
-            
+
             // Update row collection for virtualization
             UpdateWatchlistRows();
         }
@@ -100,14 +100,14 @@ namespace Baird.ViewModels
         private void UpdateWatchlistRows()
         {
             var rows = MediaRowViewModel.CreateRows(WatchlistItems);
-            
+
             // Incrementally update rows to avoid disruption
             // Remove excess rows if list shrunk
             while (WatchlistRows.Count > rows.Length)
             {
                 WatchlistRows.RemoveAt(WatchlistRows.Count - 1);
             }
-            
+
             // Update existing rows and add new ones
             for (int i = 0; i < rows.Length; i++)
             {

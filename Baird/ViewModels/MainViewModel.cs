@@ -100,7 +100,7 @@ namespace Baird.ViewModels
             History = new HistoryViewModel(dataService);
             Watchlist = new WatchlistViewModel(dataService);
             CecDebug = new CecDebugViewModel(cecService);
-            
+
             // Jellyseerr ViewModels
             Seerrch = new SeerrchViewModel(jellyseerrService);
             Requests = new RequestsViewModel(jellyseerrService, dataService);
@@ -112,9 +112,9 @@ namespace Baird.ViewModels
             Watchlist.BackRequested += (s, e) => GoBack();
 
             CecDebug.BackRequested += (s, e) => GoBack();
-            
+
             Seerrch.BackRequested += (s, e) => GoBack();
-            
+
             Requests.PlayRequested += (s, item) => PlayItem(item);
 
             // Subscribe to history updates to keep HistoryViewModel in sync

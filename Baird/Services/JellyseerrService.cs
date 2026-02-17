@@ -23,7 +23,7 @@ namespace Baird.Services
 
             _httpClient = new HttpClient();
             _httpClient.BaseAddress = new Uri(_baseUrl + "/");
-            
+
             if (!string.IsNullOrEmpty(_apiKey))
             {
                 _httpClient.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
@@ -43,7 +43,7 @@ namespace Baird.Services
             {
                 var url = $"api/v1/search?query={Uri.EscapeDataString(query)}&page={page}";
                 var response = await _httpClient.GetAsync(url, cancellationToken);
-                
+
                 if (!response.IsSuccessStatusCode)
                 {
                     Console.WriteLine($"[JellyseerrService] Search failed: {response.StatusCode}");
@@ -52,15 +52,15 @@ namespace Baird.Services
 
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
                 using var doc = JsonDocument.Parse(json);
-                
+
                 var results = new List<JellyseerrSearchResult>();
-                
+
                 if (doc.RootElement.TryGetProperty("results", out var resultsArray))
                 {
                     foreach (var item in resultsArray.EnumerateArray())
                     {
                         var mediaType = item.GetProperty("mediaType").GetString() ?? "";
-                        
+
                         // Skip person results
                         if (mediaType == "person") continue;
 
@@ -133,9 +133,9 @@ namespace Baird.Services
                 {
                     using var doc = JsonDocument.Parse(responseJson);
                     var requestId = doc.RootElement.TryGetProperty("id", out var id) ? id.GetInt32() : 0;
-                    
+
                     Console.WriteLine($"[JellyseerrService] Successfully created request {requestId} for {mediaType} {mediaId}");
-                    
+
                     return new JellyseerrRequestResponse
                     {
                         Success = true,
@@ -190,7 +190,7 @@ namespace Baird.Services
                     {
                         var status = item.GetProperty("status").GetInt32();
                         var updatedAt = item.GetProperty("updatedAt").GetString() ?? "";
-                        
+
                         DateTime updatedDate;
                         if (!DateTime.TryParse(updatedAt, out updatedDate))
                         {
@@ -213,7 +213,7 @@ namespace Baird.Services
                         {
                             // Fetch full media details using TMDB ID
                             var (title, posterPath) = await GetMediaDetailsAsync(tmdbId, mediaType, cancellationToken);
-                            
+
                             var request = new JellyseerrRequest
                             {
                                 Id = item.GetProperty("id").GetInt32(),

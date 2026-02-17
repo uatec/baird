@@ -87,7 +87,7 @@ namespace Baird.ViewModels
                 }
                 index++;
             }
-            
+
             // Update row collection for virtualization
             UpdateHistoryRows();
         }
@@ -95,14 +95,14 @@ namespace Baird.ViewModels
         private void UpdateHistoryRows()
         {
             var rows = MediaRowViewModel.CreateRows(HistoryItems);
-            
+
             // Incrementally update rows to avoid disruption
             // Remove excess rows if list shrunk
             while (HistoryRows.Count > rows.Length)
             {
                 HistoryRows.RemoveAt(HistoryRows.Count - 1);
             }
-            
+
             // Update existing rows and add new ones
             for (int i = 0; i < rows.Length; i++)
             {

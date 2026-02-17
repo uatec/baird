@@ -372,15 +372,15 @@ namespace Baird.ViewModels
                     var allItems = SearchResults.ToList();
                     var sorted = sorter.Sort(allItems, query);
                     _allResults = sorted;
-                    
+
                     // Populate SearchResults with initial batch
                     var initialBatch = _allResults.Take(MaxInitialResults).ToList();
                     SearchResults.Clear();
                     SearchResults.AddRange(initialBatch);
-                    
+
                     // Update pagination state
                     HasMoreResults = _allResults.Count > MaxInitialResults;
-                    
+
                     // Populate row collection for virtualization
                     UpdateSearchResultRows();
                 }
@@ -482,23 +482,23 @@ namespace Baird.ViewModels
             var currentCount = SearchResults.Count;
             var currentRowCount = SearchResultRows.Count;
             var nextBatch = _allResults.Skip(currentCount).Take(MaxInitialResults).ToList();
-            
+
             SearchResults.AddRange(nextBatch);
             HasMoreResults = SearchResults.Count < _allResults.Count;
-            
+
             // Check if we need to update the last partial row or just add new rows
             var itemsInLastRow = currentCount % 6;
-            
+
             if (itemsInLastRow > 0 && nextBatch.Any())
             {
                 // Last row was partial, need to rebuild it with additional items
                 var itemsToCompleteRow = Math.Min(6 - itemsInLastRow, nextBatch.Count);
                 var lastRowStartIndex = currentCount - itemsInLastRow;
                 var lastRowItems = SearchResults.Skip(lastRowStartIndex).Take(6).ToList();
-                
+
                 // Update the last row
                 SearchResultRows[currentRowCount - 1] = MediaRowViewModel.CreateRows(lastRowItems)[0];
-                
+
                 // Add any remaining items as new rows
                 if (nextBatch.Count > itemsToCompleteRow)
                 {

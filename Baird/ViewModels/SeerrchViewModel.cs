@@ -169,16 +169,16 @@ namespace Baird.ViewModels
                 Dispatcher.UIThread.Post(() =>
                 {
                     if (token.IsCancellationRequested) return;
-                    
+
                     SearchResults.Clear();
                     foreach (var vm in viewModels)
                     {
                         SearchResults.Add(vm);
                     }
-                    
+
                     // Update row collection for virtualization
                     UpdateSearchResultRows();
-                    
+
                     IsSearching = false;
                 });
             }
@@ -212,7 +212,7 @@ namespace Baird.ViewModels
                 {
                     StatusMessage = $"✓ Successfully requested {item.Title}";
                     Console.WriteLine($"[SeerrchViewModel] Request successful: {item.Title} (ID: {response.RequestId})");
-                    
+
                     // Auto-hide status after 3 seconds
                     _ = Task.Run(async () =>
                     {
@@ -236,14 +236,14 @@ namespace Baird.ViewModels
         private void UpdateSearchResultRows()
         {
             var rows = SeerrchRowViewModel.CreateRows(SearchResults);
-            
+
             // Incrementally update rows to avoid disruption
             // Remove excess rows if list shrunk
             while (SearchResultRows.Count > rows.Length)
             {
                 SearchResultRows.RemoveAt(SearchResultRows.Count - 1);
             }
-            
+
             // Update existing rows and add new ones
             for (int i = 0; i < rows.Length; i++)
             {
