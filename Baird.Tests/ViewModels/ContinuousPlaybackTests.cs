@@ -89,6 +89,9 @@ namespace Baird.Tests.ViewModels
                 => Task.FromResult(new JellyseerrRequestResponse { Success = false, Message = "Mock" });
             public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(System.Threading.CancellationToken cancellationToken = default)
                 => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
+
+            public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int page, CancellationToken cancellationToken = default)
+                => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
         }
 
         private MediaItemData CreateEpisode(string id, string name, string subtitle = "")
