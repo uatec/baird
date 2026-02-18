@@ -60,19 +60,26 @@ namespace Baird
 
             this.AttachedToVisualTree += async (s, e) =>
             {
-                await _screensaverService.InitializeAsync();
-                SetupIdleTimer();
+                Console.WriteLine("[MainView] Attached to visual tree. Starting initialization...");
 
-                // Subscribe to VideoLayer exit requests
-                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                if (videoLayer != null)
-                {
-                    videoLayer.ExitRequested += OnVideoLayerExitRequested;
-                }
+                    Console.WriteLine("[MainView] Initializing screensaver service...");
+                    await _screensaverService.InitializeAsync();
+                    SetupIdleTimer();
 
-                // TopLevel for global input hook? Or just hook on UserControl?
-                // UserControl KeyDown bubbles, so focusing Root is important.
-                var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
+                    // Subscribe to VideoLayer exit requests
+                    var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                    if (videoLayer != null)
+                    {
+                        videoLayer.ExitRequested += OnVideoLayerExitRequested;
+                    }
+                    
+                    Console.WriteLine("[MainView] Setting up input handling...");
+
+                    // TopLevel for global input hook? Or just hook on UserControl?
+                    // UserControl KeyDown bubbles, so focusing Root is important.
+                    var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
+                
+
                 if (topLevel != null)
                 {
                     // Global Input Handler (Tunneling) to catch wake-up events
@@ -167,8 +174,16 @@ namespace Baird
                     }
                 }
 
-
-                await _viewModel.RefreshChannels();
+                Console.WriteLine("[MainView] Refreshing channels...");
+                try 
+                {
+                    await _viewModel.RefreshChannels();
+                    Console.WriteLine("[MainView] Channels refreshed.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MainView] Failed to refresh channels: {ex.Message}");
+                }
 
                 // Auto-play first channel
                 var firstChannel = _viewModel.AllChannels.FirstOrDefault();
@@ -177,9 +192,13 @@ namespace Baird
                     Console.WriteLine($"[MainView] Auto-playing channel: {firstChannel.Name}");
                     _viewModel.PlayItem(firstChannel);
                 }
+                
+                Console.WriteLine("[MainView] Preloading history and watchlist...");
                 // Preload history so it's ready when user opens it
                 await _viewModel.History.RefreshAsync();
                 await _viewModel.Watchlist.RefreshAsync();
+                
+                Console.WriteLine("[MainView] Starting CEC service...");
 
                 // Start CEC Service in background so it doesn't block UI startup if it fails/hangs
                 _ = _cecService.StartAsync().ContinueWith(t =>
