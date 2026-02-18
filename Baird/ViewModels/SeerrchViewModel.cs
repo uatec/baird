@@ -180,7 +180,7 @@ namespace Baird.ViewModels
                 Console.WriteLine("[SeerrchViewModel] Requesting trending from service...");
                 var results = await _jellyseerrService.GetTrendingAsync(1);
                 Console.WriteLine($"[SeerrchViewModel] Service returned {results.Count()} results. Creating view models...");
-                
+
                 var viewModels = results.Select(r => new SeerrchResultViewModel(r)).ToList();
                 Console.WriteLine($"[SeerrchViewModel] Created {viewModels.Count} view models. Posting to UI thread...");
 
@@ -190,7 +190,7 @@ namespace Baird.ViewModels
                     {
                         Console.WriteLine("[SeerrchViewModel] Inside UI thread post. Clearing SearchResults...");
                         SearchResults.Clear();
-                        
+
                         Console.WriteLine("[SeerrchViewModel] Adding items to SearchResults...");
                         foreach (var vm in viewModels)
                         {
@@ -199,7 +199,7 @@ namespace Baird.ViewModels
 
                         Console.WriteLine("[SeerrchViewModel] Updating rows...");
                         UpdateSearchResultRows();
-                        
+
                         Console.WriteLine("[SeerrchViewModel] Done updating rows. Setting IsSearching=false");
                         IsSearching = false;
                     }
