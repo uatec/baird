@@ -13,7 +13,7 @@
 
     <UserControl.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
-        <KeyBinding Gesture="Back" Command="{Binding BackCommand}" />
+        <KeyBinding Gesture="Back" Command="{Binding BackIfEmptyCommand}" />
     </UserControl.KeyBindings>
 
     <UserControl.Styles>

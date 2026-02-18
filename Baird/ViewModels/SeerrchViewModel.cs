@@ -121,6 +121,7 @@ namespace Baird.ViewModels
 
         public ReactiveCommand<SeerrchResultViewModel, Unit> RequestItemCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
+        public ReactiveCommand<Unit, Unit> BackIfEmptyCommand { get; }
 
         public SeerrchViewModel(IJellyseerrService jellyseerrService)
         {
@@ -135,6 +136,14 @@ namespace Baird.ViewModels
             {
                 BackRequested?.Invoke(this, EventArgs.Empty);
             });
+
+            var canBackIfEmpty = this.WhenAnyValue(x => x.SearchText)
+                .Select(string.IsNullOrEmpty);
+
+            BackIfEmptyCommand = ReactiveCommand.Create(() =>
+            {
+                BackRequested?.Invoke(this, EventArgs.Empty);
+            }, canBackIfEmpty);
 
             // Reactive search: debounce user input
             var textChanges = this.WhenAnyValue(x => x.SearchText)
