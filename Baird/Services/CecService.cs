@@ -59,8 +59,8 @@ namespace Baird.Services
                     await _cecProcess.WaitForExitAsync(cts.Token);
                     // If we get here without exception, it exited!
                     var error = await _cecProcess.StandardError.ReadToEndAsync();
-                    Console.WriteLine($"[CecService] cec-client exited immediately. Code: {_cecProcess.ExitCode}. Error: {error}");
-                    LogCommand("Start cec-client", $"Failed immediately: {error}", false);
+                    // Fail silently if desired, or just log debug
+                    // Console.WriteLine($"[CecService] cec-client exited immediately. Code: {_cecProcess.ExitCode}. Error: {error}");
                     _cecProcess = null; // Mark as failed
                     return;
                 }
@@ -68,6 +68,7 @@ namespace Baird.Services
                 {
                     // Process is still running after 500ms, assume success for now
                 }
+
 
                 // Start reading output in background
                 _ = ReadOutputAsync(_cecProcess.StandardOutput, _outputReadCts.Token);
@@ -79,8 +80,9 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[CecService] Failed to start cec-client: {ex.Message}");
-                LogCommand("Start cec-client", $"Error: {ex.Message}", false);
+                // Silently fail if cec-client is missing or crashes
+                // Console.WriteLine($"[CecService] Failed to start cec-client: {ex.Message}");
+                // LogCommand("Start cec-client", $"Error: {ex.Message}", false);
                 _cecProcess = null;
             }
         }
@@ -117,16 +119,13 @@ namespace Baird.Services
         {
             if (_cecProcess == null || _cecProcess.HasExited)
             {
-                // If it's not running, just log and return. Don't block trying to restart recursively,
-                // or just let the StartAsync handle it properly (maybe with a debounce/cooldown).
-                
-                // For now, let's just try to start it once, but don't loop/block if it fails.
-                Console.WriteLine($"[CecService] Process dead when sending '{command}'. Attempting restart...");
+                // If not running, try to start silently.
                 await StartAsync();
                 
                 if (_cecProcess == null || _cecProcess.HasExited) 
                 {
-                     LogCommand(description, "Failed: Service not running and restart failed.", false);
+                     // Failed to start, just return without spamming
+                     // LogCommand(description, "Service not available", false);
                      return;
                 }
             }
