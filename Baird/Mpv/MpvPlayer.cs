@@ -50,6 +50,10 @@ namespace Baird.Mpv
             // Maintain aspect ratio (will center with black bars if needed)
             SetPropertyString("keepaspect", "yes");
 
+            SetPropertyString("af", "loudnorm=I=-15:TP=-1.5:LRA=11");
+            SetPropertyString("softvol", "yes");
+            SetPropertyString("volume-max", "200");
+            SetPropertyString("volume", "100");
             // --- Synchronization & Anti-Tearing ---
             // DISABLED for RPi 5 Performance. Interpolation is very heavy on GPU.
             // SetPropertyString("video-sync", "display-resample");
