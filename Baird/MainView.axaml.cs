@@ -181,7 +181,12 @@ namespace Baird
                 await _viewModel.History.RefreshAsync();
                 await _viewModel.Watchlist.RefreshAsync();
 
-                await _cecService.StartAsync();
+                // Start CEC Service in background so it doesn't block UI startup if it fails/hangs
+                _ = _cecService.StartAsync().ContinueWith(t => 
+                {
+                    if (t.IsFaulted)
+                        Console.WriteLine($"[MainView] CEC Service failed to start: {t.Exception?.InnerException?.Message}");
+                });
             };
         }
 

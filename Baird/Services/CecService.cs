@@ -49,6 +49,26 @@ namespace Baird.Services
                 _cecInput = _cecProcess.StandardInput;
                 _outputReadCts = new CancellationTokenSource();
 
+                // Check if process exited immediately (e.g. device busy or permission error)
+                // Give it a brief moment to fail start so we don't assume it's running
+                // But do NOT block the UI thread for long.
+                try 
+                {
+                    // Check if it exits within 500ms
+                    var cts = new CancellationTokenSource(500);
+                    await _cecProcess.WaitForExitAsync(cts.Token);
+                    // If we get here without exception, it exited!
+                    var error = await _cecProcess.StandardError.ReadToEndAsync();
+                    Console.WriteLine($"[CecService] cec-client exited immediately. Code: {_cecProcess.ExitCode}. Error: {error}");
+                    LogCommand("Start cec-client", $"Failed immediately: {error}", false);
+                    _cecProcess = null; // Mark as failed
+                    return;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Process is still running after 500ms, assume success for now
+                }
+
                 // Start reading output in background
                 _ = ReadOutputAsync(_cecProcess.StandardOutput, _outputReadCts.Token);
                 
@@ -61,6 +81,7 @@ namespace Baird.Services
             {
                 Console.WriteLine($"[CecService] Failed to start cec-client: {ex.Message}");
                 LogCommand("Start cec-client", $"Error: {ex.Message}", false);
+                _cecProcess = null;
             }
         }
 
@@ -94,12 +115,23 @@ namespace Baird.Services
 
         private async Task SendCommandAsync(string command, string description)
         {
-            if (_cecProcess == null || _cecProcess.HasExited || _cecInput == null)
+            if (_cecProcess == null || _cecProcess.HasExited)
             {
-                Console.WriteLine("[CecService] Attempted to send command but process is not running. Restarting...");
+                // If it's not running, just log and return. Don't block trying to restart recursively,
+                // or just let the StartAsync handle it properly (maybe with a debounce/cooldown).
+                
+                // For now, let's just try to start it once, but don't loop/block if it fails.
+                Console.WriteLine($"[CecService] Process dead when sending '{command}'. Attempting restart...");
                 await StartAsync();
-                if (_cecProcess == null || _cecProcess.HasExited) return;
+                
+                if (_cecProcess == null || _cecProcess.HasExited) 
+                {
+                     LogCommand(description, "Failed: Service not running and restart failed.", false);
+                     return;
+                }
             }
+
+            if (_cecInput == null) return;
 
             try
             {
