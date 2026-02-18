@@ -1,11 +1,24 @@
 using ReactiveUI;
 using System;
+using System.Collections.ObjectModel;
 using System.Reactive;
 using System.Threading.Tasks;
 using Baird.Services;
 
 namespace Baird.ViewModels
 {
+    public class CecLogEntryViewModel : ReactiveObject
+    {
+        public DateTime Timestamp { get; set; }
+        public string Command { get; set; } = string.Empty;
+        public string Response { get; set; } = string.Empty;
+        public bool Success { get; set; }
+
+        public string TimeText => Timestamp.ToString("HH:mm:ss");
+        public string StatusText => Success ? "✓" : "✗";
+        public string StatusColor => Success ? "#4CAF50" : "#F44336";
+    }
+
     public class CecDebugViewModel : ReactiveObject
     {
         private readonly ICecService _cecService;
@@ -26,6 +39,8 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isExecuting, value);
         }
 
+        public ObservableCollection<CecLogEntryViewModel> LogEntries { get; } = new();
+
         public ReactiveCommand<Unit, Unit> PowerOnCommand { get; }
         public ReactiveCommand<Unit, Unit> PowerOffCommand { get; }
         public ReactiveCommand<Unit, Unit> TogglePowerCommand { get; }
@@ -34,11 +49,15 @@ namespace Baird.ViewModels
         public ReactiveCommand<Unit, Unit> ChangeInputCommand { get; }
         public ReactiveCommand<Unit, Unit> CycleInputsCommand { get; }
         public ReactiveCommand<Unit, Unit> RefreshStatusCommand { get; }
+        public ReactiveCommand<Unit, Unit> ClearLogCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
 
         public CecDebugViewModel(ICecService cecService)
         {
             _cecService = cecService ?? throw new ArgumentNullException(nameof(cecService));
+
+            // Subscribe to command logging
+            _cecService.CommandLogged += OnCommandLogged;
 
             // Create commands
             PowerOnCommand = ReactiveCommand.CreateFromTask(async () =>
@@ -95,8 +114,14 @@ namespace Baird.ViewModels
                 }
             }, this.WhenAnyValue(x => x.IsExecuting, executing => !executing));
 
+            ClearLogCommand = ReactiveCommand.Create(() =>
+            {
+                LogEntries.Clear();
+            });
+
             BackCommand = ReactiveCommand.Create(() =>
             {
+                _cecService.CommandLogged -= OnCommandLogged;
                 BackRequested?.Invoke(this, EventArgs.Empty);
             });
 
@@ -139,6 +164,29 @@ namespace Baird.ViewModels
             {
                 IsExecuting = false;
             }
+        }
+
+        private void OnCommandLogged(object? sender, CecCommandLoggedEventArgs e)
+        {
+            var logEntry = new CecLogEntryViewModel
+            {
+                Timestamp = e.Timestamp,
+                Command = e.Command,
+                Response = e.Response,
+                Success = e.Success
+            };
+
+            // Add to log on UI thread
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                LogEntries.Insert(0, logEntry); // Add to beginning so newest is on top
+
+                // Keep only last 50 entries to avoid memory issues
+                while (LogEntries.Count > 50)
+                {
+                    LogEntries.RemoveAt(LogEntries.Count - 1);
+                }
+            });
         }
     }
 }

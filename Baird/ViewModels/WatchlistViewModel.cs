@@ -6,6 +6,7 @@ using Baird.Services;
 using System;
 using System.Threading.Tasks;
 using System.Linq;
+using DynamicData;
 
 namespace Baird.ViewModels
 {
@@ -13,6 +14,7 @@ namespace Baird.ViewModels
     {
         private readonly IDataService _dataService;
         public ObservableCollection<MediaItemViewModel> WatchlistItems { get; } = new();
+        public ObservableCollection<MediaRowViewModel> WatchlistRows { get; } = new();
 
         public event EventHandler<MediaItemViewModel>? PlayRequested;
         public event EventHandler? BackRequested;
@@ -90,6 +92,49 @@ namespace Baird.ViewModels
                 }
                 index++;
             }
+
+            // Update row collection for virtualization
+            UpdateWatchlistRows();
+        }
+
+        private void UpdateWatchlistRows()
+        {
+            var rows = MediaRowViewModel.CreateRows(WatchlistItems);
+
+            // Incrementally update rows to avoid disruption
+            // Remove excess rows if list shrunk
+            while (WatchlistRows.Count > rows.Length)
+            {
+                WatchlistRows.RemoveAt(WatchlistRows.Count - 1);
+            }
+
+            // Update existing rows and add new ones
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (i < WatchlistRows.Count)
+                {
+                    // Replace existing row if items changed
+                    if (!AreSameRowItems(WatchlistRows[i], rows[i]))
+                    {
+                        WatchlistRows[i] = rows[i];
+                    }
+                }
+                else
+                {
+                    // Add new row
+                    WatchlistRows.Add(rows[i]);
+                }
+            }
+        }
+
+        private bool AreSameRowItems(MediaRowViewModel row1, MediaRowViewModel row2)
+        {
+            return row1.Item1?.Id == row2.Item1?.Id &&
+                   row1.Item2?.Id == row2.Item2?.Id &&
+                   row1.Item3?.Id == row2.Item3?.Id &&
+                   row1.Item4?.Id == row2.Item4?.Id &&
+                   row1.Item5?.Id == row2.Item5?.Id &&
+                   row1.Item6?.Id == row2.Item6?.Id;
         }
     }
 }

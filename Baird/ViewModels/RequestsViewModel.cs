@@ -199,8 +199,8 @@ namespace Baird.ViewModels
                     IsLoading = false;
                     if (isFirstLoad || viewModels.Any())
                     {
-                        StatusMessage = viewModels.Any() 
-                            ? $"Showing {viewModels.Count} request(s)" 
+                        StatusMessage = viewModels.Any()
+                            ? $"Showing {viewModels.Count} request(s)"
                             : "No active or recent requests";
                     }
                 });
@@ -226,8 +226,8 @@ namespace Baird.ViewModels
                 if (matches.Any())
                 {
                     // Try to find best match - prefer exact title match
-                    var bestMatch = matches.FirstOrDefault(m => 
-                        m.Name.Equals(item.Title, StringComparison.OrdinalIgnoreCase)) 
+                    var bestMatch = matches.FirstOrDefault(m =>
+                        m.Name.Equals(item.Title, StringComparison.OrdinalIgnoreCase))
                         ?? matches.First();
 
                     Console.WriteLine($"[RequestsViewModel] Found match in Jellyfin: {bestMatch.Name}");
@@ -247,7 +247,7 @@ namespace Baird.ViewModels
                 {
                     StatusMessage = $"Could not find '{item.Title}' in Jellyfin";
                     Console.WriteLine($"[RequestsViewModel] No Jellyfin match for: {item.Title}");
-                    
+
                     // Clear status after delay
                     _ = Task.Run(async () =>
                     {

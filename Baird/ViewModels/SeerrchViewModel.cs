@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using ReactiveUI;
 using Baird.Services;
+using DynamicData;
 
 namespace Baird.ViewModels
 {
@@ -28,6 +29,7 @@ namespace Baird.ViewModels
         public string? ReleaseDate => _result.ReleaseDate;
         public double VoteAverage => _result.VoteAverage;
         public bool IsAvailable => _result.IsAvailable;
+        public int MediaInfoStatus => _result.MediaInfoStatus;
 
         // For display in tile
         public string FullPosterUrl
@@ -54,6 +56,24 @@ namespace Baird.ViewModels
                 };
             }
         }
+
+        public string StatusColor
+        {
+            get
+            {
+                return _result.MediaInfoStatus switch
+                {
+                    5 => "#00AA00",  // Available - Green
+                    4 => "#00AA00",  // Partial - Green
+                    3 => "#0088DD",  // Processing - Blue
+                    2 => "#CCAA00",  // Pending - Yellow
+                    _ => "Transparent"
+                };
+            }
+        }
+
+        public bool HasRequest => _result.MediaInfoStatus >= 2;
+        public bool ShowStatusBadge => HasRequest;
 
         public string BadgeText => MediaType == "movie" ? "Movie" : "TV";
     }
@@ -97,6 +117,7 @@ namespace Baird.ViewModels
         public bool ShowSpinner => IsSearching && SearchResults.Count == 0;
 
         public ObservableCollection<SeerrchResultViewModel> SearchResults { get; } = new();
+        public ObservableCollection<SeerrchRowViewModel> SearchResultRows { get; } = new();
 
         public ReactiveCommand<SeerrchResultViewModel, Unit> RequestItemCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
@@ -128,6 +149,9 @@ namespace Baird.ViewModels
             // Track searching state for spinner
             this.WhenAnyValue(x => x.IsSearching).Subscribe(_ => this.RaisePropertyChanged(nameof(ShowSpinner)));
             SearchResults.CollectionChanged += (s, e) => this.RaisePropertyChanged(nameof(ShowSpinner));
+
+            // Load trending items on startup
+            _ = LoadTrending();
         }
 
         public void RequestSearchBoxFocus()
@@ -135,13 +159,45 @@ namespace Baird.ViewModels
             SearchBoxFocusRequested?.Invoke(this, EventArgs.Empty);
         }
 
+        private async Task LoadTrending()
+        {
+            IsSearching = true;
+            SearchResults.Clear();
+            ShowStatus = true;
+            StatusMessage = "Showing trending movies and TV shows";
+
+            try
+            {
+                var results = await _jellyseerrService.GetTrendingAsync(1);
+                var viewModels = results.Select(r => new SeerrchResultViewModel(r)).ToList();
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    SearchResults.Clear();
+                    foreach (var vm in viewModels)
+                    {
+                        SearchResults.Add(vm);
+                    }
+
+                    UpdateSearchResultRows();
+                    IsSearching = false;
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SeerrchViewModel] Load trending error: {ex.Message}");
+                IsSearching = false;
+                ShowStatus = true;
+                StatusMessage = $"Failed to load trending: {ex.Message}";
+            }
+        }
+
         private async Task PerformSearch(string? query)
         {
             if (string.IsNullOrWhiteSpace(query))
             {
-                SearchResults.Clear();
-                IsSearching = false;
-                ShowStatus = false;
+                // Load trending when search box is empty
+                await LoadTrending();
                 return;
             }
 
@@ -166,13 +222,16 @@ namespace Baird.ViewModels
                 Dispatcher.UIThread.Post(() =>
                 {
                     if (token.IsCancellationRequested) return;
-                    
+
                     SearchResults.Clear();
                     foreach (var vm in viewModels)
                     {
                         SearchResults.Add(vm);
                     }
-                    
+
+                    // Update row collection for virtualization
+                    UpdateSearchResultRows();
+
                     IsSearching = false;
                 });
             }
@@ -206,7 +265,7 @@ namespace Baird.ViewModels
                 {
                     StatusMessage = $"✓ Successfully requested {item.Title}";
                     Console.WriteLine($"[SeerrchViewModel] Request successful: {item.Title} (ID: {response.RequestId})");
-                    
+
                     // Auto-hide status after 3 seconds
                     _ = Task.Run(async () =>
                     {
@@ -225,6 +284,46 @@ namespace Baird.ViewModels
                 StatusMessage = $"✗ Error: {ex.Message}";
                 Console.WriteLine($"[SeerrchViewModel] Request error: {ex.Message}");
             }
+        }
+
+        private void UpdateSearchResultRows()
+        {
+            var rows = SeerrchRowViewModel.CreateRows(SearchResults);
+
+            // Incrementally update rows to avoid disruption
+            // Remove excess rows if list shrunk
+            while (SearchResultRows.Count > rows.Length)
+            {
+                SearchResultRows.RemoveAt(SearchResultRows.Count - 1);
+            }
+
+            // Update existing rows and add new ones
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (i < SearchResultRows.Count)
+                {
+                    // Replace existing row if items changed
+                    if (!AreSameRowItems(SearchResultRows[i], rows[i]))
+                    {
+                        SearchResultRows[i] = rows[i];
+                    }
+                }
+                else
+                {
+                    // Add new row
+                    SearchResultRows.Add(rows[i]);
+                }
+            }
+        }
+
+        private bool AreSameRowItems(SeerrchRowViewModel row1, SeerrchRowViewModel row2)
+        {
+            return row1.Item1?.Id == row2.Item1?.Id &&
+                   row1.Item2?.Id == row2.Item2?.Id &&
+                   row1.Item3?.Id == row2.Item3?.Id &&
+                   row1.Item4?.Id == row2.Item4?.Id &&
+                   row1.Item5?.Id == row2.Item5?.Id &&
+                   row1.Item6?.Id == row2.Item6?.Id;
         }
     }
 }

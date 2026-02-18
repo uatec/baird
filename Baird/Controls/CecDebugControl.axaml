@@ -18,12 +18,11 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="#3F3F46"/>
             <Setter Property="CornerRadius" Value="4"/>
-            <Setter Property="Padding" Value="20,15"/>
-            <Setter Property="Margin" Value="10"/>
-            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="MinWidth" Value="180"/>
-            <Setter Property="MinHeight" Value="50"/>
+            <Setter Property="MinWidth" Value="140"/>
         </Style>
         
         <Style Selector="Button.CecButton:focus">
@@ -65,133 +64,191 @@
         </Style>
     </UserControl.Styles>
 
-    <Border Background="#1E1E1E" Padding="30">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Orientation="Vertical" Spacing="20">
-                
-                <!-- Header -->
-                <TextBlock Text="CEC Debug Panel" 
-                          FontSize="28" 
-                          FontWeight="Bold" 
-                          Foreground="White" 
-                          Margin="0,0,0,20"
-                          HorizontalAlignment="Center"/>
+    <Border Background="#1E1E1E" Padding="15">
+        <Grid ColumnDefinitions="450,*" RowDefinitions="Auto,*">
+            
+            <!-- Header spanning both columns -->
+            <Grid Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
+                    <TextBlock Text="CEC Debug" FontSize="20" FontWeight="Bold" Foreground="White"/>
+                    <Border Background="#2D2D30" CornerRadius="3" Padding="8,4">
+                        <TextBlock Text="{Binding StatusText}" Foreground="#CCCCCC" FontSize="12"/>
+                    </Border>
+                </StackPanel>
+                <Button Grid.Column="1" 
+                        Content="Refresh Status" 
+                        Classes="CecButton"
+                        Command="{Binding RefreshStatusCommand}"
+                        IsEnabled="{Binding !IsExecuting}"
+                        Margin="0"/>
+            </Grid>
 
-                <!-- Status Display -->
-                <Border Background="#2D2D30" 
-                       BorderBrush="#3F3F46" 
-                       BorderThickness="1" 
-                       CornerRadius="4" 
-                       Padding="15"
-                       Margin="0,0,0,20">
-                    <StackPanel Orientation="Vertical" Spacing="10">
-                        <TextBlock Text="Status:" FontWeight="Bold" Foreground="White" FontSize="16"/>
-                        <TextBlock Text="{Binding StatusText}" 
-                                  Foreground="#CCCCCC" 
-                                  FontSize="14"
-                                  TextWrapping="Wrap"/>
-                        <Button Content="Refresh Status" 
-                               Classes="CecButton"
-                               Command="{Binding RefreshStatusCommand}"
-                               IsEnabled="{Binding !IsExecuting}"
-                               HorizontalAlignment="Left"/>
-                    </StackPanel>
-                </Border>
+            <!-- Left Column: Controls -->
+            <ScrollViewer Grid.Column="0" Grid.Row="1" 
+                         VerticalScrollBarVisibility="Auto"
+                         Margin="0,0,10,0">
+                <StackPanel Orientation="Vertical" Spacing="10">
+                    
+                    <!-- Power Controls -->
+                    <Border Background="#2D2D30" 
+                           BorderBrush="#3F3F46" 
+                           BorderThickness="1" 
+                           CornerRadius="4" 
+                           Padding="12">
+                        <StackPanel Orientation="Vertical" Spacing="8">
+                            <TextBlock Text="Power" FontWeight="Bold" Foreground="White" FontSize="14"/>
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Content="Power On" 
+                                       Classes="CecButton PowerButton"
+                                       Command="{Binding PowerOnCommand}"
+                                       IsEnabled="{Binding !IsExecuting}"/>
+                                <Button Content="Power Off" 
+                                       Classes="CecButton PowerButton"
+                                       Command="{Binding PowerOffCommand}"
+                                       IsEnabled="{Binding !IsExecuting}"/>
+                                <Button Content="Toggle" 
+                                       Classes="CecButton PowerButton"
+                                       Command="{Binding TogglePowerCommand}"
+                                       IsEnabled="{Binding !IsExecuting}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
 
-                <!-- Power Controls -->
-                <Border Background="#2D2D30" 
-                       BorderBrush="#3F3F46" 
-                       BorderThickness="1" 
-                       CornerRadius="4" 
-                       Padding="20">
-                    <StackPanel Orientation="Vertical" Spacing="15">
-                        <TextBlock Text="Power Controls" FontWeight="Bold" Foreground="White" FontSize="18"/>
-                        <WrapPanel Orientation="Horizontal">
-                            <Button Content="Power On" 
-                                   Classes="CecButton PowerButton"
-                                   Command="{Binding PowerOnCommand}"
-                                   IsEnabled="{Binding !IsExecuting}"/>
-                            <Button Content="Power Off" 
-                                   Classes="CecButton PowerButton"
-                                   Command="{Binding PowerOffCommand}"
-                                   IsEnabled="{Binding !IsExecuting}"/>
-                            <Button Content="Toggle Power" 
-                                   Classes="CecButton PowerButton"
-                                   Command="{Binding TogglePowerCommand}"
-                                   IsEnabled="{Binding !IsExecuting}"/>
-                        </WrapPanel>
-                    </StackPanel>
-                </Border>
+                    <!-- Volume Controls -->
+                    <Border Background="#2D2D30" 
+                           BorderBrush="#3F3F46" 
+                           BorderThickness="1" 
+                           CornerRadius="4" 
+                           Padding="12">
+                        <StackPanel Orientation="Vertical" Spacing="8">
+                            <TextBlock Text="Volume" FontWeight="Bold" Foreground="White" FontSize="14"/>
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Content="Vol Up" 
+                                       Classes="CecButton VolumeButton"
+                                       Command="{Binding VolumeUpCommand}"
+                                       IsEnabled="{Binding !IsExecuting}"/>
+                                <Button Content="Vol Down" 
+                                       Classes="CecButton VolumeButton"
+                                       Command="{Binding VolumeDownCommand}"
+                                       IsEnabled="{Binding !IsExecuting}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
 
-                <!-- Volume Controls -->
-                <Border Background="#2D2D30" 
-                       BorderBrush="#3F3F46" 
-                       BorderThickness="1" 
-                       CornerRadius="4" 
-                       Padding="20">
-                    <StackPanel Orientation="Vertical" Spacing="15">
-                        <TextBlock Text="Volume Controls" FontWeight="Bold" Foreground="White" FontSize="18"/>
-                        <WrapPanel Orientation="Horizontal">
-                            <Button Content="Volume Up" 
-                                   Classes="CecButton VolumeButton"
-                                   Command="{Binding VolumeUpCommand}"
-                                   IsEnabled="{Binding !IsExecuting}"/>
-                            <Button Content="Volume Down" 
-                                   Classes="CecButton VolumeButton"
-                                   Command="{Binding VolumeDownCommand}"
-                                   IsEnabled="{Binding !IsExecuting}"/>
-                        </WrapPanel>
-                    </StackPanel>
-                </Border>
+                    <!-- Input Controls -->
+                    <Border Background="#2D2D30" 
+                           BorderBrush="#3F3F46" 
+                           BorderThickness="1" 
+                           CornerRadius="4" 
+                           Padding="12">
+                        <StackPanel Orientation="Vertical" Spacing="8">
+                            <TextBlock Text="Input" FontWeight="Bold" Foreground="White" FontSize="14"/>
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Content="Switch to This" 
+                                       Classes="CecButton InputButton"
+                                       Command="{Binding ChangeInputCommand}"
+                                       IsEnabled="{Binding !IsExecuting}"/>
+                                <Button Content="Cycle Inputs" 
+                                       Classes="CecButton InputButton"
+                                       Command="{Binding CycleInputsCommand}"
+                                       IsEnabled="{Binding !IsExecuting}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
 
-                <!-- Input Controls -->
-                <Border Background="#2D2D30" 
-                       BorderBrush="#3F3F46" 
-                       BorderThickness="1" 
-                       CornerRadius="4" 
-                       Padding="20">
-                    <StackPanel Orientation="Vertical" Spacing="15">
-                        <TextBlock Text="Input Controls" FontWeight="Bold" Foreground="White" FontSize="18"/>
-                        <WrapPanel Orientation="Horizontal">
-                            <Button Content="Change Input to THIS Device" 
-                                   Classes="CecButton InputButton"
-                                   Command="{Binding ChangeInputCommand}"
-                                   IsEnabled="{Binding !IsExecuting}"/>
-                            <Button Content="Cycle Inputs" 
-                                   Classes="CecButton InputButton"
-                                   Command="{Binding CycleInputsCommand}"
-                                   IsEnabled="{Binding !IsExecuting}"/>
-                        </WrapPanel>
-                    </StackPanel>
-                </Border>
-
-                <!-- Instructions -->
-                <Border Background="#2D2D30" 
-                       BorderBrush="#3F3F46" 
-                       BorderThickness="1" 
-                       CornerRadius="4" 
-                       Padding="15"
-                       Margin="0,20,0,0">
-                    <StackPanel Orientation="Vertical" Spacing="10">
-                        <TextBlock Text="Instructions:" FontWeight="Bold" Foreground="White" FontSize="16"/>
-                        <TextBlock Foreground="#CCCCCC" FontSize="12" TextWrapping="Wrap">
-                            <Run Text="• Use Power controls to turn the TV on/off"/>
-                            <LineBreak/>
-                            <Run Text="• Volume controls adjust TV volume"/>
-                            <LineBreak/>
-                            <Run Text="• 'Change Input to THIS Device' switches TV input to this device"/>
-                            <LineBreak/>
-                            <Run Text="• 'Cycle Inputs' cycles through available TV inputs"/>
-                            <LineBreak/>
-                            <Run Text="• Press ESC to go back to main menu"/>
-                            <LineBreak/>
-                            <Run Text="• Requires cec-ctl (v4l-utils) to be installed"/>
+                    <!-- Compact Help -->
+                    <Border Background="#2D2D30" 
+                           BorderBrush="#3F3F46" 
+                           BorderThickness="1" 
+                           CornerRadius="4" 
+                           Padding="10">
+                        <TextBlock Foreground="#888888" FontSize="10" TextWrapping="Wrap">
+                            <Run Text="Requires cec-ctl (v4l-utils). Press ESC to exit."/>
                         </TextBlock>
-                    </StackPanel>
-                </Border>
+                    </Border>
 
-            </StackPanel>
-        </ScrollViewer>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right Column: Command Log -->
+            <Border Grid.Column="1" Grid.Row="1" 
+                    Background="#2D2D30" 
+                    BorderBrush="#3F3F46" 
+                    BorderThickness="1" 
+                    CornerRadius="4" 
+                    Padding="12">
+                <Grid RowDefinitions="Auto,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                        <TextBlock Grid.Column="0" Text="Command Log" FontWeight="Bold" Foreground="White" FontSize="14"/>
+                        <Button Grid.Column="1" 
+                               Content="Clear" 
+                               Command="{Binding ClearLogCommand}"
+                               Background="#1E1E1E"
+                               Foreground="White"
+                               Padding="8,4"
+                               FontSize="11"
+                               CornerRadius="3"
+                               BorderThickness="0"/>
+                    </Grid>
+                    
+                    <ScrollViewer Grid.Row="1" 
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <ItemsControl ItemsSource="{Binding LogEntries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#1E1E1E" 
+                                               BorderBrush="#3F3F46" 
+                                               BorderThickness="1" 
+                                               CornerRadius="3" 
+                                               Padding="8"
+                                               Margin="0,0,0,6">
+                                            <StackPanel Spacing="4">
+                                                <Grid ColumnDefinitions="Auto,Auto,*">
+                                                    <TextBlock Grid.Column="0" 
+                                                              Text="{Binding StatusText}" 
+                                                              Foreground="{Binding StatusColor}"
+                                                              FontWeight="Bold"
+                                                              FontSize="12"
+                                                              Margin="0,0,8,0"/>
+                                                    <TextBlock Grid.Column="1" 
+                                                              Text="{Binding TimeText}" 
+                                                              Foreground="#888888"
+                                                              FontSize="10"
+                                                              Margin="0,0,8,0"/>
+                                                    <TextBlock Grid.Column="2" 
+                                                              Text="{Binding Command}" 
+                                                              Foreground="#CCCCCC"
+                                                              FontSize="10"
+                                                              FontFamily="Courier New"
+                                                              TextWrapping="Wrap"/>
+                                                </Grid>
+                                                <TextBlock Text="{Binding Response}" 
+                                                          Foreground="#999999"
+                                                          FontSize="9"
+                                                          FontFamily="Courier New"
+                                                          TextWrapping="Wrap"
+                                                          MaxLines="8"
+                                                          IsVisible="{Binding Response, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            
+                            <TextBlock Text="No commands logged yet" 
+                                      Foreground="#666666" 
+                                      FontSize="11"
+                                      HorizontalAlignment="Center"
+                                      Margin="0,20"
+                                      IsVisible="{Binding !LogEntries.Count}"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+        </Grid>
     </Border>
 
 </UserControl>

@@ -8,8 +8,10 @@ namespace Baird.Services
     {
         private const string CecCtlCommand = "cec-ctl";
         // Default to device 0 (TV) and adapter 0 (/dev/cec0)
-        private const string DeviceArg = "-d0";
+        private const string DeviceArg = "-d0 --playback";
         private const string TargetArg = "--to 0";
+
+        public event EventHandler<CecCommandLoggedEventArgs>? CommandLogged;
 
         public Task StartAsync()
         {
@@ -179,6 +181,7 @@ namespace Baird.Services
 
         private async Task<string> RunCecCtlAsync(string arguments)
         {
+            var fullCommand = $"{CecCtlCommand} {arguments}";
             try
             {
                 using var process = new Process
@@ -200,9 +203,21 @@ namespace Baird.Services
                 var output = await process.StandardOutput.ReadToEndAsync();
                 var error = await process.StandardError.ReadToEndAsync();
 
-                if (process.ExitCode != 0)
+                var success = process.ExitCode == 0;
+                var response = success ? output : error;
+
+                // Log the command and response
+                CommandLogged?.Invoke(this, new CecCommandLoggedEventArgs
                 {
-                    Console.WriteLine($"[CecService] Command failed (Exit Code {process.ExitCode}): {CecCtlCommand} {arguments}");
+                    Command = fullCommand,
+                    Response = response,
+                    Success = success,
+                    Timestamp = DateTime.Now
+                });
+
+                if (!success)
+                {
+                    Console.WriteLine($"[CecService] Command failed (Exit Code {process.ExitCode}): {fullCommand}");
                     if (!string.IsNullOrWhiteSpace(error))
                     {
                         Console.WriteLine($"[CecService] Error Output: {error}");
@@ -213,12 +228,31 @@ namespace Baird.Services
             }
             catch (System.ComponentModel.Win32Exception)
             {
-                Console.WriteLine($"[CecService] '{CecCtlCommand}' not found. Ensure v4l-utils is installed.");
+                var errorMsg = $"'{CecCtlCommand}' not found. Ensure v4l-utils is installed.";
+                Console.WriteLine($"[CecService] {errorMsg}");
+
+                CommandLogged?.Invoke(this, new CecCommandLoggedEventArgs
+                {
+                    Command = fullCommand,
+                    Response = errorMsg,
+                    Success = false,
+                    Timestamp = DateTime.Now
+                });
+
                 return string.Empty;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[CecService] Execution error: {ex.Message}");
+
+                CommandLogged?.Invoke(this, new CecCommandLoggedEventArgs
+                {
+                    Command = fullCommand,
+                    Response = $"Error: {ex.Message}",
+                    Success = false,
+                    Timestamp = DateTime.Now
+                });
+
                 return string.Empty;
             }
         }

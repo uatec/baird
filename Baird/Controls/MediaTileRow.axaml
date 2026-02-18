@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Baird.ViewModels"
+             xmlns:controls="using:Baird.Controls"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="240"
+             x:Class="Baird.Controls.MediaTileRow"
+             x:DataType="vm:MediaRowViewModel">
+    
+    <UniformGrid Columns="6" HorizontalAlignment="Center" VerticalAlignment="Top">
+        <controls:MediaTileControl DataContext="{Binding Item1}"
+                                   Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   CommandParameter="{Binding}"
+                                   LongPressCommand="{Binding LongPressCommand, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   LongPressCommandParameter="{Binding}"
+                                   IsVisible="{Binding $parent[controls:MediaTileRow].DataContext.Item1, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+        
+        <controls:MediaTileControl DataContext="{Binding Item2}"
+                                   Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   CommandParameter="{Binding}"
+                                   LongPressCommand="{Binding LongPressCommand, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   LongPressCommandParameter="{Binding}"
+                                   IsVisible="{Binding $parent[controls:MediaTileRow].DataContext.Item2, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+        
+        <controls:MediaTileControl DataContext="{Binding Item3}"
+                                   Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   CommandParameter="{Binding}"
+                                   LongPressCommand="{Binding LongPressCommand, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   LongPressCommandParameter="{Binding}"
+                                   IsVisible="{Binding $parent[controls:MediaTileRow].DataContext.Item3, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+        
+        <controls:MediaTileControl DataContext="{Binding Item4}"
+                                   Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   CommandParameter="{Binding}"
+                                   LongPressCommand="{Binding LongPressCommand, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   LongPressCommandParameter="{Binding}"
+                                   IsVisible="{Binding $parent[controls:MediaTileRow].DataContext.Item4, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+        
+        <controls:MediaTileControl DataContext="{Binding Item5}"
+                                   Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   CommandParameter="{Binding}"
+                                   LongPressCommand="{Binding LongPressCommand, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   LongPressCommandParameter="{Binding}"
+                                   IsVisible="{Binding $parent[controls:MediaTileRow].DataContext.Item5, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+        
+        <controls:MediaTileControl DataContext="{Binding Item6}"
+                                   Command="{Binding Command, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   CommandParameter="{Binding}"
+                                   LongPressCommand="{Binding LongPressCommand, RelativeSource={RelativeSource AncestorType=controls:MediaTileRow}}"
+                                   LongPressCommandParameter="{Binding}"
+                                   IsVisible="{Binding $parent[controls:MediaTileRow].DataContext.Item6, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+    </UniformGrid>
+</UserControl>
