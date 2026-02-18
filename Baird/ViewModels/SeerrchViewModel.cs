@@ -177,19 +177,39 @@ namespace Baird.ViewModels
 
             try
             {
+                Console.WriteLine("[SeerrchViewModel] Requesting trending from service...");
                 var results = await _jellyseerrService.GetTrendingAsync(1);
+                Console.WriteLine($"[SeerrchViewModel] Service returned {results.Count()} results. Creating view models...");
+                
                 var viewModels = results.Select(r => new SeerrchResultViewModel(r)).ToList();
+                Console.WriteLine($"[SeerrchViewModel] Created {viewModels.Count} view models. Posting to UI thread...");
 
                 Dispatcher.UIThread.Post(() =>
                 {
-                    SearchResults.Clear();
-                    foreach (var vm in viewModels)
+                    try
                     {
-                        SearchResults.Add(vm);
-                    }
+                        Console.WriteLine("[SeerrchViewModel] Inside UI thread post. Clearing SearchResults...");
+                        SearchResults.Clear();
+                        
+                        Console.WriteLine("[SeerrchViewModel] Adding items to SearchResults...");
+                        foreach (var vm in viewModels)
+                        {
+                            SearchResults.Add(vm);
+                        }
 
-                    UpdateSearchResultRows();
-                    IsSearching = false;
+                        Console.WriteLine("[SeerrchViewModel] Updating rows...");
+                        UpdateSearchResultRows();
+                        
+                        Console.WriteLine("[SeerrchViewModel] Done updating rows. Setting IsSearching=false");
+                        IsSearching = false;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[SeerrchViewModel] Critical error in UI update: {ex}");
+                        IsSearching = false;
+                        ShowStatus = true;
+                        StatusMessage = $"UI Error: {ex.Message}";
+                    }
                 });
             }
             catch (Exception ex)
@@ -297,7 +317,9 @@ namespace Baird.ViewModels
 
         private void UpdateSearchResultRows()
         {
+            Console.WriteLine($"[SeerrchViewModel] UpdateSearchResultRows: Initial count={SearchResultRows.Count}, target={SearchResults.Count}");
             var rows = SeerrchRowViewModel.CreateRows(SearchResults);
+            Console.WriteLine($"[SeerrchViewModel] UpdateSearchResultRows: Created {rows.Length} new rows.");
 
             // Incrementally update rows to avoid disruption
             // Remove excess rows if list shrunk
@@ -323,6 +345,7 @@ namespace Baird.ViewModels
                     SearchResultRows.Add(rows[i]);
                 }
             }
+            Console.WriteLine("[SeerrchViewModel] UpdateSearchResultRows: Completed.");
         }
 
         private bool AreSameRowItems(SeerrchRowViewModel row1, SeerrchRowViewModel row2)
