@@ -52,7 +52,7 @@ namespace Baird.Services
                 // Check if process exited immediately (e.g. device busy or permission error)
                 // Give it a brief moment to fail start so we don't assume it's running
                 // But do NOT block the UI thread for long.
-                try 
+                try
                 {
                     // Check if it exits within 500ms
                     var cts = new CancellationTokenSource(500);
@@ -72,9 +72,9 @@ namespace Baird.Services
 
                 // Start reading output in background
                 _ = ReadOutputAsync(_cecProcess.StandardOutput, _outputReadCts.Token);
-                
+
                 Console.WriteLine("[CecService] Started cec-client interactive process");
-                
+
                 // Log startup
                 LogCommand("Started cec-client", "Process running", true);
             }
@@ -98,7 +98,7 @@ namespace Baird.Services
 
                     // Log raw output as "Response" (or we could only log specific events)
                     // For now, let's just log it if it looks interesting or as a general "Event"
-                    
+
                     // Simple logging of all output for debug visibility
                     CommandLogged?.Invoke(this, new CecCommandLoggedEventArgs
                     {
@@ -121,12 +121,12 @@ namespace Baird.Services
             {
                 // If not running, try to start silently.
                 await StartAsync();
-                
-                if (_cecProcess == null || _cecProcess.HasExited) 
+
+                if (_cecProcess == null || _cecProcess.HasExited)
                 {
-                     // Failed to start, just return without spamming
-                     // LogCommand(description, "Service not available", false);
-                     return;
+                    // Failed to start, just return without spamming
+                    // LogCommand(description, "Service not available", false);
+                    return;
                 }
             }
 
@@ -137,7 +137,7 @@ namespace Baird.Services
                 Console.WriteLine($"[CecService] Sending: {command}");
                 await _cecInput!.WriteLineAsync(command);
                 await _cecInput.FlushAsync();
-                
+
                 LogCommand(description, $"Sent: {command}", true);
             }
             catch (Exception ex)
@@ -216,7 +216,7 @@ namespace Baird.Services
                 Timestamp = DateTime.Now
             });
         }
-        
+
         public void Dispose()
         {
             Dispose(true);
