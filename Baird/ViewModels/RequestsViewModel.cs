@@ -188,8 +188,10 @@ namespace Baird.ViewModels
                     .OrderByDescending(r => r.UpdatedAt)
                     .ToList();
 
+                Console.WriteLine($"[RequestsViewModel] Loaded {viewModels.Count} requests from Jellyseerr");
                 Dispatcher.UIThread.Post(() =>
                 {
+                    Console.WriteLine($"[RequestsViewModel] Updating UI with {viewModels.Count} requests");
                     Requests.Clear();
                     foreach (var vm in viewModels)
                     {
@@ -203,7 +205,9 @@ namespace Baird.ViewModels
                             ? $"Showing {viewModels.Count} request(s)"
                             : "No active or recent requests";
                     }
+                    Console.WriteLine($"[RequestsViewModel] UI update complete");
                 });
+                Console.WriteLine($"[RequestsViewModel] Load complete");
             }
             catch (Exception ex)
             {
