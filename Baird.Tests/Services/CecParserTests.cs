@@ -7,11 +7,11 @@ namespace Baird.Tests.Services
     public class CecParserTests
     {
         [Theory]
-        [InlineData("TRAFFIC: [123] >> 01:44:00", "Recording 1 -> TV: User Control Pressed: Select")]
-        [InlineData(">> 0f:36", "TV -> Broadcast: Standby")]
-        [InlineData(">> 05:90:00", "TV -> Audio System: Report Power Status: On")]
-        [InlineData(">> 05:90:01", "TV -> Audio System: Report Power Status: Standby")]
-        [InlineData(">> 10:82:11:00", "Recording 1 -> TV: Active Source: 11.00.0.0")]
+        [InlineData("TRAFFIC: [123] >> 01:44:00", "TV (0) -> Recording 1 (1): User Control Pressed: Select")]
+        [InlineData(">> 0f:36", "TV (0) -> Broadcast (F): Standby")]
+        [InlineData(">> 05:90:00", "TV (0) -> Audio System (5): Report Power Status: On")]
+        [InlineData(">> 05:90:01", "TV (0) -> Audio System (5): Report Power Status: Standby")]
+        [InlineData(">> 10:82:11:00", "Recording 1 (1) -> TV (0): Active Source: 11.00.0.0")]
         public void ParseLine_ShouldInterpretCorrectly(string input, string expectedInterpretationEnd)
         {
             var result = CecParser.ParseLine(input);
