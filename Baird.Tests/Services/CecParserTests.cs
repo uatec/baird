@@ -12,6 +12,7 @@ namespace Baird.Tests.Services
         [InlineData(">> 05:90:00", "TV (0) -> Audio System (5): Report Power Status: On")]
         [InlineData(">> 05:90:01", "TV (0) -> Audio System (5): Report Power Status: Standby")]
         [InlineData(">> 10:82:11:00", "Recording 1 (1) -> TV (0): Active Source: 11.00.0.0")]
+        [InlineData("TRAFFIC: [581] << 88", "Playback 2 (8) -> Playback 2 (8): POLL")]
         public void ParseLine_ShouldInterpretCorrectly(string input, string expectedInterpretationEnd)
         {
             var result = CecParser.ParseLine(input);
