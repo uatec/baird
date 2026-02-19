@@ -23,7 +23,7 @@ namespace Baird.Services
             {
                 using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                 var json = await client.GetStringAsync(JsonUrl).ConfigureAwait(false);
-                var response = JsonSerializer.Deserialize<ScreensaverResponse>(json);
+                var response = JsonSerializer.Deserialize<ScreensaverResponse>(json, BairdJsonContext.Default.ScreensaverResponse);
 
                 if (response?.Success == true && response.Data != null)
                 {
