@@ -76,14 +76,33 @@ namespace Baird.Services
                     if (line == null) break; // End of stream
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
-                    // Log raw output as "Response" (or we could only log specific events)
-                    // For now, let's just log it if it looks interesting or as a general "Event"
+                    // Parse the line using our new parser
+                    var parsed = CecParser.ParseLine(line);
+                    
+                    // If parsing added valid info (indicated by brackets), use that as the description
+                    // Otherwise just treat as generic event
+                    string commandType = "Event";
+                    string responseText = line;
+
+                    // If parsed is different than line, it means we added interpretation
+                    if (parsed != line)
+                    {
+                        // Extract interpretation for the main label
+                        // Format is "Raw [Interpretation]"
+                        var bracketIndex = parsed.LastIndexOf('[');
+                        if (bracketIndex >= 0)
+                        {
+                            commandType = parsed.Substring(bracketIndex + 1).TrimEnd(']');
+                            // Keep raw line as details
+                            responseText = line; 
+                        }
+                    }
 
                     // Simple logging of all output for debug visibility
                     CommandLogged?.Invoke(this, new CecCommandLoggedEventArgs
                     {
-                        Command = "Event",
-                        Response = line,
+                        Command = commandType,
+                        Response = responseText,
                         Success = true,
                         Timestamp = DateTime.Now
                     });
