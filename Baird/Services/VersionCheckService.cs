@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -10,13 +11,37 @@ namespace Baird.Services
         private const string TapName = "uatec/tools";
         private const string FormulaName = "baird";
 
+        private static readonly string[] BrewPaths =
+        [
+            "/home/linuxbrew/.linuxbrew/bin/brew",  // Linux (linuxbrew)
+            "/usr/local/bin/brew",                   // macOS Intel
+            "/opt/homebrew/bin/brew",                // macOS Apple Silicon
+        ];
+
+        private static string? FindBrew()
+        {
+            foreach (var path in BrewPaths)
+            {
+                if (File.Exists(path))
+                    return path;
+            }
+            return null;
+        }
+
         public async Task<string?> GetLatestVersionAsync()
         {
             try
             {
+                var brewPath = FindBrew();
+                if (brewPath == null)
+                {
+                    Console.WriteLine("[VersionCheckService] Could not find brew executable");
+                    return null;
+                }
+
                 var processStartInfo = new ProcessStartInfo
                 {
-                    FileName = "brew",
+                    FileName = brewPath,
                     Arguments = $"info {TapName}/{FormulaName} --json",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
