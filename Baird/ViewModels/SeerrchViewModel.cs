@@ -159,8 +159,8 @@ namespace Baird.ViewModels
             this.WhenAnyValue(x => x.IsSearching).Subscribe(_ => this.RaisePropertyChanged(nameof(ShowSpinner)));
             SearchResults.CollectionChanged += (s, e) => this.RaisePropertyChanged(nameof(ShowSpinner));
 
-            // Load trending items on startup
-            _ = LoadTrending();
+            // Load trending items on startup (off UI context so continuations don't contend for UI thread)
+            _ = Task.Run(() => LoadTrending());
         }
 
         public void RequestSearchBoxFocus()

@@ -31,8 +31,12 @@ namespace Baird.Services
                     return null;
                 }
 
-                var output = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
+                // Read both stdout and stderr concurrently to avoid pipe deadlock
+                var outputTask = process.StandardOutput.ReadToEndAsync();
+                var errorTask = process.StandardError.ReadToEndAsync();
+                var output = await outputTask.ConfigureAwait(false);
+                await errorTask.ConfigureAwait(false);
+                await process.WaitForExitAsync().ConfigureAwait(false);
 
                 if (process.ExitCode != 0)
                 {

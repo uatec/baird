@@ -27,22 +27,27 @@ namespace Baird.Controls
             // _renderUpdateDelegate = UpdateCallback; // Moved to MpvPlayer internal logic
 
             // Subscribe to player's StreamEnded event
+            // StreamEnded fires on the MpvEventLoop background thread, so marshal to UI thread
+            // since we access Avalonia properties (Duration) and invoke UI-bound events
             _player.StreamEnded += (sender, args) =>
             {
-                Console.WriteLine("[VideoPlayer] StreamEnded event received from MpvPlayer");
-                // Save progress immediately when stream ends naturally (EOF)
-                // This ensures the final position/duration is captured before auto-play starts next episode
-
-                if (_currentMediaItem == null)
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    Console.WriteLine("[VideoPlayer] _currentMediaItem is null. Skipping SaveProgress.");
-                    return;
-                }
+                    Console.WriteLine("[VideoPlayer] StreamEnded event received from MpvPlayer");
+                    // Save progress immediately when stream ends naturally (EOF)
+                    // This ensures the final position/duration is captured before auto-play starts next episode
 
-                // ensure we appear to have watched the entire video
-                // We pass Duration as override to SaveProgress to ensure it marks as finished
-                SaveProgress(this.Duration);
-                StreamEnded?.Invoke(this, EventArgs.Empty);
+                    if (_currentMediaItem == null)
+                    {
+                        Console.WriteLine("[VideoPlayer] _currentMediaItem is null. Skipping SaveProgress.");
+                        return;
+                    }
+
+                    // ensure we appear to have watched the entire video
+                    // We pass Duration as override to SaveProgress to ensure it marks as finished
+                    SaveProgress(this.Duration);
+                    StreamEnded?.Invoke(this, EventArgs.Empty);
+                });
             };
 
             _hudTimer = new Avalonia.Threading.DispatcherTimer

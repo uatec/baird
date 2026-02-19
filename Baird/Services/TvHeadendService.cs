@@ -67,7 +67,7 @@ namespace Baird.Services
             }
 
             // Wait for the semaphore to ensure only one thread populates the cache
-            await _cacheLock.WaitAsync();
+            await _cacheLock.WaitAsync().ConfigureAwait(false);
             try
             {
                 // Double-check after acquiring lock (another thread might have populated it)
@@ -87,10 +87,10 @@ namespace Baird.Services
 
                     Console.WriteLine($"[TvHeadendService] Fetching channels from: {url}");
 
-                    var response = await _httpClient.GetAsync(url);
+                    var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
                     response.EnsureSuccessStatusCode();
 
-                    var json = await response.Content.ReadAsStringAsync();
+                    var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                     // Using Source Generator context
                     var grid = JsonSerializer.Deserialize(json, TvHeadendJsonContext.Default.TvHeadendGrid);

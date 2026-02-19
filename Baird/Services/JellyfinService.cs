@@ -92,10 +92,10 @@ namespace Baird.Services
             var request = new HttpRequestMessage(HttpMethod.Post, authUrl);
             request.Content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.SendAsync(request);
+            var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
-            var respContent = await response.Content.ReadAsStringAsync();
+            var respContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
             // Parse manually
             using var doc = JsonDocument.Parse(respContent);
@@ -135,10 +135,10 @@ namespace Baird.Services
 
                 Console.WriteLine($"[JellyfinService] Fetching movies and shows from: {url}");
 
-                var response = await _httpClient.GetAsync(url);
+                var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
-                var json = await response.Content.ReadAsStringAsync();
+                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 var result = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult);
 
                 if (result?.Items != null)
@@ -168,10 +168,10 @@ namespace Baird.Services
 
                 Console.WriteLine($"[JellyfinService] Searching Jellyfin movies and shows with query '{query}': {url}");
 
-                var response = await _httpClient.GetAsync(url, cancellationToken);
+                var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
-                var json = await response.Content.ReadAsStringAsync();
+                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 var result = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult);
 
                 if (result?.Items != null)
@@ -195,10 +195,10 @@ namespace Baird.Services
             try
             {
                 var url = $"Users/{_userId}/Items/{id}?Fields=ProductionYear,RunTimeTicks,ProviderIds";
-                var response = await _httpClient.GetAsync(url);
+                var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode) return null;
 
-                var json = await response.Content.ReadAsStringAsync();
+                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 var item = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieItem);
 
                 if (item != null)
@@ -238,10 +238,10 @@ namespace Baird.Services
                 var url = $"Users/{_userId}/Items?ParentId={itemId}&IncludeItemTypes=Season,Episode,Movie,Folder&Recursive=false&SortBy=ParentIndexNumber,IndexNumber,SortName&Fields=ProductionYear,ParentIndexNumber,RunTimeTicks";
                 // Console.WriteLine($"[Jellyfin] Fetching children for {itemId} with URL: {url}");
 
-                var response = await _httpClient.GetAsync(url);
+                var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
-                var json = await response.Content.ReadAsStringAsync();
+                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                 var result = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult);
 

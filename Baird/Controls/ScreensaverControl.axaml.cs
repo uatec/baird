@@ -53,18 +53,23 @@ namespace Baird.Controls
 
         private void OnScreensaverEnded(object? sender, EventArgs e)
         {
-            Console.WriteLine("[ScreensaverControl] Screensaver video ended. Playing next random screensaver.");
-
-            if (DataContext is ScreensaverViewModel vm)
+            // StreamEnded fires on the MpvEventLoop background thread, so marshal to UI thread
+            // since PlayNext modifies ReactiveUI properties that are bound to UI elements
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
-                vm.PlayNext();
+                Console.WriteLine("[ScreensaverControl] Screensaver video ended. Playing next random screensaver.");
 
-                // Play the new video
-                if (_player != null && vm.CurrentAsset?.VideoUrl != null)
+                if (DataContext is ScreensaverViewModel vm)
                 {
-                    _player.Play(vm.CurrentAsset.VideoUrl);
+                    vm.PlayNext();
+
+                    // Play the new video
+                    if (_player != null && vm.CurrentAsset?.VideoUrl != null)
+                    {
+                        _player.Play(vm.CurrentAsset.VideoUrl);
+                    }
                 }
-            }
+            });
         }
     }
 }

@@ -169,8 +169,8 @@ namespace Baird.ViewModels
             _versionCheckTimer.Tick += async (s, e) => await CheckForUpdatesAsync();
             _versionCheckTimer.Start();
 
-            // Check immediately on startup
-            _ = CheckForUpdatesAsync();
+            // Check immediately on startup (off UI context to avoid contention)
+            _ = Task.Run(() => CheckForUpdatesAsync());
 
             OmniSearch.PlayRequested += (s, item) => PlayItem(item);
             OmniSearch.BackRequested += (s, e) => GoBack();

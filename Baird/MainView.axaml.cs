@@ -63,8 +63,12 @@ namespace Baird
                 Console.WriteLine("[MainView] Attached to visual tree. Starting initialization...");
 
                 Console.WriteLine("[MainView] Initializing screensaver service...");
-                await _screensaverService.InitializeAsync();
+                // Fire-and-forget: screensaver data only needed after 30min idle timeout
+                _ = Task.Run(() => _screensaverService.InitializeAsync());
                 SetupIdleTimer();
+
+                // Yield to let dispatcher process any queued callbacks (e.g. from fire-and-forget tasks)
+                await Task.Yield();
 
                 // Subscribe to VideoLayer exit requests
                 var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
@@ -173,6 +177,9 @@ namespace Baird
                         };
                     }
                 }
+
+                // Yield to let dispatcher process queued callbacks before heavy I/O
+                await Task.Yield();
 
                 Console.WriteLine("[MainView] Refreshing channels...");
                 try

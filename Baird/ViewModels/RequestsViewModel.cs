@@ -158,8 +158,8 @@ namespace Baird.ViewModels
                 await LoadRequests();
             });
 
-            // Initial load
-            _ = LoadRequests();
+            // Initial load (off UI context so continuations don't contend for UI thread)
+            _ = Task.Run(() => LoadRequests());
 
             // Setup auto-refresh timer (every 30 seconds)
             _refreshTimer = new DispatcherTimer

@@ -42,7 +42,7 @@ namespace Baird.Services
             try
             {
                 var url = $"api/v1/search?query={Uri.EscapeDataString(query)}&page={page}";
-                var response = await _httpClient.GetAsync(url, cancellationToken);
+                var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -50,7 +50,7 @@ namespace Baird.Services
                     return Array.Empty<JellyseerrSearchResult>();
                 }
 
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 return ParseSearchResults(json, "Search");
             }
             catch (Exception ex)
@@ -65,7 +65,7 @@ namespace Baird.Services
             try
             {
                 var url = $"api/v1/discover/trending?page={page}";
-                var response = await _httpClient.GetAsync(url, cancellationToken);
+                var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -73,7 +73,7 @@ namespace Baird.Services
                     return Array.Empty<JellyseerrSearchResult>();
                 }
 
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 return ParseSearchResults(json, "Trending");
             }
             catch (Exception ex)
@@ -154,8 +154,8 @@ namespace Baird.Services
                 var json = JsonSerializer.Serialize(requestBody, BairdJsonContext.Default.DictionaryStringObject);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync("api/v1/request", content, cancellationToken);
-                var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var response = await _httpClient.PostAsync("api/v1/request", content, cancellationToken).ConfigureAwait(false);
+                var responseJson = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -198,7 +198,7 @@ namespace Baird.Services
             {
                 // Fetch recent requests sorted by modified date
                 var url = "api/v1/request?sort=modified&sortDirection=desc&take=100";
-                var response = await _httpClient.GetAsync(url, cancellationToken);
+                var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -206,7 +206,7 @@ namespace Baird.Services
                     return Array.Empty<JellyseerrRequest>();
                 }
 
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
 
                 var requests = new List<JellyseerrRequest>();
@@ -240,7 +240,7 @@ namespace Baird.Services
                         if (isInFlight || (isCompleted && isRecent))
                         {
                             // Fetch full media details using TMDB ID
-                            var (title, posterPath) = await GetMediaDetailsAsync(tmdbId, mediaType, cancellationToken);
+                            var (title, posterPath) = await GetMediaDetailsAsync(tmdbId, mediaType, cancellationToken).ConfigureAwait(false);
 
                             var request = new JellyseerrRequest
                             {
@@ -275,7 +275,7 @@ namespace Baird.Services
             try
             {
                 var endpoint = mediaType == "movie" ? $"api/v1/movie/{tmdbId}" : $"api/v1/tv/{tmdbId}";
-                var response = await _httpClient.GetAsync(endpoint, cancellationToken);
+                var response = await _httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -283,7 +283,7 @@ namespace Baird.Services
                     return ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "");
                 }
 
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
 
                 var title = "";

@@ -60,7 +60,7 @@ namespace Baird.Services
         public async Task<IEnumerable<MediaItemViewModel>> GetListingAsync()
         {
             var tasks = _providers.Select(p => p.GetListingAsync());
-            var results = await Task.WhenAll(tasks);
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
             var items = results.SelectMany(x => x).Select(data => new MediaItemViewModel(data)).ToList();
             return UnifyAndHydrate(items);
         }
@@ -68,27 +68,27 @@ namespace Baird.Services
         public async Task<IEnumerable<MediaItemViewModel>> SearchAsync(string query, CancellationToken cancellationToken = default)
         {
             var tasks = _providers.Select(p => p.SearchAsync(query, cancellationToken));
-            var results = await Task.WhenAll(tasks);
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
             var items = results.SelectMany(x => x).Select(data => new MediaItemViewModel(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
         public async Task<IEnumerable<MediaItemViewModel>> GetContinueWatchingAsync()
         {
-            var historyItems = await _historyService.GetHistoryAsync();
+            var historyItems = await _historyService.GetHistoryAsync().ConfigureAwait(false);
 
             // Only unfinished items
             var unfinished = historyItems.Where(x => !x.IsFinished).ToList();
 
-            var hydrated = await HydrateHistoryItems(unfinished);
+            var hydrated = await HydrateHistoryItems(unfinished).ConfigureAwait(false);
             return UnifyAndHydrate(hydrated);
         }
 
         public async Task<IEnumerable<MediaItemViewModel>> GetHistoryItemsAsync()
         {
-            var historyItems = await _historyService.GetHistoryAsync();
+            var historyItems = await _historyService.GetHistoryAsync().ConfigureAwait(false);
 
-            var mediaItems = await HydrateHistoryItems(historyItems);
+            var mediaItems = await HydrateHistoryItems(historyItems).ConfigureAwait(false);
             return UnifyAndHydrate(mediaItems);
         }
 

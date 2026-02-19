@@ -21,8 +21,8 @@ namespace Baird.Services
 
             try
             {
-                using var client = new HttpClient();
-                var json = await client.GetStringAsync(JsonUrl);
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                var json = await client.GetStringAsync(JsonUrl).ConfigureAwait(false);
                 var response = JsonSerializer.Deserialize<ScreensaverResponse>(json);
 
                 if (response?.Success == true && response.Data != null)
@@ -63,7 +63,7 @@ namespace Baird.Services
         public async Task RefreshAsync()
         {
             _isInitialized = false;
-            await InitializeAsync();
+            await InitializeAsync().ConfigureAwait(false);
         }
     }
 }
