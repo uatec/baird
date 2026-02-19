@@ -277,7 +277,7 @@ namespace Baird
                         var player = videoLayer?.GetPlayer();
                         if (player != null)
                         {
-                            player.Resume(); 
+                            player.Resume();
                         }
                     });
                     _wasPausedForScreensaver = false;
@@ -290,14 +290,14 @@ namespace Baird
 
         private void OnGlobalPointerActivity(object? sender, PointerEventArgs e)
         {
-             ResetIdleTimer(); // Activity resets timer
+            ResetIdleTimer(); // Activity resets timer
 
-             if (_viewModel.Screensaver.IsActive)
-             {
-                 Console.WriteLine("[MainView] Screensaver active. Pointer activity. Waking up.");
-                 _viewModel.Screensaver.Deactivate();
-                 
-                  // Restore playback if we paused it for screensaver
+            if (_viewModel.Screensaver.IsActive)
+            {
+                Console.WriteLine("[MainView] Screensaver active. Pointer activity. Waking up.");
+                _viewModel.Screensaver.Deactivate();
+
+                // Restore playback if we paused it for screensaver
                 if (_wasPausedForScreensaver)
                 {
                     Console.WriteLine("[MainView] Resuming video playback after screensaver (pointer).");
@@ -307,13 +307,13 @@ namespace Baird
                         var player = videoLayer?.GetPlayer();
                         if (player != null)
                         {
-                            player.Resume(); 
+                            player.Resume();
                         }
                     });
                     _wasPausedForScreensaver = false;
                 }
-                 e.Handled = true;
-             }
+                e.Handled = true;
+            }
         }
 
         private void InputCoordinator(object? sender, KeyEventArgs e)

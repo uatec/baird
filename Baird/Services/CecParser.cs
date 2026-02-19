@@ -148,7 +148,7 @@ namespace Baird.Services
             { 0x91, "Active Source" }
         };
 
-        private static string GetAddressName(int address) => 
+        private static string GetAddressName(int address) =>
             LogicalAddresses.TryGetValue(address, out var name) ? $"{name} ({address:X})" : $"Unknown ({address:X})";
 
         public static string ParseLine(string line)
@@ -164,13 +164,13 @@ namespace Baird.Services
                 // If it's just a single byte (POLL), handling might be slightly different but logic should hold
                 if (!hexString.Contains(':') && hexString.Length == 2)
                 {
-                     // It's a POLL or single byte
-                     return $"{line}  [{ParsePacket(hexString)}]";
+                    // It's a POLL or single byte
+                    return $"{line}  [{ParsePacket(hexString)}]";
                 }
-                
+
                 return $"{line}  [{ParsePacket(hexString)}]";
             }
-            
+
             // Try matching raw hex string if the whole line is traffic
             if (Regex.IsMatch(line.Trim(), @"^[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2})*$"))
             {
@@ -186,16 +186,16 @@ namespace Baird.Services
             {
                 var parts = hexString.Split(':');
                 if (parts.Length == 0 || string.IsNullOrWhiteSpace(hexString)) return "Empty Packet";
-                
+
                 var bytes = parts.Select(b => Convert.ToByte(b, 16)).ToArray();
                 if (bytes.Length == 0) return "Empty Packet";
 
                 var src = (bytes[0] >> 4) & 0xF;
                 var dst = bytes[0] & 0xF;
-                
+
                 var srcName = GetAddressName(src);
                 var dstName = GetAddressName(dst);
-                
+
                 // Single byte is just a POLL message
                 if (bytes.Length == 1)
                 {
@@ -203,12 +203,12 @@ namespace Baird.Services
                 }
 
                 var opcode = bytes[1];
-                
+
                 string description;
                 if (Opcodes.TryGetValue(opcode, out var opcodeName))
                 {
                     description = opcodeName;
-                    
+
                     // Specific parsing for some opcodes
                     if (opcode == 0x44 && bytes.Length > 2) // User Control Pressed
                     {
@@ -224,8 +224,8 @@ namespace Baird.Services
                     }
                     else if (opcode == 0x90 && bytes.Length > 2) // Report Power Status
                     {
-                         var status = bytes[2];
-                         description += $": {(status == 0x00 ? "On" : status == 0x01 ? "Standby" : $"Status {status:X2}")}";
+                        var status = bytes[2];
+                        description += $": {(status == 0x00 ? "On" : status == 0x01 ? "Standby" : $"Status {status:X2}")}";
                     }
                     else if (opcode == 0x82 && bytes.Length > 3) // Active Source
                     {
