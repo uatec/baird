@@ -78,7 +78,7 @@ namespace Baird.Services
 
                     // Parse the line using our new parser
                     var parsed = CecParser.ParseLine(line);
-                    
+
                     // If parsing added valid info (indicated by brackets), use that as the description
                     // Otherwise just treat as generic event
                     string commandType = "Event";
@@ -94,7 +94,7 @@ namespace Baird.Services
                         {
                             commandType = parsed.Substring(bracketIndex + 1).TrimEnd(']');
                             // Keep raw line as details
-                            responseText = line; 
+                            responseText = line;
                         }
                     }
 
@@ -134,19 +134,17 @@ namespace Baird.Services
             try
             {
                 Console.WriteLine($"[CecService] Sending: {command}");
-                
-                // Write with a timeout to ensure we never hang if the process buffer is full/hung
-                var writeTask = _cecInput!.WriteLineAsync(command);
-                var flushTask = _cecInput.FlushAsync();
-                var combinedTask = Task.WhenAll(writeTask, flushTask);
-                
-                // 1 second timeout for simple IPC is generous
-                if (await Task.WhenAny(combinedTask, Task.Delay(1000)) != combinedTask)
-                {
-                     throw new TimeoutException("Timed out writing to cec-client process");
-                }
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+                await _cecInput!.WriteLineAsync(command.AsMemory(), cts.Token);
+                await _cecInput.FlushAsync(cts.Token);
 
                 LogCommand(description, $"Sent: {command}", true);
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine($"[CecService] Timed out sending command '{command}'");
+                LogCommand(description, "Error: Timed out writing to cec-client process", false);
             }
             catch (Exception ex)
             {
