@@ -82,7 +82,16 @@ namespace Baird.ViewModels
 
         public void RequestSearchBoxFocus()
         {
+            // Set flag so view can pick it up if not attached yet
+            FocusSearchBoxOnLoad = true;
             SearchBoxFocusRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        private bool _focusSearchBoxOnLoad;
+        public bool FocusSearchBoxOnLoad
+        {
+            get => _focusSearchBoxOnLoad;
+            set => this.RaiseAndSetIfChanged(ref _focusSearchBoxOnLoad, value);
         }
 
         private string _searchText = "";

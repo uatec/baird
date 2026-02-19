@@ -84,6 +84,7 @@ namespace Baird.Controls
                 if (!string.IsNullOrEmpty(text))
                 {
                     vm.OmniSearch.SearchText = text;
+                    vm.OmniSearch.RequestSearchBoxFocus();
                 }
             }
         }

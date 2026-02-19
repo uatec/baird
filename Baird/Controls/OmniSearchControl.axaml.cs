@@ -27,6 +27,16 @@ namespace Baird.Controls
                     box.GotFocus += (sender, args) => UpdateFocusState(true);
                     box.LostFocus += (sender, args) => UpdateFocusState(false);
                 }
+
+                if (DataContext is ViewModels.OmniSearchViewModel vm && vm.FocusSearchBoxOnLoad)
+                {
+                    // Delay slightly to ensure layout is done and tab nav focus settled
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        FocusSearchBox();
+                        vm.FocusSearchBoxOnLoad = false;
+                    }, DispatcherPriority.Input);
+                }
             };
         }
 
@@ -61,6 +71,15 @@ namespace Baird.Controls
                 {
                     Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
                 };
+
+                if (this.IsEffectivelyVisible && vm.FocusSearchBoxOnLoad)
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        FocusSearchBox();
+                        vm.FocusSearchBoxOnLoad = false;
+                    }, DispatcherPriority.Input);
+                }
             }
         }
 
