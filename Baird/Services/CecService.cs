@@ -49,27 +49,6 @@ namespace Baird.Services
                 _cecInput = _cecProcess.StandardInput;
                 _outputReadCts = new CancellationTokenSource();
 
-                // Check if process exited immediately (e.g. device busy or permission error)
-                // Give it a brief moment to fail start so we don't assume it's running
-                // But do NOT block the UI thread for long.
-                try
-                {
-                    // Check if it exits within 500ms
-                    var cts = new CancellationTokenSource(500);
-                    await _cecProcess.WaitForExitAsync(cts.Token);
-                    // If we get here without exception, it exited!
-                    var error = await _cecProcess.StandardError.ReadToEndAsync();
-                    // Fail silently if desired, or just log debug
-                    // Console.WriteLine($"[CecService] cec-client exited immediately. Code: {_cecProcess.ExitCode}. Error: {error}");
-                    _cecProcess = null; // Mark as failed
-                    return;
-                }
-                catch (OperationCanceledException)
-                {
-                    // Process is still running after 500ms, assume success for now
-                }
-
-
                 // Start reading output in background
                 _ = ReadOutputAsync(_cecProcess.StandardOutput, _outputReadCts.Token);
 
@@ -91,9 +70,10 @@ namespace Baird.Services
         {
             try
             {
-                while (!token.IsCancellationRequested && !reader.EndOfStream)
+                while (!token.IsCancellationRequested)
                 {
                     var line = await reader.ReadLineAsync();
+                    if (line == null) break; // End of stream
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
                     // Log raw output as "Response" (or we could only log specific events)
@@ -135,8 +115,16 @@ namespace Baird.Services
             try
             {
                 Console.WriteLine($"[CecService] Sending: {command}");
-                await _cecInput!.WriteLineAsync(command);
-                await _cecInput.FlushAsync();
+                
+                // Write with a timeout to ensure we never hang if the process buffer is full/hung
+                var writeTask = _cecInput!.WriteLineAsync(command);
+                var flushTask = _cecInput.FlushAsync();
+                
+                // 1 second timeout for simple IPC is generous
+                if (await Task.WhenAny(Task.WhenAll(writeTask, flushTask), Task.Delay(1000)) != writeTask)
+                {
+                     throw new TimeoutException("Timed out writing to cec-client process");
+                }
 
                 LogCommand(description, $"Sent: {command}", true);
             }
