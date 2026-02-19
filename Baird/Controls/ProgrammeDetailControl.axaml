@@ -22,7 +22,7 @@
         <KeyBinding Gesture="Back" Command="{Binding BackCommand}" />
     </UserControl.KeyBindings>
     
-    <Grid Background="#E0000000"> <!-- Dark semi-transparent background -->
+    <Grid Background="#88000000"> <!-- Lighter semi-transparent background -->
         
         <!-- Background Image (Dimmed) -->
         <Border Background="Blue" VerticalAlignment="Top" Height="600">

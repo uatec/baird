@@ -50,7 +50,7 @@
         <!-- Layer 2: Video HUD (Overlay) -->
         <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}" IsHitTestVisible="False">
              <Grid RowDefinitions="Auto,*,Auto">
-                 <Border Grid.Row="0" Background="#AA000000" Padding="10">
+                 <Border Grid.Row="0" Background="#66000000" Padding="10">
                      <StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
                             <TextBlock Text="SUB" FontSize="16" FontWeight="Bold" Foreground="#FFFF00" IsVisible="{Binding IsSubtitlesEnabled}" VerticalAlignment="Center" Margin="0,0,5,0"/>
@@ -61,7 +61,7 @@
                         <TextBlock Text="{Binding #Player.PlayerState}" FontSize="14" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
                      </StackPanel>
                  </Border>
-                 <Border Grid.Row="2" Background="#AA000000" Padding="20">
+                 <Border Grid.Row="2" Background="#66000000" Padding="20">
                      <StackPanel>
                          <!-- Live Stream Clock -->
                          <TextBlock Text="{Binding #Player.FormattedTime}" 
@@ -96,7 +96,7 @@
         </Border>
 
         <!-- Layer 3: Configuration Overlay -->
-        <Border Name="ConfigLayer" Background="#DD000000" IsVisible="False">
+        <Border Name="ConfigLayer" Background="#88000000" IsVisible="False">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="40">
                 <ItemsControl Name="ConfigItemsControl">
                     <ItemsControl.ItemTemplate>

@@ -14,7 +14,7 @@
         <c:VideoLayerControl Name="VideoLayer" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Focusable="False"/>
 
         <!-- Layer 1: EPG Overlay (Bottom Up) -->
-        <Border Name="EpgLayer" Background="#CC000000" VerticalAlignment="Bottom" Height="300" IsVisible="{Binding IsEpgActive}">
+        <Border Name="EpgLayer" Background="#88000000" VerticalAlignment="Bottom" Height="300" IsVisible="{Binding IsEpgActive}">
             <TextBlock Text="EPG Placeholder" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
 
