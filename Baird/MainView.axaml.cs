@@ -26,6 +26,7 @@ namespace Baird
         // Screensaver & Idle
         private ScreensaverService? _screensaverService;
         private DispatcherTimer? _idleTimer;
+        private bool _wasPausedForScreensaver = false; // Track if we actively paused for screensaver
 
         public MainView()
         {
@@ -88,6 +89,8 @@ namespace Baird
                 {
                     // Global Input Handler (Tunneling) to catch wake-up events
                     topLevel.AddHandler(InputElement.KeyDownEvent, OnGlobalKeyDown, RoutingStrategies.Tunnel);
+                    topLevel.AddHandler(InputElement.PointerPressedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
+                    topLevel.AddHandler(InputElement.PointerMovedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
 
                     // Existing InputCoordinator (Bubbling)
                     topLevel.KeyDown += InputCoordinator;
@@ -224,11 +227,23 @@ namespace Baird
             };
             _idleTimer.Tick += (s, e) =>
             {
+                if (_viewModel.Screensaver.IsActive) return;
+
                 Console.WriteLine("[MainView] Idle timeout reached. Activating screensaver.");
 
-                // Pause Main Player
                 var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                videoLayer?.GetPlayer()?.Pause();
+                var player = videoLayer?.GetPlayer();
+
+                if (player != null && player.GetState() == Baird.Mpv.PlaybackState.Playing)
+                {
+                    Console.WriteLine("[MainView] Pausing active video for screensaver.");
+                    player.Pause();
+                    _wasPausedForScreensaver = true;
+                }
+                else
+                {
+                    _wasPausedForScreensaver = false;
+                }
 
                 _viewModel.Screensaver.Activate();
             };
@@ -246,14 +261,59 @@ namespace Baird
             // Reset timer on ANY activity
             ResetIdleTimer();
 
+            // Wake up if screensaver is active
             if (_viewModel.Screensaver.IsActive)
             {
-                Console.WriteLine("[MainView] Screensaver active. Waking up.");
+                Console.WriteLine($"[MainView] Screensaver active. Key '{e.Key}' pressed. Waking up.");
                 _viewModel.Screensaver.Deactivate();
+
+                // Restore playback if we paused it for screensaver
+                if (_wasPausedForScreensaver)
+                {
+                    Console.WriteLine("[MainView] Resuming video playback after screensaver.");
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                        var player = videoLayer?.GetPlayer();
+                        if (player != null)
+                        {
+                            player.Resume(); 
+                        }
+                    });
+                    _wasPausedForScreensaver = false;
+                }
 
                 // Consume the event so it doesn't trigger search, pause, quit, etc.
                 e.Handled = true;
             }
+        }
+
+        private void OnGlobalPointerActivity(object? sender, PointerEventArgs e)
+        {
+             ResetIdleTimer(); // Activity resets timer
+
+             if (_viewModel.Screensaver.IsActive)
+             {
+                 Console.WriteLine("[MainView] Screensaver active. Pointer activity. Waking up.");
+                 _viewModel.Screensaver.Deactivate();
+                 
+                  // Restore playback if we paused it for screensaver
+                if (_wasPausedForScreensaver)
+                {
+                    Console.WriteLine("[MainView] Resuming video playback after screensaver (pointer).");
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                        var player = videoLayer?.GetPlayer();
+                        if (player != null)
+                        {
+                            player.Resume(); 
+                        }
+                    });
+                    _wasPausedForScreensaver = false;
+                }
+                 e.Handled = true;
+             }
         }
 
         private void InputCoordinator(object? sender, KeyEventArgs e)
