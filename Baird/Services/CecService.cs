@@ -39,7 +39,7 @@ namespace Baird.Services
                         Arguments = CecClientArgs,
                         RedirectStandardInput = true,
                         RedirectStandardOutput = true,
-                        RedirectStandardError = true,
+                        RedirectStandardError = false,
                         UseShellExecute = false,
                         CreateNoWindow = true
                     }
