@@ -138,9 +138,10 @@ namespace Baird.Services
                 // Write with a timeout to ensure we never hang if the process buffer is full/hung
                 var writeTask = _cecInput!.WriteLineAsync(command);
                 var flushTask = _cecInput.FlushAsync();
+                var combinedTask = Task.WhenAll(writeTask, flushTask);
                 
                 // 1 second timeout for simple IPC is generous
-                if (await Task.WhenAny(Task.WhenAll(writeTask, flushTask), Task.Delay(1000)) != writeTask)
+                if (await Task.WhenAny(combinedTask, Task.Delay(1000)) != combinedTask)
                 {
                      throw new TimeoutException("Timed out writing to cec-client process");
                 }
