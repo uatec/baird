@@ -94,13 +94,13 @@ namespace Baird
 
                     try
                     {
-                        var options = new DevToolsOptions
-                        {
-                            Gesture = new KeyGesture(Key.F12),
-                            ShowAsChildWindow = false
-                        };
-                        Dispatcher.UIThread.Post(() => topLevel.AttachDevTools(options));
-                        Console.WriteLine("[InputCoordinator] DevTools attach command sent.");
+                        // var options = new DevToolsOptions
+                        // {
+                        //     Gesture = new KeyGesture(Key.F12),
+                        //     ShowAsChildWindow = false
+                        // };
+                        // Dispatcher.UIThread.Post(() => topLevel.AttachDevTools(options));
+                        // Console.WriteLine("[InputCoordinator] DevTools attach command sent.");
                     }
                     catch (Exception ex)
                     {
@@ -208,11 +208,11 @@ namespace Baird
                 Console.WriteLine("[MainView] Starting CEC service...");
 
                 // Start CEC Service in background so it doesn't block UI startup if it fails/hangs
-                _ = _cecService.StartAsync().ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                        Console.WriteLine($"[MainView] CEC Service failed to start: {t.Exception?.InnerException?.Message}");
-                });
+                // _ = _cecService.StartAsync().ContinueWith(t =>
+                // {
+                //     if (t.IsFaulted)
+                //         Console.WriteLine($"[MainView] CEC Service failed to start: {t.Exception?.InnerException?.Message}");
+                // });
             };
         }
 
