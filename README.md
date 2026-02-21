@@ -96,15 +96,29 @@ Artifacts are created in `publish/`.
    scp publish/linux-arm64/Baird user@raspberrypi:/home/user/
    scp publish/linux-arm64/99-baird.rules user@raspberrypi:/home/user/
    scp publish/linux-arm64/install_deps.sh user@raspberrypi:/home/user/
+   scp publish/linux-arm64/configure_pi.sh user@raspberrypi:/home/user/
    ```
 
-2. **Install Dependencies (One-time setup):**
+2. **One-time Raspberry Pi OS setup:**
+   Run the Pi configuration script to enable Full KMS, install required libraries, and apply system-level video playback optimisations:
+   ```bash
+   chmod +x configure_pi.sh
+   sudo ./configure_pi.sh
+   sudo reboot
+   ```
+   This script:
+   - Enables the Full KMS overlay (`vc4-kms-v3d`) in `/boot/config.txt` for proper DRM/KMS and OpenGL support.
+   - Installs `libmpv`, `libdrm`, and other required libraries.
+   - Adds the current user to the `video` and `input` groups.
+   - Configures contiguous GPU memory (CMA) and disables console blanking.
+
+3. **Install Dependencies (One-time setup):**
     ```bash
     chmod +x install_deps.sh
     sudo ./install_deps.sh
     ```
 
-3. **Configure Permissions (One-time setup):**
+4. **Configure Permissions (One-time setup):**
    On the Pi, install udev rules to allow non-root access to `/dev/dri/card0` and input devices:
    ```bash
    sudo cp 99-baird.rules /etc/udev/rules.d/
@@ -113,12 +127,18 @@ Artifacts are created in `publish/`.
    # Logout and login again for group changes to take effect
    ```
 
-3. **Run Application:**
+5. **Run Application:**
    ```bash
    chmod +x Baird
    ./Baird
    ```
    *Note: Ensure no other display server (X11/Wayland) is holding the DRM device if running in framebuffer mode.*
+
+#### Raspberry Pi hardware-decoding notes
+
+Baird automatically uses the Raspberry Pi VideoCore hardware decoder (`hwdec=rpi`) when running on Linux ARM64.  If the firmware or kernel does not support this mode, mpv falls back to software decoding automatically.
+
+Interpolation and display-resample sync are **disabled by default** on all platforms to reduce GPU load on the Pi.  If you have headroom, you can enable them by setting the relevant properties in `MpvPlayer.cs` (see comments in that file).
 
 ### Linux VM (x64)
 1. **Transfer files:**

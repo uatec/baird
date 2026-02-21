@@ -32,19 +32,35 @@ namespace Baird.Mpv
                 throw new Exception("Failed to create mpv context");
 
             // Hardware acceleration configuration
-            // RPi 5: "auto-copy" ensures decoded frames are copied back to system memory
-            // which is often necessary when embedding mpv in Avalonia/OpenGL to avoid
+            // On Raspberry Pi (Linux ARM64), use the RPi-specific hwdec for VideoCore decoding.
+            // On other platforms, use "auto-copy" which decodes in hardware and copies frames
+            // back to system memory — necessary when embedding mpv in Avalonia/OpenGL to avoid
             // DRM/KMS overlay issues that might bypass the UI.
+            // If the RPi hwdec mode is unavailable (e.g. missing firmware/kernel support), mpv
+            // will log a warning and fall back to software decoding automatically.
+            string hwdec = OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                ? "rpi"
+                : "auto-copy";
+            Console.WriteLine($"[MpvPlayer] Hardware decoding mode: {hwdec}");
+            int hwdecResult = LibMpv.mpv_set_property_string(_mpvHandle, "hwdec", hwdec);
+            if (hwdecResult < 0)
+            {
+                Console.WriteLine($"[MpvPlayer] hwdec={hwdec} rejected (error {hwdecResult}), falling back to auto-copy");
+                SetPropertyString("hwdec", "auto-copy");
+            }
+
             // "yes" for deinterlace is critical for 1080i50 broadcasts (UK Satellite/Terrestrial).
-            var hwdec = "auto-copy";
-            SetPropertyString("hwdec", hwdec);
             SetPropertyString("deinterlace", "yes");
 
             // Generics Options
             SetPropertyString("terminal", "yes");
             SetPropertyString("msg-level", "all=warn");
 
-            // Critical for embedding: Force libmpv VO to prevent detached window
+            // Critical for embedding in Avalonia/OpenGL: "libmpv" forces mpv to use the
+            // render API and prevents a detached window.  For standalone (non-embedded) usage
+            // on Raspberry Pi you can switch this to "drm" for direct KMS/DRM rendering,
+            // but that will bypass the OpenGL render context below and won't work in this
+            // embedded configuration.
             SetPropertyString("vo", "libmpv");
 
             // Maintain aspect ratio (will center with black bars if needed)
@@ -55,10 +71,12 @@ namespace Baird.Mpv
             SetPropertyString("volume-max", "200");
             SetPropertyString("volume", "100");
             // --- Synchronization & Anti-Tearing ---
-            // DISABLED for RPi 5 Performance. Interpolation is very heavy on GPU.
+            // Interpolation (display-resample + tscale=oversample) greatly improves motion
+            // smoothness but is GPU-intensive.  Disable on Raspberry Pi to reduce GPU load;
+            // enable on more powerful hardware if tearing or judder is visible.
             // SetPropertyString("video-sync", "display-resample");
             // SetPropertyString("interpolation", "yes");
-            // SetPropertyString("tscale", "oversample"); 
+            // SetPropertyString("tscale", "oversample");
             SetPropertyString("opengl-swapinterval", "1"); // VSync
 
             // Standard sync
