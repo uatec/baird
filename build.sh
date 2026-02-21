@@ -26,4 +26,5 @@ cp install_service.sh "$OUTPUT_DIR/linux-arm64/"
 cp update_baird.sh "$OUTPUT_DIR/linux-arm64/"
 cp baird-updater.service "$OUTPUT_DIR/linux-arm64/"
 cp baird-updater.timer "$OUTPUT_DIR/linux-arm64/"
+cp configure_pi.sh "$OUTPUT_DIR/linux-arm64/"
 

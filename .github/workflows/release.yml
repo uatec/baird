@@ -52,6 +52,9 @@ jobs:
         run: |
           mkdir -p out
           
+          # Ensure configure_pi.sh is included in the linux-arm64 package
+          cp configure_pi.sh publish/linux-arm64/
+          
           # Zip linux-arm64
           cd publish/linux-arm64
           zip -r ../../out/Baird-linux-arm64.zip .
