@@ -61,11 +61,15 @@ namespace Baird.Controls
 
                 if (DataContext is ScreensaverViewModel vm)
                 {
+                    var previousUrl = vm.CurrentAsset?.VideoUrl;
                     vm.PlayNext();
 
-                    // Play the new video
-                    if (_player != null && vm.CurrentAsset?.VideoUrl != null)
+                    // If PlayNext got a new asset, the Source binding change already schedules Play().
+                    // Only call Play() manually when no new asset was returned (URL unchanged) to
+                    // loop the current video instead of stalling.
+                    if (_player != null && vm.CurrentAsset?.VideoUrl != null && vm.CurrentAsset.VideoUrl == previousUrl)
                     {
+                        Console.WriteLine("[ScreensaverControl] No new asset available; replaying current screensaver.");
                         _player.Play(vm.CurrentAsset.VideoUrl);
                     }
                 }
