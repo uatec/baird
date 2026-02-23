@@ -43,16 +43,35 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isError, value);
         }
 
-        public void SetLoading() { IsLoading = true; IsSuccess = false; IsError = false; this.RaisePropertyChanged(nameof(StatusBrush)); }
-        public void SetSuccess() { IsLoading = false; IsSuccess = true; IsError = false; this.RaisePropertyChanged(nameof(StatusBrush)); }
-        public void SetError() { IsLoading = false; IsSuccess = false; IsError = true; this.RaisePropertyChanged(nameof(StatusBrush)); }
-        public void SetIdle() { IsLoading = false; IsSuccess = false; IsError = false; this.RaisePropertyChanged(nameof(StatusBrush)); }
+        private bool _isEmpty;
+        public bool IsEmpty
+        {
+            get => _isEmpty;
+            set => this.RaiseAndSetIfChanged(ref _isEmpty, value);
+        }
+
+        private int _resultCount;
+        public int ResultCount
+        {
+            get => _resultCount;
+            set => this.RaiseAndSetIfChanged(ref _resultCount, value);
+        }
+
+        // Shows "ProviderName (N)" when results were found, or just "ProviderName" when empty/idle.
+        public string StatusLabel => ResultCount > 0 ? $"{Name} ({ResultCount})" : Name;
+
+        public void SetLoading() { IsLoading = true; IsSuccess = false; IsError = false; IsEmpty = false; ResultCount = 0; this.RaisePropertyChanged(nameof(StatusBrush)); this.RaisePropertyChanged(nameof(StatusLabel)); }
+        public void SetSuccess(int count) { IsLoading = false; IsSuccess = true; IsError = false; IsEmpty = false; ResultCount = count; this.RaisePropertyChanged(nameof(StatusBrush)); this.RaisePropertyChanged(nameof(StatusLabel)); }
+        public void SetEmpty() { IsLoading = false; IsSuccess = false; IsError = false; IsEmpty = true; ResultCount = 0; this.RaisePropertyChanged(nameof(StatusBrush)); this.RaisePropertyChanged(nameof(StatusLabel)); }
+        public void SetError() { IsLoading = false; IsSuccess = false; IsError = true; IsEmpty = false; ResultCount = 0; this.RaisePropertyChanged(nameof(StatusBrush)); this.RaisePropertyChanged(nameof(StatusLabel)); }
+        public void SetIdle() { IsLoading = false; IsSuccess = false; IsError = false; IsEmpty = false; ResultCount = 0; this.RaisePropertyChanged(nameof(StatusBrush)); this.RaisePropertyChanged(nameof(StatusLabel)); }
 
         public Avalonia.Media.IBrush StatusBrush
         {
             get
             {
                 if (IsError) return Avalonia.Media.Brushes.Red;
+                if (IsEmpty) return Avalonia.Media.Brushes.Orange;
                 if (IsSuccess) return Avalonia.Media.Brushes.Green;
                 return Avalonia.Media.Brushes.Gray;
             }
@@ -275,6 +294,8 @@ namespace Baird.ViewModels
         {
             var query = searchText ?? "";
 
+            Console.WriteLine($"[OmniSearch] PerformSearch called with query='{query}'");
+
             // Cancel previous search
             _searchCts?.Cancel();
             var newCts = new CancellationTokenSource();
@@ -351,6 +372,9 @@ namespace Baird.ViewModels
 
                         // Use UnifyAndHydrate to get cached instances with history/watchlist attached
                         var unifiedItems = _dataService.UnifyAndHydrate(items).ToList();
+                        var count = unifiedItems.Count;
+
+                        Console.WriteLine($"[OmniSearch] Provider '{provider.Name}' returned {count} result(s) for query '{query}'");
 
                         // Update UI atomically
                         Dispatcher.UIThread.Post(() =>
@@ -359,11 +383,18 @@ namespace Baird.ViewModels
                             {
                                 SearchResults.AddRange(unifiedItems);
                             }
-                            if (status != null) status.SetSuccess();
+                            if (status != null)
+                            {
+                                if (count > 0)
+                                    status.SetSuccess(count);
+                                else
+                                    status.SetEmpty();
+                            }
                         });
                     }
                     catch (OperationCanceledException)
                     {
+                        Console.WriteLine($"[OmniSearch] Provider '{provider.Name}' search cancelled for query '{query}'");
                         // Don't mark as error if canceled
                     }
                     catch (Exception ex)
