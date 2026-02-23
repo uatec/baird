@@ -10,6 +10,84 @@ using Xunit;
 
 namespace Baird.Tests.ViewModels
 {
+    public class ProviderSearchStatusTests
+    {
+        [Fact]
+        public void SetSuccess_WithResults_IsGreen()
+        {
+            var status = new ProviderSearchStatus { Name = "Test" };
+            status.SetSuccess(5);
+
+            Assert.True(status.IsSuccess);
+            Assert.False(status.IsEmpty);
+            Assert.Equal(5, status.ResultCount);
+            Assert.Equal(Avalonia.Media.Brushes.Green, status.StatusBrush);
+            Assert.Equal("Test (5)", status.StatusLabel);
+        }
+
+        [Fact]
+        public void SetEmpty_ZeroResults_IsOrange()
+        {
+            var status = new ProviderSearchStatus { Name = "Test" };
+            status.SetEmpty();
+
+            Assert.False(status.IsSuccess);
+            Assert.True(status.IsEmpty);
+            Assert.Equal(0, status.ResultCount);
+            Assert.Equal(Avalonia.Media.Brushes.Orange, status.StatusBrush);
+            Assert.Equal("Test", status.StatusLabel);
+        }
+
+        [Fact]
+        public void SetSuccess_ZeroCount_IsGreen_WithLabel()
+        {
+            // SetSuccess(0) is technically valid if called explicitly, label omits count
+            var status = new ProviderSearchStatus { Name = "Test" };
+            status.SetSuccess(0);
+
+            Assert.True(status.IsSuccess);
+            Assert.Equal(0, status.ResultCount);
+            Assert.Equal("Test", status.StatusLabel);
+        }
+
+        [Fact]
+        public void SetError_IsRed()
+        {
+            var status = new ProviderSearchStatus { Name = "Test" };
+            status.SetError();
+
+            Assert.True(status.IsError);
+            Assert.Equal(Avalonia.Media.Brushes.Red, status.StatusBrush);
+        }
+
+        [Fact]
+        public void SetLoading_ResetsCount_IsGray()
+        {
+            var status = new ProviderSearchStatus { Name = "Test" };
+            status.SetSuccess(10);
+            status.SetLoading();
+
+            Assert.True(status.IsLoading);
+            Assert.Equal(0, status.ResultCount);
+            Assert.Equal(Avalonia.Media.Brushes.Gray, status.StatusBrush);
+        }
+
+        [Fact]
+        public void SetIdle_ResetsEverything_IsGray()
+        {
+            var status = new ProviderSearchStatus { Name = "Test" };
+            status.SetSuccess(3);
+            status.SetIdle();
+
+            Assert.False(status.IsSuccess);
+            Assert.False(status.IsLoading);
+            Assert.False(status.IsError);
+            Assert.False(status.IsEmpty);
+            Assert.Equal(0, status.ResultCount);
+            Assert.Equal(Avalonia.Media.Brushes.Gray, status.StatusBrush);
+        }
+    }
+
     public class OmniSearchViewModelTests
     {
         [Fact]
