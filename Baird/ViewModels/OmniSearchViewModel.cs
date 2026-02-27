@@ -376,8 +376,10 @@ namespace Baird.ViewModels
 
                         Console.WriteLine($"[OmniSearch] Provider '{provider.Name}' returned {count} result(s) for query '{query}'");
 
-                        // Update UI atomically
-                        Dispatcher.UIThread.Post(() =>
+                        // Update UI atomically — await ensures results are committed before
+                        // this task is considered complete by Task.WhenAll, so the final
+                        // sort/row-update step sees every provider's results.
+                        await Dispatcher.UIThread.InvokeAsync(() =>
                         {
                             if (unifiedItems.Any())
                             {
