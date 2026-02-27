@@ -42,17 +42,19 @@ namespace Baird.Services
         private readonly IHistoryService _historyService;
         private readonly IWatchlistService _watchlistService;
         private readonly IMediaItemCache _cache;
+        private readonly IMediaDataCache _mediaDataCache;
 
         public event EventHandler? HistoryUpdated;
         public event EventHandler? WatchlistUpdated;
         public event EventHandler<MediaItemViewModel>? ItemAddedToWatchlist;
 
-        public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService, IWatchlistService watchlistService, IMediaItemCache cache)
+        public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService, IWatchlistService watchlistService, IMediaItemCache cache, IMediaDataCache mediaDataCache)
         {
             _providers = providers;
             _historyService = historyService;
             _watchlistService = watchlistService;
             _cache = cache;
+            _mediaDataCache = mediaDataCache;
 
             _watchlistService.WatchlistUpdated += (s, e) => WatchlistUpdated?.Invoke(this, EventArgs.Empty);
         }
@@ -61,7 +63,10 @@ namespace Baird.Services
         {
             var tasks = _providers.Select(p => p.GetListingAsync());
             var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-            var items = results.SelectMany(x => x).Select(data => new MediaItemViewModel(data)).ToList();
+            var allData = results.SelectMany(x => x).ToList();
+            foreach (var data in allData)
+                _mediaDataCache.Put(data);
+            var items = allData.Select(data => new MediaItemViewModel(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
@@ -69,7 +74,10 @@ namespace Baird.Services
         {
             var tasks = _providers.Select(p => p.SearchAsync(query, cancellationToken));
             var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-            var items = results.SelectMany(x => x).Select(data => new MediaItemViewModel(data)).ToList();
+            var allData = results.SelectMany(x => x).ToList();
+            foreach (var data in allData)
+                _mediaDataCache.Put(data);
+            var items = allData.Select(data => new MediaItemViewModel(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
@@ -92,59 +100,34 @@ namespace Baird.Services
             return UnifyAndHydrate(mediaItems);
         }
 
-        // Helper to hydrate a list of history items
+        // Hydrate history items using persistent cache for immediate display,
+        // then refresh from providers in the background.
         private async Task<IEnumerable<MediaItemViewModel>> HydrateHistoryItems(IEnumerable<HistoryItem> historyItems)
         {
-            // This could be slow if we do it sequentially or naive parallel.
-            // We should limit concurrency or be smart.
-            // For now, simple parallelism.
-
             var tasks = historyItems.Select(async h =>
             {
-                // Try to find the MediaItem for this history item
                 var media = await GetItemAsync(h.Id);
                 if (media != null)
                 {
                     media.History = h;
                     return media;
                 }
-                // If we can't find it (provider offline, item deleted), we can't show it easily
-                // unless we returned a placeholder.
-                // For now, return null and filter out.
-                // Or maybe return a placeholder with ID?
-                // "Unknown Item"
-                var placeholderData = new MediaItemData
-                {
-                    Id = h.Id,
-                    Name = "Unknown Item",
-                    Details = "Item not found in providers",
-                    ImageUrl = "",
-                    IsLive = false,
-                    Source = "Unknown",
-                    Type = MediaType.Video,
-                    StreamUrl = "",
-                    Subtitle = "",
-                    Synopsis = "",
-                    Duration = h.Duration
-                };
-                var placeholder = new MediaItemViewModel(placeholderData);
-                placeholder.History = h;
-                return placeholder;
+                // Item not in cache and no provider could supply it
+                return null;
             });
 
             var results = await Task.WhenAll(tasks);
-            return results.Where(x => x != null && x.Source != "Unknown"); // Filter unknowns? User might want to see them to delete?
-            // User requirement: "look at that up afterwards". Implicitly assumes availability.
-            // Let's filter out Unknowns for now to avoid ugly UI.
+            return results.Where(x => x != null)!;
         }
-
-        // ...
 
         public async Task<IEnumerable<MediaItemViewModel>> GetChildrenAsync(string id)
         {
             var tasks = _providers.Select(p => p.GetChildrenAsync(id));
             var results = await Task.WhenAll(tasks);
-            var items = results.SelectMany(x => x).Select(data => new MediaItemViewModel(data)).ToList();
+            var allData = results.SelectMany(x => x).ToList();
+            foreach (var data in allData)
+                _mediaDataCache.Put(data);
+            var items = allData.Select(data => new MediaItemViewModel(data)).ToList();
             return UnifyAndHydrate(items);
         }
 
@@ -169,15 +152,8 @@ namespace Baird.Services
 
             var tasks = watchlistIds.Select(async id =>
             {
-                // Try to get item from provider/cache
                 var item = await GetItemAsync(id);
-                if (item != null)
-                {
-                    return item;
-                }
-
-                // If provider fails, return null and filter out
-                return null;
+                return item;
             });
 
             var results = await Task.WhenAll(tasks);
@@ -216,25 +192,78 @@ namespace Baird.Services
 
         public async Task<MediaItemViewModel?> GetItemAsync(string id)
         {
-            // 1. Check cache
+            // 1. Check in-memory ViewModel cache (fastest)
             if (_cache.TryGet(id, out var cachedItem))
             {
-                // Ensure history is up to date even if item is cached
-                cachedItem.History = _historyService.GetProgress(id);
-                cachedItem.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
+                cachedItem!.History = _historyService.GetProgress(id);
+                cachedItem!.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
                 return cachedItem;
             }
 
-            // 2. Iterate providers to find the item.
+            // 2. Check persistent data cache (fast - no network)
+            if (_mediaDataCache.TryGet(id, out var cachedData))
+            {
+                var item = _cache.GetOrCreate(id, () => new MediaItemViewModel(cachedData!));
+                item.History = _historyService.GetProgress(id);
+                item.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
+
+                // Refresh from provider in the background so data stays current
+                _ = RefreshItemFromProvidersAsync(id, item);
+
+                return item;
+            }
+
+            // 3. Load from providers (slow - network request)
+            return await LoadItemFromProvidersAsync(id).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Fetches fresh data from providers and updates the ViewModel in place.
+        /// Called in the background after serving from the persistent cache.
+        /// </summary>
+        private async Task RefreshItemFromProvidersAsync(string id, MediaItemViewModel item)
+        {
             foreach (var provider in _providers)
             {
-                var data = await provider.GetItemAsync(id);
-                if (data != null)
+                try
                 {
-                    var item = _cache.GetOrCreate(id, () => new MediaItemViewModel(data));
-                    item.History = _historyService.GetProgress(id);
-                    item.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
-                    return item;
+                    var data = await provider.GetItemAsync(id).ConfigureAwait(false);
+                    if (data != null)
+                    {
+                        _mediaDataCache.Put(data);
+                        item.UpdateData(data);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DataService] Background refresh failed for {id} via {provider.GetType().Name}: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads an item from providers (network), stores it in both caches, and returns the ViewModel.
+        /// </summary>
+        private async Task<MediaItemViewModel?> LoadItemFromProvidersAsync(string id)
+        {
+            foreach (var provider in _providers)
+            {
+                try
+                {
+                    var data = await provider.GetItemAsync(id).ConfigureAwait(false);
+                    if (data != null)
+                    {
+                        _mediaDataCache.Put(data);
+                        var item = _cache.GetOrCreate(id, () => new MediaItemViewModel(data));
+                        item.History = _historyService.GetProgress(id);
+                        item.IsOnWatchlist = _watchlistService.IsOnWatchlist(id);
+                        return item;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DataService] Provider lookup failed for {id} via {provider.GetType().Name}: {ex.Message}");
                 }
             }
             return null;
@@ -242,9 +271,6 @@ namespace Baird.Services
 
         public void AttachHistory(IEnumerable<MediaItemViewModel> items)
         {
-            // Legacy or unused? Just calling UnifyAndHydrate but ignoring return likely won't work for unification.
-            // This method signature is void, so we can only hydrate.
-            // We should probably remove/deprecate this or warn that it doesn't unify.
             foreach (var item in items)
             {
                 HydrateSingle(item);
@@ -279,19 +305,6 @@ namespace Baird.Services
                 unifiedList.Add(cachedItem);
             }
             return unifiedList;
-        }
-
-        public void HydrateItems(IEnumerable<MediaItemViewModel> items)
-        {
-            // This method was void, modifying items in place. 
-            // If we want unification, we need callers to use the return value of UnifyAndHydrate.
-            // But existing callers might rely on void.
-            // We've replaced callers to use UnifyAndHydrate's return value.
-            // Keeping this for compatibility if needed, but implementation matches Unify logic essentially.
-            foreach (var item in items)
-            {
-                HydrateSingle(item);
-            }
         }
     }
 }

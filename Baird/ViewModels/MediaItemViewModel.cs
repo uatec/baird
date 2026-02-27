@@ -11,13 +11,34 @@ namespace Baird.ViewModels
     /// </summary>
     public class MediaItemViewModel : ReactiveObject
     {
-        private readonly MediaItemData _data;
+        private MediaItemData _data;
         private HistoryItem? _history;
         private bool _isOnWatchlist;
 
         public MediaItemViewModel(MediaItemData data)
         {
             _data = data ?? throw new ArgumentNullException(nameof(data));
+        }
+
+        /// <summary>
+        /// Replaces the underlying data (e.g. after a background refresh from a provider)
+        /// and raises property-changed notifications so the UI updates.
+        /// </summary>
+        public void UpdateData(MediaItemData data)
+        {
+            _data = data ?? throw new ArgumentNullException(nameof(data));
+            this.RaisePropertyChanged(nameof(Name));
+            this.RaisePropertyChanged(nameof(Details));
+            this.RaisePropertyChanged(nameof(ImageUrl));
+            this.RaisePropertyChanged(nameof(IsLive));
+            this.RaisePropertyChanged(nameof(StreamUrl));
+            this.RaisePropertyChanged(nameof(Source));
+            this.RaisePropertyChanged(nameof(ChannelNumber));
+            this.RaisePropertyChanged(nameof(Type));
+            this.RaisePropertyChanged(nameof(Synopsis));
+            this.RaisePropertyChanged(nameof(Subtitle));
+            this.RaisePropertyChanged(nameof(Duration));
+            this.RaisePropertyChanged(nameof(HasDuration));
         }
 
         // Data properties - pass-through from MediaItemData

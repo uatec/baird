@@ -10,6 +10,7 @@ namespace Baird
     [JsonSerializable(typeof(List<MediaItem>))]
     [JsonSerializable(typeof(List<MediaItemData>))]
     [JsonSerializable(typeof(MediaItemData))]
+    [JsonSerializable(typeof(Dictionary<string, MediaItemData>))]
     [JsonSerializable(typeof(List<string>))]
     [JsonSerializable(typeof(Dictionary<string, object>))]
     [JsonSerializable(typeof(JellyseerrSearchResult))]
