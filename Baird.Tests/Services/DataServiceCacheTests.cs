@@ -68,7 +68,7 @@ namespace Baird.Tests.Services
             };
             provider.ItemToReturn = itemData;
 
-            var dataService = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService(), new MediaItemCache());
+            var dataService = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService(), new MediaItemCache(), new Baird.Tests.Mocks.MockMediaDataCache());
 
             // Act
             // First call - should hit provider
@@ -103,7 +103,7 @@ namespace Baird.Tests.Services
                 Subtitle = "Sub"
             };
             provider.ItemToReturn = itemData;
-            var dataService = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService(), new MediaItemCache());
+            var dataService = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService(), new MediaItemCache(), new Baird.Tests.Mocks.MockMediaDataCache());
 
             // Act
             var result = await dataService.GetItemAsync("test1");

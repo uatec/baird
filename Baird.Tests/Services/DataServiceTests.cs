@@ -101,7 +101,7 @@ namespace Baird.Tests.Services
             // item3 has history but no media (deleted item)
             historyService.History.Add(new HistoryItem { Id = "item3", LastPosition = TimeSpan.FromMinutes(5) });
 
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache(), new Baird.Tests.Mocks.MockMediaDataCache());
 
             // Act
             var results = (await dataService.GetHistoryItemsAsync()).ToList();
@@ -122,7 +122,7 @@ namespace Baird.Tests.Services
             // Arrange
             var provider = new MockMediaProvider();
             var historyService = new MockHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache(), new Baird.Tests.Mocks.MockMediaDataCache());
 
             var itemData = new MediaItemData
             {
@@ -157,7 +157,7 @@ namespace Baird.Tests.Services
             // Arrange
             var provider = new MockMediaProvider();
             var historyService = new MockHistoryService();
-            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache());
+            var dataService = new DataService(new[] { provider }, historyService, new MockWatchlistService(), new MediaItemCache(), new Baird.Tests.Mocks.MockMediaDataCache());
 
             var itemData = new MediaItemData
             {

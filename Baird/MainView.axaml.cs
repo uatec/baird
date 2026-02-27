@@ -48,12 +48,13 @@ namespace Baird
             var watchlistService = new JsonWatchlistService();
             var searchHistoryService = new SearchHistoryService();
             var mediaItemCache = new MediaItemCache();
+            var mediaDataCache = new JsonMediaDataCache();
 
             _screensaverService = new ScreensaverService();
             _jellyseerrService = new JellyseerrService(config);
 
             // Create DataService encapsulating providers and history
-            _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache);
+            _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
 
             _viewModel = new MainViewModel(_dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService);
 
