@@ -1,5 +1,6 @@
 [Unit]
 Description=Baird Media Player
+StartLimitIntervalSec=0
 # Binds the service to the graphical session. 
 # If you log out (stop the GUI), this service will automatically stop.
 PartOf=graphical-session.target
@@ -14,6 +15,9 @@ Environment=BAIRD_FULLSCREEN=True
 # This is usually unnecessary in user services as systemd inherits it, 
 # but keeping it doesn't hurt if your setup is unique.
 Environment=XAUTHORITY=/home/%u/.Xauthority
+SyslogIdentifier=baird
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 # Starts the service when the Graphical Interface is ready, 
