@@ -28,6 +28,8 @@ namespace Baird
         private DispatcherTimer? _idleTimer;
         private bool _wasPausedForScreensaver = false; // Track if we actively paused for screensaver
         private bool _pausedForCecStandby = false; // Track if we auto-paused because TV went to standby
+        private DateTime _lastCecAssert = DateTime.MinValue;
+        private static readonly TimeSpan CecAssertCooldown = TimeSpan.FromSeconds(30);
 
         public MainView()
         {
@@ -230,6 +232,10 @@ namespace Baird
 
                 _cecService.TvPowerOn += (s, e) =>
                 {
+                    // TV is awake — claim the input (no cooldown, this is event-driven)
+                    Console.WriteLine("[MainView] TV power on via CEC — asserting active source.");
+                    _ = _cecService.ChangeInputToThisDeviceAsync();
+
                     Dispatcher.UIThread.Post(() =>
                     {
                         if (_pausedForCecStandby)
@@ -289,10 +295,24 @@ namespace Baird
             _idleTimer?.Start();
         }
 
+        /// <summary>
+        /// On any user interaction, wake the TV and claim our AV input — but no more than once per
+        /// <see cref="CecAssertCooldown"/> to avoid flooding the CEC bus.
+        /// </summary>
+        private void AssertCecPresence()
+        {
+            if (DateTime.Now - _lastCecAssert < CecAssertCooldown) return;
+            _lastCecAssert = DateTime.Now;
+            Console.WriteLine("[MainView] User activity — asserting CEC presence (wake TV + active source).");
+            _ = _cecService.PowerOnAsync();
+            _ = _cecService.ChangeInputToThisDeviceAsync();
+        }
+
         private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
         {
             // Reset timer on ANY activity
             ResetIdleTimer();
+            AssertCecPresence();
 
             // Wake up if screensaver is active
             if (_viewModel.Screensaver.IsActive)
@@ -324,6 +344,7 @@ namespace Baird
         private void OnGlobalPointerActivity(object? sender, PointerEventArgs e)
         {
             ResetIdleTimer(); // Activity resets timer
+            AssertCecPresence();
 
             if (_viewModel.Screensaver.IsActive)
             {
