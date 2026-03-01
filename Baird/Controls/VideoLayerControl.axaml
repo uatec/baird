@@ -39,17 +39,24 @@
                        Focusable="{Binding IsVideoPlayerActive}"
                        IsHitTestVisible="{Binding IsVideoPlayerActive}"/>
         
-        <!-- Loading Overlay -->
-        <Border Background="Black" IsVisible="{Binding #Player.IsLoading}">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
-                <ProgressBar IsIndeterminate="True" Width="100" Height="10"/>
-                <TextBlock Text="Loading..." Foreground="White" HorizontalAlignment="Center"/>
-            </StackPanel>
-        </Border>
+        <!-- Scaled UI Overlays -->
+        <LayoutTransformControl>
+            <LayoutTransformControl.LayoutTransform>
+                <ScaleTransform ScaleX="{Binding Settings.UiScale}" ScaleY="{Binding Settings.UiScale}" />
+            </LayoutTransformControl.LayoutTransform>
 
-        <!-- Layer 2: Video HUD (Overlay) -->
-        <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}" IsHitTestVisible="False">
-             <Grid RowDefinitions="Auto,*,Auto">
+            <Grid>
+                <!-- Loading Overlay -->
+                <Border Background="Black" IsVisible="{Binding #Player.IsLoading}">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
+                        <ProgressBar IsIndeterminate="True" Width="100" Height="10"/>
+                        <TextBlock Text="Loading..." Foreground="White" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Layer 2: Video HUD (Overlay) -->
+                <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}" IsHitTestVisible="False">
+                     <Grid RowDefinitions="Auto,*,Auto">
                  <Border Grid.Row="0" Background="#66000000" Padding="10">
                      <StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
@@ -95,20 +102,22 @@
              </Grid>
         </Border>
 
-        <!-- Layer 3: Configuration Overlay -->
-        <Border Name="ConfigLayer" Background="#88000000" IsVisible="False">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="40">
-                <ItemsControl Name="ConfigItemsControl">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:CompileBindings="False">
-                            <Grid ColumnDefinitions="400, *" Margin="0,2">
-                                <TextBlock Text="{Binding Key}" FontWeight="Bold" Foreground="#00FFFF" Margin="0,0,20,0" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Grid.Column="1" Text="{Binding Value}" Foreground="White" TextWrapping="Wrap"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-        </Border>
+                <!-- Layer 3: Configuration Overlay -->
+                <Border Name="ConfigLayer" Background="#88000000" IsVisible="False">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="40">
+                        <ItemsControl Name="ConfigItemsControl">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:CompileBindings="False">
+                                    <Grid ColumnDefinitions="400, *" Margin="0,2">
+                                        <TextBlock Text="{Binding Key}" FontWeight="Bold" Foreground="#00FFFF" Margin="0,0,20,0" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Value}" Foreground="White" TextWrapping="Wrap"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+        </LayoutTransformControl>
     </Grid>
 </UserControl>
