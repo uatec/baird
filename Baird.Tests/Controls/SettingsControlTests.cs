@@ -13,7 +13,7 @@ namespace Baird.Tests.Controls
             // that invokes the ViewModel command. This verifies the control logic 
             // without requiring the Avalonia XAML loader to parse the actual UI.
 
-            var viewModel = new SettingsViewModel();
+            var viewModel = new SettingsViewModel(null);
             Assert.Equal(1.0, viewModel.UiScale);
 
             viewModel.DecreaseScaleCommand.Execute().Subscribe();
@@ -24,7 +24,7 @@ namespace Baird.Tests.Controls
         [Fact]
         public void SettingsViewModel_SimulateKeyCommands_Increase_Adjusts_Scale()
         {
-            var viewModel = new SettingsViewModel();
+            var viewModel = new SettingsViewModel(null);
             viewModel.IncreaseScaleCommand.Execute().Subscribe();
 
             Assert.Equal(1.1, viewModel.UiScale);

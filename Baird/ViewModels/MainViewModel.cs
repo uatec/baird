@@ -2,6 +2,7 @@ using ReactiveUI;
 using System.Runtime.InteropServices;
 using Baird.Services;
 using Baird.Models; // For potentially reused types, though ScreensaverViewModel handles it.
+using Microsoft.Extensions.Configuration;
 
 namespace Baird.ViewModels
 {
@@ -78,7 +79,7 @@ namespace Baird.ViewModels
 
         public ScreensaverViewModel Screensaver { get; }
 
-        public MainViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService, IJellyseerrService jellyseerrService)
+        public MainViewModel(IConfiguration configuration, IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService, IJellyseerrService jellyseerrService)
         {
             _dataService = dataService;
             _versionCheckService = new VersionCheckService();
@@ -114,7 +115,7 @@ namespace Baird.ViewModels
 
             CecDebug.BackRequested += (s, e) => GoBack();
 
-            Settings = new SettingsViewModel();
+            Settings = new SettingsViewModel(configuration);
             Settings.BackRequested += (s, e) => GoBack();
 
             Seerrch.BackRequested += (s, e) => GoBack();
