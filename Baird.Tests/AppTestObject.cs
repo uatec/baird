@@ -61,37 +61,13 @@ namespace Baird.Tests
             _provider.SetChildren(parentId, children);
         }
 
-        public void PlayItem(MediaItemData item)
+        public MainMenuTestObject OpenMainMenu()
         {
-            ViewModel.PlayItem(new MediaItemViewModel(item));
+            ViewModel.OpenMainMenu();
+            return new MainMenuTestObject(TabNavigationControl, ViewModel);
         }
 
-        public void SetCurrentEpisodeContext(List<MediaItemData> episodes, string seasonId, string showId)
-        {
-            var episodeViewModels = episodes.Select(e => new MediaItemViewModel(e)).ToList();
-
-            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentEpisodeListField?.SetValue(ViewModel, episodeViewModels);
-
-            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentSeasonIdField?.SetValue(ViewModel, seasonId);
-
-            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            currentShowIdField?.SetValue(ViewModel, showId);
-        }
-
-        public async Task SimulatePlaybackEndingAndPlayNext()
-        {
-            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-            if (playNextMethod != null)
-            {
-                var task = playNextMethod.Invoke(ViewModel, null) as Task;
-                if (task != null)
-                {
-                    await task;
-                }
-            }
-        }
+        public VideoPlayerTestObject VideoPlayer => new VideoPlayerTestObject(ViewModel);
 
         public void PushView(ReactiveObject viewModel)
         {
@@ -100,16 +76,27 @@ namespace Baird.Tests
 
         public int NavigationStackCount => ViewModel.NavigationHistory.Count;
 
-        public void OpenMainMenu()
+        public object? CurrentView => ViewModel.CurrentPage;
+
+        public MediaItemViewModel? CurrentActiveItem => ViewModel.ActiveItem;
+    }
+
+    public class MainMenuTestObject
+    {
+        private readonly TabNavigationControl _tabNavigationControl;
+        private readonly MainViewModel _mainViewModel;
+
+        public MainMenuTestObject(TabNavigationControl tabNavigationControl, MainViewModel mainViewModel)
         {
-            ViewModel.OpenMainMenu();
+            _tabNavigationControl = tabNavigationControl;
+            _mainViewModel = mainViewModel;
         }
 
         public void PressUpOnTab()
         {
             // Since Avalonia XAML is not evaluated in basic xUnit tests, 
             // we simulate the key press on the TabButton which the XAML would normally route.
-            var tabs = ViewModel.MainMenu.Tabs;
+            var tabs = _mainViewModel.MainMenu.Tabs;
             if (tabs.Count == 0) return;
 
             var button = new Button { DataContext = tabs[0] };
@@ -123,69 +110,107 @@ namespace Baird.Tests
                 Source = button
             };
 
-            methodInfo?.Invoke(TabNavigationControl, new object[] { button, keyEventArgs });
+            methodInfo?.Invoke(_tabNavigationControl, new object[] { button, keyEventArgs });
+        }
+    }
+
+    public class VideoPlayerTestObject
+    {
+        private readonly MainViewModel _mainViewModel;
+
+        public VideoPlayerTestObject(MainViewModel mainViewModel)
+        {
+            _mainViewModel = mainViewModel;
         }
 
-        public object? CurrentView => ViewModel.CurrentPage;
-
-        public MediaItemViewModel? CurrentActiveItem => ViewModel.ActiveItem;
-
-        // Helper classes for minimal mocking
-        private class MockMediaProvider : IMediaProvider
+        public void PlayItem(MediaItemData item)
         {
-            public string Name => "Test Provider";
-            private readonly Dictionary<string, List<MediaItemData>> _childrenMap = new();
+            _mainViewModel.PlayItem(new MediaItemViewModel(item));
+        }
 
-            public void SetChildren(string parentId, List<MediaItemData> children)
+        public void SetCurrentEpisodeContext(List<MediaItemData> episodes, string seasonId, string showId)
+        {
+            var episodeViewModels = episodes.Select(e => new MediaItemViewModel(e)).ToList();
+
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentEpisodeListField?.SetValue(_mainViewModel, episodeViewModels);
+
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentSeasonIdField?.SetValue(_mainViewModel, seasonId);
+
+            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentShowIdField?.SetValue(_mainViewModel, showId);
+        }
+
+        public async Task SimulatePlaybackEndingAndPlayNext()
+        {
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (playNextMethod != null)
             {
-                _childrenMap[parentId] = children;
-            }
-
-            public Task InitializeAsync() => Task.CompletedTask;
-            public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItemData>());
-            public Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<MediaItemData>());
-
-            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
-            {
-                if (_childrenMap.TryGetValue(id, out var children))
+                var task = playNextMethod.Invoke(_mainViewModel, null) as Task;
+                if (task != null)
                 {
-                    return Task.FromResult((IEnumerable<MediaItemData>)children);
+                    await task;
                 }
-                return Task.FromResult(Enumerable.Empty<MediaItemData>());
             }
-
-            public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult<MediaItemData?>(null);
         }
+    }
 
-        private class MockHistoryService : IHistoryService
+    // Helper classes for minimal mocking
+    internal class MockMediaProvider : IMediaProvider
+    {
+        public string Name => "Test Provider";
+        private readonly Dictionary<string, List<MediaItemData>> _childrenMap = new();
+
+        public void SetChildren(string parentId, List<MediaItemData> children)
         {
-            public Task<List<HistoryItem>> GetHistoryAsync() => Task.FromResult(new List<HistoryItem>());
-            public Task UpsertAsync(MediaItemViewModel item, TimeSpan position, TimeSpan duration) => Task.CompletedTask;
-            public HistoryItem? GetProgress(string id) => null;
-            public Task ClearHistoryAsync() => Task.CompletedTask;
+            _childrenMap[parentId] = children;
         }
 
-        private class MockSearchHistoryService : ISearchHistoryService
+        public Task InitializeAsync() => Task.CompletedTask;
+        public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItemData>());
+        public Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<MediaItemData>());
+
+        public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
         {
-            public Task AddSearchTermAsync(string term) => Task.CompletedTask;
-            public Task<IEnumerable<string>> GetSuggestedTermsAsync(int maxCount) => Task.FromResult(Enumerable.Empty<string>());
+            if (_childrenMap.TryGetValue(id, out var children))
+            {
+                return Task.FromResult((IEnumerable<MediaItemData>)children);
+            }
+            return Task.FromResult(Enumerable.Empty<MediaItemData>());
         }
 
-        private class MockWatchlistService : IWatchlistService
-        {
-            public event EventHandler? WatchlistUpdated;
-            public Task AddAsync(string id) => Task.CompletedTask;
-            public Task RemoveAsync(string id) => Task.CompletedTask;
-            public Task<HashSet<string>> GetWatchlistIdsAsync() => Task.FromResult(new HashSet<string>());
-            public bool IsOnWatchlist(string id) => false;
-        }
+        public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult<MediaItemData?>(null);
+    }
 
-        private class MockJellyseerrService : IJellyseerrService
-        {
-            public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string query, int page, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
-            public Task<JellyseerrRequestResponse> CreateRequestAsync(int mediaId, string mediaType, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(new JellyseerrRequestResponse { Success = false });
-            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
-            public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int page, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
-        }
+    internal class MockHistoryService : IHistoryService
+    {
+        public Task<List<HistoryItem>> GetHistoryAsync() => Task.FromResult(new List<HistoryItem>());
+        public Task UpsertAsync(MediaItemViewModel item, TimeSpan position, TimeSpan duration) => Task.CompletedTask;
+        public HistoryItem? GetProgress(string id) => null;
+        public Task ClearHistoryAsync() => Task.CompletedTask;
+    }
+
+    internal class MockSearchHistoryService : ISearchHistoryService
+    {
+        public Task AddSearchTermAsync(string term) => Task.CompletedTask;
+        public Task<IEnumerable<string>> GetSuggestedTermsAsync(int maxCount) => Task.FromResult(Enumerable.Empty<string>());
+    }
+
+    internal class MockWatchlistService : IWatchlistService
+    {
+        public event EventHandler? WatchlistUpdated;
+        public Task AddAsync(string id) => Task.CompletedTask;
+        public Task RemoveAsync(string id) => Task.CompletedTask;
+        public Task<HashSet<string>> GetWatchlistIdsAsync() => Task.FromResult(new HashSet<string>());
+        public bool IsOnWatchlist(string id) => false;
+    }
+
+    internal class MockJellyseerrService : IJellyseerrService
+    {
+        public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string query, int page, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
+        public Task<JellyseerrRequestResponse> CreateRequestAsync(int mediaId, string mediaType, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(new JellyseerrRequestResponse { Success = false });
+        public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
+        public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int page, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
     }
 }

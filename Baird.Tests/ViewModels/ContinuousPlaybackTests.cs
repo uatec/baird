@@ -57,12 +57,14 @@ namespace Baird.Tests.ViewModels
             };
             app.SetupProviderData("show1|1", season1Episodes);
 
+            var player = app.VideoPlayer;
+
             // Simulate user opening season and playing first episode
-            app.PlayItem(season1Episodes[0]);
-            app.SetCurrentEpisodeContext(season1Episodes, seasonId: "show1|1", showId: "show1");
+            player.PlayItem(season1Episodes[0]);
+            player.SetCurrentEpisodeContext(season1Episodes, seasonId: "show1|1", showId: "show1");
 
             // Act - user finishes watching the first episode
-            await app.SimulatePlaybackEndingAndPlayNext();
+            await player.SimulatePlaybackEndingAndPlayNext();
 
             // Assert - application automatically plays the second episode
             Assert.NotNull(app.CurrentActiveItem);
@@ -90,12 +92,14 @@ namespace Baird.Tests.ViewModels
             app.SetupProviderData("show1|1", season1Episodes);
             app.SetupProviderData("show1|2", season2Episodes);
 
+            var player = app.VideoPlayer;
+
             // Simulate user playing last episode of season 1
-            app.PlayItem(season1Episodes[1]);
-            app.SetCurrentEpisodeContext(season1Episodes, seasonId: "show1|1", showId: "show1");
+            player.PlayItem(season1Episodes[1]);
+            player.SetCurrentEpisodeContext(season1Episodes, seasonId: "show1|1", showId: "show1");
 
             // Act - user finishes watching the last episode of season 1
-            await app.SimulatePlaybackEndingAndPlayNext();
+            await player.SimulatePlaybackEndingAndPlayNext();
 
             // Assert - application automatically plays the first episode of season 2
             Assert.NotNull(app.CurrentActiveItem);
@@ -118,16 +122,18 @@ namespace Baird.Tests.ViewModels
             app.SetupProviderData("show1|3", season3Episodes);
             // Season 4 does not exist
 
+            var player = app.VideoPlayer;
+
             // Simulate user playing last episode of season 3
-            app.PlayItem(season3Episodes[1]);
-            app.SetCurrentEpisodeContext(season3Episodes, seasonId: "show1|3", showId: "show1");
+            player.PlayItem(season3Episodes[1]);
+            player.SetCurrentEpisodeContext(season3Episodes, seasonId: "show1|3", showId: "show1");
 
             // Push a page so we can verify we go back
             app.PushView(new ShowingVideoPlayerViewModel());
             var initialStackCount = app.NavigationStackCount;
 
             // Act - user finishes watching the last episode overall
-            await app.SimulatePlaybackEndingAndPlayNext();
+            await player.SimulatePlaybackEndingAndPlayNext();
 
             // Assert - application navigates back out of the player since there's nothing left
             Assert.True(app.NavigationStackCount < initialStackCount, "Navigation stack should have been popped");
@@ -147,12 +153,14 @@ namespace Baird.Tests.ViewModels
             };
             app.SetupProviderData("show1", episodes);
 
+            var player = app.VideoPlayer;
+
             // Simulate user playing first episode of a flat list
-            app.PlayItem(episodes[0]);
-            app.SetCurrentEpisodeContext(episodes, seasonId: "show1", showId: "show1");
+            player.PlayItem(episodes[0]);
+            player.SetCurrentEpisodeContext(episodes, seasonId: "show1", showId: "show1");
 
             // Act - user finishes watching the first episode
-            await app.SimulatePlaybackEndingAndPlayNext();
+            await player.SimulatePlaybackEndingAndPlayNext();
 
             // Assert - application automatically plays the second episode
             Assert.NotNull(app.CurrentActiveItem);
@@ -173,15 +181,17 @@ namespace Baird.Tests.ViewModels
             };
             app.SetupProviderData("show1", episodes);
 
+            var player = app.VideoPlayer;
+
             // Simulate user playing last episode of a flat list
-            app.PlayItem(episodes[1]);
-            app.SetCurrentEpisodeContext(episodes, seasonId: "show1", showId: "show1");
+            player.PlayItem(episodes[1]);
+            player.SetCurrentEpisodeContext(episodes, seasonId: "show1", showId: "show1");
 
             app.PushView(new ShowingVideoPlayerViewModel());
             var initialStackCount = app.NavigationStackCount;
 
             // Act - user finishes watching the last episode
-            await app.SimulatePlaybackEndingAndPlayNext();
+            await player.SimulatePlaybackEndingAndPlayNext();
 
             // Assert - application navigates back
             Assert.True(app.NavigationStackCount < initialStackCount, "Navigation stack should have been popped when reaching end of flat episode list");
@@ -207,12 +217,14 @@ namespace Baird.Tests.ViewModels
             app.SetupProviderData("album1|1", season1Tracks);
             app.SetupProviderData("album1|2", season2Tracks);
 
+            var player = app.VideoPlayer;
+
             // Simulate playing last track of disc 1
-            app.PlayItem(season1Tracks[1]);
-            app.SetCurrentEpisodeContext(season1Tracks, seasonId: "album1|1", showId: "album1");
+            player.PlayItem(season1Tracks[1]);
+            player.SetCurrentEpisodeContext(season1Tracks, seasonId: "album1|1", showId: "album1");
 
             // Act - user finishes listening to the last track of disc 1
-            await app.SimulatePlaybackEndingAndPlayNext();
+            await player.SimulatePlaybackEndingAndPlayNext();
 
             // Assert - application automatically plays first track of disc 2
             Assert.NotNull(app.CurrentActiveItem);

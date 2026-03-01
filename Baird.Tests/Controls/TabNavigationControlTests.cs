@@ -17,13 +17,13 @@ namespace Baird.Tests.Controls
             var app = AppTestObject.Create();
 
             // Act: Open the main menu
-            app.OpenMainMenu();
+            var mainMenu = app.OpenMainMenu();
 
             // Verify we're in the menu
             Assert.IsType<TabNavigationViewModel>(app.CurrentView);
 
             // Act: Press Up while focused on a tab button
-            app.PressUpOnTab();
+            mainMenu.PressUpOnTab();
 
             // Assert: The menu should be closed, returning to Video Player (CurrentView == null)
             Assert.Null(app.CurrentView);
