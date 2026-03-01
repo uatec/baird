@@ -24,7 +24,11 @@ namespace Baird.Controls
                 var box = this.FindControl<TextBox>("SearchBox");
                 if (box != null)
                 {
-                    box.GotFocus += (sender, args) => UpdateFocusState(true);
+                    box.GotFocus += (sender, args) =>
+                    {
+                        UpdateFocusState(true);
+                        Dispatcher.UIThread.Post(() => box.SelectAll(), DispatcherPriority.Input);
+                    };
                     box.LostFocus += (sender, args) => UpdateFocusState(false);
                 }
 
@@ -119,7 +123,7 @@ namespace Baird.Controls
             if (box != null)
             {
                 box.Focus();
-                box.CaretIndex = box.Text?.Length ?? 0;
+                box.SelectAll();
             }
         }
     }

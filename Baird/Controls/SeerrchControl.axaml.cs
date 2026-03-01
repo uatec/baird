@@ -71,6 +71,15 @@ namespace Baird.Controls
         {
             base.OnAttachedToVisualTree(e);
             // Don't auto-focus - let user press Down from tab navigation
+
+            var box = this.FindControl<TextBox>("SearchBox");
+            if (box != null)
+            {
+                box.GotFocus += (sender, args) =>
+                {
+                    Dispatcher.UIThread.Post(() => box.SelectAll(), DispatcherPriority.Input);
+                };
+            }
         }
     }
 }
