@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using Baird.ViewModels;
 using ReactiveUI;
@@ -243,6 +244,18 @@ namespace Baird.Controls
                             button.Focusable = allowAll || isSelected;
                         }
                     }
+                }
+            }
+        }
+
+        private void OnTabButtonKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Up)
+            {
+                if (DataContext is TabNavigationViewModel vm)
+                {
+                    vm.BackCommand.Execute().Subscribe();
+                    e.Handled = true;
                 }
             }
         }
