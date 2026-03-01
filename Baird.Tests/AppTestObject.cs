@@ -9,6 +9,7 @@ using Baird.Models;
 using Baird.Services;
 using Baird.ViewModels;
 using Baird.Tests.Mocks;
+using ReactiveUI;
 
 namespace Baird.Tests
 {
@@ -20,16 +21,19 @@ namespace Baird.Tests
         public MainViewModel ViewModel { get; }
         public TabNavigationControl TabNavigationControl { get; }
 
+        private readonly MockMediaProvider _provider;
+        private readonly MockHistoryService _historyService;
+
         private AppTestObject()
         {
             // Set up minimal mocks to instantiate MainViewModel
-            var provider = new MockMediaProvider();
-            var historyService = new MockHistoryService();
+            _provider = new MockMediaProvider();
+            _historyService = new MockHistoryService();
             var searchHistoryService = new MockSearchHistoryService();
             var watchlistService = new MockWatchlistService();
             var dataService = new DataService(
-                new[] { provider },
-                historyService,
+                new[] { _provider },
+                _historyService,
                 watchlistService,
                 new MediaItemCache(),
                 new MockMediaDataCache());
@@ -51,6 +55,50 @@ namespace Baird.Tests
         {
             return new AppTestObject();
         }
+
+        public void SetupProviderData(string parentId, List<MediaItemData> children)
+        {
+            _provider.SetChildren(parentId, children);
+        }
+
+        public void PlayItem(MediaItemData item)
+        {
+            ViewModel.PlayItem(new MediaItemViewModel(item));
+        }
+
+        public void SetCurrentEpisodeContext(List<MediaItemData> episodes, string seasonId, string showId)
+        {
+            var episodeViewModels = episodes.Select(e => new MediaItemViewModel(e)).ToList();
+
+            var currentEpisodeListField = typeof(MainViewModel).GetField("_currentEpisodeList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentEpisodeListField?.SetValue(ViewModel, episodeViewModels);
+
+            var currentSeasonIdField = typeof(MainViewModel).GetField("_currentSeasonId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentSeasonIdField?.SetValue(ViewModel, seasonId);
+
+            var currentShowIdField = typeof(MainViewModel).GetField("_currentShowId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            currentShowIdField?.SetValue(ViewModel, showId);
+        }
+
+        public async Task SimulatePlaybackEndingAndPlayNext()
+        {
+            var playNextMethod = typeof(MainViewModel).GetMethod("PlayNextEpisodeOrGoBack", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (playNextMethod != null)
+            {
+                var task = playNextMethod.Invoke(ViewModel, null) as Task;
+                if (task != null)
+                {
+                    await task;
+                }
+            }
+        }
+
+        public void PushView(ReactiveObject viewModel)
+        {
+            ViewModel.PushViewModel(viewModel);
+        }
+
+        public int NavigationStackCount => ViewModel.NavigationHistory.Count;
 
         public void OpenMainMenu()
         {
@@ -80,14 +128,32 @@ namespace Baird.Tests
 
         public object? CurrentView => ViewModel.CurrentPage;
 
+        public MediaItemViewModel? CurrentActiveItem => ViewModel.ActiveItem;
+
         // Helper classes for minimal mocking
         private class MockMediaProvider : IMediaProvider
         {
             public string Name => "Test Provider";
+            private readonly Dictionary<string, List<MediaItemData>> _childrenMap = new();
+
+            public void SetChildren(string parentId, List<MediaItemData> children)
+            {
+                _childrenMap[parentId] = children;
+            }
+
             public Task InitializeAsync() => Task.CompletedTask;
             public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItemData>());
             public Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<MediaItemData>());
-            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Task.FromResult(Enumerable.Empty<MediaItemData>());
+
+            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
+            {
+                if (_childrenMap.TryGetValue(id, out var children))
+                {
+                    return Task.FromResult((IEnumerable<MediaItemData>)children);
+                }
+                return Task.FromResult(Enumerable.Empty<MediaItemData>());
+            }
+
             public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult<MediaItemData?>(null);
         }
 
