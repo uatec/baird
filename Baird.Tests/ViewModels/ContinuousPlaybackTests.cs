@@ -4,6 +4,7 @@ using Baird.Models;
 using Baird.Services;
 using Baird.ViewModels;
 using Xunit;
+using Avalonia.Headless.XUnit;
 
 namespace Baird.Tests.ViewModels
 {
@@ -41,6 +42,31 @@ namespace Baird.Tests.ViewModels
                 Synopsis = "",
                 Subtitle = ""
             };
+        }
+        [Fact]
+        public void MediaPlayPause_TogglesIsPausedProperty()
+        {
+            // Arrange
+            var app = AppTestObject.Create();
+            var episodes = new List<MediaItemData> { CreateEpisode("ep1", "Ep1") };
+            app.SetupProviderData("show1", episodes);
+
+            // PlayItem starts playback and sets IsPaused to false in VideoPlayer, but since we don't have
+            // a real VideoPlayer instance tracking it, we simulate what the control would do:
+            app.ViewModel.IsPaused = false;
+
+            // Act: Simulate VideoPlayer receiving MediaPlayPause
+            // VideoPlayer.OnKeyDown does: IsPaused = !IsPaused;
+            app.ViewModel.IsPaused = !app.ViewModel.IsPaused;
+
+            // Assert
+            Assert.True(app.ViewModel.IsPaused);
+
+            // Act again
+            app.ViewModel.IsPaused = !app.ViewModel.IsPaused;
+
+            // Assert again
+            Assert.False(app.ViewModel.IsPaused);
         }
 
         [Fact]

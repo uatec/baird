@@ -11,7 +11,7 @@ namespace Baird.Controls
 {
     public class VideoPlayer : OpenGlControlBase
     {
-        private MpvPlayer _player;
+        private MpvPlayer? _player;
         // private IntPtr _mpvRenderContext; // Moved to MpvPlayer
         // private LibMpv.MpvRenderUpdateFn _renderUpdateDelegate; // Moved to MpvPlayer
 
@@ -23,13 +23,18 @@ namespace Baird.Controls
 
         public VideoPlayer()
         {
-            _player = new MpvPlayer();
+            if (!Avalonia.Controls.Design.IsDesignMode)
+            {
+                _player = new MpvPlayer();
+            }
             // _renderUpdateDelegate = UpdateCallback; // Moved to MpvPlayer internal logic
 
             // Subscribe to player's StreamEnded event
             // StreamEnded fires on the MpvEventLoop background thread, so marshal to UI thread
             // since we access Avalonia properties (Duration) and invoke UI-bound events
-            _player.StreamEnded += (sender, args) =>
+            if (_player != null)
+            {
+                _player.StreamEnded += (sender, args) =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
@@ -49,6 +54,7 @@ namespace Baird.Controls
                     StreamEnded?.Invoke(this, EventArgs.Empty);
                 });
             };
+            }
 
             _hudTimer = new Avalonia.Threading.DispatcherTimer
             {
@@ -106,6 +112,18 @@ namespace Baird.Controls
                     e.Handled = true;
                     break;
 
+                case Avalonia.Input.Key.Play:
+                    IsPaused = false;
+                    UserActivity?.Invoke(this, EventArgs.Empty);
+                    e.Handled = true;
+                    break;
+
+                case Avalonia.Input.Key.Pause:
+                    IsPaused = true;
+                    UserActivity?.Invoke(this, EventArgs.Empty);
+                    e.Handled = true;
+                    break;
+
                 case Avalonia.Input.Key.Tab:
                     ToggleStats();
                     UserActivity?.Invoke(this, EventArgs.Empty);
@@ -157,7 +175,7 @@ namespace Baird.Controls
             }
 
             // Perform the seek
-            _player.Command("seek", seconds.ToString(), "relative");
+            _player?.Command("seek", seconds.ToString(), "relative");
         }
 
 
@@ -509,13 +527,16 @@ namespace Baird.Controls
             {
                 if (change.NewValue is bool paused)
                 {
-                    if (paused && (_player.State == PlaybackState.Playing || _player.State == PlaybackState.Buffering))
+                    if (_player != null)
                     {
-                        _player.Pause();
-                    }
-                    else if (!paused && _player.State == PlaybackState.Paused)
-                    {
-                        _player.Resume();
+                        if (paused && (_player.State == PlaybackState.Playing || _player.State == PlaybackState.Buffering))
+                        {
+                            _player.Pause();
+                        }
+                        else if (!paused && _player.State == PlaybackState.Paused)
+                        {
+                            _player.Resume();
+                        }
                     }
 
                     // Save progress on Pause
@@ -531,49 +552,49 @@ namespace Baird.Controls
         public void Play(string url)
         {
             _currentVideoStartTime = DateTime.Now;
-            _player.Play(url);
+            _player?.Play(url);
             IsPaused = false;
         }
 
         public void Play(string url, TimeSpan startTime)
         {
             _currentVideoStartTime = DateTime.Now;
-            _player.Play(url, startTime.TotalSeconds);
+            _player?.Play(url, startTime.TotalSeconds);
             IsPaused = false;
         }
 
         public void Pause()
         {
-            _player.Pause();
+            _player?.Pause();
             IsPaused = true;
         }
 
         public void Resume()
         {
-            _player.Resume();
+            _player?.Resume();
             IsPaused = false;
         }
 
-        public void SetSubtitle(bool enabled) => _player.SetSubtitle(enabled);
+        public void SetSubtitle(bool enabled) => _player?.SetSubtitle(enabled);
 
-        public void Seek(double s) => _player.Seek(s);
+        public void Seek(double s) => _player?.Seek(s);
         public void Stop()
         {
             Console.WriteLine("[VideoPlayer] Stopping");
             SaveProgress();
-            _player.Stop();
+            _player?.Stop();
             IsPaused = true;
         }
 
-        public PlaybackState GetState() => _player.State;
+        public PlaybackState GetState() => _player?.State ?? PlaybackState.Idle;
         // public bool IsMpvPaused => _player.IsMpvPaused; // Use IsPaused property instead
-        public string GetTimePos() => _player.TimePosition;
-        public string GetDuration() => _player.Duration;
-        public string GetCurrentPath() => _player.CurrentPath;
+        public string GetTimePos() => _player?.TimePosition ?? "0";
+        public string GetDuration() => _player?.Duration ?? "0";
+        public string GetCurrentPath() => _player?.CurrentPath ?? string.Empty;
 
         public void ToggleStats()
         {
-            _player.Command("script-binding", "stats/display-stats-toggle");
+            _player?.Command("script-binding", "stats/display-stats-toggle");
         }
 
         private LibMpv.MpvGetProcAddressFn? _getProcAddress;
@@ -587,6 +608,8 @@ namespace Baird.Controls
 
         protected override void OnOpenGlInit(GlInterface gl)
         {
+            if (Avalonia.Controls.Design.IsDesignMode) return;
+
             Console.WriteLine("[VideoPlayer] OnOpenGlInit called. Initializing MPV render context in MpvPlayer...");
             base.OnOpenGlInit(gl);
 
@@ -598,11 +621,14 @@ namespace Baird.Controls
 
             try
             {
-                _player.InitializeOpenGl(ptr, () =>
+                if (_player != null)
                 {
-                    Avalonia.Threading.Dispatcher.UIThread.Post(RequestNextFrameRendering, Avalonia.Threading.DispatcherPriority.Render);
-                });
-                Console.WriteLine("[VideoPlayer] Render context initialized successfully.");
+                    _player.InitializeOpenGl(ptr, () =>
+                    {
+                        Avalonia.Threading.Dispatcher.UIThread.Post(RequestNextFrameRendering, Avalonia.Threading.DispatcherPriority.Render);
+                    });
+                    Console.WriteLine("[VideoPlayer] Render context initialized successfully.");
+                }
             }
             catch (Exception ex)
             {
@@ -612,13 +638,17 @@ namespace Baird.Controls
 
         protected override void OnOpenGlDeinit(GlInterface gl)
         {
+            if (Avalonia.Controls.Design.IsDesignMode) return;
+
             Console.WriteLine("[VideoPlayer] OnOpenGlDeinit called. Freeing context.");
-            _player.Dispose(); // This frees the render context and the mpv handle
+            _player?.Dispose(); // This frees the render context and the mpv handle
             base.OnOpenGlDeinit(gl);
         }
 
         protected override void OnOpenGlRender(GlInterface gl, int fb)
         {
+            if (Avalonia.Controls.Design.IsDesignMode || _player == null) return;
+
             // If Loading, clear to black
             if (_player.State == PlaybackState.Loading)
             {

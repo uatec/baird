@@ -56,6 +56,11 @@ namespace Baird.Mpv
             SetPropertyString("terminal", "yes");
             SetPropertyString("msg-level", "all=warn");
 
+            // Disable default input bindings and media keys as Avalonia handles all user input
+            SetPropertyString("input-default-bindings", "no");
+            SetPropertyString("input-media-keys", "no");
+            SetPropertyString("input-vo-keyboard", "no");
+
             // Critical for embedding in Avalonia/OpenGL: "libmpv" forces mpv to use the
             // render API and prevents a detached window.  For standalone (non-embedded) usage
             // on Raspberry Pi you can switch this to "drm" for direct KMS/DRM rendering,

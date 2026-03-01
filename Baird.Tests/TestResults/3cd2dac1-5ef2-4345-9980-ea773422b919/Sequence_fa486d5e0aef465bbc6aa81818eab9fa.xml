@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<TestSequence>
+  <Test Name="Baird.Tests.ViewModels.ContinuousPlaybackTests.MediaPlayPause_TogglesIsPausedProperty" DisplayName="Baird.Tests.ViewModels.ContinuousPlaybackTests.MediaPlayPause_TogglesIsPausedProperty" Source="/Users/uatec/Development/uatec/baird/Baird.Tests/bin/Debug/net10.0/Baird.Tests.dll" Completed="False" />
+</TestSequence>
