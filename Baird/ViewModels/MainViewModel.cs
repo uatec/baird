@@ -43,6 +43,7 @@ namespace Baird.ViewModels
         public CecDebugViewModel CecDebug { get; }
         public SeerrchViewModel Seerrch { get; }
         public RequestsViewModel Requests { get; }
+        public SettingsViewModel Settings { get; }
         public TabNavigationViewModel MainMenu { get; }
 
         private MediaItemViewModel? _activeItem;
@@ -112,6 +113,9 @@ namespace Baird.ViewModels
             Watchlist.BackRequested += (s, e) => GoBack();
 
             CecDebug.BackRequested += (s, e) => GoBack();
+
+            Settings = new SettingsViewModel();
+            Settings.BackRequested += (s, e) => GoBack();
 
             Seerrch.BackRequested += (s, e) => GoBack();
 
@@ -183,6 +187,7 @@ namespace Baird.ViewModels
                 new TabItem("Watchlist", Watchlist),
                 new TabItem("Seerrch", Seerrch),
                 new TabItem("Requests", Requests),
+                new TabItem("Settings", Settings),
                 new TabItem("CEC Debug", CecDebug),
             };
             MainMenu = new TabNavigationViewModel(tabs);
