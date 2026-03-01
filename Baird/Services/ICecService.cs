@@ -14,6 +14,8 @@ namespace Baird.Services
     public interface ICecService
     {
         event EventHandler<CecCommandLoggedEventArgs>? CommandLogged;
+        event EventHandler? TvStandby;
+        event EventHandler? TvPowerOn;
 
         Task StartAsync();
         Task TogglePowerAsync();

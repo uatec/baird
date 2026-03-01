@@ -7,6 +7,11 @@ namespace Baird.Tests.Mocks
     public class MockCecService : ICecService
     {
         public event EventHandler<CecCommandLoggedEventArgs>? CommandLogged;
+        public event EventHandler? TvStandby;
+        public event EventHandler? TvPowerOn;
+
+        public void SimulateTvStandby() => TvStandby?.Invoke(this, EventArgs.Empty);
+        public void SimulateTvPowerOn() => TvPowerOn?.Invoke(this, EventArgs.Empty);
 
         public Task StartAsync() => Task.CompletedTask;
         public Task TogglePowerAsync() => Task.CompletedTask;

@@ -21,6 +21,8 @@ namespace Baird.Services
         private bool _isDisposed;
 
         public event EventHandler<CecCommandLoggedEventArgs>? CommandLogged;
+        public event EventHandler? TvStandby;
+        public event EventHandler? TvPowerOn;
 
         public async Task StartAsync()
         {
@@ -106,6 +108,20 @@ namespace Baird.Services
                         Success = true,
                         Timestamp = DateTime.Now
                     });
+
+                    // Fire typed power-state events based on parsed command
+                    if (commandType.Contains("Standby"))
+                    {
+                        Console.WriteLine("[CecService] TV standby detected.");
+                        TvStandby?.Invoke(this, EventArgs.Empty);
+                    }
+                    else if (commandType.Contains("Image View On")
+                          || commandType.Contains("Text View On")
+                          || (commandType.Contains("Report Power Status") && commandType.Contains(": On")))
+                    {
+                        Console.WriteLine("[CecService] TV power on detected.");
+                        TvPowerOn?.Invoke(this, EventArgs.Empty);
+                    }
                 }
             }
             catch (Exception ex)

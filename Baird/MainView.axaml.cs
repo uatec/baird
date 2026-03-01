@@ -27,6 +27,7 @@ namespace Baird
         private ScreensaverService? _screensaverService;
         private DispatcherTimer? _idleTimer;
         private bool _wasPausedForScreensaver = false; // Track if we actively paused for screensaver
+        private bool _pausedForCecStandby = false; // Track if we auto-paused because TV went to standby
 
         public MainView()
         {
@@ -211,12 +212,43 @@ namespace Baird
 
                 Console.WriteLine("[MainView] Starting CEC service...");
 
+                // Wire CEC TV power events for auto-pause/resume
+                _cecService.TvStandby += (s, e) =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                        var player = videoLayer?.GetPlayer();
+                        if (player != null && player.GetState() == Baird.Mpv.PlaybackState.Playing)
+                        {
+                            Console.WriteLine("[MainView] TV standby via CEC — pausing video.");
+                            player.Pause();
+                            _pausedForCecStandby = true;
+                        }
+                    });
+                };
+
+                _cecService.TvPowerOn += (s, e) =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (_pausedForCecStandby)
+                        {
+                            Console.WriteLine("[MainView] TV power on via CEC — resuming video.");
+                            var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                            var player = videoLayer?.GetPlayer();
+                            player?.Resume();
+                            _pausedForCecStandby = false;
+                        }
+                    });
+                };
+
                 // Start CEC Service in background so it doesn't block UI startup if it fails/hangs
-                // _ = _cecService.StartAsync().ContinueWith(t =>
-                // {
-                //     if (t.IsFaulted)
-                //         Console.WriteLine($"[MainView] CEC Service failed to start: {t.Exception?.InnerException?.Message}");
-                // });
+                _ = _cecService.StartAsync().ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                        Console.WriteLine($"[MainView] CEC Service failed to start: {t.Exception?.InnerException?.Message}");
+                });
             };
         }
 
