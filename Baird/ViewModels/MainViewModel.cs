@@ -160,6 +160,7 @@ namespace Baird.ViewModels
             };
             _hudTimer.Tick += (s, e) =>
             {
+                if (IsPaused) return;
                 IsVideoHudVisible = false;
                 _hudTimer.Stop();
             };
