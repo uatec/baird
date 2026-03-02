@@ -1,17 +1,17 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:c="using:Baird.Controls"
-             xmlns:vm="using:Baird.ViewModels"
-             xmlns:conv="using:Baird.Converters"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:CompileBindings="True"
-             x:Class="Baird.Controls.VideoLayerControl"
-             x:DataType="vm:MainViewModel">
-    
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:c="using:Baird.Controls"
+    xmlns:vm="using:Baird.ViewModels"
+    xmlns:conv="using:Baird.Converters"
+    mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+    x:CompileBindings="True"
+    x:Class="Baird.Controls.VideoLayerControl"
+    x:DataType="vm:MainViewModel">
+
     <UserControl.Resources>
-        <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
+        <conv:StringVisibilityConverter x:Key="StringVisibilityConverter" />
     </UserControl.Resources>
 
     <UserControl.KeyBindings>
@@ -25,109 +25,136 @@
         <KeyBinding Gesture="Subtract" Command="{Binding SelectPreviousChannelCommand}" />
         <KeyBinding Gesture="MediaPreviousTrack" Command="{Binding SelectPreviousChannelCommand}" />
     </UserControl.KeyBindings>
-    
+
     <Grid>
         <!-- Layer 0: Video Player -->
-        <c:VideoPlayer Name="Player" 
-                       HorizontalAlignment="Stretch" 
-                       VerticalAlignment="Stretch"
-                       Source="{Binding ActiveItem.StreamUrl}"
-                       IsLive="{Binding ActiveItem.IsLive}"
-                       ResumeTime="{Binding ActiveItem.LastPosition}"
-                       IsSubtitlesEnabled="{Binding IsSubtitlesEnabled, Mode=TwoWay}"
-                       IsPaused="{Binding IsPaused, Mode=TwoWay}"
-                       Focusable="{Binding IsVideoPlayerActive}"
-                       IsHitTestVisible="{Binding IsVideoPlayerActive}"/>
-        
+        <c:VideoPlayer Name="Player"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            Source="{Binding ActiveItem.StreamUrl}"
+            IsLive="{Binding ActiveItem.IsLive}"
+            ResumeTime="{Binding ActiveItem.LastPosition}"
+            IsSubtitlesEnabled="{Binding IsSubtitlesEnabled, Mode=TwoWay}"
+            IsPaused="{Binding IsPaused, Mode=TwoWay}"
+            Focusable="{Binding IsVideoPlayerActive}"
+            IsHitTestVisible="{Binding IsVideoPlayerActive}" />
+
         <!-- Scaled UI Overlays -->
         <LayoutTransformControl>
             <LayoutTransformControl.LayoutTransform>
-                <ScaleTransform ScaleX="{Binding Settings.UiScale}" ScaleY="{Binding Settings.UiScale}" />
+                <ScaleTransform ScaleX="{Binding Settings.UiScale}"
+                    ScaleY="{Binding Settings.UiScale}" />
             </LayoutTransformControl.LayoutTransform>
 
             <Grid>
                 <!-- Loading Overlay -->
                 <Border Background="Black" IsVisible="{Binding #Player.IsLoading}">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
-                        <ProgressBar IsIndeterminate="True" Width="100" Height="10"/>
-                        <TextBlock Text="Loading..." Foreground="White" HorizontalAlignment="Center"/>
+                        <ProgressBar IsIndeterminate="True" Width="100" Height="10" />
+                        <TextBlock Text="Loading..." Foreground="White" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Border>
 
                 <!-- Layer 2: Video HUD (Overlay) -->
-                <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}" IsHitTestVisible="False">
-                     <Grid RowDefinitions="Auto,*,Auto">
-                 <Border Grid.Row="0" Background="#66000000" Padding="10">
-                     <StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
-                            <TextBlock Text="SUB" FontSize="16" FontWeight="Bold" Foreground="#FFFF00" IsVisible="{Binding IsSubtitlesEnabled}" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                            <TextBlock Text="{Binding ActiveItem.ChannelNumber}" FontSize="24" FontWeight="ExtraBold" Foreground="#FFD700" IsVisible="{Binding ActiveItem.ChannelNumber, Converter={StaticResource StringVisibilityConverter}}"/>
-                            <TextBlock Text="{Binding ActiveItem.Name}" FontSize="24" FontWeight="Bold" Foreground="White" Margin="0,0,10,0"/>
-                            <TextBlock Text="{Binding ActiveItem.Subtitle}" FontSize="24" FontWeight="Light" Foreground="#DDDDDD" IsVisible="{Binding ActiveItem.Subtitle, Converter={StaticResource StringVisibilityConverter}}"/>
-                        </StackPanel>
-                        <TextBlock Text="{Binding #Player.PlayerState}" FontSize="14" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
-                     </StackPanel>
-                 </Border>
-                 <Border Grid.Row="2" Background="#66000000" Padding="20">
-                     <StackPanel>
-                         <!-- Live Stream Clock -->
-                         <TextBlock Text="{Binding #Player.FormattedTime}" 
-                                   Foreground="White" 
-                                   FontSize="24" 
-                                   HorizontalAlignment="Center"
-                                   IsVisible="{Binding ActiveItem.IsLive}"/>
+                <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}"
+                    IsHitTestVisible="False">
+                    <Grid RowDefinitions="Auto,*,Auto">
+                        <Border Grid.Row="0" Background="#66000000" Padding="10">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                    Spacing="8">
+                                    <TextBlock Text="SUB" FontSize="16" FontWeight="Bold"
+                                        Foreground="#FFFF00"
+                                        IsVisible="{Binding IsSubtitlesEnabled}"
+                                        VerticalAlignment="Center" Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding ActiveItem.ChannelNumber}"
+                                        FontSize="24" FontWeight="ExtraBold" Foreground="#FFD700"
+                                        IsVisible="{Binding ActiveItem.ChannelNumber, Converter={StaticResource StringVisibilityConverter}}" />
+                                    <TextBlock Text="{Binding ActiveItem.Name}" FontSize="24"
+                                        FontWeight="Bold" Foreground="White" Margin="0,0,10,0" />
+                                    <TextBlock Text="{Binding ActiveItem.Subtitle}" FontSize="24"
+                                        FontWeight="Light" Foreground="#DDDDDD"
+                                        IsVisible="{Binding ActiveItem.Subtitle, Converter={StaticResource StringVisibilityConverter}}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding #Player.PlayerState}" FontSize="14"
+                                    Foreground="#AAAAAA" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="2" Background="#66000000" Padding="20">
+                            <StackPanel>
+                                <!-- Live Stream Clock -->
+                                <TextBlock Text="{Binding #Player.FormattedTime}"
+                                    Foreground="White"
+                                    FontSize="24"
+                                    HorizontalAlignment="Center"
+                                    IsVisible="{Binding ActiveItem.IsLive}" />
 
-                         <!-- Live Stream Behind-Live Progress Bar -->
-                         <StackPanel IsVisible="{Binding #Player.IsLiveBehind}" Spacing="5">
-                             <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                                 <TextBlock Text="{Binding #Player.LiveBehindFormatted}" Foreground="White" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <!-- Live Stream Behind-Live Progress Bar -->
+                                <StackPanel IsVisible="{Binding #Player.IsLiveBehind}" Spacing="5">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding #Player.LiveBehindFormatted}"
+                                            Foreground="White" FontSize="16"
+                                            VerticalAlignment="Center" Margin="0,0,10,0" />
 
-                                 <ProgressBar Grid.Column="1"
-                                              Minimum="0"
-                                              Maximum="{Binding #Player.LiveWindowSeconds}"
-                                              Value="{Binding #Player.LiveProgressSeconds}"
-                                              Height="10"
-                                              VerticalAlignment="Center"
-                                              Margin="0,0,10,0"/>
+                                        <ProgressBar Grid.Column="1"
+                                            Minimum="0"
+                                            Maximum="{Binding #Player.LiveWindowSeconds}"
+                                            Value="{Binding #Player.LiveProgressSeconds}"
+                                            Height="10"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,10,0" />
 
-                                 <TextBlock Grid.Column="2" Text="LIVE" Foreground="#FF4444" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
-                             </Grid>
-                         </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="LIVE" Foreground="#FF4444"
+                                            FontSize="16" FontWeight="Bold"
+                                            VerticalAlignment="Center" />
+                                    </Grid>
+                                </StackPanel>
 
-                         <!-- VOD Controls -->
-                         <StackPanel IsVisible="{Binding !ActiveItem.IsLive}" Spacing="5">
-                             <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                                 <TextBlock Text="{Binding #Player.FormattedTime}" Foreground="White" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                 
-                                 <ProgressBar Grid.Column="1" 
-                                              Minimum="0" 
-                                              Maximum="{Binding #Player.DurationSeconds}" 
-                                              Value="{Binding #Player.PositionSeconds}"
-                                              Height="10"
-                                              VerticalAlignment="Center"
-                                              Margin="0,0,10,0"/>
-                                 
-                                 <TextBlock Grid.Column="2" Text="{Binding #Player.TimeRemaining}" Foreground="White" FontSize="16" VerticalAlignment="Center"/>
-                             </Grid>
-                             
-                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5,0,0">
-                                 <TextBlock Text="{Binding #Player.FinishingAt}" Foreground="#AAAAAA" FontSize="14"/>
-                             </StackPanel>
-                         </StackPanel>
-                     </StackPanel>
-                 </Border>
-             </Grid>
-        </Border>
+                                <!-- VOD Controls -->
+                                <StackPanel IsVisible="{Binding !ActiveItem.IsLive}" Spacing="5">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding #Player.FormattedTime}"
+                                            Foreground="White" FontSize="16"
+                                            VerticalAlignment="Center" Margin="0,0,10,0" />
+
+                                        <ProgressBar Grid.Column="1"
+                                            Minimum="0"
+                                            Maximum="{Binding #Player.DurationSeconds}"
+                                            Value="{Binding #Player.PositionSeconds}"
+                                            Height="10"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,10,0" />
+
+                                        <TextBlock Grid.Column="2"
+                                            Text="{Binding #Player.TimeRemaining}"
+                                            Foreground="White" FontSize="16"
+                                            VerticalAlignment="Center" />
+                                    </Grid>
+
+                                    <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Center" Margin="0,5,0,0">
+                                        <TextBlock Text="{Binding #Player.FinishingAt}"
+                                            Foreground="#AAAAAA" FontSize="14" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
 
                 <!-- Layer 3: Configuration Overlay -->
                 <Border Name="ConfigLayer" Background="#88000000" IsVisible="False">
-                    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="40">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto" Padding="40">
                         <ItemsControl Name="ConfigItemsControl">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:CompileBindings="False">
                                     <Grid ColumnDefinitions="400, *" Margin="0,2">
-                                        <TextBlock Text="{Binding Key}" FontWeight="Bold" Foreground="#00FFFF" Margin="0,0,20,0" TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding Value}" Foreground="White" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Key}" FontWeight="Bold"
+                                            Foreground="#00FFFF" Margin="0,0,20,0"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Value}"
+                                            Foreground="White" TextWrapping="Wrap" />
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
