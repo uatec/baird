@@ -84,7 +84,9 @@ namespace Baird.Controls
                 if (!string.IsNullOrEmpty(text))
                 {
                     vm.OmniSearch.SearchText = text;
-                    vm.OmniSearch.RequestSearchBoxFocus();
+                    // Don't select-all when entering via a digit key — the digit is already
+                    // in the box and the caret should sit at the end so further digits append.
+                    vm.OmniSearch.RequestSearchBoxFocus(selectAll: false);
                 }
             }
         }

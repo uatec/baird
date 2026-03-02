@@ -14,6 +14,8 @@ namespace Baird.Controls
     {
         public System.Windows.Input.ICommand MoveFocusDownCommand { get; }
 
+        private bool _suppressNextSelectAll = false;
+
         public OmniSearchControl()
         {
             InitializeComponent();
@@ -27,7 +29,9 @@ namespace Baird.Controls
                     box.GotFocus += (sender, args) =>
                     {
                         UpdateFocusState(true);
-                        Dispatcher.UIThread.Post(() => box.SelectAll(), DispatcherPriority.Input);
+                        if (!_suppressNextSelectAll)
+                            Dispatcher.UIThread.Post(() => box.SelectAll(), DispatcherPriority.Input);
+                        _suppressNextSelectAll = false;
                     };
                     box.LostFocus += (sender, args) => UpdateFocusState(false);
                 }
@@ -122,8 +126,13 @@ namespace Baird.Controls
             var box = this.FindControl<TextBox>("SearchBox");
             if (box != null)
             {
+                bool selectAll = (DataContext is ViewModels.OmniSearchViewModel vm)
+                    ? vm.ConsumeSelectAllOnFocus()
+                    : true;
+                _suppressNextSelectAll = !selectAll;
                 box.Focus();
-                box.SelectAll();
+                if (selectAll)
+                    box.SelectAll();
             }
         }
     }

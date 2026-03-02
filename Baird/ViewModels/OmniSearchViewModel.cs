@@ -99,11 +99,24 @@ namespace Baird.ViewModels
             BackRequested?.Invoke(this, EventArgs.Empty);
         }
 
-        public void RequestSearchBoxFocus()
+        private bool _selectAllOnFocus = true;
+
+        public void RequestSearchBoxFocus(bool selectAll = true)
         {
+            _selectAllOnFocus = selectAll;
             // Set flag so view can pick it up if not attached yet
             FocusSearchBoxOnLoad = true;
             SearchBoxFocusRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Returns whether the next focus should select all text, then resets the flag to true.
+        /// </summary>
+        public bool ConsumeSelectAllOnFocus()
+        {
+            var val = _selectAllOnFocus;
+            _selectAllOnFocus = true;
+            return val;
         }
 
         private bool _focusSearchBoxOnLoad;
