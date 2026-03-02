@@ -22,16 +22,7 @@
         <KeyBinding Gesture="Back" Command="{Binding BackCommand}" />
     </UserControl.KeyBindings>
 
-    <Grid Background="#88000000"> <!-- Lighter semi-transparent background -->
-
-        <!-- Background Image (Dimmed) -->
-        <Border Background="Grey" VerticalAlignment="Top" Height="600">
-            <Image asyncImage:ImageLoader.Source="{Binding SelectedProgramme.ImageUrl}"
-                Stretch="UniformToFill"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top"
-                Opacity="0.3" />
-        </Border>
+    <Grid Background="#CC000000">
 
         <Grid RowDefinitions="Auto, *, Auto" Margin="50"
             XYFocus.NavigationModes="Enabled"
