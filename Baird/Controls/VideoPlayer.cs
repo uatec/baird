@@ -18,6 +18,8 @@ namespace Baird.Controls
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private bool _isScanning;
         private string _lastLoggedState = "Idle";
+        private double _liveDelaySeconds = 0;  // accumulated behind-live time for the current live source
+        private string _lastLiveSource = "";   // detect channel changes so we can reset the delay
 
         public Baird.Services.IDataService? DataService { get; set; }
 
@@ -174,6 +176,12 @@ namespace Baird.Controls
                 _isScanning = true;
             }
 
+            // For live streams, track the seek offset so the behind-live bar updates.
+            if (IsLive)
+            {
+                _liveDelaySeconds = Math.Max(0, _liveDelaySeconds - seconds);
+            }
+
             // Perform the seek
             _player?.Command("seek", seconds.ToString(), "relative");
         }
@@ -306,6 +314,62 @@ namespace Baird.Controls
             set => SetValue(TimeRemainingProperty, value);
         }
 
+        public static readonly StyledProperty<bool> IsLiveBehindProperty =
+            AvaloniaProperty.Register<VideoPlayer, bool>(nameof(IsLiveBehind));
+
+        /// <summary>True when playing a live stream but behind the live edge (paused or rewound).</summary>
+        public bool IsLiveBehind
+        {
+            get => GetValue(IsLiveBehindProperty);
+            set => SetValue(IsLiveBehindProperty, value);
+        }
+
+        public static readonly StyledProperty<double> LiveBehindSecondsProperty =
+            AvaloniaProperty.Register<VideoPlayer, double>(nameof(LiveBehindSeconds));
+
+        /// <summary>How many seconds behind the live edge the current position is.</summary>
+        public double LiveBehindSeconds
+        {
+            get => GetValue(LiveBehindSecondsProperty);
+            set => SetValue(LiveBehindSecondsProperty, value);
+        }
+
+        public static readonly StyledProperty<double> LiveProgressSecondsProperty =
+            AvaloniaProperty.Register<VideoPlayer, double>(nameof(LiveProgressSeconds), defaultValue: 3600);
+
+        /// <summary>
+        /// Position within a 1-hour (3600 s) window for the live progress bar.
+        /// 3600 = at live edge; 0 = 60 minutes behind.
+        /// </summary>
+        public double LiveProgressSeconds
+        {
+            get => GetValue(LiveProgressSecondsProperty);
+            set => SetValue(LiveProgressSecondsProperty, value);
+        }
+
+        public static readonly StyledProperty<string> LiveBehindFormattedProperty =
+            AvaloniaProperty.Register<VideoPlayer, string>(nameof(LiveBehindFormatted), defaultValue: "");
+
+        /// <summary>Human-readable behind-live offset, e.g. "-00:15:30".</summary>
+        public string LiveBehindFormatted
+        {
+            get => GetValue(LiveBehindFormattedProperty);
+            set => SetValue(LiveBehindFormattedProperty, value);
+        }
+
+        public static readonly StyledProperty<double> LiveWindowSecondsProperty =
+            AvaloniaProperty.Register<VideoPlayer, double>(nameof(LiveWindowSeconds), defaultValue: 300);
+
+        /// <summary>
+        /// The current progress-bar window size in seconds. Steps up through
+        /// 5 / 10 / 15 / 30 / 60 minute intervals to accommodate the delay.
+        /// </summary>
+        public double LiveWindowSeconds
+        {
+            get => GetValue(LiveWindowSecondsProperty);
+            set => SetValue(LiveWindowSecondsProperty, value);
+        }
+
         public static readonly StyledProperty<bool> IsSubtitlesEnabledProperty =
             AvaloniaProperty.Register<VideoPlayer, bool>(nameof(IsSubtitlesEnabled));
 
@@ -368,6 +432,47 @@ namespace Baird.Controls
             {
                 // Live Stream Mode: Show Clock
                 FormattedTime = DateTime.Now.ToString("HH:mm");
+
+                // Reset delay when the live source changes (new channel).
+                var currentSource = _player?.CurrentPath ?? "";
+                if (currentSource != _lastLiveSource)
+                {
+                    _liveDelaySeconds = 0;
+                    _lastLiveSource = currentSource;
+                }
+
+                // Accumulate delay only while paused; hold steady while playing.
+                // The HUD timer fires every 250 ms so each tick = 0.25 s.
+                if (state == PlaybackState.Paused)
+                {
+                    _liveDelaySeconds += 0.25;
+                }
+
+                var behindSeconds = _liveDelaySeconds;
+                LiveBehindSeconds = behindSeconds;
+                IsLiveBehind = behindSeconds > 0;
+
+                // Pick the smallest window interval that comfortably contains the delay.
+                // Intervals: 5, 10, 15, 30, 60 minutes (in seconds).
+                double[] intervals = { 300, 600, 900, 1800, 3600 };
+                double windowSeconds = intervals[intervals.Length - 1];
+                foreach (var interval in intervals)
+                {
+                    if (behindSeconds <= interval)
+                    {
+                        windowSeconds = interval;
+                        break;
+                    }
+                }
+                LiveWindowSeconds = windowSeconds;
+                // Value = how close to the live edge (full bar = live edge, empty = windowSeconds behind).
+                LiveProgressSeconds = Math.Max(0, windowSeconds - behindSeconds);
+
+                // Formatted label: show minutes/seconds behind, e.g. "-15:30" or "-01:02:34"
+                var behindSpan = TimeSpan.FromSeconds(behindSeconds);
+                LiveBehindFormatted = behindSpan.TotalHours >= 1
+                    ? $"-{behindSpan:hh\\:mm\\:ss}"
+                    : $"-{behindSpan:mm\\:ss}";
             }
             else
             {

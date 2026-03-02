@@ -77,6 +77,23 @@
                                    HorizontalAlignment="Center"
                                    IsVisible="{Binding ActiveItem.IsLive}"/>
 
+                         <!-- Live Stream Behind-Live Progress Bar -->
+                         <StackPanel IsVisible="{Binding #Player.IsLiveBehind}" Spacing="5">
+                             <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                 <TextBlock Text="{Binding #Player.LiveBehindFormatted}" Foreground="White" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                                 <ProgressBar Grid.Column="1"
+                                              Minimum="0"
+                                              Maximum="{Binding #Player.LiveWindowSeconds}"
+                                              Value="{Binding #Player.LiveProgressSeconds}"
+                                              Height="10"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,10,0"/>
+
+                                 <TextBlock Grid.Column="2" Text="LIVE" Foreground="#FF4444" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                             </Grid>
+                         </StackPanel>
+
                          <!-- VOD Controls -->
                          <StackPanel IsVisible="{Binding !ActiveItem.IsLive}" Spacing="5">
                              <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">

@@ -24,6 +24,11 @@ namespace Baird.Mpv
         public string Duration => GetPropertyString("duration") ?? "0";
         public string CurrentPath => GetPropertyString("path") ?? "None";
         public bool IsCoreIdle => GetPropertyString("core-idle") == "yes";
+        /// <summary>
+        /// Seconds of content buffered ahead of the current playback position.
+        /// For live streams this approximates how far behind the live edge the viewer is.
+        /// </summary>
+        public string DemuxerCacheTime => GetPropertyString("demuxer-cache-time") ?? "0";
 
         public MpvPlayer()
         {
