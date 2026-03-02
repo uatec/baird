@@ -1,12 +1,12 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:Baird.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="Baird.Controls.SettingsControl"
-             x:CompileBindings="True"
-             x:DataType="vm:SettingsViewModel">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Baird.ViewModels"
+    mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+    x:Class="Baird.Controls.SettingsControl"
+    x:CompileBindings="True"
+    x:DataType="vm:SettingsViewModel">
 
     <UserControl.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
@@ -15,80 +15,123 @@
     <UserControl.Styles>
         <!-- Scaling Control Container -->
         <Style Selector="Border.SettingContainer">
-            <Setter Property="Background" Value="#2D2D30"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="#3F3F46"/>
-            <Setter Property="CornerRadius" Value="4"/>
-            <Setter Property="Padding" Value="4"/>
+            <Setter Property="Background" Value="#2D2D30" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#3F3F46" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="4" />
         </Style>
 
         <!-- Focus state for entire container -->
         <Style Selector="Border.SettingContainer:focus">
-            <Setter Property="BorderBrush" Value="#4CAF50"/>
-            <Setter Property="Background" Value="#3D3D40"/>
+            <Setter Property="BorderBrush" Value="#4CAF50" />
+            <Setter Property="Background" Value="#3D3D40" />
         </Style>
 
         <!-- Setting Row Name -->
         <Style Selector="TextBlock.SettingName">
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="20"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
         <!-- UI Scale adjusters -->
         <Style Selector="Button.ScaleAdjuster">
-            <Setter Property="Background" Value="#1E1E1E"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="15,10"/>
-            <Setter Property="FontSize" Value="20"/>
-            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Background" Value="#1E1E1E" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="15,10" />
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="Bold" />
         </Style>
     </UserControl.Styles>
 
     <Border Background="#1E1E1E" Padding="15">
         <Grid RowDefinitions="Auto,*">
-            
+
             <!-- Header -->
             <StackPanel Grid.Row="0" Margin="0,0,0,30">
-                <TextBlock Text="Settings" FontSize="28" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="Settings" FontSize="28" FontWeight="Bold" Foreground="White" />
             </StackPanel>
 
             <!-- Settings List -->
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto">
-                    
-                    <!-- Row 1: UI Scale -->
-                    <TextBlock Grid.Row="0" Grid.Column="0" 
-                               Text="UI Scale" 
-                               Classes="SettingName" 
-                               Margin="0,0,50,0"/>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,20,Auto">
 
-                    <Border Grid.Row="0" Grid.Column="1" 
-                            Classes="SettingContainer"
-                            Focusable="True"
-                            HorizontalAlignment="Left"
-                            KeyDown="ScaleControl_KeyDown">
+                    <!-- Row 0: UI Scale -->
+                    <TextBlock Grid.Row="0" Grid.Column="0"
+                        Text="UI Scale"
+                        Classes="SettingName"
+                        Margin="0,0,50,0" />
+
+                    <Border Grid.Row="0" Grid.Column="1"
+                        Classes="SettingContainer"
+                        Focusable="True"
+                        HorizontalAlignment="Left"
+                        KeyDown="ScaleControl_KeyDown">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="-" 
-                                    Classes="ScaleAdjuster" 
-                                    Focusable="False"
-                                    Command="{Binding DecreaseScaleCommand}"/>
-                            <TextBlock Text="{Binding UiScale}" 
-                                       Foreground="White" 
-                                       FontSize="20"
-                                       FontWeight="Bold"
-                                       VerticalAlignment="Center"
-                                       TextAlignment="Center"
-                                       Width="60"/>
-                            <Button Content="+" 
-                                    Classes="ScaleAdjuster" 
-                                    Focusable="False"
-                                    Command="{Binding IncreaseScaleCommand}"/>
+                            <Button Content="-"
+                                Classes="ScaleAdjuster"
+                                Focusable="False"
+                                Command="{Binding DecreaseScaleCommand}" />
+                            <TextBlock Text="{Binding UiScale}"
+                                Foreground="White"
+                                FontSize="20"
+                                FontWeight="Bold"
+                                VerticalAlignment="Center"
+                                TextAlignment="Center"
+                                Width="60" />
+                            <Button Content="+"
+                                Classes="ScaleAdjuster"
+                                Focusable="False"
+                                Command="{Binding IncreaseScaleCommand}" />
                         </StackPanel>
                     </Border>
-                    
+
+                    <!-- Row 2: Input Detection -->
+                    <TextBlock Grid.Row="2" Grid.Column="0"
+                        Text="Input Detection"
+                        Classes="SettingName"
+                        VerticalAlignment="Top"
+                        Margin="0,8,50,0" />
+
+                    <Border Grid.Row="2" Grid.Column="1"
+                        Classes="SettingContainer"
+                        Focusable="True"
+                        KeyDown="InputDetection_KeyDown"
+                        PointerPressed="InputDetection_PointerPressed">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock
+                                    Text="Focus here and press any key or mouse button to detect input..."
+                                    Foreground="#888888"
+                                    FontSize="16"
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding !HasKeyLogEntries}" />
+                                <Button Content="Clear"
+                                    Focusable="False"
+                                    Command="{Binding ClearKeyLogCommand}"
+                                    IsVisible="{Binding HasKeyLogEntries}"
+                                    Background="#444"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Padding="12,6" />
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding KeyLogEntries}" MaxHeight="300">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}"
+                                            Foreground="#4CAF50"
+                                            FontFamily="Monospace"
+                                            FontSize="18"
+                                            Padding="4,2" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
                 </Grid>
             </ScrollViewer>
         </Grid>

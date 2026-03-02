@@ -1,5 +1,6 @@
 using ReactiveUI;
 using System;
+using System.Collections.ObjectModel;
 using System.Reactive;
 using Microsoft.Extensions.Configuration;
 using System.IO;
@@ -34,6 +35,16 @@ namespace Baird.ViewModels
         public ReactiveCommand<Unit, Unit> IncreaseScaleCommand { get; }
         public ReactiveCommand<Unit, Unit> DecreaseScaleCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
+        public ReactiveCommand<Unit, Unit> ClearKeyLogCommand { get; }
+
+        public ObservableCollection<string> KeyLogEntries { get; } = new ObservableCollection<string>();
+
+        private bool _hasKeyLogEntries;
+        public bool HasKeyLogEntries
+        {
+            get => _hasKeyLogEntries;
+            private set => this.RaiseAndSetIfChanged(ref _hasKeyLogEntries, value);
+        }
 
         public event EventHandler? BackRequested;
 
@@ -70,6 +81,20 @@ namespace Baird.ViewModels
             {
                 BackRequested?.Invoke(this, EventArgs.Empty);
             });
+
+            ClearKeyLogCommand = ReactiveCommand.Create(() =>
+            {
+                KeyLogEntries.Clear();
+                HasKeyLogEntries = false;
+            });
+        }
+
+        public void LogKeyPress(string keyDescription)
+        {
+            KeyLogEntries.Insert(0, keyDescription);
+            while (KeyLogEntries.Count > 50)
+                KeyLogEntries.RemoveAt(KeyLogEntries.Count - 1);
+            HasKeyLogEntries = true;
         }
 
         private void SaveUiScale(double scale)
