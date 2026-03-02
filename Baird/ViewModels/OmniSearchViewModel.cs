@@ -344,10 +344,27 @@ namespace Baird.ViewModels
                     .ThenBy(c => c.ChannelNumber)
                     .ToList();
 
+                _allResults = matchingChannels;
                 SearchResults.AddRange(matchingChannels);
 
-                // Set providers to idle since we didn't use them
-                foreach (var status in ProviderStatuses) status.SetIdle();
+                // Update pips: show result count on TvHeadend pip, idle the rest
+                var tvhStatus = ProviderStatuses.FirstOrDefault(p => p.Name == "TvHeadend");
+                foreach (var status in ProviderStatuses)
+                {
+                    if (status == tvhStatus)
+                    {
+                        if (matchingChannels.Any())
+                            status.SetSuccess(matchingChannels.Count);
+                        else
+                            status.SetEmpty();
+                    }
+                    else
+                    {
+                        status.SetIdle();
+                    }
+                }
+
+                UpdateSearchResultRows();
 
                 IsSearching = false;
 
