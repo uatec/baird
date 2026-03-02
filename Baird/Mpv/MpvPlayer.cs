@@ -16,6 +16,8 @@ namespace Baird.Mpv
 
         private LibMpv.MpvRenderUpdateFn? _renderUpdateFn;
         public event EventHandler? StreamEnded;
+        /// <summary>Fired when mpv reports a load/playback error. Arg is the mpv error code.</summary>
+        public event EventHandler<int>? StreamLoadFailed;
 
         public PlaybackState State { get; private set; } = PlaybackState.Idle;
 
@@ -134,12 +136,23 @@ namespace Baird.Mpv
                             var endFileEvent = Marshal.PtrToStructure<LibMpv.MpvEndFileEvent>(evt.Data);
                             Console.WriteLine($"[MpvPlayer] EndFile event: reason={endFileEvent.Reason}, error={endFileEvent.Error}");
 
-                            // Only fire StreamEnded for natural EOF, not for stop/error/quit
                             if (endFileEvent.Reason == LibMpv.MpvEndFileReason.Eof)
                             {
                                 Console.WriteLine("[MpvPlayer] Stream ended naturally (EOF)");
                                 StreamEnded?.Invoke(this, EventArgs.Empty);
                             }
+                            else if (endFileEvent.Reason == LibMpv.MpvEndFileReason.Error)
+                            {
+                                Console.WriteLine($"[MpvPlayer] Stream failed with error code {endFileEvent.Error}");
+                                State = PlaybackState.Idle;
+                                StreamLoadFailed?.Invoke(this, endFileEvent.Error);
+                            }
+                            else if (endFileEvent.Reason == LibMpv.MpvEndFileReason.Redirect)
+                            {
+                                // Not a real failure; mpv will re-open the redirected URL automatically
+                                Console.WriteLine("[MpvPlayer] EndFile: redirect, ignoring");
+                            }
+                            // Stop/Quit: state will be reset by the caller
                         }
                     }
                     else if (evt.EventId == LibMpv.MpvEventId.Shutdown)

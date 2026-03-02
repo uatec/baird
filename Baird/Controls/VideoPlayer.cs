@@ -16,10 +16,17 @@ namespace Baird.Controls
         // private LibMpv.MpvRenderUpdateFn _renderUpdateDelegate; // Moved to MpvPlayer
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
+        private Avalonia.Threading.DispatcherTimer _loadTimeoutTimer;
         private bool _isScanning;
         private string _lastLoggedState = "Idle";
         private double _liveDelaySeconds = 0;  // accumulated behind-live time for the current live source
         private string _lastLiveSource = "";   // detect channel changes so we can reset the delay
+
+        private string? _pendingUrl;
+        private double? _pendingStartSeconds;
+        private int _loadRetryCount;
+        private const int MaxLoadRetries = 3;
+        private const int LoadTimeoutSeconds = 15;
 
         public Baird.Services.IDataService? DataService { get; set; }
 
@@ -36,6 +43,15 @@ namespace Baird.Controls
             // since we access Avalonia properties (Duration) and invoke UI-bound events
             if (_player != null)
             {
+                _player.StreamLoadFailed += (sender, errorCode) =>
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        Console.WriteLine($"[VideoPlayer] StreamLoadFailed received (error={errorCode})");
+                        HandleLoadFailure($"mpv error code {errorCode}");
+                    });
+                };
+
                 _player.StreamEnded += (sender, args) =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -64,6 +80,20 @@ namespace Baird.Controls
             };
             _hudTimer.Tick += (s, e) => UpdateHud();
             _hudTimer.Start();
+
+            _loadTimeoutTimer = new Avalonia.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(LoadTimeoutSeconds)
+            };
+            _loadTimeoutTimer.Tick += (s, e) =>
+            {
+                _loadTimeoutTimer.Stop();
+                if (_player?.State == PlaybackState.Loading)
+                {
+                    Console.WriteLine($"[VideoPlayer] Load timed out after {LoadTimeoutSeconds}s for {_pendingUrl}");
+                    HandleLoadFailure("timeout");
+                }
+            };
 
             Focusable = true;
         }
@@ -424,6 +454,8 @@ namespace Baird.Controls
 
             if (stateStr == "Playing" && _lastLoggedState != "Playing")
             {
+                _loadTimeoutTimer.Stop();
+                _loadRetryCount = 0;
                 _player.LogAudioTracks();
             }
             _lastLoggedState = stateStr;
@@ -661,16 +693,50 @@ namespace Baird.Controls
 
         public void Play(string url)
         {
+            _pendingUrl = url;
+            _pendingStartSeconds = null;
+            _loadRetryCount = 0;
             _currentVideoStartTime = DateTime.Now;
             _player?.Play(url);
             IsPaused = false;
+            RestartLoadTimeout();
         }
 
         public void Play(string url, TimeSpan startTime)
         {
+            _pendingUrl = url;
+            _pendingStartSeconds = startTime.TotalSeconds;
+            _loadRetryCount = 0;
             _currentVideoStartTime = DateTime.Now;
             _player?.Play(url, startTime.TotalSeconds);
             IsPaused = false;
+            RestartLoadTimeout();
+        }
+
+        private void RestartLoadTimeout()
+        {
+            _loadTimeoutTimer.Stop();
+            _loadTimeoutTimer.Start();
+        }
+
+        private void HandleLoadFailure(string reason)
+        {
+            _loadTimeoutTimer.Stop();
+            _loadRetryCount++;
+            if (_loadRetryCount <= MaxLoadRetries && !string.IsNullOrEmpty(_pendingUrl))
+            {
+                Console.WriteLine($"[VideoPlayer] Retrying load (attempt {_loadRetryCount}/{MaxLoadRetries}) after {reason}: {_pendingUrl}");
+                _currentVideoStartTime = DateTime.Now;
+                if (_pendingStartSeconds.HasValue)
+                    _player?.Play(_pendingUrl, _pendingStartSeconds.Value);
+                else
+                    _player?.Play(_pendingUrl);
+                RestartLoadTimeout();
+            }
+            else
+            {
+                Console.WriteLine($"[VideoPlayer] Giving up on stream after {MaxLoadRetries} retries ({reason}): {_pendingUrl}");
+            }
         }
 
         public void Pause()
@@ -691,6 +757,8 @@ namespace Baird.Controls
         public void Stop()
         {
             Console.WriteLine("[VideoPlayer] Stopping");
+            _loadTimeoutTimer.Stop();
+            _pendingUrl = null;
             SaveProgress();
             _player?.Stop();
             IsPaused = true;
