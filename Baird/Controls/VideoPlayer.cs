@@ -476,6 +476,11 @@ namespace Baird.Controls
             }
             else
             {
+                // VOD Mode: reset live state
+                IsLiveBehind = false;
+                _liveDelaySeconds = 0;
+                _lastLiveSource = "";
+
                 // VOD Mode: Show Position / Duration
                 var posStr = _player.TimePosition;
                 var durStr = _player.Duration;
