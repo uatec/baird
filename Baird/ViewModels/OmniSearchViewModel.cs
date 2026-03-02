@@ -82,7 +82,7 @@ namespace Baird.ViewModels
     {
         public event EventHandler<MediaItemViewModel>? PlayRequested;
         public event EventHandler? BackRequested;
-        public event EventHandler? SearchBoxFocusRequested;
+        public event EventHandler<bool>? SearchBoxFocusRequested;
 
         public ReactiveCommand<MediaItemViewModel, Unit> PlayCommand { get; }
         public ReactiveCommand<Unit, Unit> PlayFirstResultCommand { get; }
@@ -99,25 +99,15 @@ namespace Baird.ViewModels
             BackRequested?.Invoke(this, EventArgs.Empty);
         }
 
-        private bool _selectAllOnFocus = true;
-
         public void RequestSearchBoxFocus(bool selectAll = true)
         {
-            _selectAllOnFocus = selectAll;
+            SelectAllOnNextFocus = selectAll;
             // Set flag so view can pick it up if not attached yet
             FocusSearchBoxOnLoad = true;
-            SearchBoxFocusRequested?.Invoke(this, EventArgs.Empty);
+            SearchBoxFocusRequested?.Invoke(this, selectAll);
         }
 
-        /// <summary>
-        /// Returns whether the next focus should select all text, then resets the flag to true.
-        /// </summary>
-        public bool ConsumeSelectAllOnFocus()
-        {
-            var val = _selectAllOnFocus;
-            _selectAllOnFocus = true;
-            return val;
-        }
+        public bool SelectAllOnNextFocus { get; private set; } = true;
 
         private bool _focusSearchBoxOnLoad;
         public bool FocusSearchBoxOnLoad

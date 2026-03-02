@@ -31,6 +31,8 @@ namespace Baird.Controls
                         UpdateFocusState(true);
                         if (!_suppressNextSelectAll)
                             Dispatcher.UIThread.Post(() => box.SelectAll(), DispatcherPriority.Input);
+                        else
+                            Dispatcher.UIThread.Post(() => { var len = box.Text?.Length ?? 0; box.SelectionStart = len; box.SelectionEnd = len; }, DispatcherPriority.Input);
                         _suppressNextSelectAll = false;
                     };
                     box.LostFocus += (sender, args) => UpdateFocusState(false);
@@ -75,8 +77,11 @@ namespace Baird.Controls
             base.OnDataContextChanged(e);
             if (DataContext is ViewModels.OmniSearchViewModel vm)
             {
-                vm.SearchBoxFocusRequested += (s, args) =>
+                vm.SearchBoxFocusRequested += (s, selectAll) =>
                 {
+                    // Set the suppress flag synchronously NOW, before any GotFocus event
+                    // can fire during tab-navigation to the search box.
+                    _suppressNextSelectAll = !selectAll;
                     Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
                 };
 
@@ -124,16 +129,15 @@ namespace Baird.Controls
         public void FocusSearchBox()
         {
             var box = this.FindControl<TextBox>("SearchBox");
-            if (box != null)
-            {
-                bool selectAll = (DataContext is ViewModels.OmniSearchViewModel vm)
-                    ? vm.ConsumeSelectAllOnFocus()
-                    : true;
-                _suppressNextSelectAll = !selectAll;
-                box.Focus();
-                if (selectAll)
-                    box.SelectAll();
-            }
+            if (box == null) return;
+
+            // Read the intent directly from the ViewModel — durable regardless of
+            // whether the control was attached when RequestSearchBoxFocus was called.
+            bool selectAll = (DataContext is ViewModels.OmniSearchViewModel vm)
+                ? vm.SelectAllOnNextFocus
+                : true;
+            _suppressNextSelectAll = !selectAll;
+            box.Focus();
         }
     }
 }
