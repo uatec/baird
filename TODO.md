@@ -64,3 +64,9 @@ Phase 2
 - [x] When i press Down to load the history page, the keyboard input still goes to the video player. 
 - [x] Up from the history view should hide history, not open search
 - [x] crash when saving infinite as a progress.
+
+## general
+- [x] when searching using digits, it doesn't render the search results, or the pips
+- [x] When running the application OFTEN runs layout passes, many times a second. this doesn't sound appropriate.
+- [ ] fix progress bars in requests for downloaded items
+- [ ] fix progress bars in requests for incomplete items, colour code by status (downloaded, no source found, downloads SOME episodes but others are not available yet)
