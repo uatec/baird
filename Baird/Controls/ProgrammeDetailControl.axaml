@@ -1,80 +1,90 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:Baird.ViewModels"
-             xmlns:controls="using:Baird.Controls"
-             xmlns:conv="using:Baird.Converters"
-             xmlns:services="using:Baird.Services"
-             xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
-             mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="1080"
-             x:CompileBindings="True"
-             x:Class="Baird.Controls.ProgrammeDetailControl"
-             x:DataType="vm:ProgrammeDetailViewModel"
-             >
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Baird.ViewModels"
+    xmlns:controls="using:Baird.Controls"
+    xmlns:conv="using:Baird.Converters"
+    xmlns:services="using:Baird.Services"
+    xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
+    mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="1080"
+    x:CompileBindings="True"
+    x:Class="Baird.Controls.ProgrammeDetailControl"
+    x:DataType="vm:ProgrammeDetailViewModel"
+>
 
     <UserControl.Resources>
-        <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
+        <conv:StringVisibilityConverter x:Key="StringVisibilityConverter" />
     </UserControl.Resources>
 
     <UserControl.KeyBindings>
         <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
         <KeyBinding Gesture="Back" Command="{Binding BackCommand}" />
     </UserControl.KeyBindings>
-    
+
     <Grid Background="#88000000"> <!-- Lighter semi-transparent background -->
-        
+
         <!-- Background Image (Dimmed) -->
-        <Border Background="Blue" VerticalAlignment="Top" Height="600">
-             <Image asyncImage:ImageLoader.Source="{Binding SelectedProgramme.ImageUrl}" 
-                    Stretch="UniformToFill" 
-                    Opacity="0.3"/>
+        <Border Background="Grey" VerticalAlignment="Top" Height="600">
+            <Image asyncImage:ImageLoader.Source="{Binding SelectedProgramme.ImageUrl}"
+                Stretch="UniformToFill"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Opacity="0.3" />
         </Border>
-        
-        <Grid RowDefinitions="Auto, *, Auto" Margin="50" 
-              XYFocus.NavigationModes="Enabled"
-              XYFocus.UpNavigationStrategy="Projection"
-              XYFocus.DownNavigationStrategy="Projection"
-              XYFocus.LeftNavigationStrategy="Projection"
-              XYFocus.RightNavigationStrategy="Projection">
-            
+
+        <Grid RowDefinitions="Auto, *, Auto" Margin="50"
+            XYFocus.NavigationModes="Enabled"
+            XYFocus.UpNavigationStrategy="Projection"
+            XYFocus.DownNavigationStrategy="Projection"
+            XYFocus.LeftNavigationStrategy="Projection"
+            XYFocus.RightNavigationStrategy="Projection">
+
             <!-- Header -->
             <StackPanel Grid.Row="0" Spacing="10">
-                <Button Name="BackButton" Content="← Back" Background="Transparent" Foreground="White" FontSize="20" HorizontalAlignment="Left" Focusable="True" Command="{Binding BackCommand}" />
+                <Button Name="BackButton" Content="← Back" Background="Transparent"
+                    Foreground="White" FontSize="20" HorizontalAlignment="Left" Focusable="True"
+                    Command="{Binding BackCommand}" />
                 <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                     <TextBlock Text="{Binding SelectedProgramme.Name}" FontSize="48" FontWeight="Bold" Foreground="White"/>
-                     <Border Background="#333333" CornerRadius="6" Padding="8,2" VerticalAlignment="Center" Margin="0,4,0,0" IsVisible="{Binding SelectedProgramme.Source, Converter={StaticResource StringVisibilityConverter}}">
-                        <TextBlock Text="{Binding SelectedProgramme.Source}" FontSize="16" FontWeight="SemiBold" Foreground="#4CC9F0"/>
-                     </Border>
+                    <TextBlock Text="{Binding SelectedProgramme.Name}" FontSize="48"
+                        FontWeight="Bold" Foreground="White" />
+                    <Border Background="#333333" CornerRadius="6" Padding="8,2"
+                        VerticalAlignment="Center" Margin="0,4,0,0"
+                        IsVisible="{Binding SelectedProgramme.Source, Converter={StaticResource StringVisibilityConverter}}">
+                        <TextBlock Text="{Binding SelectedProgramme.Source}" FontSize="16"
+                            FontWeight="SemiBold" Foreground="#4CC9F0" />
+                    </Border>
                 </StackPanel>
-                <TextBlock Text="{Binding SelectedProgramme.Synopsis}" FontSize="24" Foreground="#CCCCCC" TextWrapping="Wrap" MaxWidth="800" HorizontalAlignment="Left"/>
+                <TextBlock Text="{Binding SelectedProgramme.Synopsis}" FontSize="24"
+                    Foreground="#CCCCCC" TextWrapping="Wrap" MaxWidth="800"
+                    HorizontalAlignment="Left" />
             </StackPanel>
 
             <!-- Episodes List -->
-            <ScrollViewer Grid.Row="1" 
-                          Margin="0, 30, 0, 0"
-                          HorizontalScrollBarVisibility="Disabled" 
-                          VerticalScrollBarVisibility="Auto">
-                <ItemsControl Name="EpisodeList" 
-                              ItemsSource="{Binding ProgrammeChildren}"
-                              Background="Transparent"
-                              XYFocus.NavigationModes="Enabled">
+            <ScrollViewer Grid.Row="1"
+                Margin="0, 30, 0, 0"
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollBarVisibility="Auto">
+                <ItemsControl Name="EpisodeList"
+                    ItemsSource="{Binding ProgrammeChildren}"
+                    Background="Transparent"
+                    XYFocus.NavigationModes="Enabled">
                     <ItemsControl.Styles>
-        <!-- Styles removed -->
+                        <!-- Styles removed -->
                     </ItemsControl.Styles>
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <UniformGrid Columns="6" VerticalAlignment="Top"/>
+                            <UniformGrid Columns="6" VerticalAlignment="Top" />
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <controls:MediaTileControl DataContext="{Binding}"
-                                                   Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
-                                                   CommandParameter="{Binding}"
-                                                   LongPressCommand="{Binding $parent[UserControl].DataContext.AddToWatchlistCommand}"
-                                                   LongPressCommandParameter="{Binding}"/>
-                    </DataTemplate>
+                                Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
+                                CommandParameter="{Binding}"
+                                LongPressCommand="{Binding $parent[UserControl].DataContext.AddToWatchlistCommand}"
+                                LongPressCommandParameter="{Binding}" />
+                        </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
