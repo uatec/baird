@@ -18,6 +18,12 @@ namespace Baird.Mpv
         public event EventHandler? StreamEnded;
         /// <summary>Fired when mpv reports a load/playback error. Arg is the mpv error code.</summary>
         public event EventHandler<int>? StreamLoadFailed;
+        /// <summary>Fired when a new file has finished loading and playback begins.</summary>
+        public event EventHandler? FileLoaded;
+        /// <summary>Fired when mpv's pause state changes. Arg is true when paused.</summary>
+        public event EventHandler<bool>? PauseStateChanged;
+        /// <summary>Fired when the file duration becomes known or changes. Arg is seconds.</summary>
+        public event EventHandler<double>? DurationChanged;
 
         public PlaybackState State { get; private set; } = PlaybackState.Idle;
 
@@ -111,6 +117,10 @@ namespace Baird.Mpv
                 Name = "MpvEventLoop"
             };
             _eventThread.Start();
+
+            // Observe properties so the event loop can raise typed C# events instead of polling
+            LibMpv.mpv_observe_property(_mpvHandle, 1, "pause", LibMpv.MpvFormat.Flag);
+            LibMpv.mpv_observe_property(_mpvHandle, 2, "duration", LibMpv.MpvFormat.Double);
         }
 
         private void EventLoop()
@@ -153,6 +163,35 @@ namespace Baird.Mpv
                                 Console.WriteLine("[MpvPlayer] EndFile: redirect, ignoring");
                             }
                             // Stop/Quit: state will be reset by the caller
+                        }
+                    }
+                    else if (evt.EventId == LibMpv.MpvEventId.FileLoaded)
+                    {
+                        Console.WriteLine("[MpvPlayer] FileLoaded event received");
+                        State = PlaybackState.Playing;
+                        FileLoaded?.Invoke(this, EventArgs.Empty);
+                    }
+                    else if (evt.EventId == LibMpv.MpvEventId.PropertyChange)
+                    {
+                        if (evt.Data != IntPtr.Zero)
+                        {
+                            var propEvt = Marshal.PtrToStructure<LibMpv.MpvEventProperty>(evt.Data);
+                            var propName = Marshal.PtrToStringUTF8(propEvt.Name) ?? "";
+
+                            if (propName == "pause" && propEvt.Data != IntPtr.Zero)
+                            {
+                                bool isPaused = Marshal.ReadInt32(propEvt.Data) != 0;
+                                if (isPaused)
+                                    State = PlaybackState.Paused;
+                                else if (State == PlaybackState.Paused)
+                                    State = PlaybackState.Playing;
+                                PauseStateChanged?.Invoke(this, isPaused);
+                            }
+                            else if (propName == "duration" && propEvt.Data != IntPtr.Zero)
+                            {
+                                double dur = Marshal.PtrToStructure<double>(propEvt.Data);
+                                DurationChanged?.Invoke(this, dur);
+                            }
                         }
                     }
                     else if (evt.EventId == LibMpv.MpvEventId.Shutdown)

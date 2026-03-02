@@ -18,7 +18,6 @@ namespace Baird.Controls
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private Avalonia.Threading.DispatcherTimer _loadTimeoutTimer;
         private bool _isScanning;
-        private string _lastLoggedState = "Idle";
         private double _liveDelaySeconds = 0;  // accumulated behind-live time for the current live source
         private string _lastLiveSource = "";   // detect channel changes so we can reset the delay
 
@@ -72,11 +71,42 @@ namespace Baird.Controls
                     StreamEnded?.Invoke(this, EventArgs.Empty);
                 });
             };
+
+                _player.FileLoaded += (sender, e) =>
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        Console.WriteLine("[VideoPlayer] FileLoaded event received");
+                        _loadTimeoutTimer.Stop();
+                        _loadRetryCount = 0;
+                        _player?.LogAudioTracks();
+                        IsLoading = false;
+                        PlayerState = PlaybackState.Playing.ToString();
+                    });
+                };
+
+                _player.PauseStateChanged += (sender, isPaused) =>
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        SetCurrentValue(IsPausedProperty, isPaused);
+                    });
+                };
+
+                _player.DurationChanged += (sender, dur) =>
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        var tsDur = TimeSpan.FromSeconds(dur);
+                        Duration = tsDur;
+                        DurationSeconds = dur;
+                    });
+                };
             }
 
             _hudTimer = new Avalonia.Threading.DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(250)
+                Interval = TimeSpan.FromMilliseconds(1000)
             };
             _hudTimer.Tick += (s, e) => UpdateHud();
             _hudTimer.Start();
@@ -247,22 +277,26 @@ namespace Baird.Controls
             set => SetValue(SourceProperty, value);
         }
 
-        public static readonly StyledProperty<string> FormattedTimeProperty =
-            AvaloniaProperty.Register<VideoPlayer, string>(nameof(FormattedTime), defaultValue: "00:00:00 / 00:00:00");
+        private string _formattedTime = "00:00:00 / 00:00:00";
+        public static readonly DirectProperty<VideoPlayer, string> FormattedTimeProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, string>(nameof(FormattedTime),
+                o => o._formattedTime, (o, v) => o._formattedTime = v);
 
         public string FormattedTime
         {
-            get => GetValue(FormattedTimeProperty);
-            set => SetValue(FormattedTimeProperty, value);
+            get => _formattedTime;
+            set => SetAndRaise(FormattedTimeProperty, ref _formattedTime, value);
         }
 
-        public static readonly StyledProperty<string> PlayerStateProperty =
-            AvaloniaProperty.Register<VideoPlayer, string>(nameof(PlayerState), defaultValue: "Idle");
+        private string _playerState = "Idle";
+        public static readonly DirectProperty<VideoPlayer, string> PlayerStateProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, string>(nameof(PlayerState),
+                o => o._playerState, (o, v) => o._playerState = v);
 
         public string PlayerState
         {
-            get => GetValue(PlayerStateProperty);
-            set => SetValue(PlayerStateProperty, value);
+            get => _playerState;
+            set => SetAndRaise(PlayerStateProperty, ref _playerState, value);
         }
 
         // Helper to track current media item ID for history
@@ -290,82 +324,100 @@ namespace Baird.Controls
             set => SetValue(IsLiveProperty, value);
         }
 
-        public static readonly StyledProperty<TimeSpan> PositionProperty =
-            AvaloniaProperty.Register<VideoPlayer, TimeSpan>(nameof(Position));
+        private TimeSpan _position;
+        public static readonly DirectProperty<VideoPlayer, TimeSpan> PositionProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, TimeSpan>(nameof(Position),
+                o => o._position, (o, v) => o._position = v);
 
         public TimeSpan Position
         {
-            get => GetValue(PositionProperty);
-            set => SetValue(PositionProperty, value);
+            get => _position;
+            set => SetAndRaise(PositionProperty, ref _position, value);
         }
 
-        public static readonly StyledProperty<TimeSpan> DurationProperty =
-            AvaloniaProperty.Register<VideoPlayer, TimeSpan>(nameof(Duration));
+        private TimeSpan _duration;
+        public static readonly DirectProperty<VideoPlayer, TimeSpan> DurationProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, TimeSpan>(nameof(Duration),
+                o => o._duration, (o, v) => o._duration = v);
 
         public TimeSpan Duration
         {
-            get => GetValue(DurationProperty);
-            set => SetValue(DurationProperty, value);
+            get => _duration;
+            set => SetAndRaise(DurationProperty, ref _duration, value);
         }
 
-        public static readonly StyledProperty<double> PositionSecondsProperty =
-            AvaloniaProperty.Register<VideoPlayer, double>(nameof(PositionSeconds));
+        private double _positionSeconds;
+        public static readonly DirectProperty<VideoPlayer, double> PositionSecondsProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, double>(nameof(PositionSeconds),
+                o => o._positionSeconds, (o, v) => o._positionSeconds = v);
 
         public double PositionSeconds
         {
-            get => GetValue(PositionSecondsProperty);
-            set => SetValue(PositionSecondsProperty, value);
+            get => _positionSeconds;
+            set => SetAndRaise(PositionSecondsProperty, ref _positionSeconds, value);
         }
 
-        public static readonly StyledProperty<double> DurationSecondsProperty =
-            AvaloniaProperty.Register<VideoPlayer, double>(nameof(DurationSeconds));
+        private double _durationSeconds;
+        public static readonly DirectProperty<VideoPlayer, double> DurationSecondsProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, double>(nameof(DurationSeconds),
+                o => o._durationSeconds, (o, v) => o._durationSeconds = v);
 
         public double DurationSeconds
         {
-            get => GetValue(DurationSecondsProperty);
-            set => SetValue(DurationSecondsProperty, value);
+            get => _durationSeconds;
+            set => SetAndRaise(DurationSecondsProperty, ref _durationSeconds, value);
         }
 
-        public static readonly StyledProperty<string> FinishingAtProperty =
-            AvaloniaProperty.Register<VideoPlayer, string>(nameof(FinishingAt), defaultValue: "");
+        private string _finishingAt = "";
+        public static readonly DirectProperty<VideoPlayer, string> FinishingAtProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, string>(nameof(FinishingAt),
+                o => o._finishingAt, (o, v) => o._finishingAt = v);
 
         public string FinishingAt
         {
-            get => GetValue(FinishingAtProperty);
-            set => SetValue(FinishingAtProperty, value);
+            get => _finishingAt;
+            set => SetAndRaise(FinishingAtProperty, ref _finishingAt, value);
         }
 
-        public static readonly StyledProperty<string> TimeRemainingProperty =
-            AvaloniaProperty.Register<VideoPlayer, string>(nameof(TimeRemaining), defaultValue: "");
+        private string _timeRemaining = "";
+        public static readonly DirectProperty<VideoPlayer, string> TimeRemainingProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, string>(nameof(TimeRemaining),
+                o => o._timeRemaining, (o, v) => o._timeRemaining = v);
 
         public string TimeRemaining
         {
-            get => GetValue(TimeRemainingProperty);
-            set => SetValue(TimeRemainingProperty, value);
+            get => _timeRemaining;
+            set => SetAndRaise(TimeRemainingProperty, ref _timeRemaining, value);
         }
 
-        public static readonly StyledProperty<bool> IsLiveBehindProperty =
-            AvaloniaProperty.Register<VideoPlayer, bool>(nameof(IsLiveBehind));
+        private bool _isLiveBehind;
+        public static readonly DirectProperty<VideoPlayer, bool> IsLiveBehindProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, bool>(nameof(IsLiveBehind),
+                o => o._isLiveBehind, (o, v) => o._isLiveBehind = v);
 
         /// <summary>True when playing a live stream but behind the live edge (paused or rewound).</summary>
         public bool IsLiveBehind
         {
-            get => GetValue(IsLiveBehindProperty);
-            set => SetValue(IsLiveBehindProperty, value);
+            get => _isLiveBehind;
+            set => SetAndRaise(IsLiveBehindProperty, ref _isLiveBehind, value);
         }
 
-        public static readonly StyledProperty<double> LiveBehindSecondsProperty =
-            AvaloniaProperty.Register<VideoPlayer, double>(nameof(LiveBehindSeconds));
+        private double _liveBehindSeconds;
+        public static readonly DirectProperty<VideoPlayer, double> LiveBehindSecondsProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, double>(nameof(LiveBehindSeconds),
+                o => o._liveBehindSeconds, (o, v) => o._liveBehindSeconds = v);
 
         /// <summary>How many seconds behind the live edge the current position is.</summary>
         public double LiveBehindSeconds
         {
-            get => GetValue(LiveBehindSecondsProperty);
-            set => SetValue(LiveBehindSecondsProperty, value);
+            get => _liveBehindSeconds;
+            set => SetAndRaise(LiveBehindSecondsProperty, ref _liveBehindSeconds, value);
         }
 
-        public static readonly StyledProperty<double> LiveProgressSecondsProperty =
-            AvaloniaProperty.Register<VideoPlayer, double>(nameof(LiveProgressSeconds), defaultValue: 3600);
+        private double _liveProgressSeconds = 3600;
+        public static readonly DirectProperty<VideoPlayer, double> LiveProgressSecondsProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, double>(nameof(LiveProgressSeconds),
+                o => o._liveProgressSeconds, (o, v) => o._liveProgressSeconds = v);
 
         /// <summary>
         /// Position within a 1-hour (3600 s) window for the live progress bar.
@@ -373,22 +425,26 @@ namespace Baird.Controls
         /// </summary>
         public double LiveProgressSeconds
         {
-            get => GetValue(LiveProgressSecondsProperty);
-            set => SetValue(LiveProgressSecondsProperty, value);
+            get => _liveProgressSeconds;
+            set => SetAndRaise(LiveProgressSecondsProperty, ref _liveProgressSeconds, value);
         }
 
-        public static readonly StyledProperty<string> LiveBehindFormattedProperty =
-            AvaloniaProperty.Register<VideoPlayer, string>(nameof(LiveBehindFormatted), defaultValue: "");
+        private string _liveBehindFormatted = "";
+        public static readonly DirectProperty<VideoPlayer, string> LiveBehindFormattedProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, string>(nameof(LiveBehindFormatted),
+                o => o._liveBehindFormatted, (o, v) => o._liveBehindFormatted = v);
 
         /// <summary>Human-readable behind-live offset, e.g. "-00:15:30".</summary>
         public string LiveBehindFormatted
         {
-            get => GetValue(LiveBehindFormattedProperty);
-            set => SetValue(LiveBehindFormattedProperty, value);
+            get => _liveBehindFormatted;
+            set => SetAndRaise(LiveBehindFormattedProperty, ref _liveBehindFormatted, value);
         }
 
-        public static readonly StyledProperty<double> LiveWindowSecondsProperty =
-            AvaloniaProperty.Register<VideoPlayer, double>(nameof(LiveWindowSeconds), defaultValue: 300);
+        private double _liveWindowSeconds = 300;
+        public static readonly DirectProperty<VideoPlayer, double> LiveWindowSecondsProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, double>(nameof(LiveWindowSeconds),
+                o => o._liveWindowSeconds, (o, v) => o._liveWindowSeconds = v);
 
         /// <summary>
         /// The current progress-bar window size in seconds. Steps up through
@@ -396,8 +452,8 @@ namespace Baird.Controls
         /// </summary>
         public double LiveWindowSeconds
         {
-            get => GetValue(LiveWindowSecondsProperty);
-            set => SetValue(LiveWindowSecondsProperty, value);
+            get => _liveWindowSeconds;
+            set => SetAndRaise(LiveWindowSecondsProperty, ref _liveWindowSeconds, value);
         }
 
         public static readonly StyledProperty<bool> IsSubtitlesEnabledProperty =
@@ -409,13 +465,15 @@ namespace Baird.Controls
             set => SetValue(IsSubtitlesEnabledProperty, value);
         }
 
-        public static readonly StyledProperty<bool> IsLoadingProperty =
-            AvaloniaProperty.Register<VideoPlayer, bool>(nameof(IsLoading));
+        private bool _isLoading;
+        public static readonly DirectProperty<VideoPlayer, bool> IsLoadingProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, bool>(nameof(IsLoading),
+                o => o._isLoading, (o, v) => o._isLoading = v);
 
         public bool IsLoading
         {
-            get => GetValue(IsLoadingProperty);
-            set => SetValue(IsLoadingProperty, value);
+            get => _isLoading;
+            set => SetAndRaise(IsLoadingProperty, ref _isLoading, value);
         }
 
         public static readonly StyledProperty<TimeSpan?> ResumeTimeProperty =
@@ -431,41 +489,18 @@ namespace Baird.Controls
         {
             if (_player == null) return;
 
-            // Check for state transitions (Loading -> Playing)
-            _player.UpdateVideoStatus();
-
-            // State
+            // State — PlayerState and IsLoading are DirectProperties; SetAndRaise skips
+            // notification when the value is unchanged, so this is cheap at 1 Hz.
             var state = _player.State;
-            var stateStr = state.ToString();
-
-            // Update IsLoading property
+            PlayerState = state.ToString();
             IsLoading = state == PlaybackState.Loading;
-
-            // Sync IsPaused with actual player state (if changed externally or by internal logic)
-            // Use SetCurrentValue to avoid overwriting binding if not necessary, or just SetValue
-            bool shouldBePaused = state == PlaybackState.Paused || state == PlaybackState.Idle;
-            if (IsPaused != shouldBePaused)
-            {
-                // We only update if it mismatches to avoid fighting with the binding?
-                // But wait, if we are playing and user presses pause on headset?
-                // We want ViewModel to know.
-                SetCurrentValue(IsPausedProperty, shouldBePaused);
-            }
-
-            if (stateStr == "Playing" && _lastLoggedState != "Playing")
-            {
-                _loadTimeoutTimer.Stop();
-                _loadRetryCount = 0;
-                _player.LogAudioTracks();
-            }
-            _lastLoggedState = stateStr;
 
             if (IsLive)
             {
                 // Live Stream Mode: Show Clock
                 FormattedTime = DateTime.Now.ToString("HH:mm");
 
-                // Reset delay when the live source changes (new channel).
+                // Reset delay counter when the channel changes.
                 var currentSource = _player?.CurrentPath ?? "";
                 if (currentSource != _lastLiveSource)
                 {
@@ -473,34 +508,24 @@ namespace Baird.Controls
                     _lastLiveSource = currentSource;
                 }
 
-                // Accumulate delay only while paused; hold steady while playing.
-                // The HUD timer fires every 250 ms so each tick = 0.25 s.
+                // Accumulate delay only while paused. Timer fires every 1 s so each tick = 1 s.
                 if (state == PlaybackState.Paused)
-                {
-                    _liveDelaySeconds += 0.25;
-                }
+                    _liveDelaySeconds += 1.0;
 
                 var behindSeconds = _liveDelaySeconds;
                 LiveBehindSeconds = behindSeconds;
                 IsLiveBehind = behindSeconds > 0;
 
-                // Pick the smallest window interval that comfortably contains the delay.
-                // Intervals: 5, 10, 15, 30, 60 minutes (in seconds).
+                // Pick the smallest window that comfortably contains the delay.
                 double[] intervals = { 300, 600, 900, 1800, 3600 };
                 double windowSeconds = intervals[intervals.Length - 1];
                 foreach (var interval in intervals)
                 {
-                    if (behindSeconds <= interval)
-                    {
-                        windowSeconds = interval;
-                        break;
-                    }
+                    if (behindSeconds <= interval) { windowSeconds = interval; break; }
                 }
                 LiveWindowSeconds = windowSeconds;
-                // Value = how close to the live edge (full bar = live edge, empty = windowSeconds behind).
                 LiveProgressSeconds = Math.Max(0, windowSeconds - behindSeconds);
 
-                // Formatted label: show minutes/seconds behind, e.g. "-15:30" or "-01:02:34"
                 var behindSpan = TimeSpan.FromSeconds(behindSeconds);
                 LiveBehindFormatted = behindSpan.TotalHours >= 1
                     ? $"-{behindSpan:hh\\:mm\\:ss}"
@@ -513,18 +538,13 @@ namespace Baird.Controls
                 _liveDelaySeconds = 0;
                 _lastLiveSource = "";
 
-                // VOD Mode: Show Position / Duration
+                // Poll time-pos; Duration/DurationSeconds are maintained by DurationChanged event.
                 var posStr = _player.TimePosition;
-                var durStr = _player.Duration;
-
                 double.TryParse(posStr, out double pos);
-                double.TryParse(durStr, out double dur);
-
                 var tsPos = TimeSpan.FromSeconds(pos);
-                var tsDur = TimeSpan.FromSeconds(dur);
 
-                // Sync to MediaItem if we have one
-                if (_currentMediaItem != null && dur > 0)
+                // Keep MediaItem history in sync with current position
+                if (_currentMediaItem != null && Duration.TotalSeconds > 0)
                 {
                     if (_currentMediaItem.History == null)
                     {
@@ -532,7 +552,7 @@ namespace Baird.Controls
                         {
                             Id = _currentMediaItem.Id,
                             LastPosition = tsPos,
-                            Duration = tsDur,
+                            Duration = Duration,
                             IsFinished = false,
                             LastWatched = DateTime.Now
                         };
@@ -540,23 +560,18 @@ namespace Baird.Controls
                     else
                     {
                         _currentMediaItem.History.LastPosition = tsPos;
-                        _currentMediaItem.History.Duration = tsDur;
+                        _currentMediaItem.History.Duration = Duration;
                     }
                 }
 
                 Position = tsPos;
-                Duration = tsDur;
                 PositionSeconds = pos;
-                DurationSeconds = dur;
+                FormattedTime = $"{tsPos:hh\\:mm\\:ss}";
 
-                FormattedTime = $"{tsPos:hh\\:mm\\:ss}"; // Just current time for row 1
-
-                // Calculate finishing time
-                if (dur > 0)
+                if (Duration.TotalSeconds > 0)
                 {
-                    var timeLeft = tsDur - tsPos;
-                    var finishTime = DateTime.Now.Add(timeLeft);
-                    FinishingAt = $"Finishing at: {finishTime:HH:mm}";
+                    var timeLeft = Duration - tsPos;
+                    FinishingAt = $"Finishing at: {DateTime.Now.Add(timeLeft):HH:mm}";
                     TimeRemaining = $"-{timeLeft:hh\\:mm\\:ss}";
                 }
                 else
@@ -565,13 +580,6 @@ namespace Baird.Controls
                     TimeRemaining = "";
                 }
             }
-
-            PlayerState = stateStr;
-
-            // Update History periodically? Or just rely on Stop/Pause?
-            // User requirement: "whenever we stop or change video stream... record the progress"
-            // We should arguably do it on Pause too.
-            // And maybe periodically in case of crash?
         }
 
         // Track when the current video started playing
@@ -698,6 +706,7 @@ namespace Baird.Controls
             _loadRetryCount = 0;
             _currentVideoStartTime = DateTime.Now;
             _player?.Play(url);
+            IsLoading = true;
             IsPaused = false;
             RestartLoadTimeout();
         }
@@ -709,6 +718,7 @@ namespace Baird.Controls
             _loadRetryCount = 0;
             _currentVideoStartTime = DateTime.Now;
             _player?.Play(url, startTime.TotalSeconds);
+            IsLoading = true;
             IsPaused = false;
             RestartLoadTimeout();
         }
@@ -761,6 +771,7 @@ namespace Baird.Controls
             _pendingUrl = null;
             SaveProgress();
             _player?.Stop();
+            IsLoading = false;
             IsPaused = true;
         }
 

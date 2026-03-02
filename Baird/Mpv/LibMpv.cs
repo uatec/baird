@@ -109,6 +109,9 @@ namespace Baird.Mpv
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr mpv_wait_event(IntPtr handle, double timeout);
 
+        [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int mpv_observe_property(IntPtr handle, ulong reply_userdata, string name, MpvFormat format);
+
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void MpvRenderUpdateFn(IntPtr cb_ctx);
@@ -124,6 +127,7 @@ namespace Baird.Mpv
             None = 0,
             String = 1,
             OsGK = 2,
+            Flag = 3,
             Int64 = 4,
             Double = 5,
             Node = 6,
@@ -222,6 +226,21 @@ namespace Baird.Mpv
         {
             public MpvEndFileReason Reason;
             public int Error;
+        }
+
+        /// <summary>
+        /// Data payload for MPV_EVENT_PROPERTY_CHANGE.
+        /// <c>Data</c> points to the value in the format specified by <c>Format</c>:
+        ///   Flag   -> int* (1 = true, 0 = false)
+        ///   Double -> double*
+        ///   String -> char* (UTF-8, may be null)
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MpvEventProperty
+        {
+            public IntPtr Name;   // const char* – property name
+            public MpvFormat Format;
+            public IntPtr Data;   // void* – value; null when format is None
         }
 
     }
