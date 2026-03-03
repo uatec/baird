@@ -16,6 +16,10 @@ namespace Baird.Services
         event EventHandler<CecCommandLoggedEventArgs>? CommandLogged;
         event EventHandler? TvStandby;
         event EventHandler? TvPowerOn;
+        event EventHandler? InputLost;
+        event EventHandler? InputRegained;
+
+        bool IsAvailable { get; }
 
         Task StartAsync();
         Task TogglePowerAsync();

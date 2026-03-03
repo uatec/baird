@@ -23,6 +23,10 @@ namespace Baird.Services
         public event EventHandler<CecCommandLoggedEventArgs>? CommandLogged;
         public event EventHandler? TvStandby;
         public event EventHandler? TvPowerOn;
+        public event EventHandler? InputLost;
+        public event EventHandler? InputRegained;
+
+        public bool IsAvailable => _cecProcess != null && !_cecProcess.HasExited;
 
         public async Task StartAsync()
         {
@@ -109,10 +113,9 @@ namespace Baird.Services
                         Timestamp = DateTime.Now
                     });
 
-                    // Fire typed power-state events only for incoming traffic.
-                    // Outgoing lines (<<) are cec-client's own auto-responses to protocol queries;
-                    // treating them as events would create a feedback loop where our own
-                    // "Report Power Status: On" reply re-triggers TvPowerOn indefinitely.
+                    // Incoming traffic (>>) — events from other devices on the CEC bus.
+                    // We deliberately ignore outgoing (<<) lines for these to avoid feedback loops
+                    // where our own auto-responses re-trigger events.
                     if (line.Contains(">>"))
                     {
                         if (commandType.Contains("Standby"))
@@ -126,6 +129,21 @@ namespace Baird.Services
                             Console.WriteLine("[CecService] TV power on detected.");
                             TvPowerOn?.Invoke(this, EventArgs.Empty);
                         }
+                        else if (commandType.Contains("Active Source"))
+                        {
+                            Console.WriteLine("[CecService] Active Source from another device — input lost.");
+                            InputLost?.Invoke(this, EventArgs.Empty);
+                        }
+                    }
+
+                    // Incoming Request Active Source (>>) means the TV has finished booting/switching
+                    // and is actively asking which device should be displayed. This is the reliable
+                    // signal that the TV is ready — more accurate than our own outgoing Active Source
+                    // echo, which only confirms the command was sent, not that the TV is ready.
+                    if (line.Contains(">>") && commandType.Contains("Request Active Source"))
+                    {
+                        Console.WriteLine("[CecService] TV requested active source — TV is ready, input regained.");
+                        InputRegained?.Invoke(this, EventArgs.Empty);
                     }
                 }
             }

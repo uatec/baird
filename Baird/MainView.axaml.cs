@@ -28,6 +28,8 @@ namespace Baird
         private DispatcherTimer? _idleTimer;
         private bool _wasPausedForScreensaver = false; // Track if we actively paused for screensaver
         private bool _pausedForCecStandby = false; // Track if we auto-paused because TV went to standby
+        private bool _inputsBlocked = false; // Inputs are blocked when TV is off or on a different input
+        private DispatcherTimer? _inputUnblockFallbackTimer; // Fallback unblock when TV switches silently (no Request Active Source)
         private DateTime _lastCecAssert = DateTime.MinValue;
         private static readonly TimeSpan CecAssertCooldown = TimeSpan.FromSeconds(30);
 
@@ -219,6 +221,9 @@ namespace Baird
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
+                        Console.WriteLine("[MainView] TV standby via CEC — blocking inputs.");
+                        _inputsBlocked = true;
+
                         var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
                         var player = videoLayer?.GetPlayer();
                         if (player != null && player.GetState() == Baird.Mpv.PlaybackState.Playing)
@@ -232,20 +237,27 @@ namespace Baird
 
                 _cecService.TvPowerOn += (s, e) =>
                 {
-                    // TV is awake — claim the input (no cooldown, this is event-driven)
+                    // TV is awake — claim the input. Unblocking happens via InputRegained
+                    // once cec-client confirms our Active Source assertion went out.
                     Console.WriteLine("[MainView] TV power on via CEC — asserting active source.");
                     _ = _cecService.ChangeInputToThisDeviceAsync();
+                };
 
+                _cecService.InputLost += (s, e) =>
+                {
                     Dispatcher.UIThread.Post(() =>
                     {
-                        if (_pausedForCecStandby)
-                        {
-                            Console.WriteLine("[MainView] TV power on via CEC — resuming video.");
-                            var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                            var player = videoLayer?.GetPlayer();
-                            player?.Resume();
-                            _pausedForCecStandby = false;
-                        }
+                        Console.WriteLine("[MainView] Input lost via CEC — blocking inputs.");
+                        _inputsBlocked = true;
+                    });
+                };
+
+                _cecService.InputRegained += (s, e) =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        Console.WriteLine("[MainView] Input regained via CEC — unblocking inputs.");
+                        UnblockInputs();
                     });
                 };
 
@@ -253,7 +265,24 @@ namespace Baird
                 _ = _cecService.StartAsync().ContinueWith(t =>
                 {
                     if (t.IsFaulted)
+                    {
                         Console.WriteLine($"[MainView] CEC Service failed to start: {t.Exception?.InnerException?.Message}");
+                        return;
+                    }
+
+                    if (_cecService.IsAvailable)
+                    {
+                        // CEC is running — we don't know the TV's power state or whether we
+                        // have the active input (e.g. app just restarted after a software update
+                        // while the TV was off). Start with inputs blocked and assert active source.
+                        // The TV will send Request Active Source when it's ready, which unblocks us.
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            Console.WriteLine("[MainView] CEC available — blocking inputs until active source confirmed.");
+                            _inputsBlocked = true;
+                            _ = _cecService.ChangeInputToThisDeviceAsync();
+                        });
+                    }
                 });
             };
         }
@@ -308,8 +337,75 @@ namespace Baird
             _ = _cecService.ChangeInputToThisDeviceAsync();
         }
 
+        /// <summary>
+        /// Sends CEC commands to reclaim the TV's active input and starts a fallback timer.
+        /// The fallback unblocks inputs after 6 s if the TV never sends Request Active Source
+        /// (e.g. the TV was already on and switched silently without broadcasting that event).
+        /// </summary>
+        private void RequestInputRegain()
+        {
+            Console.WriteLine("[MainView] Requesting input regain — powering on TV + asserting active source.");
+            _ = _cecService.PowerOnAsync();
+            _ = _cecService.ChangeInputToThisDeviceAsync();
+
+            // Cancel any existing fallback so repeated presses don't stack timers
+            _inputUnblockFallbackTimer?.Stop();
+            _inputUnblockFallbackTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+            _inputUnblockFallbackTimer.Tick += (s, e) =>
+            {
+                _inputUnblockFallbackTimer?.Stop();
+                if (_inputsBlocked)
+                {
+                    Console.WriteLine("[MainView] Fallback timer fired — unblocking inputs without CEC confirmation.");
+                    UnblockInputs();
+                }
+            };
+            _inputUnblockFallbackTimer.Start();
+        }
+
+        /// <summary>
+        /// Unblocks inputs and restores any paused video or active screensaver.
+        /// Called either from the CEC InputRegained event or the fallback timer.
+        /// </summary>
+        private void UnblockInputs()
+        {
+            _inputUnblockFallbackTimer?.Stop();
+            _inputsBlocked = false;
+
+            if (_viewModel.Screensaver.IsActive)
+                _viewModel.Screensaver.Deactivate();
+
+            var videoLayer = this.FindControl<Controls.VideoLayerControl>("VideoLayer");
+            var player = videoLayer?.GetPlayer();
+
+            if (_pausedForCecStandby)
+            {
+                Console.WriteLine("[MainView] Resuming video after CEC standby.");
+                player?.Resume();
+                _pausedForCecStandby = false;
+            }
+
+            if (_wasPausedForScreensaver)
+            {
+                Console.WriteLine("[MainView] Resuming video after screensaver (CEC-triggered wake).");
+                player?.Resume();
+                _wasPausedForScreensaver = false;
+            }
+        }
+
         private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
         {
+            // While inputs are blocked (TV off or wrong input), any key press requests focus back
+            // but does NOT take effect — we wait for CEC to confirm we have the active source
+            // (or for the fallback timer to fire if the TV switches silently).
+            if (_inputsBlocked)
+            {
+                Console.WriteLine($"[MainView] Inputs blocked. Key '{e.Key}' requesting TV power + active source.");
+                RequestInputRegain();
+                e.Handled = true;
+                return;
+            }
+
             // Reset timer on ANY activity
             ResetIdleTimer();
             AssertCecPresence();
@@ -343,6 +439,14 @@ namespace Baird
 
         private void OnGlobalPointerActivity(object? sender, PointerEventArgs e)
         {
+            if (_inputsBlocked)
+            {
+                Console.WriteLine("[MainView] Inputs blocked. Pointer activity requesting TV power + active source.");
+                RequestInputRegain();
+                e.Handled = true;
+                return;
+            }
+
             ResetIdleTimer(); // Activity resets timer
             AssertCecPresence();
 
