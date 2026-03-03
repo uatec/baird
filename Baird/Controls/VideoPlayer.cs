@@ -56,18 +56,14 @@ namespace Baird.Controls
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
                     Console.WriteLine("[VideoPlayer] StreamEnded event received from MpvPlayer");
-                    // Save progress immediately when stream ends naturally (EOF)
-                    // This ensures the final position/duration is captured before auto-play starts next episode
 
-                    if (_currentMediaItem == null)
+                    if (_currentMediaItem != null)
                     {
-                        Console.WriteLine("[VideoPlayer] _currentMediaItem is null. Skipping SaveProgress.");
-                        return;
+                        // Save progress immediately when stream ends naturally (EOF)
+                        // We pass Duration as override to SaveProgress to ensure it marks as finished
+                        SaveProgress(Duration);
                     }
 
-                    // ensure we appear to have watched the entire video
-                    // We pass Duration as override to SaveProgress to ensure it marks as finished
-                    SaveProgress(this.Duration);
                     StreamEnded?.Invoke(this, EventArgs.Empty);
                 });
             };
