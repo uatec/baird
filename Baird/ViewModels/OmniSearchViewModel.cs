@@ -154,7 +154,6 @@ namespace Baird.ViewModels
         }
 
         public ObservableCollection<MediaItemViewModel> SearchResults { get; } = new();
-        public ObservableCollection<MediaRowViewModel> SearchResultRows { get; } = new();
         public ObservableCollection<string> SuggestedTerms { get; } = new();
         public ObservableCollection<ProviderSearchStatus> ProviderStatuses { get; } = new();
 
@@ -307,7 +306,6 @@ namespace Baird.ViewModels
 
             IsSearching = true;
             SearchResults.Clear(); // Already on UI thread due to Throttle scheduler
-            SearchResultRows.Clear();
             _allResults.Clear();
             HasMoreResults = false;
 
@@ -353,8 +351,6 @@ namespace Baird.ViewModels
                         status.SetIdle();
                     }
                 }
-
-                UpdateSearchResultRows();
 
                 IsSearching = false;
 
@@ -442,9 +438,6 @@ namespace Baird.ViewModels
 
                     // Update pagination state
                     HasMoreResults = _allResults.Count > MaxInitialResults;
-
-                    // Populate row collection for virtualization
-                    UpdateSearchResultRows();
                 }
             }
             catch (Exception ex)
@@ -528,7 +521,6 @@ namespace Baird.ViewModels
         {
             SearchText = "";
             SearchResults.Clear();
-            SearchResultRows.Clear();
             _allResults.Clear();
             HasMoreResults = false;
             IsSearching = false;
@@ -542,54 +534,10 @@ namespace Baird.ViewModels
             if (!HasMoreResults) return;
 
             var currentCount = SearchResults.Count;
-            var currentRowCount = SearchResultRows.Count;
             var nextBatch = _allResults.Skip(currentCount).Take(MaxInitialResults).ToList();
 
             SearchResults.AddRange(nextBatch);
             HasMoreResults = SearchResults.Count < _allResults.Count;
-
-            // Check if we need to update the last partial row or just add new rows
-            var itemsInLastRow = currentCount % 6;
-
-            if (itemsInLastRow > 0 && nextBatch.Any())
-            {
-                // Last row was partial, need to rebuild it with additional items
-                var itemsToCompleteRow = Math.Min(6 - itemsInLastRow, nextBatch.Count);
-                var lastRowStartIndex = currentCount - itemsInLastRow;
-                var lastRowItems = SearchResults.Skip(lastRowStartIndex).Take(6).ToList();
-
-                // Update the last row
-                SearchResultRows[currentRowCount - 1] = MediaRowViewModel.CreateRows(lastRowItems)[0];
-
-                // Add any remaining items as new rows
-                if (nextBatch.Count > itemsToCompleteRow)
-                {
-                    var remainingItems = nextBatch.Skip(itemsToCompleteRow).ToList();
-                    var newRows = MediaRowViewModel.CreateRows(remainingItems);
-                    foreach (var row in newRows)
-                    {
-                        SearchResultRows.Add(row);
-                    }
-                }
-            }
-            else
-            {
-                // Last row was complete, just add new rows
-                var newRows = MediaRowViewModel.CreateRows(nextBatch);
-                foreach (var row in newRows)
-                {
-                    SearchResultRows.Add(row);
-                }
-            }
-        }
-
-        private void UpdateSearchResultRows()
-        {
-            // Only update from scratch when necessary (e.g., after search)
-            // For incremental updates, use LoadMoreResults pattern
-            var rows = MediaRowViewModel.CreateRows(SearchResults);
-            SearchResultRows.Clear();
-            SearchResultRows.AddRange(rows);
         }
     }
 }
