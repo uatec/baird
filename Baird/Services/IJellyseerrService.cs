@@ -37,6 +37,7 @@ namespace Baird.Services
         public string CreatedAt { get; set; } = string.Empty;
         public string UpdatedAt { get; set; } = string.Empty;
         public int MediaInfoStatus { get; set; } // Same as search result
+        public double? DownloadProgress { get; set; } // null = no data, 0-100 = real % from Radarr/Sonarr
         public bool IsAvailable => MediaInfoStatus == 5 || MediaInfoStatus == 4;
     }
 

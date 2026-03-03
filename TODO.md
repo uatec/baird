@@ -70,3 +70,5 @@ Phase 2
 - [x] When running the application OFTEN runs layout passes, many times a second. this doesn't sound appropriate.
 - [ ] fix progress bars in requests for downloaded items
 - [ ] fix progress bars in requests for incomplete items, colour code by status (downloaded, no source found, downloads SOME episodes but others are not available yet)
+- [ ] EPG
+- [ ] integrate search and searrch

@@ -65,31 +65,19 @@ namespace Baird.ViewModels
             {
                 if (_request.Status == 3) return "#CC0000"; // Declined - Red
                 if (_request.MediaInfoStatus == 5 || _request.MediaInfoStatus == 4) return "#00AA00"; // Available - Green
-                if (_request.MediaInfoStatus == 3) return "#0088DD"; // Processing - Blue
-                return "#CCAA00"; // Pending/Approved - Yellow
+                if (_request.DownloadProgress.HasValue) return "#0088DD"; // Actively downloading - Blue
+                if (_request.MediaInfoStatus == 2) return "#CCAA00"; // Queued in Radarr/Sonarr - Yellow
+                return "#555555"; // Not started / no source found - Gray
             }
         }
 
-        public double Progress
-        {
-            get
+        public double Progress => _request.DownloadProgress
+            ?? _request.MediaInfoStatus switch
             {
-                // Calculate progress based on media status
-                return _request.MediaInfoStatus switch
-                {
-                    5 => 100.0, // Available
-                    4 => 90.0,  // Partially Available
-                    3 => 60.0,  // Processing
-                    2 => 30.0,  // Pending
-                    _ => _request.Status switch
-                    {
-                        2 => 25.0,  // Approved
-                        1 => 10.0,  // Pending approval
-                        _ => 0.0
-                    }
-                };
-            }
-        }
+                5 => 100.0, // Available
+                4 => 90.0,  // Partially Available (no episode count available from Jellyseerr)
+                _ => 0.0    // Processing/Pending/Unknown - nothing downloading yet
+            };
 
         public string FormattedDate
         {

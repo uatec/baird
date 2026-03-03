@@ -240,7 +240,7 @@ namespace Baird.Services
                         if (isInFlight || (isCompleted && isRecent))
                         {
                             // Fetch full media details using TMDB ID
-                            var (title, posterPath) = await GetMediaDetailsAsync(tmdbId, mediaType, cancellationToken).ConfigureAwait(false);
+                            var (title, posterPath, downloadProgress) = await GetMediaDetailsAsync(tmdbId, mediaType, cancellationToken).ConfigureAwait(false);
 
                             var request = new JellyseerrRequest
                             {
@@ -252,7 +252,8 @@ namespace Baird.Services
                                 TmdbId = tmdbId,
                                 CreatedAt = item.GetProperty("createdAt").GetString() ?? "",
                                 UpdatedAt = updatedAt,
-                                MediaInfoStatus = mediaStatus
+                                MediaInfoStatus = mediaStatus,
+                                DownloadProgress = downloadProgress
                             };
 
                             requests.Add(request);
@@ -270,7 +271,7 @@ namespace Baird.Services
             }
         }
 
-        private async Task<(string title, string posterPath)> GetMediaDetailsAsync(int tmdbId, string mediaType, CancellationToken cancellationToken)
+        private async Task<(string title, string posterPath, double? downloadProgress)> GetMediaDetailsAsync(int tmdbId, string mediaType, CancellationToken cancellationToken)
         {
             try
             {
@@ -280,7 +281,7 @@ namespace Baird.Services
                 if (!response.IsSuccessStatusCode)
                 {
                     Console.WriteLine($"[JellyseerrService] Failed to get {mediaType} details for TMDB ID {tmdbId}: {response.StatusCode}");
-                    return ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "");
+                    return ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "", null);
                 }
 
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -298,12 +299,36 @@ namespace Baird.Services
 
                 var posterPath = doc.RootElement.TryGetProperty("posterPath", out var posterProp) ? posterProp.GetString() ?? "" : "";
 
-                return (title, posterPath);
+                double? downloadProgress = null;
+                if (doc.RootElement.TryGetProperty("mediaInfo", out var mediaInfo) &&
+                    mediaInfo.TryGetProperty("downloadStatus", out var downloadStatusArray))
+                {
+                    long totalSize = 0;
+                    long totalSizeLeft = 0;
+                    bool hasItems = false;
+
+                    foreach (var item in downloadStatusArray.EnumerateArray())
+                    {
+                        var size = item.TryGetProperty("size", out var sizeProp) ? sizeProp.GetInt64() : 0;
+                        var sizeLeft = item.TryGetProperty("sizeLeft", out var sizeLeftProp) ? sizeLeftProp.GetInt64() : 0;
+                        totalSize += size;
+                        totalSizeLeft += sizeLeft;
+                        hasItems = true;
+                    }
+
+                    if (hasItems && totalSize > 0)
+                    {
+                        downloadProgress = (double)(totalSize - totalSizeLeft) / totalSize * 100.0;
+                        Console.WriteLine($"[JellyseerrService] Download progress for TMDB {tmdbId}: {downloadProgress:F1}% ({totalSize - totalSizeLeft}/{totalSize} bytes)");
+                    }
+                }
+
+                return (title, posterPath, downloadProgress);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[JellyseerrService] Error fetching media details: {ex.Message}");
-                return ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "");
+                return ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "", null);
             }
         }
     }
