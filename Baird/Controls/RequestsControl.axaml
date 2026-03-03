@@ -52,17 +52,16 @@
                           XYFocus.NavigationModes="Enabled">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <UniformGrid Columns="3" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+                        <UniformGrid Columns="6" HorizontalAlignment="Center" VerticalAlignment="Top"/>
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Button Background="Transparent"
-                                BorderBrush="#333333"
-                                BorderThickness="1"
+                                BorderBrush="Transparent"
+                                BorderThickness="4"
                                 CornerRadius="8"
-                                Padding="0"
-                                Margin="12"
+                                Padding="10"
                                 Command="{Binding $parent[UserControl].DataContext.PlayCompletedCommand}"
                                 CommandParameter="{Binding}"
                                 IsEnabled="{Binding IsAvailable}"
@@ -72,91 +71,67 @@
                                 <Style Selector="Button:disabled">
                                     <Setter Property="Opacity" Value="0.7"/>
                                 </Style>
-                                <Style Selector="Button[IsEnabled=True]:pointerover">
-                                    <Setter Property="BorderBrush" Value="#00AA00"/>
-                                    <Setter Property="BorderThickness" Value="2"/>
+                                <Style Selector="Button:focus">
+                                    <Setter Property="BorderBrush" Value="#eeeeee"/>
                                 </Style>
                             </Button.Styles>
-                            
-                            <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+
+                            <Grid RowDefinitions="*, Auto, Auto, Auto">
                                 <!-- Poster Image -->
-                                <Border Grid.Row="0" 
-                                        CornerRadius="8,8,0,0" 
+                                <Border Grid.Row="0"
+                                        CornerRadius="8"
                                         ClipToBounds="True"
-                                        Background="#1a1a1a"
-                                        Height="350">
+                                        Background="#333333"
+                                        Height="169">
                                     <Panel>
-                                        <Image asyncImage:ImageLoader.Source="{Binding FullPosterUrl}" 
-                                               Stretch="UniformToFill"/>
-                                        
+                                        <Image asyncImage:ImageLoader.Source="{Binding FullPosterUrl}"
+                                               Stretch="Uniform"/>
+
                                         <!-- Play Icon Overlay for Available Items -->
-                                        <Border Background="#AA000000" 
+                                        <Border Background="#AA000000"
                                                 CornerRadius="50"
-                                                Width="80"
-                                                Height="80"
+                                                Width="40"
+                                                Height="40"
                                                 HorizontalAlignment="Center"
                                                 VerticalAlignment="Center"
                                                 IsVisible="{Binding IsAvailable}">
-                                            <TextBlock Text="▶" 
-                                                       FontSize="40" 
+                                            <TextBlock Text="▶"
+                                                       FontSize="20"
                                                        Foreground="White"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center"
-                                                       Margin="5,0,0,0"/>
+                                                       Margin="3,0,0,0"/>
                                         </Border>
                                     </Panel>
                                 </Border>
-                                
-                                <!-- Title and Info -->
-                                <Border Grid.Row="1" Background="#222222" Padding="12">
-                                    <StackPanel Spacing="8">
-                                        <!-- Title -->
-                                        <TextBlock Text="{Binding Title}" 
-                                                   FontSize="16" 
-                                                   FontWeight="SemiBold"
-                                                   Foreground="White"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   MaxLines="2"
-                                                   TextWrapping="Wrap"/>
-                                        
-                                        <!-- Badges Row -->
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <Border Background="#0088DD" 
-                                                CornerRadius="3" 
-                                                Padding="8,3">
-                                            <TextBlock Text="{Binding BadgeText}" 
-                                                       FontSize="11" 
-                                                       Foreground="White"
-                                                       FontWeight="Bold"/>
-                                        </Border>
-                                        
-                                        <Border Background="{Binding StatusColor}" 
-                                                CornerRadius="3" 
-                                                Padding="8,3">
-                                            <TextBlock Text="{Binding StatusText}" 
-                                                       FontSize="11" 
-                                                       Foreground="White"
-                                                       FontWeight="Bold"/>
-                                        </Border>
-                                    </StackPanel>
-                                    
-                                    <!-- Date -->
-                                    <TextBlock Text="{Binding FormattedDate}" 
-                                               FontSize="12" 
-                                               Foreground="#888888"/>
-                                    </StackPanel>
-                                </Border>
-                                
-                                <!-- Progress Bar -->
-                                <ProgressBar Grid.Row="2" 
-                                             Height="8" 
-                                             Minimum="0"
-                                             Maximum="100"
-                                             Value="{Binding Progress}"
-                                             Foreground="{Binding StatusColor}"
-                                             Background="#111111"
-                                             BorderThickness="0"
-                                             CornerRadius="0,0,8,8"/>
+
+                                <!-- Title -->
+                                <TextBlock Grid.Row="1" Text="{Binding Title}"
+                                           Foreground="White" FontWeight="Bold"
+                                           TextTrimming="CharacterEllipsis" TextAlignment="Left"
+                                           Margin="0,5,0,0"/>
+
+                                <!-- Badges Row -->
+                                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                                    <Border Background="#333333" CornerRadius="4" Padding="4,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding BadgeText}" Foreground="#4CC9F0" FontSize="10" FontWeight="Bold"/>
+                                    </Border>
+                                    <Border Background="{Binding StatusColor}" CornerRadius="4" Padding="4,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding StatusText}" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Date and Progress -->
+                                <StackPanel Grid.Row="3" Margin="0,2,0,0" Spacing="3">
+                                    <TextBlock Text="{Binding FormattedDate}" FontSize="10" Foreground="#AAAAAA"/>
+                                    <ProgressBar Height="4"
+                                                 Minimum="0" Maximum="100"
+                                                 Value="{Binding Progress}"
+                                                 Foreground="{Binding StatusColor}"
+                                                 Background="#333333"
+                                                 BorderThickness="0"
+                                                 CornerRadius="2"/>
+                                </StackPanel>
                             </Grid>
                         </Button>
                     </DataTemplate>
