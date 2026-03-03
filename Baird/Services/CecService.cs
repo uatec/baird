@@ -109,18 +109,23 @@ namespace Baird.Services
                         Timestamp = DateTime.Now
                     });
 
-                    // Fire typed power-state events based on parsed command
-                    if (commandType.Contains("Standby"))
+                    // Fire typed power-state events only for incoming traffic.
+                    // Outgoing lines (<<) are cec-client's own auto-responses to protocol queries;
+                    // treating them as events would create a feedback loop where our own
+                    // "Report Power Status: On" reply re-triggers TvPowerOn indefinitely.
+                    if (line.Contains(">>"))
                     {
-                        Console.WriteLine("[CecService] TV standby detected.");
-                        TvStandby?.Invoke(this, EventArgs.Empty);
-                    }
-                    else if (commandType.Contains("Image View On")
-                          || commandType.Contains("Text View On")
-                          || (commandType.Contains("Report Power Status") && commandType.Contains(": On")))
-                    {
-                        Console.WriteLine("[CecService] TV power on detected.");
-                        TvPowerOn?.Invoke(this, EventArgs.Empty);
+                        if (commandType.Contains("Standby"))
+                        {
+                            Console.WriteLine("[CecService] TV standby detected.");
+                            TvStandby?.Invoke(this, EventArgs.Empty);
+                        }
+                        else if (commandType.Contains("Image View On")
+                              || commandType.Contains("Text View On"))
+                        {
+                            Console.WriteLine("[CecService] TV power on detected.");
+                            TvPowerOn?.Invoke(this, EventArgs.Empty);
+                        }
                     }
                 }
             }
