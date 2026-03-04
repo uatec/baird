@@ -480,11 +480,23 @@ namespace Baird.ViewModels
                         return int.MaxValue;
                     })
                     .ToList();
+
+                _ = RefreshEpgForAllChannelsAsync();
             }
             catch (System.Exception ex)
             {
                 System.Console.WriteLine($"[MainViewModel] Error refreshing channels: {ex.Message}");
             }
+        }
+
+        private async System.Threading.Tasks.Task RefreshEpgForAllChannelsAsync()
+        {
+            var channels = AllChannels;
+            await System.Threading.Tasks.Task.WhenAll(channels.Select(async channel =>
+            {
+                var name = await _epgService.GetCurrentProgrammeNameAsync(channel.Id);
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => channel.CurrentProgrammeName = name);
+            }));
         }
 
         public void SelectNextChannel()

@@ -39,7 +39,7 @@
                            CommandParameter="{Binding CommandParameter, RelativeSource={RelativeSource AncestorType=controls:MediaTileControl}}"
                            LongPressCommand="{Binding LongPressCommand, RelativeSource={RelativeSource AncestorType=controls:MediaTileControl}}"
                            LongPressCommandParameter="{Binding LongPressCommandParameter, RelativeSource={RelativeSource AncestorType=controls:MediaTileControl}}">
-        <Grid RowDefinitions="*, Auto, Auto">
+        <Grid RowDefinitions="*, Auto, Auto, Auto">
             <!-- Image & Progress Overlay -->
             <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="#333333">
                 <Grid>
@@ -127,8 +127,18 @@
                             TextAlignment="Left"/>
             </StackPanel>
             
-            <!-- Row 2: Source Badge & Details -->
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+            <!-- Row 2: Current Programme (EPG) -->
+            <TextBlock Grid.Row="2"
+                       Text="{Binding CurrentProgrammeName}"
+                       Foreground="#DDDDDD"
+                       FontSize="12"
+                       FontStyle="Italic"
+                       TextTrimming="CharacterEllipsis"
+                       Margin="0,2,0,0"
+                       IsVisible="{Binding CurrentProgrammeName, Converter={StaticResource StringVisibilityConverter}}"/>
+
+            <!-- Row 3: Source Badge & Details -->
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
                 <Border Background="#333333" CornerRadius="4" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding Source, Converter={StaticResource StringVisibilityConverter}}">
                     <TextBlock Text="{Binding Source}" Foreground="#4CC9F0" FontSize="10" FontWeight="Bold"/>
                 </Border>

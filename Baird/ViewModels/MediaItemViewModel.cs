@@ -57,6 +57,13 @@ namespace Baird.ViewModels
         public bool HasDuration => _data.HasDuration;
 
         // UI state properties - reactive
+        private string? _currentProgrammeName;
+        public string? CurrentProgrammeName
+        {
+            get => _currentProgrammeName;
+            set => this.RaiseAndSetIfChanged(ref _currentProgrammeName, value);
+        }
+
         public HistoryItem? History
         {
             get => _history;
