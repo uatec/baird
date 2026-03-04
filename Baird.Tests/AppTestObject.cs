@@ -42,7 +42,7 @@ namespace Baird.Tests
             var jellyseerrService = new MockJellyseerrService();
             var screensaverService = new ScreensaverService();
 
-            ViewModel = new MainViewModel(null, dataService, searchHistoryService, screensaverService, cecService, jellyseerrService);
+            ViewModel = new MainViewModel(null, dataService, searchHistoryService, screensaverService, cecService, jellyseerrService, new MockEpgService());
 
             // Connect the View to the ViewModel
             TabNavigationControl = new TabNavigationControl

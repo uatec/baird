@@ -9,6 +9,10 @@ namespace Baird.Tests.Mocks
         public event EventHandler<CecCommandLoggedEventArgs>? CommandLogged;
         public event EventHandler? TvStandby;
         public event EventHandler? TvPowerOn;
+        public event EventHandler? InputLost;
+        public event EventHandler? InputRegained;
+
+        public bool IsAvailable => false;
 
         public void SimulateTvStandby() => TvStandby?.Invoke(this, EventArgs.Empty);
         public void SimulateTvPowerOn() => TvPowerOn?.Invoke(this, EventArgs.Empty);
