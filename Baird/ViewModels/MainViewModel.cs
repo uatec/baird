@@ -145,10 +145,6 @@ namespace Baird.ViewModels
 
             IsVideoHudVisible = true;
 
-            IsSubtitlesEnabled = NativeUtils.GetCapsLockState();
-
-            // ProgrammeChildren = new System.Collections.ObjectModel.ObservableCollection<Baird.Services.MediaItem>();
-
             var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
             _currentVersion = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0";
             AppVersion = _currentVersion;

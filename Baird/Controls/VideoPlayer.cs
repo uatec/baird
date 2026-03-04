@@ -188,7 +188,7 @@ namespace Baird.Controls
                     e.Handled = true;
                     break;
 
-                case Avalonia.Input.Key.CapsLock:
+                case Avalonia.Input.Key.Apps:
                     IsSubtitlesEnabled = !IsSubtitlesEnabled;
                     UserActivity?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;

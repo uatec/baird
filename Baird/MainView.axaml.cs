@@ -518,7 +518,7 @@ namespace Baird
             Console.WriteLine($"[MainView] Key: {e.Key}");
 
             // Back/Esc Trigger
-            if (e.Key == Key.Escape || e.Key == Key.BrowserBack)
+            if (e.Key == Key.Escape || e.Key == Key.)
             {
                 HandleBackTrigger(e);
                 e.Handled = true; // Always consume Back/Esc
