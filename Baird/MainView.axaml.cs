@@ -521,10 +521,18 @@ namespace Baird
             Console.WriteLine($"[MainView] Key: {e.Key}");
 
             // Back/Esc Trigger
-            if (e.Key == Key.Escape || e.Key == Key.BrowserBack)
+            if (e.Key == Key.Escape || e.Key == Key.)
             {
                 HandleBackTrigger(e);
                 e.Handled = true; // Always consume Back/Esc
+                return;
+            }
+
+            // HomePage key — close all menus and return to video player
+            if (e.Key == Key.BrowserHome)
+            {
+                _viewModel.GoHome();
+                e.Handled = true;
                 return;
             }
 
