@@ -283,6 +283,13 @@ namespace Baird.ViewModels
             PopViewModel();
         }
 
+        public void GoHome()
+        {
+            Console.WriteLine("[Navigation] GoHome — clearing navigation stack and returning to video player.");
+            NavigationHistory.Clear();
+            PushViewModel(new ShowingVideoPlayerViewModel());
+        }
+
         public Stack<ReactiveObject> NavigationHistory { get; } = new();
 
         private ReactiveObject? _currentPage;
