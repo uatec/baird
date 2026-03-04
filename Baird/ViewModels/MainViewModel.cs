@@ -61,11 +61,17 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _appVersion, value);
         }
 
+        private string? _currentProgrammeName;
+        public string? CurrentProgrammeName
+        {
+            get => _currentProgrammeName;
+            set => this.RaiseAndSetIfChanged(ref _currentProgrammeName, value);
+        }
+
         private string _currentVersion = "v0.0.0";
         private readonly VersionCheckService _versionCheckService;
-        // Actually MainViewModel uses HistoryService in PlayItem.
-        // Let's keep a private reference to DataService.
         private readonly IDataService _dataService;
+        private readonly IEpgService _epgService;
 
         // Track current episode list for auto-play next episode
         private System.Collections.Generic.List<MediaItemViewModel>? _currentEpisodeList;
@@ -79,9 +85,10 @@ namespace Baird.ViewModels
 
         public ScreensaverViewModel Screensaver { get; }
 
-        public MainViewModel(IConfiguration configuration, IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService, IJellyseerrService jellyseerrService)
+        public MainViewModel(IConfiguration configuration, IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService, IJellyseerrService jellyseerrService, IEpgService epgService)
         {
             _dataService = dataService;
+            _epgService = epgService;
             _versionCheckService = new VersionCheckService();
             Screensaver = new ScreensaverViewModel(screensaverService);
             // HistoryService = historyService; // Remove property? 
@@ -235,6 +242,14 @@ namespace Baird.ViewModels
             IsVideoHudVisible = true;
             _hudTimer.Stop();
             _hudTimer.Start();
+            if (ActiveItem?.IsLive == true)
+                _ = RefreshEpgAsync(ActiveItem);
+        }
+
+        private async Task RefreshEpgAsync(MediaItemViewModel item)
+        {
+            var name = await _epgService.GetCurrentProgrammeNameAsync(item.Id);
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => CurrentProgrammeName = name);
         }
 
         public void PlayItem(MediaItemViewModel item)
@@ -510,6 +525,9 @@ namespace Baird.ViewModels
         // Note: Actual playback starts because ActiveItem is bound in View.
         private void ActivateChannel(MediaItemViewModel item, TimeSpan? resumeTime = null)
         {
+            if (!item.IsLive)
+                CurrentProgrammeName = null;
+
             ActiveItem = item;
             // ActiveItem = new ActiveMedia... 
             // We use MediaItem directly now.

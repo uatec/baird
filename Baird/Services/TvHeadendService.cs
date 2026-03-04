@@ -10,7 +10,7 @@ using Baird.Models;
 
 namespace Baird.Services
 {
-    public class TvHeadendService : IMediaProvider
+    public class TvHeadendService : IMediaProvider, IEpgService
     {
         public string Name => "TvHeadend";
         private readonly HttpClient _httpClient;
@@ -18,11 +18,14 @@ namespace Baird.Services
         private readonly string _username;
         private readonly string _password;
 
-        // Cache fields
+        // Channel listing cache
         private IEnumerable<MediaItemData>? _cachedListing;
         private DateTime _cacheExpiry = DateTime.MinValue;
         private readonly SemaphoreSlim _cacheLock = new SemaphoreSlim(1, 1);
         private readonly TimeSpan _cacheTimeout = TimeSpan.FromSeconds(60);
+
+        // EPG cache: channelId -> (programme title, cache expiry)
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string? Title, DateTime Expiry)> _epgCache = new();
 
         public TvHeadendService(Microsoft.Extensions.Configuration.IConfiguration config)
         {
@@ -162,6 +165,43 @@ namespace Baird.Services
         public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
         {
             return Task.FromResult(Enumerable.Empty<MediaItemData>());
+        }
+
+        public async Task<string?> GetCurrentProgrammeNameAsync(string channelId)
+        {
+            if (_epgCache.TryGetValue(channelId, out var cached) && DateTime.UtcNow < cached.Expiry)
+                return cached.Title;
+
+            try
+            {
+                var url = $"api/epg/events/grid?channel={channelId}&mode=now&limit=1";
+                var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+
+                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var grid = JsonSerializer.Deserialize(json, TvHeadendJsonContext.Default.TvHeadendEpgGrid);
+
+                var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var currentEvent = grid?.Entries?.FirstOrDefault(e => e.Start <= nowUnix && nowUnix < e.Stop)
+                    ?? grid?.Entries?.FirstOrDefault();
+
+                var title = string.IsNullOrWhiteSpace(currentEvent?.Title) ? null : currentEvent.Title;
+
+                // Cache until the programme ends or for 60 seconds, whichever is sooner
+                var cacheExpiry = currentEvent != null && currentEvent.Stop > nowUnix
+                    ? new[] { DateTimeOffset.FromUnixTimeSeconds(currentEvent.Stop).UtcDateTime, DateTime.UtcNow.AddSeconds(60) }.Min()
+                    : DateTime.UtcNow.AddSeconds(30);
+
+                _epgCache[channelId] = (title, cacheExpiry);
+                Console.WriteLine($"[TvHeadendService] EPG for {channelId}: '{title}' (expires {cacheExpiry:HH:mm:ss})");
+                return title;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TvHeadendService] EPG fetch failed for {channelId}: {ex.Message}");
+                _epgCache[channelId] = (null, DateTime.UtcNow.AddSeconds(30));
+                return null;
+            }
         }
 
         private string GetChannelImageUrl(TvHeadendEntry channel)
@@ -362,7 +402,29 @@ namespace Baird.Services
         public string IconPublicUrl { get; set; } = null!;
     }
 
+    public class TvHeadendEpgGrid
+    {
+        [JsonPropertyName("entries")]
+        public TvHeadendEpgEvent[] Entries { get; set; } = Array.Empty<TvHeadendEpgEvent>();
+
+        [JsonPropertyName("totalCount")]
+        public int TotalCount { get; set; }
+    }
+
+    public class TvHeadendEpgEvent
+    {
+        [JsonPropertyName("title")]
+        public string Title { get; set; } = "";
+
+        [JsonPropertyName("start")]
+        public long Start { get; set; }
+
+        [JsonPropertyName("stop")]
+        public long Stop { get; set; }
+    }
+
     [JsonSerializable(typeof(TvHeadendGrid))]
+    [JsonSerializable(typeof(TvHeadendEpgGrid))]
     internal partial class TvHeadendJsonContext : JsonSerializerContext
     {
     }

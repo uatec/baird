@@ -18,6 +18,7 @@ namespace Baird
     {
         private MainViewModel _viewModel;
         private List<IMediaProvider> _providers = new();
+        private IEpgService _epgService = null!;
         private ICecService _cecService;
         private IHistoryService _historyService;
         private IDataService _dataService;
@@ -43,7 +44,9 @@ namespace Baird
         {
             InitializeComponent();
 
-            _providers.Add(new TvHeadendService(config));
+            var tvh = new TvHeadendService(config);
+            _providers.Add(tvh);
+            _epgService = tvh;
             _providers.Add(new JellyfinService(config));
             _providers.Add(new BbcIPlayerService());
             _providers.Add(new YouTubeService());
@@ -61,7 +64,7 @@ namespace Baird
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
 
-            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService);
+            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService);
 
             DataContext = _viewModel;
 
