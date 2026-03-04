@@ -95,6 +95,7 @@ namespace Baird
                 {
                     // Global Input Handler (Tunneling) to catch wake-up events
                     topLevel.AddHandler(InputElement.KeyDownEvent, OnGlobalKeyDown, RoutingStrategies.Tunnel);
+                    topLevel.AddHandler(InputElement.KeyUpEvent, OnGlobalKeyUp, RoutingStrategies.Tunnel);
                     topLevel.AddHandler(InputElement.PointerPressedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
                     topLevel.AddHandler(InputElement.PointerMovedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
 
@@ -434,6 +435,37 @@ namespace Baird
 
                 // Consume the event so it doesn't trigger search, pause, quit, etc.
                 e.Handled = true;
+                return;
+            }
+
+            // Remap TV remote OK (KEY_SELECT) → Enter before any control sees it.
+            // KeyEventArgs.Key is init-only, so we consume the original and re-raise as Enter.
+            if (e.Key == Key.Select)
+            {
+                e.Handled = true;
+                (e.Source as Interactive)?.RaiseEvent(new KeyEventArgs
+                {
+                    RoutedEvent = InputElement.KeyDownEvent,
+                    Key = Key.Enter,
+                    KeyModifiers = e.KeyModifiers,
+                    Source = e.Source,
+                });
+            }
+        }
+
+        private void OnGlobalKeyUp(object? sender, KeyEventArgs e)
+        {
+            // Mirror the KeyDown remap so MediaButton's long-press KeyUp handling sees Key.Enter.
+            if (e.Key == Key.Select)
+            {
+                e.Handled = true;
+                (e.Source as Interactive)?.RaiseEvent(new KeyEventArgs
+                {
+                    RoutedEvent = InputElement.KeyUpEvent,
+                    Key = Key.Enter,
+                    KeyModifiers = e.KeyModifiers,
+                    Source = e.Source,
+                });
             }
         }
 
