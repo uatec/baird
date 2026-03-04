@@ -525,6 +525,14 @@ namespace Baird
                 return;
             }
 
+            // HomePage key — close all menus and return to video player
+            if (e.Key == Key.BrowserHome)
+            {
+                _viewModel.GoHome();
+                e.Handled = true;
+                return;
+            }
+
             // Q key is now handled by VideoPlayer
 
 
