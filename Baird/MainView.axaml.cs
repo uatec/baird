@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Baird.Services;
 using Baird.ViewModels;
 using System;
@@ -23,6 +24,9 @@ namespace Baird
         private IHistoryService _historyService;
         private IDataService _dataService;
         private IJellyseerrService _jellyseerrService;
+        private ISpeechToTextService _speechService = null!;
+        private bool _isListeningForVoice = false;
+        private TextBox? _voiceTargetTextBox;
 
         // Screensaver & Idle
         private ScreensaverService? _screensaverService;
@@ -33,6 +37,14 @@ namespace Baird
         private DispatcherTimer? _inputUnblockFallbackTimer; // Fallback unblock when TV switches silently (no Request Active Source)
         private DateTime _lastCecAssert = DateTime.MinValue;
         private static readonly TimeSpan CecAssertCooldown = TimeSpan.FromSeconds(30);
+
+        // Voice command key — loaded from config (VOICE_COMMAND_KEY).
+        // Avalonia's Key enum integers do NOT correspond to evdev keycodes; they go through
+        // XKB → keysym → Avalonia Key. Because KEY_VOICECOMMAND (evdev 0x246) is unmapped in
+        // most XKB tables it may arrive as Key.None or an unexpected value.
+        // To discover the real value: set BAIRD_LOG_KEYS=true in config.ini and watch the console
+        // while pressing the voice button, then set VOICE_COMMAND_KEY to the logged integer.
+        private Key _voiceCommandKey = Key.None;
 
         public MainView()
         {
@@ -60,6 +72,15 @@ namespace Baird
 
             _screensaverService = new ScreensaverService();
             _jellyseerrService = new JellyseerrService(config);
+            _speechService = new WhisperSpeechToTextService(config);
+
+            // Load voice command key from config — cast the integer value directly to Key.
+            // Default 0 (Key.None) means voice command is disabled until configured.
+            if (int.TryParse(config["VOICE_COMMAND_KEY"], out int vkCode) && vkCode != 0)
+                _voiceCommandKey = (Key)vkCode;
+            else
+                Console.WriteLine("[MainView] VOICE_COMMAND_KEY not configured. Voice-to-text is disabled. " +
+                                  "Set BAIRD_LOG_KEYS=true and press the voice button to find the right value.");
 
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
@@ -441,6 +462,25 @@ namespace Baird
                 return;
             }
 
+            // Voice command: hold to record, release to transcribe into the search box.
+            // Only activates when focus is on the SearchBox inside OmniSearchControl or SeerrchControl.
+            if (_voiceCommandKey != Key.None && e.Key == _voiceCommandKey && !_isListeningForVoice)
+            {
+                var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
+                var focused = topLevel?.FocusManager?.GetFocusedElement() as TextBox;
+                if (focused?.Name == "SearchBox" &&
+                    (focused.FindAncestorOfType<Baird.Controls.OmniSearchControl>() != null ||
+                     focused.FindAncestorOfType<Baird.Controls.SeerrchControl>() != null))
+                {
+                    _voiceTargetTextBox = focused;
+                    _isListeningForVoice = true;
+                    _ = _speechService.StartRecordingAsync();
+                    Console.WriteLine("[MainView] Voice command: recording started.");
+                    e.Handled = true;
+                    return;
+                }
+            }
+
             // Remap TV remote OK (KEY_SELECT) → Enter before any control sees it.
             // KeyEventArgs.Key is init-only, so we consume the original and re-raise as Enter.
             if (e.Key == Key.Select)
@@ -458,6 +498,30 @@ namespace Baird
 
         private void OnGlobalKeyUp(object? sender, KeyEventArgs e)
         {
+            // Voice command released: stop recording and transcribe into the captured TextBox.
+            if (_voiceCommandKey != Key.None && e.Key == _voiceCommandKey && _isListeningForVoice)
+            {
+                _isListeningForVoice = false;
+                var target = _voiceTargetTextBox;
+                _voiceTargetTextBox = null;
+                e.Handled = true;
+
+                _ = Task.Run(async () =>
+                {
+                    var transcript = await _speechService.StopAndTranscribeAsync();
+                    if (transcript != null && target != null)
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            target.Text = (target.Text ?? string.Empty) + transcript;
+                            target.CaretIndex = target.Text.Length;
+                            Console.WriteLine($"[MainView] Voice transcript appended: \"{transcript}\"");
+                        });
+                    }
+                });
+                return;
+            }
+
             // Mirror the KeyDown remap so MediaButton's long-press KeyUp handling sees Key.Enter.
             if (e.Key == Key.Select)
             {
@@ -517,8 +581,8 @@ namespace Baird
             // Reset HUD Timer on any interaction
             _viewModel.ResetHudTimer();
 
-            // Debug key press
-            Console.WriteLine($"[MainView] Key: {e.Key}");
+            // Key diagnostics — set BAIRD_LOG_KEYS=true in config.ini to find voice button key codes.
+            Console.WriteLine($"[MainView] Key: {e.Key} ({(int)e.Key})");
 
             // Back/Esc Trigger
             if (e.Key == Key.Escape || e.Key == Key.BrowserBack)

@@ -16,8 +16,14 @@ case "${OS}" in
             exit 1
         fi
         
-        echo "Installing mpv..."
-        brew install mpv
+        echo "Installing mpv and audio recording tools..."
+        brew install mpv sox
+        
+        echo ""
+        echo "NOTE: For voice search, place a Whisper GGML model file and set"
+        echo "      WHISPER_MODEL_PATH in your config.ini."
+        echo "      Download from: https://huggingface.co/ggerganov/whisper.cpp/tree/main"
+        echo "      e.g. ggml-base.en.bin is a good starting point."
         
         echo "Dependencies installed successfully on macOS."
         ;;
@@ -40,8 +46,15 @@ case "${OS}" in
             libegl-mesa0 \
             libegl1 \
             libicu-dev \
-            libmpv-dev
+            libmpv-dev \
+            alsa-utils
             # libmpv1 \
+        
+        echo ""
+        echo "NOTE: For voice search, place a Whisper GGML model file and set"
+        echo "      WHISPER_MODEL_PATH in your config.ini."
+        echo "      Download from: https://huggingface.co/ggerganov/whisper.cpp/tree/main"
+        echo "      e.g. ggml-base.en.bin is a good starting point."
         
         echo "Dependencies installed successfully on Linux."
         ;;
