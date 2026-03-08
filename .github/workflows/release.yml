@@ -69,6 +69,7 @@ jobs:
           files: |
             out/Baird-linux-arm64.zip
           body: ${{ steps.version.outputs.changelog }}
+          generate_release_notes: true
 
       - name: Calculate SHA256
         id: sha256
