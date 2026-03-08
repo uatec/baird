@@ -34,6 +34,7 @@ namespace Baird
         private bool _wasPausedForScreensaver = false; // Track if we actively paused for screensaver
         private bool _pausedForCecStandby = false; // Track if we auto-paused because TV went to standby
         private bool _inputsBlocked = false; // Inputs are blocked when TV is off or on a different input
+        private readonly bool _inputLockDisabled = true; // Set BAIRD_DISABLE_INPUT_LOCK=true to bypass input blocking (for debugging flaky CEC lockout)
         private DispatcherTimer? _inputUnblockFallbackTimer; // Fallback unblock when TV switches silently (no Request Active Source)
         private DateTime _lastCecAssert = DateTime.MinValue;
         private static readonly TimeSpan CecAssertCooldown = TimeSpan.FromSeconds(30);
@@ -81,6 +82,11 @@ namespace Baird
             else
                 Console.WriteLine("[MainView] VOICE_COMMAND_KEY not configured. Voice-to-text is disabled. " +
                                   "Set BAIRD_LOG_KEYS=true and press the voice button to find the right value.");
+
+            _inputLockDisabled = Environment.GetEnvironmentVariable("BAIRD_DISABLE_INPUT_LOCK")
+                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
+            if (_inputLockDisabled)
+                Console.WriteLine("[MainView] WARNING: BAIRD_DISABLE_INPUT_LOCK=true — keyboard lockout is disabled.");
 
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
@@ -247,7 +253,7 @@ namespace Baird
                     Dispatcher.UIThread.Post(() =>
                     {
                         Console.WriteLine("[MainView] TV standby via CEC — blocking inputs.");
-                        _inputsBlocked = true;
+                        if (!_inputLockDisabled) _inputsBlocked = true;
 
                         var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
                         var player = videoLayer?.GetPlayer();
@@ -273,7 +279,7 @@ namespace Baird
                     Dispatcher.UIThread.Post(() =>
                     {
                         Console.WriteLine("[MainView] Input lost via CEC — blocking inputs.");
-                        _inputsBlocked = true;
+                        if (!_inputLockDisabled) _inputsBlocked = true;
                     });
                 };
 
@@ -304,7 +310,7 @@ namespace Baird
                         Dispatcher.UIThread.Post(() =>
                         {
                             Console.WriteLine("[MainView] CEC available — blocking inputs until active source confirmed.");
-                            _inputsBlocked = true;
+                            if (!_inputLockDisabled) _inputsBlocked = true;
                             _ = _cecService.ChangeInputToThisDeviceAsync();
                         });
                     }
