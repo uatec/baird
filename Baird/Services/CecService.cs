@@ -65,9 +65,8 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                // Silently fail if cec-client is missing or crashes
-                // Console.WriteLine($"[CecService] Failed to start cec-client: {ex.Message}");
-                // LogCommand("Start cec-client", $"Error: {ex.Message}", false);
+                Console.WriteLine($"[CecService] Failed to start cec-client: {ex.Message}");
+                LogCommand("Start cec-client", $"Error: {ex.Message}", false);
                 _cecProcess = null;
             }
         }
@@ -78,7 +77,7 @@ namespace Baird.Services
             {
                 while (!token.IsCancellationRequested)
                 {
-                    var line = await reader.ReadLineAsync();
+                    var line = await reader.ReadLineAsync(token);
                     if (line == null) break; // End of stream
                     if (string.IsNullOrWhiteSpace(line)) continue;
 

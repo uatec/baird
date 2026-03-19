@@ -364,12 +364,15 @@ namespace Baird.Mpv
             }
             pointers[args.Length] = IntPtr.Zero;
 
-            LibMpv.mpv_command(_mpvHandle, pointers);
+            int result = LibMpv.mpv_command(_mpvHandle, pointers);
 
             for (int i = 0; i < args.Length; i++)
             {
                 Marshal.FreeCoTaskMem(pointers[i]);
             }
+
+            if (result < 0)
+                Console.WriteLine($"[MpvPlayer] Command failed (error {result}): {cmdString}");
         }
 
         public void SetPropertyString(string name, string value)

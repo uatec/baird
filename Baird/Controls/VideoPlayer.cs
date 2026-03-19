@@ -17,7 +17,6 @@ namespace Baird.Controls
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private Avalonia.Threading.DispatcherTimer _loadTimeoutTimer;
-        private bool _isScanning;
         private double _liveDelaySeconds = 0;  // accumulated behind-live time for the current live source
         private string _lastLiveSource = "";   // detect channel changes so we can reset the delay
 
@@ -225,12 +224,6 @@ namespace Baird.Controls
         private void PerformScan(double seconds)
         {
             UserActivity?.Invoke(this, EventArgs.Empty);
-
-            // If not already scanning and currently playing, pause first
-            if (!_isScanning)
-            {
-                _isScanning = true;
-            }
 
             // For live streams, track the seek offset so the behind-live bar updates.
             if (IsLive)

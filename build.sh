@@ -11,7 +11,7 @@ rm -rf "$OUTPUT_DIR"
 
 echo "Building for Raspberry Pi (linux-arm64)..."
 dotnet publish Baird/Baird.csproj \
-    -c Debug \
+    -c Release \
     -r linux-arm64 \
     --self-contained true \
     -p:PublishSingleFile=true \

@@ -15,7 +15,7 @@
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.11" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
     <PackageReference Include="Avalonia.LinuxFramebuffer" Version="11.3.11" />
-    <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.9" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.11" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
     <PackageReference Include="Jellyfin.Sdk" Version="2025.10.21" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.3" />

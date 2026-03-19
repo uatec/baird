@@ -24,6 +24,7 @@ namespace Baird.Services
         private string _accessToken = "";
         private string _userId = "";
         private bool _authenticationAttempted = false;
+        private readonly string _deviceId;
 
         public bool IsAuthenticated => !string.IsNullOrEmpty(_accessToken);
 
@@ -39,6 +40,10 @@ namespace Baird.Services
             _username = username;
             _password = password; // Store for lazy authentication
 
+            // Generate a stable DeviceId so Jellyfin sees a single session rather than
+            // creating orphaned sessions on every launch / auth call.
+            _deviceId = LoadOrCreateDeviceId();
+
             // 1. Setup Request Adapter with Debug Logging
             var authProvider = new AnonymousAuthenticationProvider();
 
@@ -51,7 +56,7 @@ namespace Baird.Services
             _requestAdapter.BaseUrl = _serverUrl;
 
             // Set default client headers for Jellyfin (required for Auth)
-            var authHeader = $"MediaBrowser Client=\"Baird Media Player\", Device=\"Baird Device\", DeviceId=\"{Guid.NewGuid()}\", Version=\"1.0.0\"";
+            var authHeader = $"MediaBrowser Client=\"Baird Media Player\", Device=\"Baird Device\", DeviceId=\"{_deviceId}\", Version=\"1.0.0\"";
 
             // Note: HttpClient DefaultRequestHeaders are persistent.
             if (!_httpClient.DefaultRequestHeaders.Contains("X-Emby-Authorization"))
@@ -115,11 +120,33 @@ namespace Baird.Services
 
             // 3. Update Headers with Token
             _httpClient.DefaultRequestHeaders.Remove("X-Emby-Authorization");
-            // Set default client headers for Jellyfin (required for Auth)
-            var authHeader = $"MediaBrowser Client=\"Baird Media Player\", Device=\"Baird Device\", DeviceId=\"{Guid.NewGuid()}\", Version=\"1.0.0\"";
+            var authHeader = $"MediaBrowser Client=\"Baird Media Player\", Device=\"Baird Device\", DeviceId=\"{_deviceId}\", Version=\"1.0.0\"";
             var authHeaderWithToken = $"{authHeader}, Token=\"{_accessToken}\"";
             _httpClient.DefaultRequestHeaders.Add("X-Emby-Authorization", authHeaderWithToken);
             _httpClient.DefaultRequestHeaders.Add("X-Emby-Token", _accessToken);
+        }
+
+        private static string LoadOrCreateDeviceId()
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".baird");
+            var path = Path.Combine(dir, "device_id");
+            try
+            {
+                if (File.Exists(path))
+                {
+                    var existing = File.ReadAllText(path).Trim();
+                    if (Guid.TryParse(existing, out _))
+                        return existing;
+                }
+                Directory.CreateDirectory(dir);
+                var id = Guid.NewGuid().ToString();
+                File.WriteAllText(path, id);
+                return id;
+            }
+            catch
+            {
+                return Guid.NewGuid().ToString();
+            }
         }
 
         public async Task<IEnumerable<MediaItemData>> GetListingAsync()
