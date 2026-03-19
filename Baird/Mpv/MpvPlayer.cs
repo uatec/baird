@@ -45,22 +45,13 @@ namespace Baird.Mpv
                 throw new Exception("Failed to create mpv context");
 
             // Hardware acceleration configuration
-            // On Raspberry Pi (Linux ARM64), use the RPi-specific hwdec for VideoCore decoding.
-            // On other platforms, use "auto-copy" which decodes in hardware and copies frames
-            // back to system memory — necessary when embedding mpv in Avalonia/OpenGL to avoid
-            // DRM/KMS overlay issues that might bypass the UI.
-            // If the RPi hwdec mode is unavailable (e.g. missing firmware/kernel support), mpv
-            // will log a warning and fall back to software decoding automatically.
-            string hwdec = OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-                ? "rpi"
-                : "auto-copy";
+            // "auto-copy" lets mpv pick the best available backend (vaapi on Pi 5's
+            // VideoCore VII / V3D Mesa driver, or other platform-specific decoders)
+            // and copies frames back to system memory — necessary when embedding mpv
+            // in Avalonia/OpenGL to avoid DRM/KMS overlay issues that might bypass the UI.
+            string hwdec = "auto-copy";
             Console.WriteLine($"[MpvPlayer] Hardware decoding mode: {hwdec}");
-            int hwdecResult = LibMpv.mpv_set_property_string(_mpvHandle, "hwdec", hwdec);
-            if (hwdecResult < 0)
-            {
-                Console.WriteLine($"[MpvPlayer] hwdec={hwdec} rejected (error {hwdecResult}), falling back to auto-copy");
-                SetPropertyString("hwdec", "auto-copy");
-            }
+            SetPropertyString("hwdec", hwdec);
 
             // "yes" for deinterlace is critical for 1080i50 broadcasts (UK Satellite/Terrestrial).
             SetPropertyString("deinterlace", "yes");
