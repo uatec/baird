@@ -148,6 +148,9 @@ namespace Baird.Services
             { 0x91, "Active Source" }
         };
 
+        private static readonly Regex TrafficRegex = new(@"(?:TRAFFIC:.*)?(?:>>|<<)\s+([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2})*)", RegexOptions.Compiled);
+        private static readonly Regex RawHexRegex = new(@"^[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2})*$", RegexOptions.Compiled);
+
         private static string GetAddressName(int address) =>
             LogicalAddresses.TryGetValue(address, out var name) ? $"{name} ({address:X})" : $"Unknown ({address:X})";
 
@@ -157,22 +160,15 @@ namespace Baird.Services
 
             // Handle "TRAFFIC: [timestamp] >> xx:xx:xx..."
             // We want to extract the hex part
-            var trafficMatch = Regex.Match(line, @"(?:TRAFFIC:.*)?(?:>>|<<)\s+([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2})*)");
+            var trafficMatch = TrafficRegex.Match(line);
             if (trafficMatch.Success)
             {
                 var hexString = trafficMatch.Groups[1].Value;
-                // If it's just a single byte (POLL), handling might be slightly different but logic should hold
-                if (!hexString.Contains(':') && hexString.Length == 2)
-                {
-                    // It's a POLL or single byte
-                    return $"{line}  [{ParsePacket(hexString)}]";
-                }
-
                 return $"{line}  [{ParsePacket(hexString)}]";
             }
 
             // Try matching raw hex string if the whole line is traffic
-            if (Regex.IsMatch(line.Trim(), @"^[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2})*$"))
+            if (RawHexRegex.IsMatch(line.Trim()))
             {
                 return $"{line}  [{ParsePacket(line.Trim())}]";
             }

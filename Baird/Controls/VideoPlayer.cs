@@ -17,7 +17,6 @@ namespace Baird.Controls
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private Avalonia.Threading.DispatcherTimer _loadTimeoutTimer;
-        private bool _isScanning;
         private double _liveDelaySeconds = 0;  // accumulated behind-live time for the current live source
         private string _lastLiveSource = "";   // detect channel changes so we can reset the delay
 
@@ -225,12 +224,6 @@ namespace Baird.Controls
         private void PerformScan(double seconds)
         {
             UserActivity?.Invoke(this, EventArgs.Empty);
-
-            // If not already scanning and currently playing, pause first
-            if (!_isScanning)
-            {
-                _isScanning = true;
-            }
 
             // For live streams, track the seek offset so the behind-live bar updates.
             if (IsLive)
@@ -583,46 +576,53 @@ namespace Baird.Controls
 
         public async void SaveProgress(TimeSpan? positionOverride = null)
         {
-            if (DataService == null || _currentMediaItem == null)
+            try
             {
-                Console.WriteLine($"[VideoPlayer] SaveProgress skipped. Service={DataService != null}, Item={_currentMediaItem?.Name}");
-                return;
-            }
-
-            // Check if we should save history
-            if (IsLive)
-            {
-                // For live streams, check if we've been watching for at least 10 seconds this session
-                var timeWatched = DateTime.Now - _currentVideoStartTime;
-                if (timeWatched.TotalSeconds < 10)
+                if (DataService == null || _currentMediaItem == null)
                 {
-                    Console.WriteLine($"[VideoPlayer] Skipping history save for live stream. Watched only {timeWatched.TotalSeconds:F1}s (needs 10s)");
+                    Console.WriteLine($"[VideoPlayer] SaveProgress skipped. Service={DataService != null}, Item={_currentMediaItem?.Name}");
                     return;
                 }
-            }
-            else
-            {
-                // For VOD, check if we are at least 10 seconds into the video
-                // OR if we have watched for at least 10 seconds (to catch people who skip ahead immediately?)
-                // User said: "only add something to history if we have progressed more than 10 seconds in to the video."
-                // This implies position > 10s.
-                // However, "this prevents channel hopping from being added to history" usually implies time spent watching.
-                // But the user clarified: "for live streams, that's more than 10 seconds playback time elapsed this session."
-                // implying for VOD it denotes position.
 
-                var currentPos = positionOverride ?? Position;
-                if (currentPos.TotalSeconds < 10)
+                // Check if we should save history
+                if (IsLive)
                 {
-                    Console.WriteLine($"[VideoPlayer] Skipping history save for VOD. Position {currentPos.TotalSeconds:F1}s < 10s");
-                    return;
+                    // For live streams, check if we've been watching for at least 10 seconds this session
+                    var timeWatched = DateTime.Now - _currentVideoStartTime;
+                    if (timeWatched.TotalSeconds < 10)
+                    {
+                        Console.WriteLine($"[VideoPlayer] Skipping history save for live stream. Watched only {timeWatched.TotalSeconds:F1}s (needs 10s)");
+                        return;
+                    }
                 }
+                else
+                {
+                    // For VOD, check if we are at least 10 seconds into the video
+                    // OR if we have watched for at least 10 seconds (to catch people who skip ahead immediately?)
+                    // User said: "only add something to history if we have progressed more than 10 seconds in to the video."
+                    // This implies position > 10s.
+                    // However, "this prevents channel hopping from being added to history" usually implies time spent watching.
+                    // But the user clarified: "for live streams, that's more than 10 seconds playback time elapsed this session."
+                    // implying for VOD it denotes position.
+
+                    var currentPos = positionOverride ?? Position;
+                    if (currentPos.TotalSeconds < 10)
+                    {
+                        Console.WriteLine($"[VideoPlayer] Skipping history save for VOD. Position {currentPos.TotalSeconds:F1}s < 10s");
+                        return;
+                    }
+                }
+
+                var position = positionOverride ?? Position;
+                var duration = Duration;
+
+                Console.WriteLine($"[VideoPlayer] Saving {position} / {duration} for {_currentMediaItem.Name}");
+                await DataService.UpsertHistoryAsync(_currentMediaItem, position, duration);
             }
-
-            var position = positionOverride ?? Position;
-            var duration = Duration;
-
-            Console.WriteLine($"[VideoPlayer] Saving {position} / {duration} for {_currentMediaItem.Name}");
-            await DataService.UpsertHistoryAsync(_currentMediaItem, position, duration);
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[VideoPlayer] SaveProgress failed: {ex.Message}");
+            }
         }
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

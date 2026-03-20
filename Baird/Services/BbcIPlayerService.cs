@@ -47,18 +47,12 @@ namespace Baird.Services
                         var p = progs[0]; // Take first
                         // Map it similar to search result
                         var title = p.GetProperty("title").GetString();
-                        // ... mapping logic is complex to duplicate.
-                        // Can we refactor mapping?
-                        // For now, let's just return null if too complex, or implemented partially.
-                        // User requirement: "split history only information out".
-                        // If we can't look it up, history won't show it.
-                        // Let's rely on Search for now?
-                        // Actually, let's implement a basic mapping.
+                        if (title == null) return null;
 
                         return new MediaItemData
                         {
                             Id = id,
-                            Name = title!,
+                            Name = title,
                             Details = "", // Extract subtitle
                             ImageUrl = "", // Extract image
                             IsLive = false,
