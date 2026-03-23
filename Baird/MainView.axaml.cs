@@ -83,10 +83,10 @@ namespace Baird
                 Console.WriteLine("[MainView] VOICE_COMMAND_KEY not configured. Voice-to-text is disabled. " +
                                   "Set BAIRD_LOG_KEYS=true and press the voice button to find the right value.");
 
-            _inputLockDisabled = Environment.GetEnvironmentVariable("BAIRD_DISABLE_INPUT_LOCK")
-                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
+            _inputLockDisabled = Environment.GetEnvironmentVariable("BAIRD_ENABLE_INPUT_LOCK")
+                ?.Equals("true", StringComparison.OrdinalIgnoreCase) != true;
             if (_inputLockDisabled)
-                Console.WriteLine("[MainView] WARNING: BAIRD_DISABLE_INPUT_LOCK=true — keyboard lockout is disabled.");
+                Console.WriteLine("[MainView] Input lock disabled. Set BAIRD_ENABLE_INPUT_LOCK=true to re-enable.");
 
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
