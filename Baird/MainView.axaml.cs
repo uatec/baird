@@ -363,8 +363,7 @@ namespace Baird
         {
             if (DateTime.Now - _lastCecAssert < CecAssertCooldown) return;
             _lastCecAssert = DateTime.Now;
-            Console.WriteLine("[MainView] User activity — asserting CEC presence (wake TV + active source).");
-            _ = _cecService.PowerOnAsync();
+            Console.WriteLine("[MainView] User activity — asserting CEC active source.");
             _ = _cecService.ChangeInputToThisDeviceAsync();
         }
 
@@ -375,8 +374,7 @@ namespace Baird
         /// </summary>
         private void RequestInputRegain()
         {
-            Console.WriteLine("[MainView] Requesting input regain — powering on TV + asserting active source.");
-            _ = _cecService.PowerOnAsync();
+            Console.WriteLine("[MainView] Requesting input regain — asserting active source.");
             _ = _cecService.ChangeInputToThisDeviceAsync();
 
             // Cancel any existing fallback so repeated presses don't stack timers
