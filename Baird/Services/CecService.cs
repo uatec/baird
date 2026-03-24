@@ -128,7 +128,7 @@ namespace Baird.Services
                             Console.WriteLine("[CecService] TV power on detected.");
                             TvPowerOn?.Invoke(this, EventArgs.Empty);
                         }
-                        else if (commandType.Contains("Active Source"))
+                        else if (commandType.Contains("Active Source") && !commandType.Contains("Request Active Source"))
                         {
                             Console.WriteLine("[CecService] Active Source from another device — input lost.");
                             InputLost?.Invoke(this, EventArgs.Empty);
