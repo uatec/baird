@@ -105,6 +105,8 @@ namespace Baird.Controls
                 }
             });
         }
+        public void ToggleConfiguration() => OnConfigurationToggleRequested(this, EventArgs.Empty);
+
         private void OnConfigurationToggleRequested(object? sender, EventArgs e)
         {
             var configLayer = this.FindControl<Border>("ConfigLayer");
