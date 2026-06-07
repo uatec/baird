@@ -265,6 +265,8 @@ namespace Baird.Services
             private int _nc = 0;
             private string _cnonce = null!;
             private string _lastNonce = null!;
+            private string? _cachedHa1;
+            private string? _cachedHa1Realm;
 
             public DigestAuthHandler(string username, string password) : base(new HttpClientHandler())
             {
@@ -328,7 +330,7 @@ namespace Baird.Services
 
                 _cnonce = GenerateCNonce();
 
-                string ha1 = CalculateMd5($"{_username}:{_realm}:{_password}");
+                string ha1 = GetHa1(_username, _realm, _password);
                 string ha2 = CalculateMd5($"{method}:{uri}");
                 string response;
 
@@ -350,6 +352,16 @@ namespace Baird.Services
                 if (!string.IsNullOrEmpty(_qop)) header += $", qop=\"{_qop}\", nc={_nc:x8}, cnonce=\"{_cnonce}\"";
 
                 return header;
+            }
+
+            private string GetHa1(string username, string realm, string password)
+            {
+                if (_cachedHa1 == null || _cachedHa1Realm != realm)
+                {
+                    _cachedHa1 = CalculateMd5($"{username}:{realm}:{password}");
+                    _cachedHa1Realm = realm;
+                }
+                return _cachedHa1;
             }
 
             private string GenerateCNonce()
