@@ -44,17 +44,16 @@ namespace Baird.Mpv
             if (_mpvHandle == IntPtr.Zero)
                 throw new Exception("Failed to create mpv context");
 
-            // Hardware acceleration configuration
-            // "auto-copy" lets mpv pick the best available backend (vaapi on Pi 5's
-            // VideoCore VII / V3D Mesa driver, or other platform-specific decoders)
-            // and copies frames back to system memory — necessary when embedding mpv
-            // in Avalonia/OpenGL to avoid DRM/KMS overlay issues that might bypass the UI.
-            string hwdec = "auto-copy";
-            Console.WriteLine($"[MpvPlayer] Hardware decoding mode: {hwdec}");
-            SetPropertyString("hwdec", hwdec);
+            // Hardware acceleration: v4l2m2m-copy uses the Pi 5's rpi-hevc-dec kernel module
+            // for HEVC content via /dev/video19, with frame copy-back for OpenGL compositing.
+            // Falls back to software decode for codecs without a V4L2 M2M driver (e.g. H.264,
+            // which has no rpi_h264_dec on this kernel). "auto-copy" tried VA-API first but
+            // the Pi 5's V3D GPU has no VA-API driver, wasting time before falling back.
+            Console.WriteLine("[MpvPlayer] Hardware decoding mode: v4l2m2m-copy");
+            SetPropertyString("hwdec", "v4l2m2m-copy");
 
-            // "yes" for deinterlace is critical for 1080i50 broadcasts (UK Satellite/Terrestrial).
-            SetPropertyString("deinterlace", "yes");
+            // Deinterlace is configured per-source via ConfigureForSource() before each Play().
+            // Default off; enabled for live broadcast streams (1080i50 UK DVB-T/T2).
 
             // Generics Options
             SetPropertyString("terminal", "yes");
@@ -75,7 +74,8 @@ namespace Baird.Mpv
             // Maintain aspect ratio (will center with black bars if needed)
             SetPropertyString("keepaspect", "yes");
 
-            SetPropertyString("af", "loudnorm=I=-15:TP=-1.5:LRA=11");
+            // Audio filter and deinterlace are set per-source by ConfigureForSource().
+            // loudnorm is omitted for live streams (1s look-ahead causes AV desync on live TV).
             SetPropertyString("softvol", "yes");
             SetPropertyString("volume-max", "200");
             SetPropertyString("volume", "100");
@@ -288,6 +288,25 @@ namespace Baird.Mpv
                     State = PlaybackState.Playing;
                 }
             }
+        }
+
+        public void ConfigureForSource(bool isLive)
+        {
+            if (isLive)
+            {
+                // UK broadcast HD (1080i50) must be deinterlaced.
+                // loudnorm is skipped — its 1s look-ahead buffer causes AV desync on live streams.
+                SetPropertyString("deinterlace", "yes");
+                SetPropertyString("af", "");
+            }
+            else
+            {
+                // VOD is progressive — yadif deinterlacing doubles CPU cost for no benefit.
+                // loudnorm latency is acceptable on pre-recorded content.
+                SetPropertyString("deinterlace", "no");
+                SetPropertyString("af", "loudnorm=I=-15:TP=-1.5:LRA=11");
+            }
+            Console.WriteLine($"[MpvPlayer] Configured for {(isLive ? "live" : "VOD")} source");
         }
 
         public void Play(string url, double? startSeconds = null)
