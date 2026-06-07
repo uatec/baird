@@ -35,6 +35,7 @@ namespace Baird
         private bool _pausedForCecStandby = false; // Track if we auto-paused because TV went to standby
         private bool _inputsBlocked = false; // Inputs are blocked when TV is off or on a different input
         private readonly bool _inputLockDisabled = true; // Set BAIRD_DISABLE_INPUT_LOCK=true to bypass input blocking (for debugging flaky CEC lockout)
+        private bool _weAreIntendedActiveSource = false; // True when Baird should be the TV's active source; false when another device (e.g. Chromecast) is in use
         private DispatcherTimer? _inputUnblockFallbackTimer; // Fallback unblock when TV switches silently (no Request Active Source)
         private DateTime _lastCecAssert = DateTime.MinValue;
         private static readonly TimeSpan CecAssertCooldown = TimeSpan.FromSeconds(30);
@@ -268,17 +269,45 @@ namespace Baird
 
                 _cecService.TvPowerOn += (s, e) =>
                 {
-                    // TV is awake — claim the input. Unblocking happens via InputRegained
-                    // once cec-client confirms our Active Source assertion went out.
-                    Console.WriteLine("[MainView] TV power on via CEC — asserting active source.");
-                    _ = _cecService.ChangeInputToThisDeviceAsync();
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        // Only reclaim the input if Baird was the intended active source before standby.
+                        // "Image View On" / "Text View On" are sent by ANY device waking the TV (e.g. Chromecast),
+                        // so we must not steal the input when another device is in use.
+                        if (!_weAreIntendedActiveSource)
+                        {
+                            Console.WriteLine("[MainView] TV power on via CEC — another device is active, not asserting.");
+                            // If inputs are blocked and we are not the intended source, still start the fallback
+                            // timer so that if the TV later switches to Baird (via InputRegained or a key press)
+                            // there is an automatic recovery path rather than leaving inputs permanently blocked.
+                            if (_inputsBlocked)
+                            {
+                                _inputUnblockFallbackTimer?.Stop();
+                                _inputUnblockFallbackTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+                                _inputUnblockFallbackTimer.Tick += (ts, te) =>
+                                {
+                                    _inputUnblockFallbackTimer?.Stop();
+                                    if (_inputsBlocked)
+                                    {
+                                        Console.WriteLine("[MainView] Fallback timer fired (non-Baird source) — unblocking inputs without CEC confirmation.");
+                                        UnblockInputs();
+                                    }
+                                };
+                                _inputUnblockFallbackTimer.Start();
+                            }
+                            return;
+                        }
+                        Console.WriteLine("[MainView] TV power on via CEC — re-asserting active source.");
+                        _ = _cecService.ChangeInputToThisDeviceAsync();
+                    });
                 };
 
                 _cecService.InputLost += (s, e) =>
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
-                        Console.WriteLine("[MainView] Input lost via CEC — blocking inputs.");
+                        Console.WriteLine("[MainView] Input lost via CEC — another device is now active source.");
+                        _weAreIntendedActiveSource = false;
                         if (!_inputLockDisabled) _inputsBlocked = true;
                     });
                 };
@@ -288,6 +317,7 @@ namespace Baird
                     Dispatcher.UIThread.Post(() =>
                     {
                         Console.WriteLine("[MainView] Input regained via CEC — unblocking inputs.");
+                        _weAreIntendedActiveSource = true;
                         UnblockInputs();
                     });
                 };
@@ -310,6 +340,7 @@ namespace Baird
                         Dispatcher.UIThread.Post(() =>
                         {
                             Console.WriteLine("[MainView] CEC available — blocking inputs until active source confirmed.");
+                            _weAreIntendedActiveSource = true;
                             if (!_inputLockDisabled) _inputsBlocked = true;
                             _ = _cecService.ChangeInputToThisDeviceAsync();
                         });
@@ -364,6 +395,7 @@ namespace Baird
             if (DateTime.Now - _lastCecAssert < CecAssertCooldown) return;
             _lastCecAssert = DateTime.Now;
             Console.WriteLine("[MainView] User activity — asserting CEC presence (wake TV + active source).");
+            _weAreIntendedActiveSource = true;
             _ = _cecService.PowerOnAsync();
             _ = _cecService.ChangeInputToThisDeviceAsync();
         }
@@ -376,6 +408,7 @@ namespace Baird
         private void RequestInputRegain()
         {
             Console.WriteLine("[MainView] Requesting input regain — powering on TV + asserting active source.");
+            _weAreIntendedActiveSource = true;
             _ = _cecService.PowerOnAsync();
             _ = _cecService.ChangeInputToThisDeviceAsync();
 
