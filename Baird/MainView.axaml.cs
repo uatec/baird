@@ -268,10 +268,13 @@ namespace Baird
 
                 _cecService.TvPowerOn += (s, e) =>
                 {
-                    // TV is awake — claim the input. Unblocking happens via InputRegained
-                    // once cec-client confirms our Active Source assertion went out.
-                    Console.WriteLine("[MainView] TV power on via CEC — asserting active source.");
-                    _ = _cecService.ChangeInputToThisDeviceAsync();
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        // TV is awake — claim the input. Unblocking happens via InputRegained
+                        // once cec-client confirms our Active Source assertion went out.
+                        Console.WriteLine("[MainView] TV power on via CEC — asserting active source.");
+                        _ = _cecService.ChangeInputToThisDeviceAsync();
+                    });
                 };
 
                 _cecService.InputLost += (s, e) =>
