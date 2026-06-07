@@ -103,6 +103,7 @@ namespace Baird
                 // Fire-and-forget: screensaver data only needed after 30min idle timeout
                 _ = Task.Run(() => _screensaverService.InitializeAsync());
                 SetupIdleTimer();
+                SetupInputUnblockFallbackTimer();
 
                 // Yield to let dispatcher process any queued callbacks (e.g. from fire-and-forget tasks)
                 await Task.Yield();
@@ -355,6 +356,20 @@ namespace Baird
             _idleTimer?.Start();
         }
 
+        private void SetupInputUnblockFallbackTimer()
+        {
+            _inputUnblockFallbackTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+            _inputUnblockFallbackTimer.Tick += (_, _) =>
+            {
+                _inputUnblockFallbackTimer.Stop();
+                if (_inputsBlocked)
+                {
+                    Console.WriteLine("[MainView] Fallback timer fired — unblocking inputs without CEC confirmation.");
+                    UnblockInputs();
+                }
+            };
+        }
+
         /// <summary>
         /// On any user interaction, wake the TV and claim our AV input — but no more than once per
         /// <see cref="CecAssertCooldown"/> to avoid flooding the CEC bus.
@@ -379,19 +394,9 @@ namespace Baird
             _ = _cecService.PowerOnAsync();
             _ = _cecService.ChangeInputToThisDeviceAsync();
 
-            // Cancel any existing fallback so repeated presses don't stack timers
+            // Restart the pre-allocated fallback timer so repeated presses don't stack timers
             _inputUnblockFallbackTimer?.Stop();
-            _inputUnblockFallbackTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
-            _inputUnblockFallbackTimer.Tick += (s, e) =>
-            {
-                _inputUnblockFallbackTimer?.Stop();
-                if (_inputsBlocked)
-                {
-                    Console.WriteLine("[MainView] Fallback timer fired — unblocking inputs without CEC confirmation.");
-                    UnblockInputs();
-                }
-            };
-            _inputUnblockFallbackTimer.Start();
+            _inputUnblockFallbackTimer?.Start();
         }
 
         /// <summary>
