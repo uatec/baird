@@ -38,7 +38,7 @@ namespace Baird
         private bool _wasPausedForScreensaver = false; // Track if we actively paused for screensaver
         private bool _pausedForCecStandby = false; // Track if we auto-paused because TV went to standby
         private volatile bool _inputsBlocked = false; // Inputs are blocked when TV is off or on a different input
-        private readonly bool _inputLockDisabled = true; // Set BAIRD_DISABLE_INPUT_LOCK=true to bypass input blocking (for debugging flaky CEC lockout)
+        private bool _inputLockDisabled; // Input locking disabled by default; set BAIRD_ENABLE_INPUT_LOCK=true to block inputs when TV switches source
         private volatile bool _weAreIntendedActiveSource = false; // True when Baird should be the TV's active source; false when another device (e.g. Chromecast) is in use
         private DispatcherTimer? _inputUnblockFallbackTimer; // Fallback unblock when TV switches silently (no Request Active Source)
         private DateTime _lastCecAssert = DateTime.MinValue;
