@@ -244,14 +244,28 @@ namespace Baird.Services
 
         /// <summary>
         /// Loads an item from providers (network), stores it in both caches, and returns the ViewModel.
+        /// Each provider is given a 5-second timeout; a slow or unreachable provider is skipped
+        /// rather than blocking the whole chain.
         /// </summary>
         private async Task<MediaItemViewModel?> LoadItemFromProvidersAsync(string id)
         {
             foreach (var provider in _providers)
             {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 try
                 {
-                    var data = await provider.GetItemAsync(id).ConfigureAwait(false);
+                    var providerTask = provider.GetItemAsync(id);
+                    var timeoutTask = Task.Delay(Timeout.Infinite, cts.Token);
+
+                    var completed = await Task.WhenAny(providerTask, timeoutTask).ConfigureAwait(false);
+
+                    if (completed == timeoutTask)
+                    {
+                        Console.WriteLine($"[DataService] Provider {provider.Name} timed out looking up item {id}");
+                        continue;
+                    }
+
+                    var data = await providerTask.ConfigureAwait(false);
                     if (data != null)
                     {
                         _mediaDataCache.Put(data);
