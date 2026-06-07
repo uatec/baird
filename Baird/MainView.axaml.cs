@@ -37,9 +37,9 @@ namespace Baird
         private DispatcherTimer? _idleTimer;
         private bool _wasPausedForScreensaver = false; // Track if we actively paused for screensaver
         private bool _pausedForCecStandby = false; // Track if we auto-paused because TV went to standby
-        private bool _inputsBlocked = false; // Inputs are blocked when TV is off or on a different input
+        private volatile bool _inputsBlocked = false; // Inputs are blocked when TV is off or on a different input
         private readonly bool _inputLockDisabled = true; // Set BAIRD_DISABLE_INPUT_LOCK=true to bypass input blocking (for debugging flaky CEC lockout)
-        private bool _weAreIntendedActiveSource = false; // True when Baird should be the TV's active source; false when another device (e.g. Chromecast) is in use
+        private volatile bool _weAreIntendedActiveSource = false; // True when Baird should be the TV's active source; false when another device (e.g. Chromecast) is in use
         private DispatcherTimer? _inputUnblockFallbackTimer; // Fallback unblock when TV switches silently (no Request Active Source)
         private DateTime _lastCecAssert = DateTime.MinValue;
         private static readonly TimeSpan CecAssertCooldown = TimeSpan.FromSeconds(30);
@@ -299,9 +299,19 @@ namespace Baird
                     // Only reclaim the input if Baird was the intended active source before standby.
                     // "Image View On" / "Text View On" are sent by ANY device waking the TV (e.g. Chromecast),
                     // so we must not steal the input when another device is in use.
+                    // NOTE: CEC events fire on a background thread; decision logic stays here.
+                    // Only DispatcherTimer operations are marshalled to the UI thread.
                     if (!_weAreIntendedActiveSource)
                     {
                         Console.WriteLine("[MainView] TV power on via CEC — another device is active, not asserting.");
+                        if (_inputsBlocked)
+                        {
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                _inputUnblockFallbackTimer?.Stop();
+                                _inputUnblockFallbackTimer?.Start();
+                            });
+                        }
                         return;
                     }
                     Console.WriteLine("[MainView] TV power on via CEC — re-asserting active source.");
