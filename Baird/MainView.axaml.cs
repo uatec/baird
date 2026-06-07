@@ -9,6 +9,7 @@ using Baird.Services;
 using Baird.ViewModels;
 using System;
 using System.Linq;
+using System.Reactive.Disposables;
 using System.Threading.Tasks;
 using ReactiveUI;
 using Microsoft.Extensions.Configuration;
@@ -27,6 +28,9 @@ namespace Baird
         private ISpeechToTextService _speechService = null!;
         private bool _isListeningForVoice = false;
         private TextBox? _voiceTargetTextBox;
+
+        // Visual-tree subscription lifetime tracking
+        private readonly CompositeDisposable _visualTreeSubscriptions = new();
 
         // Screensaver & Idle
         private ScreensaverService? _screensaverService;
@@ -97,6 +101,9 @@ namespace Baird
 
             this.AttachedToVisualTree += async (s, e) =>
             {
+                // Clear any previously registered subscriptions (e.g. on hot-reload re-attach)
+                _visualTreeSubscriptions.Clear();
+
                 Console.WriteLine("[MainView] Attached to visual tree. Starting initialization...");
 
                 Console.WriteLine("[MainView] Initializing screensaver service...");
@@ -112,6 +119,7 @@ namespace Baird
                 if (videoLayer != null)
                 {
                     videoLayer.ExitRequested += OnVideoLayerExitRequested;
+                    _visualTreeSubscriptions.Add(Disposable.Create(() => videoLayer.ExitRequested -= OnVideoLayerExitRequested));
                 }
 
                 Console.WriteLine("[MainView] Setting up input handling...");
@@ -125,12 +133,24 @@ namespace Baird
                 {
                     // Global Input Handler (Tunneling) to catch wake-up events
                     topLevel.AddHandler(InputElement.KeyDownEvent, OnGlobalKeyDown, RoutingStrategies.Tunnel);
+                    _visualTreeSubscriptions.Add(Disposable.Create(() =>
+                        topLevel.RemoveHandler(InputElement.KeyDownEvent, OnGlobalKeyDown)));
+
                     topLevel.AddHandler(InputElement.KeyUpEvent, OnGlobalKeyUp, RoutingStrategies.Tunnel);
+                    _visualTreeSubscriptions.Add(Disposable.Create(() =>
+                        topLevel.RemoveHandler(InputElement.KeyUpEvent, OnGlobalKeyUp)));
+
                     topLevel.AddHandler(InputElement.PointerPressedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
+                    _visualTreeSubscriptions.Add(Disposable.Create(() =>
+                        topLevel.RemoveHandler(InputElement.PointerPressedEvent, OnGlobalPointerActivity)));
+
                     topLevel.AddHandler(InputElement.PointerMovedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
+                    _visualTreeSubscriptions.Add(Disposable.Create(() =>
+                        topLevel.RemoveHandler(InputElement.PointerMovedEvent, OnGlobalPointerActivity)));
 
                     // Existing InputCoordinator (Bubbling)
                     topLevel.KeyDown += InputCoordinator;
+                    _visualTreeSubscriptions.Add(Disposable.Create(() => topLevel.KeyDown -= InputCoordinator));
 
                     try
                     {
@@ -150,29 +170,30 @@ namespace Baird
                 }
 
                 // Restore focus to VideoPlayer when CurrentPage is cleared or showing video player
-                _viewModel.ObservableForProperty(x => x.CurrentPage)
-                    .Subscribe(change =>
-                    {
-                        if (change.Value == null || change.Value is ShowingVideoPlayerViewModel)
+                _visualTreeSubscriptions.Add(
+                    _viewModel.ObservableForProperty(x => x.CurrentPage)
+                        .Subscribe(change =>
                         {
-                            Dispatcher.UIThread.Post(() =>
+                            if (change.Value == null || change.Value is ShowingVideoPlayerViewModel)
                             {
-                                var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                                var player = videoLayer?.GetPlayer();
-                                if (player != null)
+                                Dispatcher.UIThread.Post(() =>
                                 {
-                                    Console.WriteLine("[MainView] CurrentPage is null or ShowingVideoPlayerViewModel, forcing focus to VideoPlayer");
-                                    player.Focus();
-                                }
-                            });
-                        }
-                        else
-                        {
-                            // When transitioning between overlay pages, we want the new page to take focus.
-                            // The logic that forced focus to PageFrame has been removed as it was stealing focus 
-                            // from controls (like TabNavigation) that handle their own initial focus.
-                        }
-                    });
+                                    var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                                    var player = videoLayer?.GetPlayer();
+                                    if (player != null)
+                                    {
+                                        Console.WriteLine("[MainView] CurrentPage is null or ShowingVideoPlayerViewModel, forcing focus to VideoPlayer");
+                                        player.Focus();
+                                    }
+                                });
+                            }
+                            else
+                            {
+                                // When transitioning between overlay pages, we want the new page to take focus.
+                                // The logic that forced focus to PageFrame has been removed as it was stealing focus
+                                // from controls (like TabNavigation) that handle their own initial focus.
+                            }
+                        }));
 
                 // Force initial focus to VideoPlayer
                 Dispatcher.UIThread.Post(() =>
@@ -194,16 +215,17 @@ namespace Baird
                 }
 
                 // Subscribe to ActiveItem changes to notify VideoPlayer of current item identity
-                _viewModel.ObservableForProperty(x => x.ActiveItem)
-                    .Subscribe(change =>
-                    {
-                        var item = change.Value;
-                        if (vLayer != null && item != null)
+                _visualTreeSubscriptions.Add(
+                    _viewModel.ObservableForProperty(x => x.ActiveItem)
+                        .Subscribe(change =>
                         {
-                            var mediaItem = item;
-                            vLayer.GetPlayer()?.SetCurrentMediaItem(mediaItem);
-                        }
-                    });
+                            var item = change.Value;
+                            if (vLayer != null && item != null)
+                            {
+                                var mediaItem = item;
+                                vLayer.GetPlayer()?.SetCurrentMediaItem(mediaItem);
+                            }
+                        }));
 
                 // Hook up 'Down' key from player to OpenMainMenu
                 if (vLayer != null)
@@ -211,10 +233,12 @@ namespace Baird
                     var player = vLayer.GetPlayer();
                     if (player != null)
                     {
-                        player.HistoryRequested += (sender, args) =>
+                        EventHandler onHistoryRequested = (sender, args) =>
                         {
                             Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.OpenMainMenu());
                         };
+                        player.HistoryRequested += onHistoryRequested;
+                        _visualTreeSubscriptions.Add(Disposable.Create(() => player.HistoryRequested -= onHistoryRequested));
                     }
                 }
 
@@ -248,7 +272,7 @@ namespace Baird
                 Console.WriteLine("[MainView] Starting CEC service...");
 
                 // Wire CEC TV power events for auto-pause/resume
-                _cecService.TvStandby += (s, e) =>
+                EventHandler onTvStandby = (s, e) =>
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
@@ -265,16 +289,20 @@ namespace Baird
                         }
                     });
                 };
+                _cecService.TvStandby += onTvStandby;
+                _visualTreeSubscriptions.Add(Disposable.Create(() => _cecService.TvStandby -= onTvStandby));
 
-                _cecService.TvPowerOn += (s, e) =>
+                EventHandler onTvPowerOn = (s, e) =>
                 {
                     // TV is awake — claim the input. Unblocking happens via InputRegained
                     // once cec-client confirms our Active Source assertion went out.
                     Console.WriteLine("[MainView] TV power on via CEC — asserting active source.");
                     _ = _cecService.ChangeInputToThisDeviceAsync();
                 };
+                _cecService.TvPowerOn += onTvPowerOn;
+                _visualTreeSubscriptions.Add(Disposable.Create(() => _cecService.TvPowerOn -= onTvPowerOn));
 
-                _cecService.InputLost += (s, e) =>
+                EventHandler onInputLost = (s, e) =>
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
@@ -282,8 +310,10 @@ namespace Baird
                         if (!_inputLockDisabled) _inputsBlocked = true;
                     });
                 };
+                _cecService.InputLost += onInputLost;
+                _visualTreeSubscriptions.Add(Disposable.Create(() => _cecService.InputLost -= onInputLost));
 
-                _cecService.InputRegained += (s, e) =>
+                EventHandler onInputRegained = (s, e) =>
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
@@ -291,6 +321,8 @@ namespace Baird
                         UnblockInputs();
                     });
                 };
+                _cecService.InputRegained += onInputRegained;
+                _visualTreeSubscriptions.Add(Disposable.Create(() => _cecService.InputRegained -= onInputRegained));
 
                 // Start CEC Service in background so it doesn't block UI startup if it fails/hangs
                 _ = _cecService.StartAsync().ContinueWith(t =>
@@ -316,6 +348,12 @@ namespace Baird
                     }
                 });
             };
+        }
+
+        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            base.OnDetachedFromVisualTree(e);
+            _visualTreeSubscriptions.Clear();
         }
 
         private void SetupIdleTimer()
