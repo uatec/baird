@@ -701,6 +701,7 @@ namespace Baird.Controls
             _pendingStartSeconds = null;
             _loadRetryCount = 0;
             _currentVideoStartTime = DateTime.Now;
+            _player?.ConfigureForSource(IsLive);
             _player?.Play(url);
             IsLoading = true;
             IsPaused = false;
@@ -713,6 +714,7 @@ namespace Baird.Controls
             _pendingStartSeconds = startTime.TotalSeconds;
             _loadRetryCount = 0;
             _currentVideoStartTime = DateTime.Now;
+            _player?.ConfigureForSource(IsLive);
             _player?.Play(url, startTime.TotalSeconds);
             IsLoading = true;
             IsPaused = false;
