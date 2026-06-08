@@ -104,6 +104,9 @@ namespace Baird.Mpv
         public static extern int mpv_render_context_render(IntPtr context, MpvRenderParam[] parameters);
 
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void mpv_render_context_report_swap(IntPtr context);
+
+        [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern void mpv_set_wakeup_callback(IntPtr handle, MpvWakeupCallback cb, IntPtr d);
 
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]

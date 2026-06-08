@@ -79,17 +79,12 @@ namespace Baird.Mpv
             SetPropertyString("softvol", "yes");
             SetPropertyString("volume-max", "200");
             SetPropertyString("volume", "100");
-            // --- Synchronization & Anti-Tearing ---
-            // Interpolation (display-resample + tscale=oversample) greatly improves motion
-            // smoothness but is GPU-intensive.  Disable on Raspberry Pi to reduce GPU load;
-            // enable on more powerful hardware if tearing or judder is visible.
-            // SetPropertyString("video-sync", "display-resample");
-            // SetPropertyString("interpolation", "yes");
-            // SetPropertyString("tscale", "oversample");
-            SetPropertyString("opengl-swapinterval", "1"); // VSync
-
-            // Standard sync
-            SetPropertyString("video-sync", "audio");
+            // display-vdrop: drops one frame per display-cycle boundary when content and display
+            // rates are slightly misaligned. Requires mpv_render_context_report_swap() after
+            // each render (done in Render()) to give mpv accurate display timing feedback.
+            // Better than video-sync=audio for embedded rendering because audio clock drift
+            // on live streams no longer causes periodic frame-delivery misses.
+            SetPropertyString("video-sync", "display-vdrop");
 
             // Prefer English audio
             SetPropertyString("alang", "eng,en");
@@ -265,6 +260,9 @@ namespace Baird.Mpv
             };
 
             LibMpv.mpv_render_context_render(_renderContext, paramsArr);
+            // Report the swap so mpv gets accurate display timing feedback.
+            // Required for display-sync modes (display-vdrop, display-resample) to work correctly.
+            LibMpv.mpv_render_context_report_swap(_renderContext);
 
             Marshal.FreeCoTaskMem(pFbo);
             Marshal.FreeCoTaskMem(pFlipY);
