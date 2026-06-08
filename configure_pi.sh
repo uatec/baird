@@ -110,25 +110,9 @@ EndSection
 EOF
 echo "[Xorg]   10-blanking.conf written."
 
-# 5b. Force HDMI limited (broadcast) RGB range.
-# TVs expect limited RGB (16-235). With "Automatic", the modesetting driver may
-# output full range (0-255), which the TV then re-compresses — washed-out, soft,
-# "blobby" image. Pinning Limited 16:235 matches what set-top boxes/Chromecast
-# send and restores correct contrast and sharpness. Applies to all HDMI outputs.
-cat > "$XORG_CONF_DIR/20-hdmi-color.conf" <<'EOF'
-# Managed by Baird configure_pi.sh — forces limited (broadcast) RGB range so the
-# TV receives 16-235 and does not re-compress a full-range signal.
-Section "Monitor"
-    Identifier "HDMI-1"
-    Option "Broadcast RGB" "Limited 16:235"
-EndSection
-
-Section "Monitor"
-    Identifier "HDMI-2"
-    Option "Broadcast RGB" "Limited 16:235"
-EndSection
-EOF
-echo "[Xorg]   20-hdmi-color.conf written."
+# Remove the previous (non-functional) attempt: "Broadcast RGB" is a KMS connector
+# property, not an xorg.conf Monitor option, so the modesetting driver ignored it.
+rm -f "$XORG_CONF_DIR/20-hdmi-color.conf"
 
 # 5c. Use the modesetting driver on the VideoCore (vc4) GPU as the primary GPU.
 # Required for correct OpenGL rendering of the mpv video surface on the Pi 5.
@@ -143,6 +127,30 @@ EndSection
 EOF
 echo "[Xorg]   99-v3d.conf written."
 echo "[Xorg] Done (takes effect on next X restart/reboot)."
+
+# --- 6. HDMI limited (broadcast) RGB range helper ---
+# TVs expect limited RGB (16-235). With "Broadcast RGB = Automatic" the Pi 5
+# modesetting driver may send full range (0-255), which the TV re-compresses —
+# washed-out, soft, "blobby" image. Pinning Limited 16:235 matches what a
+# Chromecast/set-top box sends and restores correct contrast and sharpness.
+#
+# "Broadcast RGB" is a KMS connector property, NOT an xorg.conf option, so it has
+# to be applied at runtime with xrandr after the X server is up. baird.service
+# runs this helper as an ExecStartPre (and re-runs it on every restart).
+DISPLAY_HELPER="/usr/local/bin/baird-display-setup.sh"
+echo "[HDMI] Installing display-setup helper at $DISPLAY_HELPER..."
+cat > "$DISPLAY_HELPER" <<'EOF'
+#!/bin/bash
+# Managed by Baird configure_pi.sh — force limited (broadcast 16-235) RGB range on
+# every connected output. Relies on DISPLAY/XAUTHORITY from the caller's env
+# (baird.service provides both). Safe to run repeatedly; failures are ignored.
+export DISPLAY="${DISPLAY:-:0}"
+for out in $(xrandr --query 2>/dev/null | awk '/ connected/{print $1}'); do
+    xrandr --output "$out" --set "Broadcast RGB" "Limited 16:235" 2>/dev/null || true
+done
+EOF
+chmod +x "$DISPLAY_HELPER"
+echo "[HDMI] Helper installed (invoked by baird.service ExecStartPre)."
 
 echo ""
 echo "=== Configuration complete ==="

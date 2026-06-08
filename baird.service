@@ -7,6 +7,10 @@ PartOf=graphical-session.target
 After=graphical-session.target
 
 [Service]
+# Force HDMI limited (broadcast) RGB range before launching, so the TV receives
+# 16-235 and does not re-compress a full-range signal (washed-out/"blobby" image).
+# Installed by configure_pi.sh. Leading "-" makes a failure non-fatal.
+ExecStartPre=-/usr/local/bin/baird-display-setup.sh
 ExecStart=/home/linuxbrew/.linuxbrew/bin/baird
 Restart=always
 RestartSec=5
