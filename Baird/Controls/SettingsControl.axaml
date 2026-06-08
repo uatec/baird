@@ -57,7 +57,7 @@
 
             <!-- Settings List -->
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,20,Auto">
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,20,Auto,20,Auto,20,Auto,20,Auto">
 
                     <!-- Row 0: UI Scale -->
                     <TextBlock Grid.Row="0" Grid.Column="0"
@@ -89,14 +89,83 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Row 2: Input Detection -->
+                    <!-- Row 2: High-Quality Scaling (video quality feature flag) -->
                     <TextBlock Grid.Row="2" Grid.Column="0"
+                        Text="High-Quality Scaling"
+                        Classes="SettingName"
+                        Margin="0,0,50,0" />
+
+                    <Border Grid.Row="2" Grid.Column="1"
+                        Classes="SettingContainer"
+                        Focusable="True"
+                        HorizontalAlignment="Left"
+                        Tag="hq"
+                        KeyDown="Toggle_KeyDown"
+                        PointerPressed="Toggle_PointerPressed">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="ON" Foreground="#4CAF50" FontSize="20" FontWeight="Bold"
+                                Width="80" TextAlignment="Center"
+                                IsVisible="{Binding HighQualityScaling}" />
+                            <TextBlock Text="OFF" Foreground="#888888" FontSize="20" FontWeight="Bold"
+                                Width="80" TextAlignment="Center"
+                                IsVisible="{Binding !HighQualityScaling}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Row 4: Sharper Deinterlacing (video quality feature flag) -->
+                    <TextBlock Grid.Row="4" Grid.Column="0"
+                        Text="Sharper Deinterlacing"
+                        Classes="SettingName"
+                        Margin="0,0,50,0" />
+
+                    <Border Grid.Row="4" Grid.Column="1"
+                        Classes="SettingContainer"
+                        Focusable="True"
+                        HorizontalAlignment="Left"
+                        Tag="deint"
+                        KeyDown="Toggle_KeyDown"
+                        PointerPressed="Toggle_PointerPressed">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="ON" Foreground="#4CAF50" FontSize="20" FontWeight="Bold"
+                                Width="80" TextAlignment="Center"
+                                IsVisible="{Binding SharperDeinterlacing}" />
+                            <TextBlock Text="OFF" Foreground="#888888" FontSize="20" FontWeight="Bold"
+                                Width="80" TextAlignment="Center"
+                                IsVisible="{Binding !SharperDeinterlacing}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Row 6: Log Render Size (diagnostic feature flag) -->
+                    <TextBlock Grid.Row="6" Grid.Column="0"
+                        Text="Log Render Size"
+                        Classes="SettingName"
+                        Margin="0,0,50,0" />
+
+                    <Border Grid.Row="6" Grid.Column="1"
+                        Classes="SettingContainer"
+                        Focusable="True"
+                        HorizontalAlignment="Left"
+                        Tag="log"
+                        KeyDown="Toggle_KeyDown"
+                        PointerPressed="Toggle_PointerPressed">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="ON" Foreground="#4CAF50" FontSize="20" FontWeight="Bold"
+                                Width="80" TextAlignment="Center"
+                                IsVisible="{Binding LogRenderDimensions}" />
+                            <TextBlock Text="OFF" Foreground="#888888" FontSize="20" FontWeight="Bold"
+                                Width="80" TextAlignment="Center"
+                                IsVisible="{Binding !LogRenderDimensions}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Row 8: Input Detection -->
+                    <TextBlock Grid.Row="8" Grid.Column="0"
                         Text="Input Detection"
                         Classes="SettingName"
                         VerticalAlignment="Top"
                         Margin="0,8,50,0" />
 
-                    <Border Grid.Row="2" Grid.Column="1"
+                    <Border Grid.Row="8" Grid.Column="1"
                         Classes="SettingContainer"
                         Focusable="True"
                         KeyDown="InputDetection_KeyDown"

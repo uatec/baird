@@ -216,6 +216,26 @@ namespace Baird
                     vLayer.DataService = _dataService;
                 }
 
+                // Apply the video-quality feature flags and re-apply live whenever they are toggled
+                // on the Settings page, so each can be A/B tested on the device without a restart.
+                if (vLayer != null && _viewModel?.Settings != null)
+                {
+                    var settings = _viewModel.Settings;
+                    void ApplyVideoSettings()
+                    {
+                        var player = vLayer.GetPlayer();
+                        if (player == null) return;
+                        player.SetHighQualityScaling(settings.HighQualityScaling);
+                        player.SetSharperDeinterlacing(settings.SharperDeinterlacing);
+                        player.SetRenderLogging(settings.LogRenderDimensions);
+                    }
+
+                    ApplyVideoSettings();
+                    _visualTreeSubscriptions.Add(settings.ObservableForProperty(x => x.HighQualityScaling).Subscribe(_ => ApplyVideoSettings()));
+                    _visualTreeSubscriptions.Add(settings.ObservableForProperty(x => x.SharperDeinterlacing).Subscribe(_ => ApplyVideoSettings()));
+                    _visualTreeSubscriptions.Add(settings.ObservableForProperty(x => x.LogRenderDimensions).Subscribe(_ => ApplyVideoSettings()));
+                }
+
                 // Subscribe to ActiveItem changes to notify VideoPlayer of current item identity
                 _visualTreeSubscriptions.Add(
                     _viewModel.ObservableForProperty(x => x.ActiveItem)

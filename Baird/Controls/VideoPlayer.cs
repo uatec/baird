@@ -721,6 +721,12 @@ namespace Baird.Controls
             RestartLoadTimeout();
         }
 
+        // Video-quality feature flags, forwarded to the underlying mpv player. Driven live from the
+        // Settings page (see MainView wiring) so each can be A/B tested on the device.
+        public void SetHighQualityScaling(bool enabled) => _player?.SetHighQualityScaling(enabled);
+        public void SetSharperDeinterlacing(bool enabled) => _player?.SetSharperDeinterlacing(enabled);
+        public void SetRenderLogging(bool enabled) => _player?.SetRenderLogging(enabled);
+
         private void RestartLoadTimeout()
         {
             _loadTimeoutTimer.Stop();

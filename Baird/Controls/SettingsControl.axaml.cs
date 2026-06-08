@@ -34,6 +34,35 @@ namespace Baird.Controls
             }
         }
 
+        private void Toggle_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Enter && e.Key != Key.Space && e.Key != Key.Left && e.Key != Key.Right)
+                return;
+
+            if (ToggleByTag(sender))
+                e.Handled = true;
+        }
+
+        private void Toggle_PointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (ToggleByTag(sender))
+                e.Handled = true;
+        }
+
+        private bool ToggleByTag(object? sender)
+        {
+            if (DataContext is SettingsViewModel viewModel && sender is Control c && c.Tag is string tag)
+            {
+                switch (tag)
+                {
+                    case "hq": viewModel.HighQualityScaling = !viewModel.HighQualityScaling; return true;
+                    case "deint": viewModel.SharperDeinterlacing = !viewModel.SharperDeinterlacing; return true;
+                    case "log": viewModel.LogRenderDimensions = !viewModel.LogRenderDimensions; return true;
+                }
+            }
+            return false;
+        }
+
         private void InputDetection_KeyDown(object? sender, KeyEventArgs e)
         {
             if (e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)

@@ -14,6 +14,14 @@ namespace Baird.Mpv
         private volatile bool _eventLoopRunning;
         private Action? _requestRender;
 
+        // Video-quality feature flags (toggled live from the Settings page).
+        private bool _isLive;                 // last source type, so deinterlace can be re-applied on toggle
+        private bool _highQualityScaling;     // spline36 scaler vs default bilinear
+        private bool _sharperDeinterlacing;   // bwdif vs default yadif
+        private bool _logRenderDimensions;    // log the FBO size handed to mpv each time it changes
+        private int _lastLoggedW = -1;
+        private int _lastLoggedH = -1;
+
         private LibMpv.MpvRenderUpdateFn? _renderUpdateFn;
         public event EventHandler? StreamEnded;
         /// <summary>Fired when mpv reports a load/playback error. Arg is the mpv error code.</summary>
@@ -259,6 +267,15 @@ namespace Baird.Mpv
                 new LibMpv.MpvRenderParam { Type = LibMpv.MpvRenderParamType.Invalid, Data = IntPtr.Zero }
             };
 
+            // Lead 2 diagnostic: confirm the FBO mpv renders into is actually display-native
+            // (1920x1080). If it is smaller, Avalonia/GL upscales it afterwards = extra blur.
+            if (_logRenderDimensions && (width != _lastLoggedW || height != _lastLoggedH))
+            {
+                _lastLoggedW = width;
+                _lastLoggedH = height;
+                Console.WriteLine($"[MpvPlayer] Render FBO dimensions: {width}x{height}");
+            }
+
             LibMpv.mpv_render_context_render(_renderContext, paramsArr);
             // Report the swap so mpv gets accurate display timing feedback.
             // Required for display-sync modes (display-vdrop, display-resample) to work correctly.
@@ -290,21 +307,78 @@ namespace Baird.Mpv
 
         public void ConfigureForSource(bool isLive)
         {
-            if (isLive)
+            _isLive = isLive;
+            ApplyDeinterlace();
+            // loudnorm is skipped on live — its ~1s look-ahead buffer causes AV desync on live
+            // streams; latency is acceptable on pre-recorded VOD.
+            SetPropertyString("af", isLive ? "" : "loudnorm=I=-15:TP=-1.5:LRA=11");
+            Console.WriteLine($"[MpvPlayer] Configured for {(isLive ? "live" : "VOD")} source");
+        }
+
+        /// <summary>
+        /// Applies the deinterlacer for the current source type. Live broadcast (1080i50) must be
+        /// deinterlaced; VOD is progressive so it is left off (yadif would double CPU for nothing).
+        /// When live, the filter is chosen by the "sharper deinterlacing" flag: bwdif (sharper) vs
+        /// mpv's default yadif.
+        /// </summary>
+        private void ApplyDeinterlace()
+        {
+            if (_isLive)
             {
-                // UK broadcast HD (1080i50) must be deinterlaced.
-                // loudnorm is skipped — its 1s look-ahead buffer causes AV desync on live streams.
-                SetPropertyString("deinterlace", "yes");
-                SetPropertyString("af", "");
+                if (_sharperDeinterlacing)
+                {
+                    // bwdif is an explicit vf; disable the built-in (yadif) toggle to avoid stacking.
+                    SetPropertyString("deinterlace", "no");
+                    SetPropertyString("vf", "bwdif");
+                }
+                else
+                {
+                    SetPropertyString("vf", "");
+                    SetPropertyString("deinterlace", "yes");
+                }
             }
             else
             {
-                // VOD is progressive — yadif deinterlacing doubles CPU cost for no benefit.
-                // loudnorm latency is acceptable on pre-recorded content.
+                SetPropertyString("vf", "");
                 SetPropertyString("deinterlace", "no");
-                SetPropertyString("af", "loudnorm=I=-15:TP=-1.5:LRA=11");
             }
-            Console.WriteLine($"[MpvPlayer] Configured for {(isLive ? "live" : "VOD")} source");
+        }
+
+        /// <summary>Lead 1: switch between mpv's default bilinear scaler and the higher-quality
+        /// spline36 (sharper upscale of the 1440x1080 anamorphic broadcast to 1920x1080).</summary>
+        public void SetHighQualityScaling(bool enabled)
+        {
+            _highQualityScaling = enabled;
+            if (enabled)
+            {
+                SetPropertyString("scale", "spline36");
+                SetPropertyString("cscale", "spline36");
+                SetPropertyString("dscale", "mitchell");
+            }
+            else
+            {
+                SetPropertyString("scale", "bilinear");
+                SetPropertyString("cscale", "bilinear");
+                SetPropertyString("dscale", "bilinear");
+            }
+            Console.WriteLine($"[MpvPlayer] High-quality scaling: {(enabled ? "spline36" : "bilinear (default)")}");
+        }
+
+        /// <summary>Lead 3: use bwdif instead of the default yadif for live deinterlacing.</summary>
+        public void SetSharperDeinterlacing(bool enabled)
+        {
+            _sharperDeinterlacing = enabled;
+            ApplyDeinterlace();
+            Console.WriteLine($"[MpvPlayer] Sharper deinterlacing (bwdif): {(enabled ? "on" : "off (yadif)")}");
+        }
+
+        /// <summary>Lead 2: log the FBO dimensions mpv renders into (to confirm display-native size).</summary>
+        public void SetRenderLogging(bool enabled)
+        {
+            _logRenderDimensions = enabled;
+            _lastLoggedW = -1; // force the next frame to log
+            _lastLoggedH = -1;
+            Console.WriteLine($"[MpvPlayer] Render dimension logging: {(enabled ? "on" : "off")}");
         }
 
         public void Play(string url, double? startSeconds = null)
