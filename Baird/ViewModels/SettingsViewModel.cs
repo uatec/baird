@@ -30,6 +30,53 @@ namespace Baird.ViewModels
             }
         }
 
+        // --- Video-quality feature flags (each maps to an mpv option; applied live via MainView) ---
+
+        private bool _highQualityScaling;
+        /// <summary>Lead 1: spline36 scaler instead of default bilinear.</summary>
+        public bool HighQualityScaling
+        {
+            get => _highQualityScaling;
+            set
+            {
+                if (_highQualityScaling != value)
+                {
+                    this.RaiseAndSetIfChanged(ref _highQualityScaling, value);
+                    SaveSetting("HighQualityScaling", value ? "true" : "false");
+                }
+            }
+        }
+
+        private bool _sharperDeinterlacing;
+        /// <summary>Lead 3: bwdif instead of default yadif for live deinterlacing.</summary>
+        public bool SharperDeinterlacing
+        {
+            get => _sharperDeinterlacing;
+            set
+            {
+                if (_sharperDeinterlacing != value)
+                {
+                    this.RaiseAndSetIfChanged(ref _sharperDeinterlacing, value);
+                    SaveSetting("SharperDeinterlacing", value ? "true" : "false");
+                }
+            }
+        }
+
+        private bool _logRenderDimensions;
+        /// <summary>Lead 2: log the FBO size mpv renders into, to confirm display-native rendering.</summary>
+        public bool LogRenderDimensions
+        {
+            get => _logRenderDimensions;
+            set
+            {
+                if (_logRenderDimensions != value)
+                {
+                    this.RaiseAndSetIfChanged(ref _logRenderDimensions, value);
+                    SaveSetting("LogRenderDimensions", value ? "true" : "false");
+                }
+            }
+        }
+
         private readonly IConfiguration? _configuration;
 
         public ReactiveCommand<Unit, Unit> IncreaseScaleCommand { get; }
@@ -52,7 +99,8 @@ namespace Baird.ViewModels
         {
             _configuration = configuration;
 
-            // Load persisted UI Scale if available
+            // Load persisted settings if available (set backing fields directly to avoid
+            // re-persisting during load).
             if (_configuration != null)
             {
                 var scaleStr = _configuration["Baird:UiScale"];
@@ -60,6 +108,9 @@ namespace Baird.ViewModels
                 {
                     _uiScale = Math.Clamp(savedScale, MinScale, MaxScale);
                 }
+                _highQualityScaling = ParseBool(_configuration["Baird:HighQualityScaling"]);
+                _sharperDeinterlacing = ParseBool(_configuration["Baird:SharperDeinterlacing"]);
+                _logRenderDimensions = ParseBool(_configuration["Baird:LogRenderDimensions"]);
             }
             IncreaseScaleCommand = ReactiveCommand.Create(() =>
             {
@@ -97,7 +148,17 @@ namespace Baird.ViewModels
             HasKeyLogEntries = true;
         }
 
+        private static bool ParseBool(string? value) => bool.TryParse(value, out var b) && b;
+
         private void SaveUiScale(double scale)
+            => SaveSetting("UiScale", scale.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
+
+        /// <summary>
+        /// Persists a single key under the [Baird] section of ~/.baird/config.ini, updating it in
+        /// place if present, inserting it into the section, or creating the section as needed. Other
+        /// settings and surrounding lines are preserved.
+        /// </summary>
+        private void SaveSetting(string key, string value)
         {
             try
             {
@@ -113,9 +174,8 @@ namespace Baird.ViewModels
                 // Read all lines to preserve other settings
                 var lines = File.Exists(configPath) ? File.ReadAllLines(configPath).ToList() : new System.Collections.Generic.List<string>();
 
-                // Find and replace or add Baird:UiScale
                 bool settingsSectionFound = false;
-                bool scaleFound = false;
+                bool keyFound = false;
 
                 for (int i = 0; i < lines.Count; i++)
                 {
@@ -124,17 +184,17 @@ namespace Baird.ViewModels
                     {
                         settingsSectionFound = true;
                     }
-                    else if (settingsSectionFound && line.StartsWith("UiScale", StringComparison.OrdinalIgnoreCase))
+                    else if (settingsSectionFound && line.StartsWith(key + "=", StringComparison.OrdinalIgnoreCase))
                     {
-                        lines[i] = $"UiScale={scale.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}";
-                        scaleFound = true;
+                        lines[i] = $"{key}={value}";
+                        keyFound = true;
                         break;
                     }
                     else if (settingsSectionFound && line.StartsWith("["))
                     {
-                        // Start of new section before finding UiScale, insert here
-                        lines.Insert(i, $"UiScale={scale.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}");
-                        scaleFound = true;
+                        // Start of a new section before finding the key — insert it here.
+                        lines.Insert(i, $"{key}={value}");
+                        keyFound = true;
                         break;
                     }
                 }
@@ -142,18 +202,18 @@ namespace Baird.ViewModels
                 if (!settingsSectionFound)
                 {
                     lines.Add("[Baird]");
-                    lines.Add($"UiScale={scale.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}");
+                    lines.Add($"{key}={value}");
                 }
-                else if (!scaleFound)
+                else if (!keyFound)
                 {
-                    lines.Add($"UiScale={scale.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}");
+                    lines.Add($"{key}={value}");
                 }
 
                 File.WriteAllLines(configPath, lines);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[SettingsViewModel] Failed to save UiScale: {ex.Message}");
+                Console.WriteLine($"[SettingsViewModel] Failed to save {key}: {ex.Message}");
             }
         }
     }
