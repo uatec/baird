@@ -85,6 +85,65 @@ else
     echo "[DPMS] Console blanking already disabled — skipping."
 fi
 
+# --- 5. Xorg configuration for the V3D GPU and display ---
+# These files were previously created by hand on the Pi and lived outside the
+# repo. They are managed here so a freshly flashed Pi is fully reproducible.
+XORG_CONF_DIR="/etc/X11/xorg.conf.d"
+echo "[Xorg] Writing Xorg configuration to $XORG_CONF_DIR..."
+mkdir -p "$XORG_CONF_DIR"
+
+# 5a. Disable X DPMS and screen blanking so the display stays on during playback.
+# Complements the console-level consoleblank=0 set above (this covers X11).
+cat > "$XORG_CONF_DIR/10-blanking.conf" <<'EOF'
+# Managed by Baird configure_pi.sh — keep the display on during playback.
+Section "Extensions"
+    Option      "DPMS" "Disable"
+EndSection
+
+Section "ServerLayout"
+    Identifier "ServerLayout0"
+    Option "StandbyTime" "0"
+    Option "SuspendTime" "0"
+    Option "OffTime"     "0"
+    Option "BlankTime"   "0"
+EndSection
+EOF
+echo "[Xorg]   10-blanking.conf written."
+
+# 5b. Force HDMI limited (broadcast) RGB range.
+# TVs expect limited RGB (16-235). With "Automatic", the modesetting driver may
+# output full range (0-255), which the TV then re-compresses — washed-out, soft,
+# "blobby" image. Pinning Limited 16:235 matches what set-top boxes/Chromecast
+# send and restores correct contrast and sharpness. Applies to all HDMI outputs.
+cat > "$XORG_CONF_DIR/20-hdmi-color.conf" <<'EOF'
+# Managed by Baird configure_pi.sh — forces limited (broadcast) RGB range so the
+# TV receives 16-235 and does not re-compress a full-range signal.
+Section "Monitor"
+    Identifier "HDMI-1"
+    Option "Broadcast RGB" "Limited 16:235"
+EndSection
+
+Section "Monitor"
+    Identifier "HDMI-2"
+    Option "Broadcast RGB" "Limited 16:235"
+EndSection
+EOF
+echo "[Xorg]   20-hdmi-color.conf written."
+
+# 5c. Use the modesetting driver on the VideoCore (vc4) GPU as the primary GPU.
+# Required for correct OpenGL rendering of the mpv video surface on the Pi 5.
+cat > "$XORG_CONF_DIR/99-v3d.conf" <<'EOF'
+# Managed by Baird configure_pi.sh — modesetting on vc4 as the primary GPU.
+Section "OutputClass"
+  Identifier "vc4"
+  MatchDriver "vc4"
+  Driver "modesetting"
+  Option "PrimaryGPU" "true"
+EndSection
+EOF
+echo "[Xorg]   99-v3d.conf written."
+echo "[Xorg] Done (takes effect on next X restart/reboot)."
+
 echo ""
 echo "=== Configuration complete ==="
 echo "Please reboot the Raspberry Pi for all changes to take effect:"
