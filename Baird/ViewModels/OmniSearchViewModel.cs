@@ -260,13 +260,33 @@ namespace Baird.ViewModels
             textChanges
                 .Where(q => !string.IsNullOrEmpty(q) && q.Length <= 3 && q.Length > 0 && q.All(char.IsDigit))
                 .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
-                .Subscribe(async (q) => await PerformSearch(q));
+                .Subscribe(async (q) =>
+                {
+                    try
+                    {
+                        await PerformSearch(q);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[OmniSearchViewModel] Unhandled error in search subscription: {ex}");
+                    }
+                });
 
             // Branch 2: Everything else -> Debounced
             textChanges
                 .Where(q => string.IsNullOrEmpty(q) || q.Length > 3 || !q.All(char.IsDigit))
                 .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
-                .Subscribe(async (q) => await PerformSearch(q));
+                .Subscribe(async (q) =>
+                {
+                    try
+                    {
+                        await PerformSearch(q);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[OmniSearchViewModel] Unhandled error in search subscription: {ex}");
+                    }
+                });
 
             // Initial load of suggestions
             RefreshSuggestions();
@@ -423,6 +443,10 @@ namespace Baird.ViewModels
                 });
 
                 await Task.WhenAll(tasks);
+
+                // A newer search may have started while we were awaiting; don't let this
+                // stale search re-sort/truncate the newer search's results.
+                if (token.IsCancellationRequested) return;
 
                 // Final sort after all results are in
                 if (SearchResults.Any())

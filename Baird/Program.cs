@@ -17,6 +17,18 @@ namespace Baird
         {
             Trace.Listeners.Add(new ConsoleTraceListener());
 
+            // Global safety nets: log anything that would otherwise silently kill the process.
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                Console.WriteLine($"[Program] AppDomain unhandled exception (IsTerminating={e.IsTerminating}): {e.ExceptionObject}");
+            };
+
+            System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (s, e) =>
+            {
+                Console.WriteLine($"[Program] Unobserved task exception: {e.Exception}");
+                e.SetObserved();
+            };
+
             var builder = BuildAvaloniaApp();
 
             builder.StartWithClassicDesktopLifetime(args);

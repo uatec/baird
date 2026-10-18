@@ -154,7 +154,17 @@ namespace Baird.ViewModels
             {
                 Interval = TimeSpan.FromSeconds(30)
             };
-            _refreshTimer.Tick += async (s, e) => await LoadRequests();
+            _refreshTimer.Tick += async (s, e) =>
+            {
+                try
+                {
+                    await LoadRequests();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[RequestsViewModel] Unhandled error in refresh timer: {ex}");
+                }
+            };
             _refreshTimer.Start();
         }
 

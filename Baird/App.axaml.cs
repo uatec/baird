@@ -4,6 +4,8 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
+using ReactiveUI;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.IO;
@@ -21,6 +23,14 @@ namespace Baird
 
         public override void OnFrameworkInitializationCompleted()
         {
+            // Global safety nets: keep the kiosk app alive on unhandled UI/Rx exceptions.
+            Dispatcher.UIThread.UnhandledException += (s, e) =>
+            {
+                Console.WriteLine($"[App] Unhandled UI-thread exception: {e.Exception}");
+                e.Handled = true;
+            };
+            RxApp.DefaultExceptionHandler = new LoggingRxExceptionHandler();
+
             // Build Configuration
             var builder = new ConfigurationBuilder();
 
@@ -74,6 +84,27 @@ namespace Baird
             }
 
             base.OnFrameworkInitializationCompleted();
+        }
+
+        /// <summary>
+        /// Logs exceptions that reach ReactiveUI's default handler (e.g. unhandled errors in
+        /// ReactiveCommands or ObservableAsPropertyHelpers) instead of rethrowing and crashing.
+        /// </summary>
+        private sealed class LoggingRxExceptionHandler : IObserver<Exception>
+        {
+            public void OnNext(Exception value)
+            {
+                Console.WriteLine($"[App] Unhandled ReactiveUI exception: {value}");
+            }
+
+            public void OnError(Exception error)
+            {
+                Console.WriteLine($"[App] ReactiveUI exception handler error: {error}");
+            }
+
+            public void OnCompleted()
+            {
+            }
         }
     }
 }
