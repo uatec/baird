@@ -1,10 +1,11 @@
 [Unit]
-Description=Check for Baird Updates Every 2 Minutes
+Description=Check for Baird Updates Hourly
 
 [Timer]
 Unit=baird-updater.service
-OnBootSec=2m
-OnUnitInactiveSec=2m
+OnBootSec=10m
+OnUnitInactiveSec=1h
+RandomizedDelaySec=5m
 
 [Install]
 WantedBy=timers.target

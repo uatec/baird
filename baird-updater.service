@@ -1,8 +1,17 @@
 [Unit]
 Description=Baird Update Service
-After=network.target
+# No network ordering: network.target / network-online.target are system-level
+# targets and are meaningless to the systemd *user* manager. If the network is
+# down, `brew update` fails, this run exits non-zero and the next timer run
+# retries.
 
 [Service]
 Type=oneshot
 # Assuming the package installs scripts to libexec and linked to opt
 ExecStart=/home/linuxbrew/.linuxbrew/opt/baird/libexec/update_baird.sh
+# Oneshot units have no start timeout by default; don't let a hung brew block
+# all future runs. Covers brew update + upgrade + the ~90s health check.
+TimeoutStartSec=30min
+# Stay out of the way of video playback while brew works.
+Nice=10
+IOSchedulingClass=idle
