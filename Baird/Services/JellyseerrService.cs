@@ -20,6 +20,7 @@ namespace Baird.Services
         {
             _baseUrl = config["JELLYSEERR_URL"]?.TrimEnd('/') ?? "http://localhost:5055";
             _apiKey = config["JELLYSEERR_API_KEY"] ?? "";
+            SecretRedactor.Register("JELLYSEERR_API_KEY", _apiKey);
 
             _httpClient = new HttpClient();
             _httpClient.BaseAddress = new Uri(_baseUrl + "/");
@@ -29,7 +30,7 @@ namespace Baird.Services
                 _httpClient.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
             }
 
-            Console.WriteLine($"[JellyseerrService] Configured for {_baseUrl}");
+            Console.WriteLine($"[JellyseerrService] Configured for {SecretRedactor.Redact(_baseUrl)}");
         }
 
         public async Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string query, int page, CancellationToken cancellationToken = default)
@@ -173,7 +174,7 @@ namespace Baird.Services
                 }
                 else
                 {
-                    Console.WriteLine($"[JellyseerrService] Request failed: {response.StatusCode} - {responseJson}");
+                    Console.WriteLine($"[JellyseerrService] Request failed: {response.StatusCode} - {SecretRedactor.Redact(responseJson)}");
                     return new JellyseerrRequestResponse
                     {
                         Success = false,

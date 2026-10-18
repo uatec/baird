@@ -119,8 +119,16 @@ namespace Baird.Controls
                 var app = (App)Application.Current!;
                 var config = app.Configuration;
 
+                // Only show keys that come from the config.ini files: the environment holds
+                // unrelated (possibly sensitive) variables that shouldn't appear on the TV.
+                var fileProviders = (config as IConfigurationRoot)?.Providers
+                    .Where(p => p is not Microsoft.Extensions.Configuration.EnvironmentVariables.EnvironmentVariablesConfigurationProvider)
+                    .ToList();
+
                 var items = config.AsEnumerable()
+                    .Where(x => fileProviders == null || fileProviders.Any(p => p.TryGet(x.Key, out _)))
                     .OrderBy(x => x.Key)
+                    .Select(x => new KeyValuePair<string, string?>(x.Key, MaskConfigValue(x.Key, x.Value)))
                     .ToList();
 
                 var itemsControl = this.FindControl<ItemsControl>("ConfigItemsControl");
@@ -129,6 +137,16 @@ namespace Baird.Controls
                     itemsControl.ItemsSource = items;
                 }
             }
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex SecretKeyPattern =
+            new("pass|key|token|secret|auth", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        private static string? MaskConfigValue(string key, string? value)
+        {
+            if (string.IsNullOrEmpty(value)) return value;
+            if (SecretKeyPattern.IsMatch(key)) return "***";
+            return Baird.Services.SecretRedactor.Redact(value);
         }
 
         private void OnExitRequested(object? sender, EventArgs e)
