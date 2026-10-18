@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 
 namespace Baird.Controls
 {
-    public class VideoPlayer : OpenGlControlBase
+    public class VideoPlayer : OpenGlControlBase, IAvDiagnosticsSource
     {
         private MpvPlayer? _player;
         // private IntPtr _mpvRenderContext; // Moved to MpvPlayer
@@ -74,7 +74,6 @@ namespace Baird.Controls
                         Console.WriteLine("[VideoPlayer] FileLoaded event received");
                         _loadTimeoutTimer.Stop();
                         _loadRetryCount = 0;
-                        _player?.LogAudioTracks();
                         IsLoading = false;
                         PlayerState = PlaybackState.Playing.ToString();
                     });
@@ -115,7 +114,7 @@ namespace Baird.Controls
                 _loadTimeoutTimer.Stop();
                 if (_player?.State == PlaybackState.Loading)
                 {
-                    Console.WriteLine($"[VideoPlayer] Load timed out after {LoadTimeoutSeconds}s for {_pendingUrl}");
+                    Console.WriteLine($"[VideoPlayer] Load timed out after {LoadTimeoutSeconds}s for {Baird.Services.SecretRedactor.Redact(_pendingUrl)}");
                     HandleLoadFailure("timeout");
                 }
             };
@@ -129,6 +128,8 @@ namespace Baird.Controls
         public event EventHandler? StreamEnded;
         public event EventHandler? ConfigurationToggleRequested;
         public event EventHandler? ExitRequested;
+        /// <summary>M key while watching: flag "that felt off" on the A/V debug page/journal.</summary>
+        public event EventHandler? DiagnosticsMarkRequested;
 
         protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
         {
@@ -211,6 +212,12 @@ namespace Baird.Controls
                     e.Handled = true;
                     break;
 
+                case Avalonia.Input.Key.M:
+                    DiagnosticsMarkRequested?.Invoke(this, EventArgs.Empty);
+                    UserActivity?.Invoke(this, EventArgs.Empty);
+                    e.Handled = true;
+                    break;
+
                 case Avalonia.Input.Key.Q:
                     Console.WriteLine("[VideoPlayer] Q pressed. Saving progress and requesting exit.");
                     SaveProgress();
@@ -232,7 +239,7 @@ namespace Baird.Controls
             }
 
             // Perform the seek
-            _player?.Command("seek", seconds.ToString(), "relative");
+            _player?.SeekRelative(seconds);
         }
 
 
@@ -527,9 +534,9 @@ namespace Baird.Controls
                 _liveDelaySeconds = 0;
                 _lastLiveSource = "";
 
-                // Poll time-pos; Duration/DurationSeconds are maintained by DurationChanged event.
-                var posStr = _player.TimePosition;
-                double.TryParse(posStr, out double pos);
+                // time-pos is cached from mpv's property observer (no blocking call on the UI
+                // thread); Duration/DurationSeconds are maintained by the DurationChanged event.
+                var pos = _player.TimePositionSeconds;
                 var tsPos = TimeSpan.FromSeconds(pos);
 
                 // Keep MediaItem history in sync with current position
@@ -675,7 +682,8 @@ namespace Baird.Controls
                 {
                     if (_player != null)
                     {
-                        if (paused && (_player.State == PlaybackState.Playing || _player.State == PlaybackState.Buffering))
+                        // Pausing while Loading is allowed: mpv honours it once the file opens.
+                        if (paused && (_player.State == PlaybackState.Playing || _player.State == PlaybackState.Buffering || _player.State == PlaybackState.Loading))
                         {
                             _player.Pause();
                         }
@@ -727,6 +735,10 @@ namespace Baird.Controls
         public void SetSharperDeinterlacing(bool enabled) => _player?.SetSharperDeinterlacing(enabled);
         public void SetRenderLogging(bool enabled) => _player?.SetRenderLogging(enabled);
 
+        // A/V debug page
+        public Task<AvStats?> SampleAvStatsAsync() => _player?.SampleAvStatsAsync() ?? Task.FromResult<AvStats?>(null);
+        public void SetAudioDelay(double seconds) => _player?.SetAudioDelay(seconds);
+
         private void RestartLoadTimeout()
         {
             _loadTimeoutTimer.Stop();
@@ -739,7 +751,7 @@ namespace Baird.Controls
             _loadRetryCount++;
             if (_loadRetryCount <= MaxLoadRetries && !string.IsNullOrEmpty(_pendingUrl))
             {
-                Console.WriteLine($"[VideoPlayer] Retrying load (attempt {_loadRetryCount}/{MaxLoadRetries}) after {reason}: {_pendingUrl}");
+                Console.WriteLine($"[VideoPlayer] Retrying load (attempt {_loadRetryCount}/{MaxLoadRetries}) after {reason}: {Baird.Services.SecretRedactor.Redact(_pendingUrl)}");
                 _currentVideoStartTime = DateTime.Now;
                 if (_pendingStartSeconds.HasValue)
                     _player?.Play(_pendingUrl, _pendingStartSeconds.Value);
@@ -749,7 +761,7 @@ namespace Baird.Controls
             }
             else
             {
-                Console.WriteLine($"[VideoPlayer] Giving up on stream after {MaxLoadRetries} retries ({reason}): {_pendingUrl}");
+                Console.WriteLine($"[VideoPlayer] Giving up on stream after {MaxLoadRetries} retries ({reason}): {Baird.Services.SecretRedactor.Redact(_pendingUrl)}");
             }
         }
 
@@ -780,10 +792,6 @@ namespace Baird.Controls
         }
 
         public PlaybackState GetState() => _player?.State ?? PlaybackState.Idle;
-        // public bool IsMpvPaused => _player.IsMpvPaused; // Use IsPaused property instead
-        public string GetTimePos() => _player?.TimePosition ?? "0";
-        public string GetDuration() => _player?.Duration ?? "0";
-        public string GetCurrentPath() => _player?.CurrentPath ?? string.Empty;
 
         public void ToggleStats()
         {
@@ -834,7 +842,11 @@ namespace Baird.Controls
             if (Avalonia.Controls.Design.IsDesignMode) return;
 
             Console.WriteLine("[VideoPlayer] OnOpenGlDeinit called. Freeing context.");
+            // Stop timers first so nothing calls into the player after its handle is gone.
+            _hudTimer.Stop();
+            _loadTimeoutTimer.Stop();
             _player?.Dispose(); // This frees the render context and the mpv handle
+            _player = null;
             base.OnOpenGlDeinit(gl);
         }
 
