@@ -59,7 +59,14 @@
                 <Border Name="HudLayer" IsVisible="{Binding IsVideoHudVisible}"
                     IsHitTestVisible="False">
                     <Grid RowDefinitions="Auto,*,Auto">
-                        <Border Grid.Row="0" Background="#66000000" Padding="10">
+                        <Border Grid.Row="0" Padding="32,24,32,48">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                    <GradientStop Offset="0.0" Color="#D9000000" />
+                                    <GradientStop Offset="0.6" Color="#80000000" />
+                                    <GradientStop Offset="1.0" Color="#00000000" />
+                                </LinearGradientBrush>
+                            </Border.Background>
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
                                     Spacing="8">
@@ -84,7 +91,14 @@
                                     Foreground="#AAAAAA" HorizontalAlignment="Center" />
                             </StackPanel>
                         </Border>
-                        <Border Grid.Row="2" Background="#66000000" Padding="20">
+                        <Border Grid.Row="2" Padding="32,48,32,28">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                    <GradientStop Offset="0.0" Color="#00000000" />
+                                    <GradientStop Offset="0.4" Color="#80000000" />
+                                    <GradientStop Offset="1.0" Color="#E6000000" />
+                                </LinearGradientBrush>
+                            </Border.Background>
                             <StackPanel>
                                 <!-- Live Stream Clock -->
                                 <TextBlock Text="{Binding #Player.FormattedTime}"
@@ -139,6 +153,32 @@
                                             Foreground="#AAAAAA" FontSize="14" />
                                     </StackPanel>
                                 </StackPanel>
+
+                                <!-- Remote Navigation Hints Bar -->
+                                <Border Background="#CC0F172A" BorderBrush="#22FFFFFF" BorderThickness="1" CornerRadius="20" HorizontalAlignment="Center" Margin="0,18,0,0" Padding="20,8">
+                                    <StackPanel Orientation="Horizontal" Spacing="24">
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Border Background="#1E293B" CornerRadius="6" Padding="7,3"><TextBlock Text="▼" Foreground="#38BDF8" FontWeight="Bold" FontSize="12"/></Border>
+                                            <TextBlock Text="Menu" Foreground="#E2E8F0" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Border Background="#1E293B" CornerRadius="6" Padding="7,3"><TextBlock Text="OK / Space" Foreground="#38BDF8" FontWeight="Bold" FontSize="12"/></Border>
+                                            <TextBlock Text="Pause / Play" Foreground="#E2E8F0" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Border Background="#1E293B" CornerRadius="6" Padding="7,3"><TextBlock Text="◄ / ►" Foreground="#38BDF8" FontWeight="Bold" FontSize="12"/></Border>
+                                            <TextBlock Text="Seek 10s" Foreground="#E2E8F0" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Border Background="#1E293B" CornerRadius="6" Padding="7,3"><TextBlock Text="PgUp / PgDn" Foreground="#38BDF8" FontWeight="Bold" FontSize="12"/></Border>
+                                            <TextBlock Text="Channel" Foreground="#E2E8F0" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Border Background="#1E293B" CornerRadius="6" Padding="7,3"><TextBlock Text="Hold OK" Foreground="#F59E0B" FontWeight="Bold" FontSize="12"/></Border>
+                                            <TextBlock Text="Watchlist" Foreground="#E2E8F0" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
                     </Grid>

@@ -11,15 +11,58 @@ namespace Baird.Controls
     public partial class SeerrchControl : UserControl
     {
         public System.Windows.Input.ICommand MoveFocusDownCommand { get; }
+        public System.Windows.Input.ICommand MoveFocusUpCommand { get; }
 
         public SeerrchControl()
         {
             InitializeComponent();
             MoveFocusDownCommand = ReactiveUI.ReactiveCommand.Create(MoveFocusDown);
+            MoveFocusUpCommand = ReactiveUI.ReactiveCommand.Create(MoveFocusUp);
+        }
+
+        private void MoveFocusUp()
+        {
+            var tabNav = this.FindAncestorOfType<TabNavigationControl>();
+            if (tabNav != null)
+            {
+                var itemsControl = tabNav.FindControl<ItemsControl>("TabBar");
+                if (itemsControl != null && tabNav.DataContext is ViewModels.TabNavigationViewModel vm && vm.SelectedTab != null)
+                {
+                    var index = vm.Tabs.IndexOf(vm.SelectedTab);
+                    if (index >= 0)
+                    {
+                        var container = itemsControl.ContainerFromIndex(index);
+                        if (container is Visual visual)
+                        {
+                            var button = visual.FindDescendantOfType<Button>();
+                            button?.Focus();
+                            return;
+                        }
+                    }
+                }
+            }
         }
 
         private void MoveFocusDown()
         {
+            var itemsControl = this.FindControl<ItemsControl>("ResultsList");
+            if (itemsControl != null && itemsControl.ItemCount > 0)
+            {
+                FocusResults();
+                return;
+            }
+
+            var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
+            if (keyboard != null && keyboard.IsEffectivelyVisible)
+            {
+                var keyF = keyboard.FindControl<Button>("KeyF");
+                if (keyF != null && keyF.IsEffectivelyVisible)
+                {
+                    keyF.Focus();
+                    return;
+                }
+            }
+
             FocusResults();
         }
 
@@ -78,6 +121,32 @@ namespace Baird.Controls
                 box.GotFocus += (sender, args) =>
                 {
                     Dispatcher.UIThread.Post(() => box.SelectAll(), DispatcherPriority.Input);
+                };
+            }
+
+            var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
+            if (keyboard != null)
+            {
+                keyboard.KeyPressed += key =>
+                {
+                    if (box != null)
+                    {
+                        var text = box.Text ?? string.Empty;
+                        box.Text = text + key.ToLowerInvariant();
+                        box.CaretIndex = box.Text.Length;
+                    }
+                };
+                keyboard.BackspacePressed += () =>
+                {
+                    if (box != null && !string.IsNullOrEmpty(box.Text))
+                    {
+                        box.Text = box.Text.Substring(0, box.Text.Length - 1);
+                        box.CaretIndex = box.Text.Length;
+                    }
+                };
+                keyboard.EnterPressed += () =>
+                {
+                    FocusResults();
                 };
             }
         }

@@ -193,7 +193,7 @@ namespace Baird.ViewModels
                 new TabItem("History", History),
                 new TabItem("Search", OmniSearch),
                 new TabItem("Watchlist", Watchlist),
-                new TabItem("Seerrch", Seerrch),
+                new TabItem("Discover", Seerrch),
                 new TabItem("Requests", Requests),
                 new TabItem("Settings", Settings),
                 new TabItem("CEC Debug", CecDebug),
@@ -615,6 +615,7 @@ namespace Baird.ViewModels
 
         public void OpenMainMenu(int? tabIndex = null)
         {
+            IsVideoHudVisible = false;
             // History is now preloaded and maintained in memory, no need to refresh
             if (tabIndex.HasValue && tabIndex.Value >= 0 && tabIndex.Value < MainMenu.Tabs.Count)
             {
