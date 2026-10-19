@@ -24,8 +24,8 @@ namespace Baird.Services
         private readonly SemaphoreSlim _cacheLock = new SemaphoreSlim(1, 1);
         private readonly TimeSpan _cacheTimeout = TimeSpan.FromSeconds(60);
 
-        // EPG cache: channelId -> (programme title, cache expiry)
-        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string? Title, DateTime Expiry)> _epgCache = new();
+        // EPG schedule cache: channelId -> (programs, cache expiry)
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (IReadOnlyList<EpgProgram> Programs, DateTime Expiry)> _scheduleCache = new();
 
         public TvHeadendService(Microsoft.Extensions.Configuration.IConfiguration config)
         {
@@ -179,39 +179,88 @@ namespace Baird.Services
 
         public async Task<string?> GetCurrentProgrammeNameAsync(string channelId)
         {
-            if (_epgCache.TryGetValue(channelId, out var cached) && DateTime.UtcNow < cached.Expiry)
-                return cached.Title;
+            var prog = await GetCurrentProgrammeAsync(channelId).ConfigureAwait(false);
+            return string.IsNullOrWhiteSpace(prog?.Title) ? null : prog.Title;
+        }
+
+        public async Task<EpgProgram?> GetCurrentProgrammeAsync(string channelId)
+        {
+            var schedule = await GetChannelScheduleAsync(channelId, limit: 5).ConfigureAwait(false);
+            var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            return schedule.FirstOrDefault(e => e.StartUnix <= nowUnix && nowUnix < e.StopUnix)
+                ?? schedule.FirstOrDefault();
+        }
+
+        public async Task<IReadOnlyList<EpgProgram>> GetChannelScheduleAsync(string channelId, int limit = 20)
+        {
+            if (_scheduleCache.TryGetValue(channelId, out var cached) && DateTime.UtcNow < cached.Expiry)
+                return cached.Programs;
 
             try
             {
-                var url = $"api/epg/events/grid?channel={channelId}&mode=now&limit=1";
+                var url = $"api/epg/events/grid?channel={channelId}&limit={limit}";
                 var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 var grid = JsonSerializer.Deserialize(json, TvHeadendJsonContext.Default.TvHeadendEpgGrid);
 
+                var list = grid?.Entries != null
+                    ? grid.Entries.Select(e => MapToEpgProgram(e, channelId)).OrderBy(e => e.StartUnix).ToList()
+                    : new List<EpgProgram>();
+
                 var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                var currentEvent = grid?.Entries?.FirstOrDefault(e => e.Start <= nowUnix && nowUnix < e.Stop)
-                    ?? grid?.Entries?.FirstOrDefault();
+                var currentEvent = list.FirstOrDefault(e => e.StartUnix <= nowUnix && nowUnix < e.StopUnix);
+                var cacheExpiry = currentEvent != null && currentEvent.StopUnix > nowUnix
+                    ? new[] { DateTimeOffset.FromUnixTimeSeconds(currentEvent.StopUnix).UtcDateTime, DateTime.UtcNow.AddSeconds(120) }.Min()
+                    : DateTime.UtcNow.AddSeconds(60);
 
-                var title = string.IsNullOrWhiteSpace(currentEvent?.Title) ? null : currentEvent.Title;
-
-                // Cache until the programme ends or for 60 seconds, whichever is sooner
-                var cacheExpiry = currentEvent != null && currentEvent.Stop > nowUnix
-                    ? new[] { DateTimeOffset.FromUnixTimeSeconds(currentEvent.Stop).UtcDateTime, DateTime.UtcNow.AddSeconds(60) }.Min()
-                    : DateTime.UtcNow.AddSeconds(30);
-
-                _epgCache[channelId] = (title, cacheExpiry);
-                Console.WriteLine($"[TvHeadendService] EPG for {channelId}: '{title}' (expires {cacheExpiry:HH:mm:ss})");
-                return title;
+                _scheduleCache[channelId] = (list, cacheExpiry);
+                return list;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[TvHeadendService] EPG fetch failed for {channelId}: {ex.Message}");
-                _epgCache[channelId] = (null, DateTime.UtcNow.AddSeconds(30));
-                return null;
+                _scheduleCache[channelId] = (Array.Empty<EpgProgram>(), DateTime.UtcNow.AddSeconds(30));
+                return Array.Empty<EpgProgram>();
             }
+        }
+
+        public async Task<IReadOnlyDictionary<string, IReadOnlyList<EpgProgram>>> GetBulkScheduleAsync(
+            IEnumerable<string> channelIds,
+            int limitPerChannel = 10,
+            CancellationToken cancellationToken = default)
+        {
+            var dict = new Dictionary<string, IReadOnlyList<EpgProgram>>();
+            var tasks = channelIds.Select(async id =>
+            {
+                var schedule = await GetChannelScheduleAsync(id, limitPerChannel).ConfigureAwait(false);
+                return (id, schedule);
+            });
+
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            foreach (var (id, schedule) in results)
+            {
+                dict[id] = schedule;
+            }
+            return dict;
+        }
+
+        private static EpgProgram MapToEpgProgram(TvHeadendEpgEvent e, string fallbackChannelId)
+        {
+            return new EpgProgram
+            {
+                Id = e.EventId > 0 ? e.EventId.ToString() : $"{fallbackChannelId}_{e.Start}",
+                ChannelId = !string.IsNullOrEmpty(e.ChannelUuid) ? e.ChannelUuid : fallbackChannelId,
+                ChannelName = e.ChannelName ?? string.Empty,
+                ChannelNumber = e.ChannelNumber,
+                Title = e.Title ?? string.Empty,
+                Subtitle = e.Subtitle,
+                Summary = e.Summary,
+                Description = e.Description,
+                StartUnix = e.Start,
+                StopUnix = e.Stop
+            };
         }
 
         private string GetChannelImageUrl(TvHeadendEntry channel)
@@ -438,8 +487,29 @@ namespace Baird.Services
 
     public class TvHeadendEpgEvent
     {
+        [JsonPropertyName("eventId")]
+        public long EventId { get; set; }
+
+        [JsonPropertyName("channelUuid")]
+        public string? ChannelUuid { get; set; }
+
+        [JsonPropertyName("channelNumber")]
+        public string? ChannelNumber { get; set; }
+
+        [JsonPropertyName("channelName")]
+        public string? ChannelName { get; set; }
+
         [JsonPropertyName("title")]
         public string Title { get; set; } = "";
+
+        [JsonPropertyName("subtitle")]
+        public string? Subtitle { get; set; }
+
+        [JsonPropertyName("summary")]
+        public string? Summary { get; set; }
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
 
         [JsonPropertyName("start")]
         public long Start { get; set; }

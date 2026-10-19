@@ -19,6 +19,8 @@ namespace Baird
     [JsonSerializable(typeof(List<JellyseerrRequest>))]
     [JsonSerializable(typeof(JellyseerrRequestResponse))]
     [JsonSerializable(typeof(ScreensaverResponse))]
+    [JsonSerializable(typeof(EpgProgram))]
+    [JsonSerializable(typeof(List<EpgProgram>))]
     internal partial class BairdJsonContext : JsonSerializerContext
     {
     }

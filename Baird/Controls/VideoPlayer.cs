@@ -144,6 +144,7 @@ namespace Baird.Controls
         public event EventHandler? StreamEnded;
         public event EventHandler? ConfigurationToggleRequested;
         public event EventHandler? ExitRequested;
+        public event EventHandler? EpgRequested;
         /// <summary>M key while watching: flag "that felt off" on the A/V debug page/journal.</summary>
         public event EventHandler? DiagnosticsMarkRequested;
 
@@ -238,6 +239,14 @@ namespace Baird.Controls
                     Console.WriteLine("[VideoPlayer] Q pressed. Saving progress and requesting exit.");
                     SaveProgress();
                     ExitRequested?.Invoke(this, EventArgs.Empty);
+                    UserActivity?.Invoke(this, EventArgs.Empty);
+                    e.Handled = true;
+                    break;
+
+                case Avalonia.Input.Key.G:
+                case (Avalonia.Input.Key)100026: // MediaTvGuide
+                    Console.WriteLine("[VideoPlayer] EPG key pressed -> EpgRequested");
+                    EpgRequested?.Invoke(this, EventArgs.Empty);
                     UserActivity?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;
                     break;

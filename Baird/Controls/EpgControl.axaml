@@ -1,0 +1,280 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Baird.ViewModels"
+             xmlns:m="using:Baird.Models"
+             xmlns:controls="using:Baird.Controls"
+             xmlns:conv="using:Baird.Converters"
+             xmlns:asyncImage="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+             x:Class="Baird.Controls.EpgControl"
+             x:CompileBindings="True"
+             x:DataType="vm:EpgViewModel">
+
+    <UserControl.Resources>
+        <conv:StringVisibilityConverter x:Key="StringVisibilityConverter"/>
+    </UserControl.Resources>
+
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+    </UserControl.KeyBindings>
+
+    <UserControl.Styles>
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Focusable" Value="True"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="#334CAF50"/>
+        </Style>
+        <Style Selector="ListBoxItem:focus /template/ ContentPresenter">
+            <Setter Property="Background" Value="#554CAF50"/>
+        </Style>
+        <Style Selector="Button.WatchButton">
+            <Setter Property="Background" Value="#4CAF50"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Padding" Value="24,10"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="Button.WatchButton:focus">
+            <Setter Property="Background" Value="#66BB6A"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="White"/>
+        </Style>
+        <Style Selector="Button.FilterButton">
+            <Setter Property="Background" Value="#22FFFFFF"/>
+            <Setter Property="Foreground" Value="#AAAAAA"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="CornerRadius" Value="14"/>
+        </Style>
+        <Style Selector="Button.FilterButton:focus">
+            <Setter Property="Background" Value="#4CAF50"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*" Margin="24" Background="Transparent" XYFocus.NavigationModes="Enabled">
+        <!-- Top Bar: Header, Parity Filters & Primary Watch/Play Action -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,16">
+            <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                <TextBlock Text="Guide" FontSize="32" FontWeight="ExtraBold" Foreground="White"/>
+                <ProgressBar IsIndeterminate="True" 
+                             Width="24" Height="24" 
+                             Theme="{DynamicResource {x:Type ProgressBar}}"
+                             IsVisible="{Binding IsLoading}" 
+                             VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Filter Badges: Channels & Shows side-by-side -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="24,0" VerticalAlignment="Center">
+                <Button Classes="FilterButton" Content="All Feeds" Command="{Binding SetFilterCommand}" CommandParameter="All"/>
+                <Button Classes="FilterButton" Content="Live TV" Command="{Binding SetFilterCommand}" CommandParameter="Live TV"/>
+                <Button Classes="FilterButton" Content="Streaming Shows" Command="{Binding SetFilterCommand}" CommandParameter="Streaming"/>
+            </StackPanel>
+
+            <Button Grid.Column="2" 
+                    Classes="WatchButton"
+                    Content="{Binding PlayButtonText}"
+                    Command="{Binding PlayChannelCommand}"
+                    CommandParameter="{Binding SelectedChannel.Channel}"
+                    IsVisible="{Binding SelectedChannel, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    VerticalAlignment="Center"/>
+        </Grid>
+
+        <!-- Main Body: Split into Feeds List (Left) and Schedule / Content Details (Right) -->
+        <Grid Grid.Row="1" ColumnDefinitions="400,*" Margin="0,4,0,0">
+            <!-- Left Column: Channel & Show List -->
+            <Border Grid.Column="0" Background="#22111111" CornerRadius="8" Padding="8" Margin="0,0,12,0">
+                <ListBox Name="ChannelsList"
+                         ItemsSource="{Binding Channels}"
+                         SelectedItem="{Binding SelectedChannel, Mode=TwoWay}"
+                         Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         XYFocus.NavigationModes="Enabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:ChannelScheduleViewModel">
+                            <Border CornerRadius="6" Padding="12,10" Margin="0,2" Background="#1AFFFFFF">
+                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                    <!-- Badge / Logo / Number -->
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Width="76">
+                                        <!-- Live TV Channel Number -->
+                                        <TextBlock Text="{Binding ChannelNumber}" 
+                                                   Foreground="#FFD700" 
+                                                   FontWeight="Bold" 
+                                                   FontSize="16"
+                                                   VerticalAlignment="Center"
+                                                   IsVisible="{Binding IsLive}"/>
+                                        <!-- Streaming Source Pill -->
+                                        <Border Background="#334CC9F0" CornerRadius="4" Padding="4,2" VerticalAlignment="Center" IsVisible="{Binding !IsLive}">
+                                            <TextBlock Text="{Binding Source}" Foreground="#4CC9F0" FontSize="10" FontWeight="Bold"/>
+                                        </Border>
+                                        <!-- Icon / Poster -->
+                                        <Border CornerRadius="4" Width="36" Height="24" Background="#333333" ClipToBounds="True" VerticalAlignment="Center">
+                                            <Image asyncImage:ImageLoader.Source="{Binding ImageUrl}" Stretch="Uniform"/>
+                                        </Border>
+                                    </StackPanel>
+
+                                    <!-- Channel / Show Name & Now Playing / Next Episode -->
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0">
+                                        <TextBlock Text="{Binding Name}" 
+                                                   Foreground="White" 
+                                                   FontWeight="SemiBold" 
+                                                   FontSize="16"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Now.DisplayTitle}" 
+                                                   Foreground="#BBBBBB" 
+                                                   FontSize="13" 
+                                                   FontStyle="Italic"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="0,2,0,0"/>
+                                    </StackPanel>
+
+                                    <!-- Duration or Type Badge -->
+                                    <Border Grid.Column="2" 
+                                            Background="#22FFFFFF" 
+                                            CornerRadius="4" 
+                                            Padding="6,2" 
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DisplayBadge}" 
+                                                   Foreground="{Binding IsLive, Converter={x:Static ObjectConverters.IsNotNull}}" 
+                                                   FontSize="11" 
+                                                   FontWeight="Bold"/>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!-- Right Column: Programme / Show Details (Top) & Schedule / Episodes List (Bottom) -->
+            <Grid Grid.Column="1" RowDefinitions="Auto,*" Margin="12,0,0,0">
+                <!-- Programme / Episode Details Card -->
+                <Border Grid.Row="0" Background="#261A1A1A" CornerRadius="8" Padding="20" Margin="0,0,0,12">
+                    <Grid RowDefinitions="Auto,Auto,Auto,Auto" IsVisible="{Binding SelectedProgram, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <!-- Title & Badges -->
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding SelectedProgram.DisplayTitle}" 
+                                       FontSize="24" 
+                                       FontWeight="ExtraBold" 
+                                       Foreground="White" 
+                                       TextTrimming="CharacterEllipsis"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Border Background="#E50914" CornerRadius="4" Padding="8,3" IsVisible="{Binding SelectedProgram.IsCurrent}">
+                                    <TextBlock Text="LIVE" Foreground="White" FontWeight="Bold" FontSize="12"/>
+                                </Border>
+                                <Border Background="#333333" CornerRadius="4" Padding="8,3">
+                                    <TextBlock Text="{Binding SelectedProgram.FormattedTime}" Foreground="#4CC9F0" FontWeight="Bold" FontSize="12"/>
+                                </Border>
+                                <Border Background="#333333" CornerRadius="4" Padding="8,3" IsVisible="{Binding SelectedProgram.FormattedDuration, Converter={StaticResource StringVisibilityConverter}}">
+                                    <TextBlock Text="{Binding SelectedProgram.FormattedDuration}" Foreground="#FFD700" FontWeight="Bold" FontSize="12"/>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Subtitle -->
+                        <TextBlock Grid.Row="1" 
+                                   Text="{Binding SelectedProgram.Subtitle}" 
+                                   FontSize="16" 
+                                   Foreground="#CCCCCC" 
+                                   FontWeight="Medium" 
+                                   Margin="0,6,0,0"
+                                   IsVisible="{Binding SelectedProgram.Subtitle, Converter={StaticResource StringVisibilityConverter}}"/>
+
+                        <!-- Progress Bar (for Live broadcasts and in-progress streaming episodes) -->
+                        <ProgressBar Grid.Row="2" 
+                                     Value="{Binding SelectedProgram.Progress}" 
+                                     Maximum="1.0" 
+                                     Minimum="0.0" 
+                                     Height="4" 
+                                     Margin="0,10,0,8" 
+                                     Foreground="#E50914" 
+                                     Background="#444444"
+                                     IsVisible="{Binding SelectedProgram.Progress, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+                        <!-- Synopsis / Description -->
+                        <TextBlock Grid.Row="3" 
+                                   Text="{Binding SelectedProgram.DisplayDetails}" 
+                                   FontSize="14" 
+                                   Foreground="#AAAAAA" 
+                                   TextWrapping="Wrap" 
+                                   MaxLines="4"
+                                   TextTrimming="CharacterEllipsis"
+                                   Margin="0,6,0,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Schedule / Episodes Timeline -->
+                <Border Grid.Row="1" Background="#1E111111" CornerRadius="8" Padding="12">
+                    <Grid RowDefinitions="Auto,*">
+                        <TextBlock Grid.Row="0" 
+                                   Text="{Binding SelectedChannel.IsLive, Converter={x:Static ObjectConverters.IsNotNull}}" 
+                                   FontSize="18" 
+                                   FontWeight="Bold" 
+                                   Foreground="#EEEEEE" 
+                                   Margin="4,0,0,10"/>
+
+                        <ListBox Grid.Row="1" 
+                                 Name="ScheduleList"
+                                 ItemsSource="{Binding SelectedChannel.Schedule}"
+                                 SelectedItem="{Binding SelectedProgram, Mode=TwoWay}"
+                                 Background="Transparent"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 XYFocus.NavigationModes="Enabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="m:EpgProgram">
+                                    <Border CornerRadius="6" Padding="14,10" Margin="0,2" Background="#14FFFFFF">
+                                        <Grid ColumnDefinitions="140,*,Auto">
+                                            <!-- Time / Episode Marker -->
+                                            <TextBlock Grid.Column="0" 
+                                                       Text="{Binding FormattedTime}" 
+                                                       Foreground="#4CC9F0" 
+                                                       FontWeight="Bold" 
+                                                       FontSize="14" 
+                                                       VerticalAlignment="Center"/>
+
+                                            <!-- Programme / Episode Title & Subtitle -->
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0">
+                                                <TextBlock Text="{Binding DisplayTitle}" 
+                                                           Foreground="White" 
+                                                           FontWeight="SemiBold" 
+                                                           FontSize="15" 
+                                                           TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding Subtitle}" 
+                                                           Foreground="#888888" 
+                                                           FontSize="12" 
+                                                           TextTrimming="CharacterEllipsis"
+                                                           IsVisible="{Binding Subtitle, Converter={StaticResource StringVisibilityConverter}}"/>
+                                            </StackPanel>
+
+                                            <!-- Live Pill or Duration -->
+                                            <Border Grid.Column="2" 
+                                                    Background="#E50914" 
+                                                    CornerRadius="4" 
+                                                    Padding="8,3" 
+                                                    VerticalAlignment="Center"
+                                                    IsVisible="{Binding IsCurrent}">
+                                                <TextBlock Text="NOW" Foreground="White" FontWeight="Bold" FontSize="11"/>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

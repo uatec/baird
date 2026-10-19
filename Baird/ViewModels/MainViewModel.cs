@@ -41,6 +41,7 @@ namespace Baird.ViewModels
         public OmniSearchViewModel OmniSearch { get; }
         public HistoryViewModel History { get; }
         public WatchlistViewModel Watchlist { get; }
+        public EpgViewModel Epg { get; }
         public CecDebugViewModel CecDebug { get; }
         public AvDebugViewModel AvDebug { get; }
         public SeerrchViewModel Seerrch { get; }
@@ -109,6 +110,7 @@ namespace Baird.ViewModels
             OmniSearch = new OmniSearchViewModel(dataService, searchHistoryService, () => AllChannels);
             History = new HistoryViewModel(dataService);
             Watchlist = new WatchlistViewModel(dataService);
+            Epg = new EpgViewModel(dataService, epgService, () => AllChannels);
             CecDebug = new CecDebugViewModel(cecService);
             AvDebug = new AvDebugViewModel { CurrentTitle = () => ActiveItem?.Name };
 
@@ -121,6 +123,9 @@ namespace Baird.ViewModels
 
             Watchlist.PlayRequested += (s, item) => PlayItem(item);
             Watchlist.BackRequested += (s, e) => GoBack();
+
+            Epg.PlayRequested += (s, item) => PlayItem(item);
+            Epg.BackRequested += (s, e) => GoBack();
 
             CecDebug.BackRequested += (s, e) => GoBack();
             AvDebug.BackRequested += (s, e) => GoBack();
@@ -187,10 +192,11 @@ namespace Baird.ViewModels
             OmniSearch.PlayRequested += (s, item) => PlayItem(item);
             OmniSearch.BackRequested += (s, e) => GoBack();
 
-            // Create MainMenu with History and Search tabs
+            // Create MainMenu with History, Guide, and Search tabs
             var tabs = new[]
             {
                 new TabItem("History", History),
+                new TabItem("Guide", Epg),
                 new TabItem("Search", OmniSearch),
                 new TabItem("Watchlist", Watchlist),
                 new TabItem("Seerrch", Seerrch),
@@ -482,10 +488,20 @@ namespace Baird.ViewModels
                     .ToList();
 
                 _ = RefreshEpgForAllChannelsAsync();
+                _ = Epg.RefreshAsync();
             }
             catch (System.Exception ex)
             {
                 System.Console.WriteLine($"[MainViewModel] Error refreshing channels: {ex.Message}");
+            }
+        }
+
+        public void ToggleEpgOverlay()
+        {
+            IsEpgActive = !IsEpgActive;
+            if (IsEpgActive)
+            {
+                _ = Epg.RefreshAsync();
             }
         }
 

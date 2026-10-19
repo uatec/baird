@@ -21,9 +21,7 @@
 
             <Grid>
                 <!-- Layer 1: EPG Overlay (Bottom Up) -->
-            <Border Name="EpgLayer" Background="#88000000" VerticalAlignment="Bottom" Height="300" IsVisible="{Binding IsEpgActive}">
-                <TextBlock Text="EPG Placeholder" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+            <c:EpgOverlayControl Name="EpgLayer" VerticalAlignment="Bottom" Height="280" IsVisible="{Binding IsEpgActive}"/>
 
             <!-- Layer 2: Navigation Content -->
             <!-- Focusable=False ensures the container itself cannot grab focus when we want its children to have it -->
@@ -35,6 +33,9 @@
                 <ContentControl.DataTemplates>
                     <DataTemplate DataType="{x:Type vm:OmniSearchViewModel}">
                         <c:OmniSearchControl/>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:EpgViewModel}">
+                        <c:EpgControl/>
                     </DataTemplate>
                     <DataTemplate DataType="{x:Type vm:ProgrammeDetailViewModel}">
                         <c:ProgrammeDetailControl/>
