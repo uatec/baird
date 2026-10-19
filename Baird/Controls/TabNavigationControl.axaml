@@ -114,6 +114,9 @@
                 <DataTemplate DataType="{x:Type vm:OmniSearchViewModel}">
                     <controls:OmniSearchControl/>
                 </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:EpgViewModel}">
+                    <controls:EpgControl/>
+                </DataTemplate>
                 <DataTemplate DataType="{x:Type vm:WatchlistViewModel}">
                     <controls:WatchlistControl/>
                 </DataTemplate>

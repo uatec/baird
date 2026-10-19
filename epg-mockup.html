@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baird EPG - Interactive 10-Foot UI Mockup</title>
+  <style>
+    :root {
+      --bg-dark: #0f0f11;
+      --bg-card: #18181c;
+      --bg-card-selected: #24242b;
+      --accent-green: #4CAF50;
+      --accent-green-focus: #66BB6A;
+      --accent-gold: #FFD700;
+      --accent-red: #E50914;
+      --accent-cyan: #4CC9F0;
+      --text-main: #FFFFFF;
+      --text-muted: #A0A0A5;
+      --text-dim: #6E6E75;
+      --border-color: #2b2b34;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background: #08080a;
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    header.demo-header {
+      width: 100%;
+      max-width: 1280px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 12px 20px;
+      background: #141418;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+    }
+
+    .demo-header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .demo-header .badge {
+      background: var(--accent-green);
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+
+    .demo-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .btn-toggle {
+      background: #25252e;
+      color: #fff;
+      border: 1px solid #3c3c48;
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+
+    .btn-toggle:hover, .btn-toggle.active {
+      background: var(--accent-green);
+      border-color: var(--accent-green);
+      color: #000;
+    }
+
+    /* 16:9 TV Display Container */
+    .tv-viewport {
+      width: 100%;
+      max-width: 1280px;
+      aspect-ratio: 16 / 9;
+      position: relative;
+      background: var(--bg-dark);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.8), 0 0 0 1px #222;
+    }
+
+    /* Video Simulation Layer */
+    .video-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background: #050507;
+      overflow: hidden;
+    }
+
+    canvas#broadcastCanvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.95;
+    }
+
+    .channel-bug {
+      position: absolute;
+      top: 36px;
+      right: 48px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0,0,0,0.6);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 14px;
+      backdrop-filter: blur(4px);
+    }
+
+    /* Main UI Overlay */
+    .ui-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      background: rgba(10, 10, 14, 0.88);
+      backdrop-filter: blur(8px);
+      transition: opacity 0.25s ease;
+    }
+
+    .ui-layer.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Top Carousel Tab Bar */
+    .tab-bar {
+      display: flex;
+      align-items: center;
+      height: 64px;
+      background: rgba(18, 18, 22, 0.95);
+      border-bottom: 2px solid rgba(255,255,255,0.06);
+      padding: 0 32px;
+      gap: 8px;
+      overflow-x: auto;
+    }
+
+    .tab-item {
+      padding: 10px 22px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 6px;
+      cursor: pointer;
+      border-bottom: 4px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .tab-item:hover, .tab-item.focused {
+      color: #ffffff;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .tab-item.active {
+      color: #ffffff;
+      border-bottom-color: var(--accent-green);
+    }
+
+    /* Guide Main Content */
+    .guide-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 36px;
+      overflow: hidden;
+    }
+
+    .guide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .guide-title {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .filter-pills {
+      display: flex;
+      gap: 8px;
+    }
+
+    .filter-btn {
+      background: #202028;
+      border: 1px solid #3c3c48;
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .filter-btn:hover {
+      background: #2c2c38;
+      color: #fff;
+    }
+
+    .filter-btn.active {
+      background: var(--accent-green);
+      border-color: var(--accent-green);
+      color: #000;
+      font-weight: 700;
+    }
+
+    .btn-watch {
+      background: var(--accent-green);
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(76, 175, 80, 0.4);
+      transition: transform 0.15s, background 0.15s;
+    }
+
+    .btn-watch:hover, .btn-watch.focused {
+      background: var(--accent-green-focus);
+      transform: scale(1.03);
+      outline: 3px solid white;
+    }
+
+    /* Grid Split: Channels List (Left) & Schedule/Details (Right) */
+    .guide-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 24px;
+      min-height: 0;
+    }
+
+    /* Channel List Column */
+    .channel-list-panel {
+      background: rgba(20, 20, 26, 0.6);
+      border-radius: 12px;
+      padding: 10px;
+      border: 1px solid var(--border-color);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .channel-row {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .channel-row:hover {
+      background: rgba(255,255,255,0.07);
+    }
+
+    .channel-row.selected {
+      background: rgba(76, 175, 80, 0.15);
+      border-color: rgba(76, 175, 80, 0.5);
+    }
+
+    .channel-row.focused {
+      background: rgba(76, 175, 80, 0.28) !important;
+      border-color: var(--accent-green) !important;
+      transform: translateX(4px);
+    }
+
+    .channel-num {
+      width: 36px;
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--accent-gold);
+    }
+
+    .channel-icon {
+      width: 44px;
+      height: 30px;
+      background: #25252c;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: bold;
+      color: #fff;
+      margin-right: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .channel-info {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .channel-name {
+      font-weight: 700;
+      font-size: 1rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .channel-now {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .channel-dur-pill {
+      font-size: 0.7rem;
+      font-weight: bold;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: rgba(76, 175, 80, 0.2);
+      color: #81C784;
+    }
+
+    /* Right Column: Details + Schedule Timeline */
+    .schedule-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 0;
+    }
+
+    /* Detailed Synopsis Card */
+    .programme-card {
+      background: rgba(26, 26, 34, 0.85);
+      border-radius: 12px;
+      padding: 22px;
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .card-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .card-pills {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .pill-live {
+      background: var(--accent-red);
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 800;
+      padding: 4px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .pill-time {
+      background: #252530;
+      color: var(--accent-cyan);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .pill-dur {
+      background: #252530;
+      color: var(--accent-gold);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .pill-stream {
+      background: #7B1FA2;
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 800;
+      padding: 4px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .pill-source {
+      background: #1565C0;
+      color: white;
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .card-subtitle {
+      font-size: 1rem;
+      color: #d0d0d8;
+      font-weight: 500;
+    }
+
+    /* Progress Bar */
+    .progress-bar-container {
+      width: 100%;
+      height: 5px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 3px;
+      overflow: hidden;
+      margin: 4px 0;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--accent-red);
+      width: 60%;
+      transition: width 0.3s;
+    }
+
+    .card-synopsis {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Schedule Timeline List */
+    .timeline-container {
+      flex: 1;
+      background: rgba(20, 20, 26, 0.6);
+      border-radius: 12px;
+      padding: 14px;
+      border: 1px solid var(--border-color);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .timeline-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #dcdce0;
+      margin-bottom: 4px;
+      padding: 0 4px;
+    }
+
+    .schedule-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .schedule-item:hover {
+      background: rgba(255,255,255,0.07);
+    }
+
+    .schedule-item.selected {
+      background: rgba(76, 175, 80, 0.15);
+      border-color: rgba(76, 175, 80, 0.5);
+    }
+
+    .schedule-item.focused {
+      background: rgba(76, 175, 80, 0.28) !important;
+      border-color: var(--accent-green) !important;
+      transform: translateX(4px);
+    }
+
+    .schedule-time {
+      width: 140px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--accent-cyan);
+    }
+
+    .schedule-details {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .schedule-name {
+      font-size: 1rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .schedule-sub {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Quick EPG Bottom Overlay (HUD) */
+    .quick-epg-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 20;
+      background: rgba(14, 14, 18, 0.94);
+      border-top: 2px solid #3c3c48;
+      padding: 20px 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 -15px 40px rgba(0,0,0,0.7);
+      transform: translateY(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .quick-epg-overlay.visible {
+      transform: translateY(0);
+    }
+
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hud-current-chan {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .hud-num {
+      font-size: 1.8rem;
+      font-weight: 900;
+      color: var(--accent-gold);
+    }
+
+    .hud-chan-name {
+      font-size: 1.4rem;
+      font-weight: 800;
+    }
+
+    .hud-now-prog {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-left: 24px;
+    }
+
+    .hud-carousel {
+      display: flex;
+      gap: 14px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+
+    .hud-card {
+      min-width: 250px;
+      background: rgba(255,255,255,0.05);
+      border: 2px solid transparent;
+      border-radius: 10px;
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .hud-card:hover {
+      background: rgba(255,255,255,0.08);
+    }
+
+    .hud-card.focused {
+      background: rgba(76, 175, 80, 0.25);
+      border-color: var(--accent-green);
+      transform: translateY(-4px);
+    }
+
+    .hud-card-chan {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 800;
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+    }
+
+    .hud-card-now {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hud-card-next {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 4px;
+    }
+
+    /* Interactive Remote Control Widget */
+    .remote-container {
+      margin-top: 24px;
+      width: 100%;
+      max-width: 1280px;
+      display: flex;
+      gap: 20px;
+      background: #141418;
+      padding: 20px 24px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+    }
+
+    .remote-dpad-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dpad-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .remote-btn {
+      width: 60px;
+      height: 48px;
+      background: #252530;
+      color: #fff;
+      border: 1px solid #3e3e4e;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.1s;
+    }
+
+    .remote-btn:hover {
+      background: #343444;
+      border-color: #55556a;
+    }
+
+    .remote-btn:active {
+      transform: scale(0.95);
+      background: var(--accent-green);
+      color: #000;
+    }
+
+    .remote-btn.btn-ok {
+      width: 60px;
+      height: 48px;
+      background: #323242;
+      border-color: #4a4a60;
+    }
+
+    .remote-keys-legend {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      border-left: 1px solid var(--border-color);
+      padding-left: 24px;
+    }
+
+    .remote-keys-legend kbd {
+      background: #22222a;
+      border: 1px solid #444455;
+      color: #fff;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-family: inherit;
+      font-weight: bold;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Demo Header Controls -->
+  <header class="demo-header">
+    <h1>Baird Smart TV <span class="badge">EPG TEST MOCKUP</span></h1>
+    <div class="demo-controls">
+      <button class="btn-toggle active" id="btnModeFull">📺 Full Guide Tab</button>
+      <button class="btn-toggle" id="btnModeQuick">⚡ Quick EPG Overlay (Key 'G')</button>
+      <button class="btn-toggle" id="btnModeLive">🎬 Live Video Only</button>
+    </div>
+  </header>
+
+  <!-- 16:9 TV Screen -->
+  <div class="tv-viewport">
+    
+    <!-- Layer 0: Broadcast Video Layer -->
+    <div class="video-layer">
+      <canvas id="broadcastCanvas"></canvas>
+      <div class="channel-bug">
+        <span id="bugChannelNum" style="color: var(--accent-gold);">1</span>
+        <span id="bugChannelName">BBC One HD</span>
+      </div>
+    </div>
+
+    <!-- Layer 1: Quick EPG Bottom Overlay -->
+    <div class="quick-epg-overlay" id="quickEpgOverlay">
+      <div class="hud-header">
+        <div class="hud-current-chan">
+          <span class="hud-num" id="hudChanNum">1</span>
+          <span class="hud-chan-name" id="hudChanName">BBC One HD</span>
+          <div class="hud-now-prog">
+            <span class="pill-live">NOW</span>
+            <span id="hudNowTitle">EastEnders</span>
+          </div>
+        </div>
+        <span style="font-size: 0.85rem; color: #888;">Press <kbd style="background: #333; padding: 2px 5px; border-radius: 3px;">G</kbd> or <kbd style="background: #333; padding: 2px 5px; border-radius: 3px;">ESC</kbd> to close</span>
+      </div>
+
+      <div class="hud-carousel" id="hudCarousel">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+
+    <!-- Layer 2: Full UI Overlay (Tab Navigation + Guide View) -->
+    <div class="ui-layer" id="fullUiLayer">
+      <!-- Top Carousel Tab Bar -->
+      <div class="tab-bar">
+        <div class="tab-item">History</div>
+        <div class="tab-item active focused" id="guideTab">Guide</div>
+        <div class="tab-item">Search</div>
+        <div class="tab-item">Watchlist</div>
+        <div class="tab-item">Seerrch</div>
+        <div class="tab-item">Requests</div>
+        <div class="tab-item">Settings</div>
+      </div>
+
+      <!-- Guide Main Page -->
+      <div class="guide-container">
+        <div class="guide-header">
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <div class="guide-title">Guide</div>
+            <div class="filter-pills" id="filterPills">
+              <button class="filter-btn active" data-filter="All">All Feeds</button>
+              <button class="filter-btn" data-filter="Live TV">Live TV</button>
+              <button class="filter-btn" data-filter="Streaming">Streaming</button>
+            </div>
+          </div>
+          <button class="btn-watch" id="btnWatch">▶ Watch Live</button>
+        </div>
+
+        <div class="guide-grid">
+          <!-- Left: Channel List Column -->
+          <div class="channel-list-panel" id="channelsListPanel">
+            <!-- Injected via JavaScript -->
+          </div>
+
+          <!-- Right: Details & Schedule Column -->
+          <div class="schedule-panel">
+            <!-- Selected Programme Synopsis Card -->
+            <div class="programme-card">
+              <div class="card-top">
+                <div class="card-title" id="cardTitle">EastEnders</div>
+                <div class="card-pills">
+                  <span class="pill-live" id="cardLivePill">LIVE</span>
+                  <span class="pill-time" id="cardTimePill">19:30 - 20:00</span>
+                  <span class="pill-dur" id="cardDurPill">30m</span>
+                </div>
+              </div>
+              <div class="card-subtitle" id="cardSubtitle">Series 42, Episode 84</div>
+              <div class="progress-bar-container" id="cardProgContainer">
+                <div class="progress-bar-fill" id="cardProgFill" style="width: 55%;"></div>
+              </div>
+              <div class="card-synopsis" id="cardSynopsis">
+                Dramatic revelations shake the Queen Vic as Phil confronts an unexpected visitor with ties to the past. Meanwhile, Stacey rushes to help Eve out of a dangerous situation.
+              </div>
+            </div>
+
+            <!-- Schedule List -->
+            <div class="timeline-container">
+              <div class="timeline-title">Upcoming Schedule</div>
+              <div id="scheduleItemsContainer" style="display: flex; flex-direction: column; gap: 6px;">
+                <!-- Injected via JavaScript -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Interactive Remote Control Widget -->
+  <div class="remote-container">
+    <div class="remote-dpad-col">
+      <button class="remote-btn" id="btnUp">▲</button>
+      <div class="dpad-row">
+        <button class="remote-btn" id="btnLeft">◀</button>
+        <button class="remote-btn btn-ok" id="btnOk">OK</button>
+        <button class="remote-btn" id="btnRight">▶</button>
+      </div>
+      <button class="remote-btn" id="btnDown">▼</button>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <button class="remote-btn" id="btnGuide" style="width: 80px; height: 38px;">EPG (G)</button>
+      <button class="remote-btn" id="btnBack" style="width: 80px; height: 38px;">Back</button>
+      <button class="remote-btn" id="btnHome" style="width: 80px; height: 38px;">Home</button>
+    </div>
+
+    <div class="remote-keys-legend">
+      <div><strong>Keyboard Navigation:</strong></div>
+      <div>Use <kbd>↑</kbd> <kbd>↓</kbd> to move between TV channels.</div>
+      <div>Use <kbd>←</kbd> <kbd>→</kbd> to jump between the Channel List and Schedule timeline.</div>
+      <div>Press <kbd>Enter</kbd> to tune to the selected channel.</div>
+      <div>Press <kbd>G</kbd> to toggle the Quick EPG overlay while video plays.</div>
+      <div>Press <kbd>Esc</kbd> or <kbd>Backspace</kbd> to dismiss or go back.</div>
+    </div>
+  </div>
+
+  <script>
+    // Unified Feeds: TV Channels and Streaming Shows have equal affordance
+    const FEEDS = [
+      {
+        id: "chan-1",
+        type: "live",
+        source: "Live TV",
+        number: "1",
+        name: "BBC One HD",
+        tag: "BBC",
+        color: "#e11b22",
+        schedule: [
+          { title: "EastEnders", subtitle: "Series 42, Episode 84", time: "19:30 - 20:00", dur: "30m", isLive: true, progress: 60, synopsis: "Dramatic revelations shake the Queen Vic as Phil confronts an unexpected visitor with ties to the past. Meanwhile, Stacey rushes to help Eve out of a dangerous situation." },
+          { title: "BBC News at Ten", subtitle: "Latest National & World Updates", time: "20:00 - 20:30", dur: "30m", isLive: false, synopsis: "In-depth reporting from correspondents around the UK and the world, followed by weather with Carol Kirkwood." },
+          { title: "Match of the Day", subtitle: "Premier League Highlights", time: "20:30 - 22:00", dur: "90m", isLive: false, synopsis: "Gary Lineker presents action and analysis from all of today's key Premier League football clashes." }
+        ]
+      },
+      {
+        id: "stream-severance",
+        type: "streaming",
+        source: "Jellyfin",
+        number: "JELLY",
+        name: "Severance",
+        tag: "JELLY",
+        color: "#0078D4",
+        schedule: [
+          { title: "Good News About Hell", subtitle: "Season 1, Episode 1", time: "Episode 1", dur: "55m", isLive: false, progress: 100, synopsis: "Mark Scout leads a team at Lumon Industries, whose employees have undergone a surgical procedure to separate their work and personal memories." },
+          { title: "Half Loop", subtitle: "Season 1, Episode 2", time: "Episode 2", dur: "53m", isLive: false, progress: 45, synopsis: "The macrodata team trains newcomer Helly on refinement protocols; Mark meets an unexpected contact outside the office." },
+          { title: "In Perpetuity", subtitle: "Season 1, Episode 3", time: "Episode 3", dur: "54m", isLive: false, progress: 0, synopsis: "Mark takes the team on an unauthorized field trip to the Perpetuity Wing; Cobel presses ahead with a private investigation." },
+          { title: "The You You Are", subtitle: "Season 1, Episode 4", time: "Episode 4", dur: "53m", isLive: false, progress: 0, synopsis: "Helly aggressively pushes the boundaries of Lumon's strict communications policy." }
+        ]
+      },
+      {
+        id: "chan-2",
+        type: "live",
+        source: "Live TV",
+        number: "2",
+        name: "BBC Two HD",
+        tag: "BBC",
+        color: "#1f8275",
+        schedule: [
+          { title: "University Challenge", subtitle: "Round 2: Manchester vs Imperial", time: "19:30 - 20:00", dur: "30m", isLive: true, progress: 40, synopsis: "Amol Rajan asks the questions as two top collegiate universities compete for a place in the quarter-finals." },
+          { title: "Live at the Apollo", subtitle: "Season 18, Episode 3", time: "20:00 - 20:45", dur: "45m", isLive: false, synopsis: "Stand-up comedy recorded at London's iconic Hammersmith Apollo with special guest performers." },
+          { title: "Newsnight", subtitle: "Comprehensive Analysis", time: "20:45 - 21:30", dur: "45m", isLive: false, synopsis: "Victoria Derbyshire investigates today's biggest political scandals and domestic affairs." }
+        ]
+      },
+      {
+        id: "stream-horses",
+        type: "streaming",
+        source: "Apple TV+",
+        number: "ATV+",
+        name: "Slow Horses",
+        tag: "ATV+",
+        color: "#2C3437",
+        schedule: [
+          { title: "Failure's Contagious", subtitle: "Season 1, Episode 1", time: "Episode 1", dur: "48m", isLive: false, progress: 65, synopsis: "River Cartwright is exiled to Slough House after a disastrous training drill, working under the cynical Jackson Lamb." },
+          { title: "Work Drinks", subtitle: "Season 1, Episode 2", time: "Episode 2", dur: "45m", isLive: false, progress: 0, synopsis: "River and Sid join forces when an abduction raises alarms throughout Regent's Park." },
+          { title: "Bad Tradecraft", subtitle: "Season 1, Episode 3", time: "Episode 3", dur: "44m", isLive: false, progress: 0, synopsis: "Jackson Lamb's team discovers the kidnapping is linked to factional politics inside MI5." }
+        ]
+      },
+      {
+        id: "chan-3",
+        type: "live",
+        source: "Live TV",
+        number: "3",
+        name: "ITV1 HD",
+        tag: "ITV",
+        color: "#00558f",
+        schedule: [
+          { title: "Emmerdale", subtitle: "Special 1-Hour Episode", time: "19:00 - 20:00", dur: "60m", isLive: true, progress: 75, synopsis: "Tensions flare at Home Farm while Cain Dingle makes an unexpected discovery in the woods." },
+          { title: "Coronation Street", subtitle: "Double Bill", time: "20:00 - 21:00", dur: "60m", isLive: false, synopsis: "Garry discovers Sarah's secret while Roy Cropper receives unexpected news at the café." },
+          { title: "The 1% Club", subtitle: "Hosted by Lee Mack", time: "21:00 - 22:00", dur: "60m", isLive: false, synopsis: "100 contestants begin, but only those with common-sense logic will reach the final 1% question." }
+        ]
+      },
+      {
+        id: "stream-duty",
+        type: "streaming",
+        source: "BBC iPlayer",
+        number: "iPLAY",
+        name: "Line of Duty",
+        tag: "iPLAY",
+        color: "#9C27B0",
+        schedule: [
+          { title: "Series 6, Episode 1", subtitle: "Operation Lighthouse", time: "Episode 1", dur: "58m", isLive: false, progress: 10, synopsis: "AC-12 face their most enigmatic adversary yet: DCI Joanne Davidson, the senior investigating officer of an unsolved murder." },
+          { title: "Series 6, Episode 2", subtitle: "Operation Lighthouse", time: "Episode 2", dur: "57m", isLive: false, progress: 0, synopsis: "Having been drawn into Davidson's investigation, AC-12 suspect a cover-up inside Operation Lighthouse." },
+          { title: "Series 6, Episode 3", subtitle: "Operation Lighthouse", time: "Episode 3", dur: "59m", isLive: false, progress: 0, synopsis: "A deadly ambush leaves AC-12 scrambling to verify Davidson's loyalties." }
+        ]
+      },
+      {
+        id: "chan-4",
+        type: "live",
+        source: "Live TV",
+        number: "4",
+        name: "Channel 4 HD",
+        tag: "C4",
+        color: "#6b0080",
+        schedule: [
+          { title: "The Great British Bake Off", subtitle: "Quarter Final: Patisserie Week", time: "19:15 - 20:30", dur: "75m", isLive: true, progress: 50, synopsis: "Prue Leith and Paul Hollywood judge intricate French pastries and showstopper tiered tarts." },
+          { title: "Gogglebox", subtitle: "Series 24, Episode 6", time: "20:30 - 21:30", dur: "60m", isLive: false, synopsis: "Britain's sharpest armchair critics share their insightful and hilarious critiques of the week's television." },
+          { title: "24 Hours in A&E", subtitle: "Queen's Medical Centre", time: "21:30 - 22:30", dur: "60m", isLive: false, synopsis: "Inside one of Britain's busiest emergency departments treating traumatic injuries." }
+        ]
+      },
+      {
+        id: "chan-14",
+        type: "live",
+        source: "Live TV",
+        number: "14",
+        name: "Film4",
+        tag: "FILM",
+        color: "#e65100",
+        schedule: [
+          { title: "The Martian", subtitle: "Sci-Fi Drama (2015)", time: "19:00 - 21:45", dur: "165m", isLive: true, progress: 35, synopsis: "Matt Damon stars as an astronaut stranded alone on Mars who must use his ingenuity to signal Earth." },
+          { title: "Blade Runner 2049", subtitle: "Neo-Noir Sci-Fi", time: "21:45 - 00:30", dur: "165m", isLive: false, synopsis: "Officer K unearths a long-buried secret that has the potential to plunge society into chaos." }
+        ]
+      }
+    ];
+
+    // State
+    let currentFilter = "All"; // "All", "Live TV", "Streaming"
+    let filteredFeeds = [...FEEDS];
+    let selectedFeedIndex = 0;
+    let selectedItemIndex = 0;
+    let focusColumn = "channels"; // "channels" or "schedule"
+    let currentMode = "full"; // "full", "quick", "live"
+    let activeTunedFeed = FEEDS[0];
+
+    // Elements
+    const channelsListPanel = document.getElementById("channelsListPanel");
+    const scheduleItemsContainer = document.getElementById("scheduleItemsContainer");
+    const cardTitle = document.getElementById("cardTitle");
+    const cardSubtitle = document.getElementById("cardSubtitle");
+    const cardLivePill = document.getElementById("cardLivePill");
+    const cardTimePill = document.getElementById("cardTimePill");
+    const cardDurPill = document.getElementById("cardDurPill");
+    const cardProgContainer = document.getElementById("cardProgContainer");
+    const cardProgFill = document.getElementById("cardProgFill");
+    const cardSynopsis = document.getElementById("cardSynopsis");
+    const btnWatch = document.getElementById("btnWatch");
+    const quickEpgOverlay = document.getElementById("quickEpgOverlay");
+    const fullUiLayer = document.getElementById("fullUiLayer");
+    const hudCarousel = document.getElementById("hudCarousel");
+    const hudChanNum = document.getElementById("hudChanNum");
+    const hudChanName = document.getElementById("hudChanName");
+    const hudNowTitle = document.getElementById("hudNowTitle");
+    const bugChannelNum = document.getElementById("bugChannelNum");
+    const bugChannelName = document.getElementById("bugChannelName");
+
+    function applyFilter(filterName) {
+      currentFilter = filterName;
+      document.querySelectorAll(".filter-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.filter === filterName);
+      });
+
+      if (filterName === "Live TV") {
+        filteredFeeds = FEEDS.filter(f => f.type === "live");
+      } else if (filterName === "Streaming") {
+        filteredFeeds = FEEDS.filter(f => f.type === "streaming");
+      } else {
+        filteredFeeds = [...FEEDS];
+      }
+
+      selectedFeedIndex = 0;
+      selectedItemIndex = 0;
+      updateSelection();
+    }
+
+    document.querySelectorAll(".filter-btn").forEach(btn => {
+      btn.onclick = () => applyFilter(btn.dataset.filter);
+    });
+
+    // Initialize UI
+    function renderChannels() {
+      channelsListPanel.innerHTML = "";
+      filteredFeeds.forEach((ch, idx) => {
+        const row = document.createElement("div");
+        row.className = `channel-row ${idx === selectedFeedIndex ? "selected" : ""} ${idx === selectedFeedIndex && focusColumn === "channels" ? "focused" : ""}`;
+        row.onclick = () => {
+          selectedFeedIndex = idx;
+          selectedItemIndex = 0;
+          focusColumn = "channels";
+          updateSelection();
+        };
+
+        const now = ch.schedule[0];
+        const numContent = ch.type === "live"
+          ? `<span class="channel-num">${ch.number}</span>`
+          : `<span class="pill-source" style="margin-right: 8px;">${ch.tag}</span>`;
+
+        const subtitleText = ch.type === "live"
+          ? (now ? now.title : "No Information")
+          : `${ch.schedule.length} Episodes • S1:E${ch.schedule.findIndex(e => e.progress < 100) + 1 || 1}`;
+
+        row.innerHTML = `
+          ${numContent}
+          <div class="channel-icon" style="background: ${ch.color}">${ch.tag}</div>
+          <div class="channel-info">
+            <div class="channel-name">${ch.name}</div>
+            <div class="channel-now">${subtitleText}</div>
+          </div>
+          <div class="channel-dur-pill">${now ? now.dur : ""}</div>
+        `;
+        channelsListPanel.appendChild(row);
+      });
+    }
+
+    function renderSchedule() {
+      scheduleItemsContainer.innerHTML = "";
+      const ch = filteredFeeds[selectedFeedIndex];
+      if (!ch) return;
+
+      ch.schedule.forEach((item, idx) => {
+        const row = document.createElement("div");
+        row.className = `schedule-item ${idx === selectedItemIndex ? "selected" : ""} ${idx === selectedItemIndex && focusColumn === "schedule" ? "focused" : ""}`;
+        row.onclick = () => {
+          selectedItemIndex = idx;
+          focusColumn = "schedule";
+          updateSelection();
+        };
+
+        let badge = "";
+        if (ch.type === "live") {
+          badge = item.isLive ? '<span class="pill-live">NOW</span>' : `<span class="pill-dur">${item.dur}</span>`;
+        } else {
+          if (item.progress > 0 && item.progress < 100) {
+            badge = `<span class="pill-live" style="background:#2E7D32;">${item.progress}%</span>`;
+          } else if (item.progress === 100) {
+            badge = '<span class="pill-dur" style="color:#A0A0A5;">WATCHED</span>';
+          } else {
+            badge = `<span class="pill-dur">${item.dur}</span>`;
+          }
+        }
+
+        row.innerHTML = `
+          <div class="schedule-time">${item.time}</div>
+          <div class="schedule-details">
+            <div class="schedule-name">${item.title}</div>
+            <div class="schedule-sub">${item.subtitle || ""}</div>
+          </div>
+          ${badge}
+        `;
+        scheduleItemsContainer.appendChild(row);
+      });
+    }
+
+    function renderCard() {
+      const ch = filteredFeeds[selectedFeedIndex];
+      if (!ch) return;
+      const item = ch.schedule[selectedItemIndex] || ch.schedule[0];
+      if (!item) return;
+
+      cardTitle.textContent = item.title;
+      cardSubtitle.textContent = item.subtitle ? `${ch.name} — ${item.subtitle}` : ch.name;
+      cardSubtitle.style.display = "block";
+
+      if (ch.type === "live") {
+        cardLivePill.className = "pill-live";
+        cardLivePill.textContent = "LIVE";
+        cardLivePill.style.display = item.isLive ? "inline-block" : "none";
+        btnWatch.textContent = "▶ Watch Live";
+      } else {
+        cardLivePill.className = "pill-stream";
+        cardLivePill.textContent = ch.source.toUpperCase();
+        cardLivePill.style.display = "inline-block";
+        if (item.progress > 0 && item.progress < 100) {
+          btnWatch.textContent = `▶ Resume (${Math.round((100 - item.progress) * 0.5)}m left)`;
+        } else {
+          btnWatch.textContent = "▶ Play Episode";
+        }
+      }
+
+      cardTimePill.textContent = item.time;
+      cardDurPill.textContent = item.dur;
+      cardSynopsis.textContent = item.synopsis;
+
+      if (item.progress > 0) {
+        cardProgContainer.style.display = "block";
+        cardProgFill.style.width = `${item.progress}%`;
+      } else {
+        cardProgContainer.style.display = "none";
+      }
+    }
+
+    function renderQuickEpgHud() {
+      hudCarousel.innerHTML = "";
+      const tuned = activeTunedFeed;
+      hudChanNum.textContent = tuned.number;
+      hudChanName.textContent = tuned.name;
+      hudNowTitle.textContent = tuned.schedule[0]?.title || "Broadcasting";
+
+      FEEDS.forEach((ch, idx) => {
+        const card = document.createElement("div");
+        const isCurrentFocused = (filteredFeeds[selectedFeedIndex]?.id === ch.id);
+        card.className = `hud-card ${isCurrentFocused ? "focused" : ""}`;
+        card.onclick = () => {
+          activeTunedFeed = ch;
+          tuneToActiveFeed();
+        };
+
+        const topBadge = ch.type === "live"
+          ? `<span style="color: var(--accent-gold);">${ch.number} ${ch.name}</span>`
+          : `<span style="color: #64B5F6;">[${ch.source}] ${ch.name}</span>`;
+
+        const nowLabel = ch.type === "live" ? "NOW" : "NEXT UP";
+        const nextLabel = ch.type === "live" ? "NEXT" : "LATER";
+
+        card.innerHTML = `
+          <div class="hud-card-chan">
+            ${topBadge}
+            <span style="color: #81C784;">${ch.schedule[0]?.dur || ""}</span>
+          </div>
+          <div class="hud-card-now">${nowLabel}: ${ch.schedule[0]?.title || ""}</div>
+          <div class="hud-card-next">${nextLabel}: ${ch.schedule[1]?.title || "Upcoming Show"}</div>
+        `;
+        hudCarousel.appendChild(card);
+      });
+
+      // Scroll focused into view
+      const activeCard = hudCarousel.querySelector(".hud-card.focused");
+      if (activeCard) {
+        activeCard.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }
+
+    function updateSelection() {
+      renderChannels();
+      renderSchedule();
+      renderCard();
+      renderQuickEpgHud();
+
+      if (focusColumn === "channels") {
+        const focused = channelsListPanel.children[selectedFeedIndex];
+        if (focused) focused.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } else {
+        const focused = scheduleItemsContainer.children[selectedItemIndex];
+        if (focused) focused.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }
+
+    function tuneToActiveFeed() {
+      const ch = activeTunedFeed;
+      bugChannelNum.textContent = ch.number;
+      bugChannelName.textContent = `${ch.name} • ${ch.schedule[0]?.title || ""}`;
+      setMode("live");
+    }
+
+    function tuneToSelectedFeed() {
+      if (filteredFeeds[selectedFeedIndex]) {
+        activeTunedFeed = filteredFeeds[selectedFeedIndex];
+        tuneToActiveFeed();
+      }
+    }
+
+    function setMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll(".btn-toggle").forEach(b => b.classList.remove("active"));
+
+      if (mode === "full") {
+        document.getElementById("btnModeFull").classList.add("active");
+        fullUiLayer.classList.remove("hidden");
+        quickEpgOverlay.classList.remove("visible");
+      } else if (mode === "quick") {
+        document.getElementById("btnModeQuick").classList.add("active");
+        fullUiLayer.classList.add("hidden");
+        quickEpgOverlay.classList.add("visible");
+        renderQuickEpgHud();
+      } else {
+        document.getElementById("btnModeLive").classList.add("active");
+        fullUiLayer.classList.add("hidden");
+        quickEpgOverlay.classList.remove("visible");
+      }
+    }
+
+    // Remote / Key Handlers
+    function handleKeyDown(key) {
+      if (currentMode === "full") {
+        if (key === "ArrowUp") {
+          if (focusColumn === "channels") {
+            selectedFeedIndex = (selectedFeedIndex - 1 + filteredFeeds.length) % filteredFeeds.length;
+            selectedItemIndex = 0;
+          } else {
+            selectedItemIndex = Math.max(0, selectedItemIndex - 1);
+          }
+          updateSelection();
+        } else if (key === "ArrowDown") {
+          if (focusColumn === "channels") {
+            selectedFeedIndex = (selectedFeedIndex + 1) % filteredFeeds.length;
+            selectedItemIndex = 0;
+          } else {
+            const sched = filteredFeeds[selectedFeedIndex]?.schedule || [];
+            selectedItemIndex = Math.min(sched.length - 1, selectedItemIndex + 1);
+          }
+          updateSelection();
+        } else if (key === "ArrowRight") {
+          if (focusColumn === "channels") {
+            focusColumn = "schedule";
+            selectedItemIndex = 0;
+            updateSelection();
+          }
+        } else if (key === "ArrowLeft") {
+          if (focusColumn === "schedule") {
+            focusColumn = "channels";
+            updateSelection();
+          }
+        } else if (key === "Enter") {
+          tuneToSelectedFeed();
+        } else if (key === "Escape" || key === "Backspace") {
+          setMode("live");
+        } else if (key.toLowerCase() === "g") {
+          setMode("quick");
+        }
+      } else if (currentMode === "quick") {
+        if (key === "ArrowLeft" || key === "ArrowUp") {
+          selectedFeedIndex = (selectedFeedIndex - 1 + filteredFeeds.length) % filteredFeeds.length;
+          activeTunedFeed = filteredFeeds[selectedFeedIndex];
+          renderQuickEpgHud();
+        } else if (key === "ArrowRight" || key === "ArrowDown") {
+          selectedFeedIndex = (selectedFeedIndex + 1) % filteredFeeds.length;
+          activeTunedFeed = filteredFeeds[selectedFeedIndex];
+          renderQuickEpgHud();
+        } else if (key === "Enter") {
+          tuneToActiveFeed();
+        } else if (key === "Escape" || key === "Backspace" || key.toLowerCase() === "g") {
+          setMode("live");
+        }
+      } else {
+        // Live mode
+        if (key.toLowerCase() === "g") {
+          setMode("quick");
+        } else if (key === "Enter" || key === "ArrowDown" || key === "ArrowUp") {
+          setMode("full");
+        }
+      }
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape"].includes(e.key) || e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        handleKeyDown(e.key);
+      }
+    });
+
+    // Remote buttons
+    document.getElementById("btnUp").onclick = () => handleKeyDown("ArrowUp");
+    document.getElementById("btnDown").onclick = () => handleKeyDown("ArrowDown");
+    document.getElementById("btnLeft").onclick = () => handleKeyDown("ArrowLeft");
+    document.getElementById("btnRight").onclick = () => handleKeyDown("ArrowRight");
+    document.getElementById("btnOk").onclick = () => handleKeyDown("Enter");
+    document.getElementById("btnGuide").onclick = () => handleKeyDown("g");
+    document.getElementById("btnBack").onclick = () => handleKeyDown("Escape");
+    document.getElementById("btnHome").onclick = () => setMode("live");
+    btnWatch.onclick = () => tuneToSelectedFeed();
+
+    // Mode Buttons
+    document.getElementById("btnModeFull").onclick = () => setMode("full");
+    document.getElementById("btnModeQuick").onclick = () => setMode("quick");
+    document.getElementById("btnModeLive").onclick = () => setMode("live");
+
+    // Live Broadcast Canvas Animation
+    const canvas = document.getElementById("broadcastCanvas");
+    const ctx = canvas.getContext("2d");
+    function resizeCanvas() {
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    let frame = 0;
+    function drawBroadcast() {
+      frame++;
+      const w = canvas.width;
+      const h = canvas.height;
+      if (!w || !h) return;
+
+      const ch = activeTunedFeed;
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0, ch.color);
+      grad.addColorStop(0.5, "#0a0a10");
+      grad.addColorStop(1, "#181824");
+
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Subtle animated particles / cinematic waves
+      ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        const y = h * 0.3 + Math.sin(frame * 0.02 + i) * 60;
+        ctx.arc(w * (0.2 + i * 0.2), y, 120 + Math.cos(frame * 0.03 + i) * 30, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Channel / Show watermark in center
+      ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
+      ctx.font = "bold 58px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(ch.name, w / 2, h / 2 - 20);
+
+      ctx.font = "24px sans-serif";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+      const subLabel = ch.type === "live"
+        ? (ch.schedule[0]?.title || "Broadcasting")
+        : (ch.schedule[0]?.title ? `Episode: ${ch.schedule[0].title}` : "On Demand");
+      ctx.fillText(subLabel, w / 2, h / 2 + 30);
+
+      requestAnimationFrame(drawBroadcast);
+    }
+    drawBroadcast();
+
+    // Initial render
+    updateSelection();
+  </script>
+</body>
+</html>

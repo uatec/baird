@@ -197,6 +197,31 @@ namespace Baird
                             }
                         }));
 
+                // Handle focus transitions when Quick EPG overlay is toggled
+                _visualTreeSubscriptions.Add(
+                    _viewModel.ObservableForProperty(x => x.IsEpgActive)
+                        .Subscribe(change =>
+                        {
+                            if (change.Value)
+                            {
+                                Dispatcher.UIThread.Post(() =>
+                                {
+                                    var epgLayer = this.FindControl<Baird.Controls.EpgOverlayControl>("EpgLayer");
+                                    var list = epgLayer?.FindControl<Avalonia.Controls.ListBox>("OverlayChannelsList");
+                                    list?.Focus();
+                                }, DispatcherPriority.Input);
+                            }
+                            else if (_viewModel.CurrentPage == null || _viewModel.CurrentPage is ShowingVideoPlayerViewModel)
+                            {
+                                Dispatcher.UIThread.Post(() =>
+                                {
+                                    var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+                                    var player = videoLayer?.GetPlayer();
+                                    player?.Focus();
+                                }, DispatcherPriority.Input);
+                            }
+                        }));
+
                 // Force initial focus to VideoPlayer
                 Dispatcher.UIThread.Post(() =>
                 {
@@ -292,10 +317,11 @@ namespace Baird
                     _viewModel.PlayItem(firstChannel);
                 }
 
-                Console.WriteLine("[MainView] Preloading history and watchlist...");
-                // Preload history so it's ready when user opens it
+                Console.WriteLine("[MainView] Preloading history, watchlist and guide...");
+                // Preload history, watchlist and EPG so they are ready when user opens them
                 await _viewModel.History.RefreshAsync();
                 await _viewModel.Watchlist.RefreshAsync();
+                await _viewModel.Epg.RefreshAsync();
 
                 Console.WriteLine("[MainView] Starting CEC service...");
 
@@ -692,7 +718,16 @@ namespace Baird
             // HomePage key — close all menus and return to video player
             if (e.Key == Key.BrowserHome)
             {
+                _viewModel.IsEpgActive = false;
                 _viewModel.GoHome();
+                e.Handled = true;
+                return;
+            }
+
+            // EPG / Guide Trigger (G key or MediaTvGuide)
+            if (e.Key == Key.G || (int)e.Key == 100026)
+            {
+                _viewModel.ToggleEpgOverlay();
                 e.Handled = true;
                 return;
             }
@@ -704,6 +739,13 @@ namespace Baird
 
         private void HandleBackTrigger(KeyEventArgs e)
         {
+            if (_viewModel.IsEpgActive)
+            {
+                _viewModel.IsEpgActive = false;
+                e.Handled = true;
+                return;
+            }
+
             // Always handle back - GoBack() now handles both overlay pages and video player
             _viewModel.GoBack();
             e.Handled = true;

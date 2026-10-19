@@ -47,6 +47,7 @@ namespace Baird.Controls
                 player.StreamEnded += OnStreamEnded;
                 player.ConfigurationToggleRequested += OnConfigurationToggleRequested;
                 player.ExitRequested += OnExitRequested;
+                player.EpgRequested += OnEpgRequested;
                 player.Focus(); // Ensure player gets focus when layer is active
             }
         }
@@ -62,6 +63,15 @@ namespace Baird.Controls
                 player.StreamEnded -= OnStreamEnded;
                 player.ConfigurationToggleRequested -= OnConfigurationToggleRequested;
                 player.ExitRequested -= OnExitRequested;
+                player.EpgRequested -= OnEpgRequested;
+            }
+        }
+
+        private void OnEpgRequested(object? sender, EventArgs e)
+        {
+            if (DataContext is ViewModels.MainViewModel vm)
+            {
+                vm.ToggleEpgOverlay();
             }
         }
 
