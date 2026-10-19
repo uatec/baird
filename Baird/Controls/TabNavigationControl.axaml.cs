@@ -235,7 +235,7 @@ namespace Baird.Controls
                     var button = visual.FindDescendantOfType<Button>();
                     if (button != null)
                     {
-                        var tabItem = itemsControl.Items.Cast<Baird.ViewModels.TabItem>().ElementAtOrDefault(i);
+                        var tabItem = vm.Tabs.ElementAtOrDefault(i);
                         if (tabItem != null)
                         {
                             bool isSelected = (tabItem == selectedTab);
@@ -257,6 +257,19 @@ namespace Baird.Controls
                     vm.BackCommand.Execute().Subscribe();
                     e.Handled = true;
                 }
+            }
+            else if (e.Key == Key.Enter || e.Key == Key.Down)
+            {
+                // When pressing Enter or Down on a tab button, move focus into the content
+                Dispatcher.UIThread.Post(() =>
+                {
+                    var content = this.FindControl<ContentControl>("TabContent");
+                    if (content != null)
+                    {
+                        var focusable = content.GetVisualDescendants().OfType<InputElement>().FirstOrDefault(v => v.Focusable && v.IsEffectivelyVisible);
+                        focusable?.Focus();
+                    }
+                }, DispatcherPriority.Input);
             }
         }
 
