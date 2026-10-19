@@ -73,7 +73,13 @@
             </ListBox.ItemTemplate>
         </ListBox>
         
-        <TextBlock Grid.Row="1" Text="No history items found." Foreground="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HistoryItems.Count}"/>
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" IsVisible="{Binding !HistoryItems.Count}">
+            <TextBlock Text="No continue watching items" Foreground="#F8FAFC" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock Text="Shows and movies you watch will appear here to resume." Foreground="#94A3B8" FontSize="15" HorizontalAlignment="Center"/>
+            <Border Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="20" Padding="16,8" Margin="0,8,0,0" HorizontalAlignment="Center">
+                <TextBlock Text="Tip: Use the Search tab or press ▼ during playback to explore content." Foreground="#38BDF8" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            </Border>
+        </StackPanel>
 
     </Grid>
 </UserControl>

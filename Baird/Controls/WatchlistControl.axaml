@@ -69,7 +69,13 @@
             </ListBox.ItemTemplate>
         </ListBox>
         
-        <TextBlock Grid.Row="1" Text="Your watchlist is empty." Foreground="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !WatchlistItems.Count}"/>
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" IsVisible="{Binding !WatchlistItems.Count}">
+            <TextBlock Text="Your watchlist is empty" Foreground="#F8FAFC" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock Text="Save your favorite channels and programmes for instant access." Foreground="#94A3B8" FontSize="15" HorizontalAlignment="Center"/>
+            <Border Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="20" Padding="16,8" Margin="0,8,0,0" HorizontalAlignment="Center">
+                <TextBlock Text="Tip: Hold OK / Select on any item to add or remove it from your Watchlist." Foreground="#38BDF8" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            </Border>
+        </StackPanel>
 
     </Grid>
 </UserControl>
