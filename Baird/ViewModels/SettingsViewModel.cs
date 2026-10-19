@@ -48,7 +48,11 @@ namespace Baird.ViewModels
         }
 
         private bool _sharperDeinterlacing;
-        /// <summary>Lead 3: bwdif instead of default yadif for live deinterlacing.</summary>
+        /// <summary>
+        /// Deinterlace live TV to 50 fps (smoother motion) instead of the default 25 fps. Off by
+        /// default: Baird's embedded renderer can't sustain 50 fps on the Pi 5 and drops frames.
+        /// Config key kept as "SharperDeinterlacing" for compatibility.
+        /// </summary>
         public bool SharperDeinterlacing
         {
             get => _sharperDeinterlacing;

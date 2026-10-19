@@ -32,6 +32,9 @@ namespace Baird.Mpv
         private System.Threading.Thread? _eventThread;
         private System.Threading.Thread? _commandThread;
         private readonly BlockingCollection<Action> _commandQueue = new();
+        // mpv options from the [Mpv] section of config.ini: applied after our defaults and they
+        // win over anything Baird sets later (per-source filters, quality flags).
+        private readonly Dictionary<string, string> _overrides = new(StringComparer.OrdinalIgnoreCase);
         private volatile bool _eventLoopRunning;
         private volatile bool _disposed;
         private Action? _requestRender;
@@ -50,7 +53,7 @@ namespace Baird.Mpv
         // Video-quality feature flags (toggled live from the Settings page).
         private bool _isLive;                 // last source type, so deinterlace can be re-applied on toggle
         private bool _highQualityScaling;     // spline36 scaler vs bilinear
-        private bool _sharperDeinterlacing;   // bwdif vs default yadif
+        private bool _sharperDeinterlacing;   // 50 fps (field-rate) deinterlacing vs default 25 fps
         private bool _logRenderDimensions;    // log the FBO size handed to mpv each time it changes
         private int _lastLoggedW = -1;
         private int _lastLoggedH = -1;
@@ -90,8 +93,14 @@ namespace Baird.Mpv
         public double DurationSeconds => Volatile.Read(ref _durationSeconds);
         public string CurrentPath => _currentPath ?? "None";
 
-        public MpvPlayer()
+        public MpvPlayer(IReadOnlyDictionary<string, string>? optionOverrides = null)
         {
+            if (optionOverrides != null)
+            {
+                foreach (var (name, value) in optionOverrides)
+                    _overrides[name] = value;
+            }
+
             _mpvHandle = LibMpv.mpv_create();
             if (_mpvHandle == IntPtr.Zero)
                 throw new Exception("Failed to create mpv context");
@@ -150,6 +159,12 @@ namespace Baird.Mpv
             SetOption("alang", "eng,en");
             // Prefer English subtitles
             SetOption("slang", "eng,en");
+
+            foreach (var (name, value) in _overrides)
+            {
+                Console.WriteLine($"[MpvPlayer] Config override: {name}={SecretRedactor.Redact(value)}");
+                SetOption(name, value);
+            }
 
             var res = LibMpv.mpv_initialize(_mpvHandle);
             if (res < 0)
@@ -545,36 +560,35 @@ namespace Baird.Mpv
             ApplyDeinterlace();
             // loudnorm is skipped on live — its ~1s look-ahead buffer causes AV desync on live
             // streams; latency is acceptable on pre-recorded VOD.
-            SetPropertyString("af", isLive ? "" : "loudnorm=I=-15:TP=-1.5:LRA=11");
+            SetUnlessOverridden("af", isLive ? "" : "loudnorm=I=-15:TP=-1.5:LRA=11");
             Console.WriteLine($"[MpvPlayer] Configured for {(isLive ? "live" : "VOD")} source");
         }
 
         /// <summary>
         /// Applies the deinterlacer for the current source type. Live broadcast (1080i25) must be
-        /// deinterlaced; VOD is progressive so it is left off (yadif would double CPU for nothing).
-        /// When live, the filter is chosen by the "sharper deinterlacing" flag: bwdif (sharper) vs
-        /// mpv's default yadif.
+        /// deinterlaced; VOD is progressive so it is left off.
+        ///
+        /// Live uses bwdif at frame rate (25 fps) by default. Measured inside Baird on the Pi 5:
+        /// field-rate output (50 fps, mpv's default) dropped ~26% of frames in the embedded
+        /// renderer, while bwdif at 25 fps dropped none and used the least CPU of the options
+        /// tried. The "50 fps deinterlacing" flag (SharperDeinterlacing) opts back into field rate
+        /// for smoother motion once rendering can keep up. deint=interlaced leaves progressive
+        /// frames untouched.
         /// </summary>
         private void ApplyDeinterlace()
         {
             if (_isLive)
             {
-                if (_sharperDeinterlacing)
-                {
-                    // bwdif is an explicit vf; disable the built-in (yadif) toggle to avoid stacking.
-                    SetPropertyString("deinterlace", "no");
-                    SetPropertyString("vf", "bwdif");
-                }
-                else
-                {
-                    SetPropertyString("vf", "");
-                    SetPropertyString("deinterlace", "yes");
-                }
+                // bwdif is an explicit vf; disable the built-in deinterlace toggle to avoid stacking.
+                SetUnlessOverridden("deinterlace", "no");
+                SetUnlessOverridden("vf", _sharperDeinterlacing
+                    ? "bwdif=mode=send_field:deint=interlaced"
+                    : "bwdif=mode=send_frame:deint=interlaced");
             }
             else
             {
-                SetPropertyString("vf", "");
-                SetPropertyString("deinterlace", "no");
+                SetUnlessOverridden("vf", "");
+                SetUnlessOverridden("deinterlace", "no");
             }
         }
 
@@ -585,25 +599,25 @@ namespace Baird.Mpv
             _highQualityScaling = enabled;
             if (enabled)
             {
-                SetPropertyString("scale", "spline36");
-                SetPropertyString("cscale", "spline36");
-                SetPropertyString("dscale", "mitchell");
+                SetUnlessOverridden("scale", "spline36");
+                SetUnlessOverridden("cscale", "spline36");
+                SetUnlessOverridden("dscale", "mitchell");
             }
             else
             {
-                SetPropertyString("scale", "bilinear");
-                SetPropertyString("cscale", "bilinear");
-                SetPropertyString("dscale", "bilinear");
+                SetUnlessOverridden("scale", "bilinear");
+                SetUnlessOverridden("cscale", "bilinear");
+                SetUnlessOverridden("dscale", "bilinear");
             }
             Console.WriteLine($"[MpvPlayer] High-quality scaling: {(enabled ? "spline36" : "bilinear")}");
         }
 
-        /// <summary>Lead 3: use bwdif instead of the default yadif for live deinterlacing.</summary>
+        /// <summary>Deinterlace live TV to 50 fps (field rate) instead of the default 25 fps.</summary>
         public void SetSharperDeinterlacing(bool enabled)
         {
             _sharperDeinterlacing = enabled;
             ApplyDeinterlace();
-            Console.WriteLine($"[MpvPlayer] Sharper deinterlacing (bwdif): {(enabled ? "on" : "off (yadif)")}");
+            Console.WriteLine($"[MpvPlayer] Live deinterlacing: bwdif at {(enabled ? "50 fps (field rate)" : "25 fps (frame rate)")}");
         }
 
         /// <summary>Lead 2: log the FBO dimensions mpv renders into (to confirm display-native size).</summary>
@@ -710,6 +724,12 @@ namespace Baird.Mpv
         public void SetPropertyString(string name, string value)
         {
             Post(() => SetOption(name, value));
+        }
+
+        /// <summary>Queues a property write unless config.ini's [Mpv] section pins that option.</summary>
+        private void SetUnlessOverridden(string name, string value)
+        {
+            SetPropertyString(name, _overrides.TryGetValue(name, out var pinned) ? pinned : value);
         }
 
         // Synchronous write; only for the constructor and the command thread.
