@@ -72,9 +72,19 @@ namespace Baird.Services
             Console.WriteLine($"[JellyfinService] JellyfinService configured for {SecretRedactor.Redact(_serverUrl)} (authentication will happen on first use)");
         }
 
+        // A failed login is retried on a later call, but not more often than this.
+        private static readonly TimeSpan AuthRetryInterval = TimeSpan.FromSeconds(30);
+        private DateTime _lastAuthFailure = DateTime.MinValue;
+
+        /// <summary>
+        /// Logs in if needed. Never throws: on failure callers see !IsAuthenticated and return
+        /// nothing, and the login is retried on a later call (at most every AuthRetryInterval)
+        /// instead of Jellyfin staying empty until Baird restarts.
+        /// </summary>
         private async Task EnsureAuthenticatedAsync()
         {
-            if (_authenticationAttempted) return;
+            if (IsAuthenticated) return;
+            if (_authenticationAttempted && DateTime.UtcNow - _lastAuthFailure < AuthRetryInterval) return;
             _authenticationAttempted = true;
 
             try
@@ -84,9 +94,8 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[JellyfinService] Jellyfin Authentication Failed: {ex.Message}");
-                Console.WriteLine($"[JellyfinService] Stack Trace: {ex.StackTrace}");
-                throw;
+                _lastAuthFailure = DateTime.UtcNow;
+                Console.WriteLine($"[JellyfinService] Jellyfin Authentication Failed (retrying after {AuthRetryInterval.TotalSeconds:0}s): {ex.Message}");
             }
         }
 

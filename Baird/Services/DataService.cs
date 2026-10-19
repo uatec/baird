@@ -59,9 +59,33 @@ namespace Baird.Services
             _watchlistService.WatchlistUpdated += (s, e) => WatchlistUpdated?.Invoke(this, EventArgs.Empty);
         }
 
+        /// <summary>
+        /// Runs one provider call, isolating its failure: a provider that throws (e.g. Jellyfin
+        /// returning 503 at startup) contributes nothing instead of failing the whole fan-out —
+        /// otherwise it wiped out the TvHeadend channel list and nothing auto-played.
+        /// Cancellation still propagates.
+        /// </summary>
+        private static async Task<IEnumerable<MediaItemData>> FromProvider(IMediaProvider provider, string operation,
+            Func<Task<IEnumerable<MediaItemData>>> call, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return await call().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DataService] {provider.Name} {operation} failed, continuing without it: {SecretRedactor.Redact(ex.Message)}");
+                return Enumerable.Empty<MediaItemData>();
+            }
+        }
+
         public async Task<IEnumerable<MediaItemViewModel>> GetListingAsync()
         {
-            var tasks = _providers.Select(p => p.GetListingAsync());
+            var tasks = _providers.Select(p => FromProvider(p, "listing", () => p.GetListingAsync()));
             var results = await Task.WhenAll(tasks).ConfigureAwait(false);
             var allData = results.SelectMany(x => x).ToList();
             foreach (var data in allData)
@@ -72,7 +96,7 @@ namespace Baird.Services
 
         public async Task<IEnumerable<MediaItemViewModel>> SearchAsync(string query, CancellationToken cancellationToken = default)
         {
-            var tasks = _providers.Select(p => p.SearchAsync(query, cancellationToken));
+            var tasks = _providers.Select(p => FromProvider(p, "search", () => p.SearchAsync(query, cancellationToken), cancellationToken));
             var results = await Task.WhenAll(tasks).ConfigureAwait(false);
             var allData = results.SelectMany(x => x).ToList();
             foreach (var data in allData)
@@ -122,7 +146,7 @@ namespace Baird.Services
 
         public async Task<IEnumerable<MediaItemViewModel>> GetChildrenAsync(string id)
         {
-            var tasks = _providers.Select(p => p.GetChildrenAsync(id));
+            var tasks = _providers.Select(p => FromProvider(p, "children", () => p.GetChildrenAsync(id)));
             var results = await Task.WhenAll(tasks);
             var allData = results.SelectMany(x => x).ToList();
             foreach (var data in allData)

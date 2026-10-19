@@ -32,7 +32,7 @@ namespace Baird.Controls
         {
             if (!Avalonia.Controls.Design.IsDesignMode)
             {
-                _player = new MpvPlayer();
+                _player = new MpvPlayer(ReadMpvOverrides());
             }
             // _renderUpdateDelegate = UpdateCallback; // Moved to MpvPlayer internal logic
 
@@ -120,6 +120,22 @@ namespace Baird.Controls
             };
 
             Focusable = true;
+        }
+
+        /// <summary>
+        /// mpv options from the [Mpv] section of config.ini (e.g. <c>video-sync=audio</c>), for
+        /// tuning playback on the device without a rebuild.
+        /// </summary>
+        private static Dictionary<string, string> ReadMpvOverrides()
+        {
+            var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var config = (Application.Current as App)?.Configuration;
+            if (config == null) return options;
+            foreach (var entry in config.GetSection("Mpv").GetChildren())
+            {
+                if (entry.Value != null) options[entry.Key] = entry.Value;
+            }
+            return options;
         }
 
         public event EventHandler<string>? SearchRequested;

@@ -112,9 +112,9 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Row 4: Sharper Deinterlacing (video quality feature flag) -->
+                    <!-- Row 4: 50 fps deinterlacing (video quality feature flag) -->
                     <TextBlock Grid.Row="4" Grid.Column="0"
-                        Text="Sharper Deinterlacing"
+                        Text="50 fps Deinterlacing"
                         Classes="SettingName"
                         Margin="0,0,50,0" />
 
