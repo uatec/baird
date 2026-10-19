@@ -47,11 +47,17 @@ apt-get install -y \
     libgbm1 \
     libgbm-dev \
     libinput10 \
-    libglapi-mesa \
     libgl1-mesa-dri \
     libegl-mesa0 \
     libegl1 \
-    libicu-dev
+    libicu-dev \
+    libdrm-tests
+
+# libglapi-mesa was folded into other Mesa packages in Debian trixie; install it only where it
+# still exists (bookworm) so set -e doesn't abort here.
+if apt-cache show libglapi-mesa >/dev/null 2>&1; then
+    apt-get install -y libglapi-mesa
+fi
 
 echo "[APT] Packages installed."
 
@@ -143,6 +149,98 @@ EndSection
 EOF
 echo "[Xorg]   99-v3d.conf written."
 echo "[Xorg] Done (takes effect on next X restart/reboot)."
+
+# --- 6. Wayland (labwc) session + HDMI colour range ---
+# Baird runs under labwc (Raspberry Pi OS's default Wayland compositor) as an XWayland client:
+# labwc presents every frame at the display's vblank, which removed the video tearing we had
+# under X11 (this Xorg's modesetting driver has no TearFree option). The Xorg files above only
+# matter if the session is switched back to X11 (rpd-x).
+#
+# Under labwc nothing sets the HDMI "Broadcast RGB" property, and the kernel default
+# "Automatic" resolves to full range on our TV (washed-out picture — the same bug
+# 20-hdmi-color.conf fixes for X11). baird-hdmi-range.service pins it to Limited at boot,
+# while no compositor holds DRM master; the value then persists.
+echo "[HDMI] Installing baird-hdmi-range boot service..."
+cat > /usr/local/sbin/baird-hdmi-range.sh <<'HDMI_SCRIPT'
+#!/bin/sh
+# Managed by Baird configure_pi.sh — pins every HDMI output to limited RGB range (16-235)
+# before the display server starts.
+#
+# Under labwc (wlroots) nothing sets the "Broadcast RGB" connector property, and the kernel
+# default "Automatic" resolves to full range on our TV -> washed-out, "blobby" picture. Under X11
+# xorg.conf.d/20-hdmi-color.conf did this; here we set it with modetest while no compositor holds
+# DRM master. The value persists until something changes it. Set on all HDMI connectors, not just
+# connected ones, so it still applies if the TV was off at boot. Runs after Plymouth (the boot
+# splash holds DRM master until it quits) and before lightdm.
+set -u
+i=0
+until modetest -M vc4 -c >/dev/null 2>&1; do # wait for the vc4 KMS driver
+    i=$((i + 1))
+    [ "$i" -ge 40 ] && { echo "vc4 DRM device not available" >&2; exit 1; }
+    sleep 0.25
+done
+# Current "Broadcast RGB" value of a connector (0 Automatic, 1 Full, 2 Limited).
+value_of() {
+    modetest -M vc4 -c 2>/dev/null | awk -v id="$1" '
+        $1 == id && $2 ~ /^[0-9]+$/ {inconn = 1; next}
+        /^[0-9]+\t/ {inconn = 0}
+        inconn && /Broadcast RGB/ {f = 1}
+        inconn && f && /value:/ {print $2; exit}'
+}
+
+# modetest exits 0 even when the write is refused (e.g. another process still holds DRM
+# master), so read the value back and retry for a few seconds.
+status=0
+for id in $(modetest -M vc4 -c 2>/dev/null | awk '$4 ~ /^HDMI-A-/ {print $1}'); do
+    n=0
+    while [ "$(value_of "$id")" != 2 ]; do
+        n=$((n + 1))
+        if [ "$n" -gt 40 ]; then
+            echo "connector $id: could not set Broadcast RGB (value $(value_of "$id"))" >&2
+            status=1
+            break
+        fi
+        modetest -M vc4 -w "$id:Broadcast RGB:2" >/dev/null 2>&1
+        sleep 0.25
+    done
+    [ "$(value_of "$id")" = 2 ] && echo "connector $id: Broadcast RGB = Limited 16:235"
+done
+exit "$status"
+HDMI_SCRIPT
+chmod 755 /usr/local/sbin/baird-hdmi-range.sh
+
+cat > /etc/systemd/system/baird-hdmi-range.service <<'HDMI_UNIT'
+# Managed by Baird configure_pi.sh
+[Unit]
+Description=Pin HDMI to limited RGB range (16-235) for Baird
+# Needs DRM master, which the Plymouth boot splash holds until it quits, and must finish before
+# the compositor takes it (the setting then persists). Plymouth only quits once the boot reaches
+# the display manager, so waiting for it (plymouth-quit-wait) would deadlock: instead we quit the
+# splash ourselves just before lightdm would anyway.
+After=plymouth-start.service systemd-modules-load.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStartPre=-/usr/bin/plymouth quit
+ExecStart=/usr/local/sbin/baird-hdmi-range.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target
+HDMI_UNIT
+systemctl daemon-reload
+systemctl enable baird-hdmi-range.service
+echo "[HDMI] baird-hdmi-range.service enabled."
+
+LIGHTDM_CONF="/etc/lightdm/lightdm.conf"
+if [ -f "$LIGHTDM_CONF" ]; then
+    echo "[Session] Selecting the labwc (Wayland) session in $LIGHTDM_CONF..."
+    sed -i -E 's/^(user-session|autologin-session)=.*/\1=rpd-labwc/' "$LIGHTDM_CONF"
+    echo "[Session] Done (revert to X11 by setting these to rpd-x)."
+else
+    echo "[Session] $LIGHTDM_CONF not found — select the labwc session manually."
+fi
 
 echo ""
 echo "=== Configuration complete ==="

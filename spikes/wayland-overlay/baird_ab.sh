@@ -13,6 +13,14 @@ cd "$(dirname "$0")"
 WINDOW="${1:-20}"
 CFG="$HOME/.baird/config.ini"
 export DISPLAY=:0
+# Under labwc, Baird is an XWayland client: xdotool still works through DISPLAY, but screenshots
+# must come from the compositor (grim), since XWayland's root window isn't what's on screen.
+MOTION_MODE=x11
+if pgrep -u "$(id -u)" -x labwc >/dev/null; then
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+    MOTION_MODE=wayland
+fi
 TEST_BIN="${2:-}"
 CACHE_BIN="$HOME/.cache/baird/Baird"
 cp "$CFG" /tmp/baird-config.before-ab
@@ -62,7 +70,7 @@ run_variant() { # label hq sharper [mpv KEY=VALUE...]
     start="$(date '+%Y-%m-%d %H:%M:%S')"
     sleep $((WINDOW / 2))
     local motion
-    motion="$(./motion_check.sh x11 10 2>/dev/null || echo '?')"
+    motion="$(./motion_check.sh "$MOTION_MODE" 10 2>/dev/null || echo '?')"
     sleep $((WINDOW - WINDOW / 2))
     end="$(date '+%Y-%m-%d %H:%M:%S')"
     local lines
