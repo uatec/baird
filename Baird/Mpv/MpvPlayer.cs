@@ -126,6 +126,12 @@ namespace Baird.Mpv
             // embedded configuration.
             SetOption("vo", "libmpv");
 
+            // The Pi 5 GPU can't sustain mpv's default render quality at 50 fps: on live 1080i50
+            // (deinterlaced to 50 fps) the defaults dropped ~45% of frames, "fast" dropped none at
+            // the same CPU (measured on-device; see spikes/wayland-overlay/RESULTS.md). Set before
+            // the options below so they still override the profile where they overlap.
+            SetOption("profile", "fast");
+
             // Maintain aspect ratio (will center with black bars if needed)
             SetOption("keepaspect", "yes");
 
