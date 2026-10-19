@@ -28,6 +28,10 @@ namespace Baird.Services
 
         public bool IsAuthenticated => !string.IsNullOrEmpty(_accessToken);
 
+        // Name under which the access token is registered with SecretRedactor; persisted
+        // stream URLs store "{{secret:JELLYFIN_TOKEN}}" instead of the token itself.
+        public const string AccessTokenSecretName = "JELLYFIN_TOKEN";
+
         public JellyfinService(Microsoft.Extensions.Configuration.IConfiguration config)
         {
             // Load configuration
@@ -39,6 +43,7 @@ namespace Baird.Services
             try { _serverHostname = new Uri(_serverUrl).Host; } catch { _serverHostname = "Jellyfin"; }
             _username = username;
             _password = password; // Store for lazy authentication
+            SecretRedactor.Register("JELLYFIN_PASS", _password);
 
             // Generate a stable DeviceId so Jellyfin sees a single session rather than
             // creating orphaned sessions on every launch / auth call.
@@ -64,7 +69,7 @@ namespace Baird.Services
                 _httpClient.DefaultRequestHeaders.Add("X-Emby-Authorization", authHeader);
             }
 
-            Console.WriteLine($"[JellyfinService] JellyfinService configured for {_serverUrl} (authentication will happen on first use)");
+            Console.WriteLine($"[JellyfinService] JellyfinService configured for {SecretRedactor.Redact(_serverUrl)} (authentication will happen on first use)");
         }
 
         private async Task EnsureAuthenticatedAsync()
@@ -75,7 +80,7 @@ namespace Baird.Services
             try
             {
                 await AuthenticateAsync(_username, _password);
-                Console.WriteLine($"[JellyfinService] Jellyfin authenticated at {_serverUrl}");
+                Console.WriteLine($"[JellyfinService] Jellyfin authenticated at {SecretRedactor.Redact(_serverUrl)}");
             }
             catch (Exception ex)
             {
@@ -109,6 +114,8 @@ namespace Baird.Services
             if (root.TryGetProperty("AccessToken", out var tokenProp))
             {
                 _accessToken = tokenProp.GetString() ?? "";
+                // Register immediately: the token is embedded in stream URLs (logs, media cache)
+                SecretRedactor.Register(AccessTokenSecretName, _accessToken);
             }
 
             if (root.TryGetProperty("User", out var userProp) && userProp.TryGetProperty("Id", out var idProp))
@@ -116,7 +123,7 @@ namespace Baird.Services
                 _userId = idProp.GetString() ?? "";
             }
 
-            Console.WriteLine($"[JellyfinService] Auth Success. Token: {_accessToken?.Substring(0, 5)}... User: {_userId}");
+            Console.WriteLine($"[JellyfinService] Auth Success. Token received: {!string.IsNullOrEmpty(_accessToken)} User: {_userId}");
 
             // 3. Update Headers with Token
             _httpClient.DefaultRequestHeaders.Remove("X-Emby-Authorization");
@@ -311,7 +318,7 @@ namespace Baird.Services
                         Name = $"Season {s}",
                         Details = $"{items.Count(x => (x.ParentIndexNumber ?? 1) == s)} Episodes",
                         // Use Series image for the folder
-                        ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{itemId}/Images/Primary?api_key={_accessToken}",
+                        ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{itemId}/Images/Primary",
                         Type = MediaType.Brand,
                         Source = $"Jellyfin: {_serverHostname}",
                         IsLive = false,
@@ -355,7 +362,7 @@ namespace Baird.Services
                 Id = m.Id,
                 Name = m.Name,
                 Details = m.ProductionYear?.ToString() ?? "",
-                ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary?api_key={_accessToken}",
+                ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary",
                 IsLive = false,
                 StreamUrl = isContainer ? "" : GetStreamUrlInternal(m.Id),
                 Source = $"Jellyfin: {_serverHostname}",

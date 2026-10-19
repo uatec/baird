@@ -1,0 +1,9 @@
+  <!-- BEGIN baird-wayland-spike: merged into rc.xml by run_test.sh, removed afterwards -->
+  <!-- Video at the bottom, never takes focus; Baird's UI on top with focus. -->
+  <windowRule identifier="baird-video" serverDecoration="no" skipTaskbar="yes" skipWindowSwitcher="yes" ignoreFocusRequest="yes">
+    <action name="ToggleAlwaysOnBottom"/>
+  </windowRule>
+  <windowRule identifier="baird-overlay" serverDecoration="no" skipTaskbar="yes">
+    <action name="ToggleAlwaysOnTop"/>
+  </windowRule>
+  <!-- END baird-wayland-spike -->

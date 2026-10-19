@@ -115,6 +115,15 @@ namespace Baird.Mpv
         [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern int mpv_observe_property(IntPtr handle, ulong reply_userdata, string name, MpvFormat format);
 
+        [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void mpv_wakeup(IntPtr handle);
+
+        [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int mpv_request_log_messages(IntPtr handle, string min_level);
+
+        [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr mpv_error_string(int error);
+
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void MpvRenderUpdateFn(IntPtr cb_ctx);
@@ -201,7 +210,9 @@ namespace Baird.Mpv
         [StructLayout(LayoutKind.Sequential)]
         public struct MpvOpenglInitParams
         {
-            public MpvGetProcAddressFn GetProcAddress;
+            // Raw function pointer (not a delegate) so marshalling doesn't create a second,
+            // collectable thunk around the caller's already-pinned callback.
+            public IntPtr GetProcAddress;
             public IntPtr UserData;
             public IntPtr ExtraParams;
         }
@@ -225,6 +236,15 @@ namespace Baird.Mpv
         }
 
         [StructLayout(LayoutKind.Sequential)]
+        public struct MpvEventLogMessage
+        {
+            public IntPtr Prefix;   // const char* – module, e.g. "ffmpeg"
+            public IntPtr Level;    // const char* – "warn", "error", ...
+            public IntPtr Text;     // const char* – message, usually newline-terminated
+            public int LogLevel;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
         public struct MpvEndFileEvent
         {
             public MpvEndFileReason Reason;
@@ -236,7 +256,7 @@ namespace Baird.Mpv
         /// <c>Data</c> points to the value in the format specified by <c>Format</c>:
         ///   Flag   -> int* (1 = true, 0 = false)
         ///   Double -> double*
-        ///   String -> char* (UTF-8, may be null)
+        ///   String -> char** (pointer to a UTF-8 string)
         /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct MpvEventProperty

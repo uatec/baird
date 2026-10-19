@@ -37,8 +37,18 @@ namespace Baird.Services
             _serverUrl = serverUrl.TrimEnd('/');
             _username = username;
             _password = password;
+            // Password ends up in stream URLs; keep it out of logs and the on-disk media cache.
+            // Also register any credentials embedded in TVH_URL itself (http://user:pass@host).
+            SecretRedactor.Register("TVH_PASS", _password);
+            try
+            {
+                var userInfo = new Uri(_serverUrl).UserInfo;
+                var colon = userInfo.IndexOf(':');
+                if (colon >= 0) SecretRedactor.Register("TVH_URL_PASS", Uri.UnescapeDataString(userInfo[(colon + 1)..]));
+            }
+            catch (UriFormatException) { }
 
-            Console.WriteLine($"[TvHeadendService] Attempting connection to: {_serverUrl} as {_username}");
+            Console.WriteLine($"[TvHeadendService] Attempting connection to: {SecretRedactor.Redact(_serverUrl)} as {_username}");
 
             // Configure Handler with Custom Digest Auth
             // TvHeadend often requires standard Digest processing which HttpClientHandler can struggle with
@@ -47,7 +57,7 @@ namespace Baird.Services
 
             _httpClient = new HttpClient(handler) { BaseAddress = new Uri(_serverUrl + "/") };
 
-            Console.WriteLine($"[TvHeadendService] Initialized TVHeadend Service at {_serverUrl} with Custom Digest Auth support");
+            Console.WriteLine($"[TvHeadendService] Initialized TVHeadend Service at {SecretRedactor.Redact(_serverUrl)} with Custom Digest Auth support");
         }
 
 
@@ -249,7 +259,10 @@ namespace Baird.Services
             var port = uri.Port;
             var scheme = uri.Scheme;
 
-            return $"{scheme}://{host}:{port}/stream/channel/{itemId}?auth={_username}:{_password}&profile=pass";
+            // Escape credentials so passwords containing &, #, @ or : survive the query string
+            var user = Uri.EscapeDataString(_username);
+            var pass = Uri.EscapeDataString(_password);
+            return $"{scheme}://{host}:{port}/stream/channel/{itemId}?auth={user}:{pass}&profile=pass";
         }
 
         // Custom Digest Auth Handler

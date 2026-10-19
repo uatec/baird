@@ -41,14 +41,19 @@ namespace Baird.Services
                 // --dump-json: output metadata as JSON
                 // --flat-playlist: don't extract information for each video in the result (faster for search)
                 // ytsearch5: search for the first 5 results
+                // ArgumentList (not a formatted Arguments string) so quotes in the query can't
+                // inject extra yt-dlp options; "--" stops option parsing before the positional arg.
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "yt-dlp",
-                    Arguments = $"--dump-json --flat-playlist \"ytsearch5:{query}\"",
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+                startInfo.ArgumentList.Add("--dump-json");
+                startInfo.ArgumentList.Add("--flat-playlist");
+                startInfo.ArgumentList.Add("--");
+                startInfo.ArgumentList.Add($"ytsearch5:{query}");
 
                 using var process = Process.Start(startInfo);
                 if (process == null) return Enumerable.Empty<MediaItemData>();

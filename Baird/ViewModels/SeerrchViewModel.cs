@@ -151,7 +151,14 @@ namespace Baird.ViewModels
 
             textChanges.Subscribe(async query =>
             {
-                await PerformSearch(query);
+                try
+                {
+                    await PerformSearch(query);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SeerrchViewModel] Unhandled error in search subscription: {ex}");
+                }
             });
 
             // Track searching state for spinner
@@ -266,7 +273,11 @@ namespace Baird.ViewModels
             }
             finally
             {
-                _searchCts?.Dispose();
+                // Dispose only the CTS created for THIS search. The field may already
+                // point at a newer search's CTS, which must stay alive so it can be cancelled.
+                newCts.Dispose();
+
+                // Only clear the shared field if it hasn't been replaced by a newer search
                 if (_searchCts == newCts)
                 {
                     _searchCts = null;

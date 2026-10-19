@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # Define output directory
 OUTPUT_DIR="./publish"

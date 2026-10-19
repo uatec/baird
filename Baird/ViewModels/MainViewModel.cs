@@ -42,6 +42,7 @@ namespace Baird.ViewModels
         public HistoryViewModel History { get; }
         public WatchlistViewModel Watchlist { get; }
         public CecDebugViewModel CecDebug { get; }
+        public AvDebugViewModel AvDebug { get; }
         public SeerrchViewModel Seerrch { get; }
         public RequestsViewModel Requests { get; }
         public SettingsViewModel Settings { get; }
@@ -109,6 +110,7 @@ namespace Baird.ViewModels
             History = new HistoryViewModel(dataService);
             Watchlist = new WatchlistViewModel(dataService);
             CecDebug = new CecDebugViewModel(cecService);
+            AvDebug = new AvDebugViewModel { CurrentTitle = () => ActiveItem?.Name };
 
             // Jellyseerr ViewModels
             Seerrch = new SeerrchViewModel(jellyseerrService);
@@ -121,6 +123,7 @@ namespace Baird.ViewModels
             Watchlist.BackRequested += (s, e) => GoBack();
 
             CecDebug.BackRequested += (s, e) => GoBack();
+            AvDebug.BackRequested += (s, e) => GoBack();
 
             Settings = new SettingsViewModel(configuration);
             Settings.BackRequested += (s, e) => GoBack();
@@ -194,6 +197,7 @@ namespace Baird.ViewModels
                 new TabItem("Requests", Requests),
                 new TabItem("Settings", Settings),
                 new TabItem("CEC Debug", CecDebug),
+                new TabItem("A/V Debug", AvDebug),
             };
             MainMenu = new TabNavigationViewModel(tabs);
             MainMenu.BackRequested += (s, e) => GoBack();

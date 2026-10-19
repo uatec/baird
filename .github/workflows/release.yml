@@ -5,9 +5,41 @@ on:
     branches:
       - main
 
+# Never run two releases at once (they would race on the version tag).
+# Queue rather than cancel: a half-finished release is worse than a late one.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  build-and-release:
+  test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmpv-dev
+
+      - name: Test
+        run: dotnet test Baird.Tests/Baird.Tests.csproj
+
+  # Runs on a native arm64 runner so the binary that is smoke-tested is the
+  # very same binary that gets zipped and released. The tag is only created
+  # (by action-gh-release) after the smoke test passes.
+  build-and-release:
+    needs: test
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
@@ -19,52 +51,44 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x' 
+          dotnet-version: '9.0.x'
 
-      - name: Install Dependencies
+      - name: Install runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libmpv-dev
+          sudo apt-get install -y xvfb libmpv2 zip
 
-      # Tests might fail due to missing libmpv on macos-latest if not installed. 
-      # Attempting to run them, but allowing failure if it's just environment issues could be wise, 
-      # but user asked for "build, test, package". 
-      # We will try to run them standardly.
-      - name: Test
-        run: dotnet test Baird.Tests/Baird.Tests.csproj
-
-      - name: Calculate Version & Create Tag
+      # dry_run: compute the next version/changelog but don't push a tag yet.
+      - name: Calculate Version
         id: version
-        uses: mathieudutour/github-tag-action@v6.2
+        uses: mathieudutour/github-tag-action@a22cf08638b34d5badda920f9daf6e72c477b07b # v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           default_bump: patch
           release_branches: main
+          dry_run: true
 
       - name: Build Application
-        run: |
-          export BUILD_VERSION=${{ steps.version.outputs.new_version }}
-          chmod +x build.sh
-          ./build.sh
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.new_version }}
+        run: ./build.sh
+
+      - name: Startup smoke test (gate)
+        run: ./smoke_test.sh publish/linux-arm64/Baird
 
       - name: Zip Application
-        id: zip
         run: |
           mkdir -p out
-          
-          # Ensure configure_pi.sh is included in the linux-arm64 package
-          cp configure_pi.sh publish/linux-arm64/
-          
-          # Zip linux-arm64
           cd publish/linux-arm64
           zip -r ../../out/Baird-linux-arm64.zip .
-          
           echo "Zipped artifacts created."
 
+      # Creates the tag at this commit (it does not exist yet: version step was a dry run).
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ steps.version.outputs.new_tag }}
+          target_commitish: ${{ github.sha }}
           name: Release ${{ steps.version.outputs.new_version }}
           files: |
             out/Baird-linux-arm64.zip
@@ -75,11 +99,11 @@ jobs:
         id: sha256
         run: |
           SHA256=$(sha256sum out/Baird-linux-arm64.zip | awk '{print $1}')
-          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
           echo "SHA256 (arm64): $SHA256"
 
       - name: Dispatch to Homebrew Tools
-        uses: benc-uk/workflow-dispatch@v1
+        uses: benc-uk/workflow-dispatch@d004979be141727c7a17c28f603e2facc40d0855 # v1.3.3
         with:
           workflow: update-formula-cask.yml
           repo: uatec/homebrew-tools

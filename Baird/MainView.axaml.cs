@@ -255,6 +255,12 @@ namespace Baird
                     var player = vLayer.GetPlayer();
                     if (player != null)
                     {
+                        // A/V debug page samples the main player; M while watching drops a mark.
+                        _viewModel.AvDebug.Source = player;
+                        EventHandler onMarkRequested = (sender, args) => _viewModel.AvDebug.Mark();
+                        player.DiagnosticsMarkRequested += onMarkRequested;
+                        _visualTreeSubscriptions.Add(Disposable.Create(() => player.DiagnosticsMarkRequested -= onMarkRequested));
+
                         EventHandler onHistoryRequested = (sender, args) =>
                         {
                             Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.OpenMainMenu());

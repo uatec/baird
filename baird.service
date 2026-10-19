@@ -1,6 +1,11 @@
 [Unit]
 Description=Baird Media Player
-StartLimitIntervalSec=0
+# Crash-loop guard: with Restart=always/RestartSec=5, more than 10 starts in
+# 5 minutes puts the unit into "failed" (start-limit-hit) instead of looping
+# forever. update_baird.sh watches for this (and for any restart) right after
+# an upgrade and rolls back; install_service.sh runs reset-failed first.
+StartLimitIntervalSec=300
+StartLimitBurst=10
 # Binds the service to the graphical session. 
 # If you log out (stop the GUI), this service will automatically stop.
 PartOf=graphical-session.target

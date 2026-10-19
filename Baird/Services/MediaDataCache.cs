@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Baird.Models;
@@ -13,6 +15,8 @@ namespace Baird.Services
     /// Persistent disk cache for MediaItemData (names, image URLs, metadata).
     /// Allows Watchlist and History to display items immediately from cache,
     /// while fresh data is loaded from providers in the background.
+    /// Secrets (TvHeadend password, Jellyfin token) embedded in URLs are never written to disk:
+    /// entries are stored with SecretRedactor placeholders and expanded again on read.
     /// </summary>
     public interface IMediaDataCache
     {
@@ -36,6 +40,10 @@ namespace Baird.Services
         // Debounce save: only write to disk once per 500ms window
         private int _saveScheduled = 0;
 
+        // Catches api_key values that aren't registered secrets (e.g. a stale Jellyfin token
+        // left in a cache file written by an older version).
+        private static readonly Regex ApiKeyParam = new(@"([?&]api_key=)(?!\{\{secret:)[^&#]*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         public JsonMediaDataCache()
         {
             var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".baird");
@@ -44,7 +52,29 @@ namespace Baird.Services
 
             _filePath = Path.Combine(folder, "media_data_cache.json");
             _cache = new ConcurrentDictionary<string, MediaItemData>(Load());
+
+            // Rewrite files from older versions that still contain raw credentials
+            if (_cache.Values.Any(NeedsScrub))
+                ScheduleSave();
         }
+
+        private static MediaItemData Tokenize(MediaItemData data)
+        {
+            return data with
+            {
+                ImageUrl = Scrub(data.ImageUrl),
+                StreamUrl = data.StreamUrl == null ? null : Scrub(data.StreamUrl),
+            };
+        }
+
+        private static string Scrub(string url)
+        {
+            var tokenized = SecretRedactor.Tokenize(url);
+            return ApiKeyParam.Replace(tokenized, $"$1{{{{secret:{JellyfinService.AccessTokenSecretName}}}}}");
+        }
+
+        private static bool NeedsScrub(MediaItemData data) =>
+            Tokenize(data) != data;
 
         private Dictionary<string, MediaItemData> Load()
         {
@@ -65,12 +95,24 @@ namespace Baird.Services
 
         public bool TryGet(string id, out MediaItemData? data)
         {
-            return _cache.TryGetValue(id, out data);
+            if (!_cache.TryGetValue(id, out data)) return false;
+
+            // Expand placeholders with the current secret values (picks up refreshed tokens)
+            if (SecretRedactor.ContainsPlaceholder(data.ImageUrl) || SecretRedactor.ContainsPlaceholder(data.StreamUrl))
+            {
+                data = data with
+                {
+                    ImageUrl = SecretRedactor.Detokenize(data.ImageUrl),
+                    StreamUrl = data.StreamUrl == null ? null : SecretRedactor.Detokenize(data.StreamUrl),
+                };
+            }
+            return true;
         }
 
         public void Put(MediaItemData data)
         {
-            _cache[data.Id] = data;
+            // Hold the tokenized form in memory so the saved snapshot is always secret-free
+            _cache[data.Id] = Tokenize(data);
             ScheduleSave();
         }
 
@@ -92,7 +134,11 @@ namespace Baird.Services
             await _saveLock.WaitAsync().ConfigureAwait(false);
             try
             {
-                var snapshot = new Dictionary<string, MediaItemData>(_cache);
+                // Tokenize again at save time: entries loaded from an old file before a provider
+                // registered its secrets are only cleaned once the secret is known.
+                var snapshot = new Dictionary<string, MediaItemData>();
+                foreach (var (id, data) in _cache)
+                    snapshot[id] = Tokenize(data);
                 var json = JsonSerializer.Serialize(snapshot, BairdJsonContext.Default.DictionaryStringMediaItemData);
                 await File.WriteAllTextAsync(_filePath, json).ConfigureAwait(false);
                 Console.WriteLine($"[MediaDataCache] Saved {snapshot.Count} items to disk.");

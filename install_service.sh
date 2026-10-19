@@ -1,34 +1,36 @@
 #!/bin/bash
+# Installs/refreshes the Baird systemd user units from this package and
+# (re)starts them. Run by update_baird.sh after every upgrade/rollback, and
+# by hand for first-time setup.
+set -euo pipefail
 
 INSTALL_DIR="$HOME/.config/systemd/user"
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Ensure the systemd user directory exists
+UNITS=(baird.service baird-updater.service baird-updater.timer)
+
 mkdir -p "$INSTALL_DIR"
 
-function install_unit() {
-    local unit_file=$1
-    local unit_name=$(basename "$unit_file")
+# 1. Copy every unit first...
+for unit in "${UNITS[@]}"; do
+    echo "Installing $unit..."
+    cp "$SCRIPT_DIR/$unit" "$INSTALL_DIR/"
+done
 
-    echo "Installing $unit_name..."
-    cp "$SCRIPT_DIR/$unit_file" "$INSTALL_DIR/"
-    systemctl --user enable "$unit_name"
-    systemctl --user restart "$unit_name"
-    echo "$unit_name installed and restarted."
-    echo "Status: systemctl --user status $unit_name"
-    echo "----------------------------------------"
-}
-
-# Install components
-# Note: We copy the service file for the updater but don't enable/start it directly; 
-# the timer handles that.
-cp "$SCRIPT_DIR/baird-updater.service" "$INSTALL_DIR/"
-
-# Reload systemd manager configuration to pick up new files
+# 2. ...then reload once so systemd sees all of the new definitions before
+#    anything is enabled or restarted.
 systemctl --user daemon-reload
 
-# Install and start the main service and the updater timer
-install_unit "baird.service"
-install_unit "baird-updater.timer"
+# 3. Enable and (re)start the app and the updater timer. The updater service
+#    itself is not enabled; the timer triggers it.
+for unit in baird.service baird-updater.timer; do
+    systemctl --user enable "$unit"
+    # Clear any start-limit-hit / failed state, otherwise restart is refused.
+    systemctl --user reset-failed "$unit" 2>/dev/null || true
+    systemctl --user restart "$unit"
+    echo "$unit installed and restarted."
+    echo "Status: systemctl --user status $unit"
+    echo "----------------------------------------"
+done
 
 echo "All services installed successfully."
