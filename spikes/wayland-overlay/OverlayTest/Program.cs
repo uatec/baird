@@ -17,6 +17,8 @@ namespace OverlayTest;
 /// opening Baird's menus. Logs what the platform actually gave us so the run script can grade it.
 ///
 /// Keys: O toggle opaque panel, H toggle HUD, Q/Escape quit.
+/// --cycle toggles the panel every 10 s; --calm repaints the HUD once a second (like Baird's
+/// real clock/progress HUD) instead of the worst-case ~50 Hz animation.
 /// </summary>
 public static class Program
 {
@@ -41,7 +43,7 @@ public class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var args = desktop.Args ?? Array.Empty<string>();
-            desktop.MainWindow = new OverlayWindow(cycle: args.Contains("--cycle"));
+            desktop.MainWindow = new OverlayWindow(cycle: args.Contains("--cycle"), calm: args.Contains("--calm"));
         }
         base.OnFrameworkInitializationCompleted();
     }
@@ -58,8 +60,11 @@ public class OverlayWindow : Window
     private readonly DateTime _started = DateTime.Now;
     private int _ticks;
 
-    public OverlayWindow(bool cycle)
+    private readonly bool _calm;
+
+    public OverlayWindow(bool cycle, bool calm)
     {
+        _calm = calm;
         Title = "Baird overlay spike";
         SystemDecorations = SystemDecorations.None;
         WindowState = WindowState.FullScreen;
@@ -106,8 +111,8 @@ public class OverlayWindow : Window
 
         Content = new Grid { Children = { _menu, _hud } };
 
-        // ~50 Hz animation so UI repaints are continuous, like a ticking HUD over video.
-        var anim = new DispatcherTimer(TimeSpan.FromMilliseconds(20), DispatcherPriority.Render, (_, _) => Animate());
+        // Worst case: ~50 Hz full repaints. Calm: once a second, like Baird's clock/progress HUD.
+        var anim = new DispatcherTimer(TimeSpan.FromMilliseconds(calm ? 1000 : 20), DispatcherPriority.Render, (_, _) => Animate());
         anim.Start();
 
         if (cycle)
@@ -123,7 +128,7 @@ public class OverlayWindow : Window
 
     private void Report()
     {
-        Log($"actual-transparency={ActualTransparencyLevel}");
+        Log($"actual-transparency={ActualTransparencyLevel} hud-repaint={(_calm ? "1 Hz (calm)" : "50 Hz")}");
         Log($"window-state={WindowState} topmost={Topmost} client-size={ClientSize.Width}x{ClientSize.Height} scaling={RenderScaling}");
         Log($"platform={(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") is { } w ? $"wayland-env={w}" : "no-wayland-env")} display={Environment.GetEnvironmentVariable("DISPLAY")}");
         Log("ready");
@@ -135,7 +140,7 @@ public class OverlayWindow : Window
         double width = Math.Max(1, ClientSize.Width - 80 - 24);
         double phase = (_ticks % 200) / 200.0;
         Canvas.SetLeft(_marker, width * (phase < 0.5 ? phase * 2 : (1 - phase) * 2));
-        if (_ticks % 10 == 0)
+        if (_calm || _ticks % 10 == 0)
         {
             var up = DateTime.Now - _started;
             _status.Text = $"{DateTime.Now:HH:mm:ss}  overlay up {up:mm\\:ss}  transparency={ActualTransparencyLevel}  menu={(_menu.IsVisible ? "shown" : "hidden")}";

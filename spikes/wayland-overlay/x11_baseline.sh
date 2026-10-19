@@ -60,10 +60,12 @@ DISPLAY="${DISPLAY:-:0}" mpv --vo=gpu --gpu-api="$GPU_API" --hwdec=drm --fs "${d
 PID=$!
 sleep 12 # start + settle
 a="$(query)"; t0="$(ticks "$PID")"; s0="$(date +%s.%N)"
-sleep "$SECONDS_PER_RUN"
+sleep $((SECONDS_PER_RUN / 2))
+motion="$("$(dirname "$0")/motion_check.sh" x11 10 2>/dev/null || echo "?")"
+sleep $((SECONDS_PER_RUN - SECONDS_PER_RUN / 2))
 b="$(query)"; t1="$(ticks "$PID")"; s1="$(date +%s.%N)"
 cpu="$(awk -v a="$t0" -v b="$t1" -v hz="$(getconf CLK_TCK)" -v s0="$s0" -v s1="$s1" 'BEGIN {printf "%d", (b - a) * 100 / (hz * (s1 - s0))}')"
 [[ -n "$a" ]] || a='{}'
 [[ -n "$b" ]] || b='{}'
 d() { jq -rn --argjson a "$a" --argjson b "$b" --arg k "$1" '(($b[$k] // 0) - ($a[$k] // 0))'; }
-echo "| X11 gpu-$GPU_API${VIDEO_SYNC:+ $VIDEO_SYNC}${EXTRA:+ $EXTRA} | $(jq -r '."current-vo"' <<<"$b") | $(jq -r '."hwdec-current"' <<<"$b") | avsync now $(jq -r '(.avsync // 0) * 1000 | floor' <<<"$b") ms | drops dec $(d decoder-frame-drop-count) / vo $(d frame-drop-count) / delayed $(d vo-delayed-frame-count) / mistimed $(d mistimed-frame-count) in ${SECONDS_PER_RUN}s | display sync $(jq -r '."display-sync-active" | tostring' <<<"$b") | mpv CPU $cpu% |"
+echo "| X11 gpu-$GPU_API${VIDEO_SYNC:+ $VIDEO_SYNC}${EXTRA:+ $EXTRA} | moving $motion | $(jq -r '."current-vo"' <<<"$b") | $(jq -r '."hwdec-current"' <<<"$b") | avsync now $(jq -r '(.avsync // 0) * 1000 | floor' <<<"$b") ms | drops dec $(d decoder-frame-drop-count) / vo $(d frame-drop-count) / delayed $(d vo-delayed-frame-count) / mistimed $(d mistimed-frame-count) in ${SECONDS_PER_RUN}s | display sync $(jq -r '."display-sync-active" | tostring' <<<"$b") | mpv CPU $cpu% |"

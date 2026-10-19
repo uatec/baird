@@ -22,9 +22,11 @@
 #                      software-decoded H.264 is expected to fail there and need gpu/gpu-next.
 #   --hwdec MODE       mpv hwdec (default drm: Pi 5 HEVC decoder; H.264 falls back to software)
 #   --video-sync MODE  e.g. display-resample (default: mpv's own default, audio)
+#   --extra "OPTS"     extra mpv options, e.g. "--profile=fast" (also added to the phase name)
 #   --gpu-api API      opengl or vulkan for gpu/gpu-next (default auto = Vulkan; on the Pi 5
 #                      under labwc 0.9 Vulkan swapchains fail continuously — use opengl)
 #   --keep-baird       don't stop baird.service during the test
+#   --calm-overlay     overlay repaints once a second (realistic HUD) instead of ~50 Hz
 #
 # Needs: labwc session, mpv, socat, jq. Optional: drm_info (planes, Broadcast RGB), grim.
 # The OverlayTest binary is expected next to this script (see make_kit.sh).
@@ -36,9 +38,11 @@ VOS="dmabuf-wayland,gpu-next,gpu"
 HWDEC="drm"
 VIDEO_SYNC=""   # empty = mpv default (audio)
 GPU_API=""      # empty = mpv default (auto: Vulkan if available)
+EXTRA=""        # extra mpv options, e.g. "--profile=fast"
 KEEP_BAIRD=0
 OUT_ROOT="$HOME/baird-wayland-spike"
 OVERLAY_BIN="$SCRIPT_DIR/OverlayTest"
+OVERLAY_ARGS=(--cycle)
 SOURCES=()   # entries "label|url|live(0/1)"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -83,9 +87,11 @@ while [[ $# -gt 0 ]]; do
     --hwdec) HWDEC="$2"; shift 2 ;;
     --video-sync) VIDEO_SYNC="$2"; shift 2 ;;
     --gpu-api) GPU_API="$2"; shift 2 ;;
+    --extra) EXTRA="$2"; shift 2 ;;
     --keep-baird) KEEP_BAIRD=1; shift ;;
     --out) OUT_ROOT="$2"; shift 2 ;;
     --overlay) OVERLAY_BIN="$2"; shift 2 ;;
+    --calm-overlay) OVERLAY_ARGS=(--cycle --calm); shift ;;
     -h | --help) sed -n '2,25p' "$0"; exit 0 ;;
     *) die "unknown argument: $1 (see --help)" ;;
     esac
@@ -239,15 +245,18 @@ planes_snapshot() {
 run_phase() { # label url live vo overlay(0/1)
     local label="$1" url="$2" live="$3" vo="$4" with_overlay="$5"
     local tag
-    tag="$(printf '%s' "${label}_${vo}${GPU_API:+-$GPU_API}${VIDEO_SYNC:+-$VIDEO_SYNC}_$([[ $with_overlay -eq 1 ]] && echo overlay || echo alone)" | tr -c 'A-Za-z0-9_.-' '_')"
+    tag="$(printf '%s' "${label}_${vo}${GPU_API:+-$GPU_API}${VIDEO_SYNC:+-$VIDEO_SYNC}${EXTRA:+-$EXTRA}$([[ "${OVERLAY_ARGS[*]}" == *--calm* && $with_overlay -eq 1 ]] && echo -calm)_$([[ $with_overlay -eq 1 ]] && echo overlay || echo alone)" | tr -c 'A-Za-z0-9_.-' '_')"
     local sock="$XDG_RUNTIME_DIR/baird-spike-mpv.sock" csv="$OUT/$tag.csv"
     rm -f "$sock"
-    log "phase $tag: starting mpv (--vo=$vo --hwdec=$HWDEC${VIDEO_SYNC:+ --video-sync=$VIDEO_SYNC}${GPU_API:+ --gpu-api=$GPU_API})"
+    log "phase $tag: starting mpv (--vo=$vo --hwdec=$HWDEC${VIDEO_SYNC:+ --video-sync=$VIDEO_SYNC}${GPU_API:+ --gpu-api=$GPU_API}${EXTRA:+ $EXTRA})"
 
     local extra=()
     if [[ $live -eq 1 ]]; then extra+=(--deinterlace=yes); else extra+=(--loop-file=inf); fi
     [[ -n "$VIDEO_SYNC" ]] && extra+=(--video-sync="$VIDEO_SYNC")
     [[ -n "$GPU_API" && "$vo" != dmabuf-wayland ]] && extra+=(--gpu-api="$GPU_API")
+    local extra_words=()
+    read -r -a extra_words <<<"$EXTRA"
+    extra+=("${extra_words[@]}")
     mpv --vo="$vo" --hwdec="$HWDEC" --fs --wayland-app-id=baird-video --input-ipc-server="$sock" \
         --no-osc --osd-level=0 --no-input-default-bindings --really-quiet "${extra[@]}" \
         --log-file="$OUT/$tag.mpv.log" "$url" >/dev/null 2>&1 &
@@ -266,7 +275,7 @@ run_phase() { # label url live vo overlay(0/1)
     done
     if [[ $started -eq 0 ]]; then
         log "phase $tag: no video output came up (see $tag.mpv.log)"
-        echo "| $tag | **FAILED: no video** | $(grep -E '\]\[e\]' "$OUT/$tag.mpv.log" 2>/dev/null | sed -E 's/^\[ *[0-9.]+\]\[e\]//' | sort -u | head -n3 | tr '\n' ';' | tr '|' '/' | cut -c1-220) ||||||||" >>"$OUT/phases.md"
+        echo "| $tag | – | **FAILED: no video** | $(grep -E '\]\[e\]' "$OUT/$tag.mpv.log" 2>/dev/null | sed -E 's/^\[ *[0-9.]+\]\[e\]//' | sort -u | head -n3 | tr '\n' ';' | tr '|' '/' | cut -c1-220) ||||||||" >>"$OUT/phases.md"
         kill "$MPV_PID" 2>/dev/null || true
         wait "$MPV_PID" 2>/dev/null || true
         MPV_PID=""
@@ -276,7 +285,7 @@ run_phase() { # label url live vo overlay(0/1)
     local overlay_log="$OUT/$tag.overlay.log"
     OVERLAY_PID=""
     if [[ $with_overlay -eq 1 ]]; then
-        "$OVERLAY_BIN" --cycle >"$overlay_log" 2>&1 &
+        "$OVERLAY_BIN" "${OVERLAY_ARGS[@]}" >"$overlay_log" 2>&1 &
         OVERLAY_PID=$!
         waited=0
         until grep -q ' ready' "$overlay_log" 2>/dev/null || ((waited >= 30)); do sleep 1; waited=$((waited + 1)); done
@@ -296,7 +305,7 @@ run_phase() { # label url live vo overlay(0/1)
 
     local last_mpv="$t0_mpv" last_ov="$t0_ov" last_lab="$t0_lab" last_xw="$t0_xw" v
     echo "t,${MPV_PROPS[*]}" | tr ' ' ',' >"$csv"
-    local first="" last="" s sample
+    local first="" last="" s sample motion="?"
     for ((s = 1; s <= SECONDS_PER_PHASE; s++)); do
         sleep 1
         kill -0 "$MPV_PID" 2>/dev/null || { log "phase $tag: mpv exited early"; break; }
@@ -312,6 +321,7 @@ run_phase() { # label url live vo overlay(0/1)
         jq -r --argjson names "$(printf '%s\n' "${MPV_PROPS[@]}" | jq -R . | jq -s .)" --arg t "$s" \
             '[$t] + [ $names[] as $n | (.[$n] | if . == null then "" else tostring end) ] | @csv' <<<"$last" >>"$csv"
         if ((s == SECONDS_PER_PHASE / 2)); then
+            motion="$("$SCRIPT_DIR/motion_check.sh" wayland 10 2>/dev/null || echo "?")"
             planes_snapshot >"$OUT/$tag.planes.txt"
             command -v grim >/dev/null && grim "$OUT/$tag.png" 2>/dev/null || true
         fi
@@ -345,7 +355,9 @@ run_phase() { # label url live vo overlay(0/1)
         focus_lost="$(grep -c 'DEACTIVATED' "$overlay_log" 2>/dev/null || true)"
     fi
 
-    echo "| $tag | $(jq -r '."current-vo" // "?"' <<<"$last") | $(jq -r '."hwdec-current" // "?"' <<<"$last") $(jq -r '."video-params/pixelformat" // ""' <<<"$last") | $avs_mean / $avs_max | $(delta decoder-frame-drop-count) / $(delta frame-drop-count) / $(delta vo-delayed-frame-count) / $(delta mistimed-frame-count) | $(jq -r '."display-sync-active" | if . == null then "?" else tostring end' <<<"$last"), vsync jitter $(jq -r '."vsync-jitter" // "?"' <<<"$last") | mpv $cpu_mpv% · overlay $cpu_ov% · labwc $cpu_lab% · Xwayland $cpu_xw% | $planes | $transp | $focus_lost | $vo_errors |" >>"$OUT/phases.md"
+    local motion_cell="$motion"
+    [[ "${motion%%/*}" =~ ^[0-9]+$ ]] && ((${motion%%/*} <= 2)) && motion_cell="**FROZEN $motion**"
+    echo "| $tag | $motion_cell | $(jq -r '."current-vo" // "?"' <<<"$last") | $(jq -r '."hwdec-current" // "?"' <<<"$last") $(jq -r '."video-params/pixelformat" // ""' <<<"$last") | $avs_mean / $avs_max | $(delta decoder-frame-drop-count) / $(delta frame-drop-count) / $(delta vo-delayed-frame-count) / $(delta mistimed-frame-count) | $(jq -r '."display-sync-active" | if . == null then "?" else tostring end' <<<"$last"), vsync jitter $(jq -r '."vsync-jitter" // "?"' <<<"$last") | mpv $cpu_mpv% · overlay $cpu_ov% · labwc $cpu_lab% · Xwayland $cpu_xw% | $planes | $transp | $focus_lost | $vo_errors |" >>"$OUT/phases.md"
 
     if [[ -n "$OVERLAY_PID" ]]; then kill "$OVERLAY_PID" 2>/dev/null || true; wait "$OVERLAY_PID" 2>/dev/null || true; fi
     kill "$MPV_PID" 2>/dev/null || true
@@ -356,8 +368,8 @@ run_phase() { # label url live vo overlay(0/1)
 }
 
 # -------------------------------------------------------------------- run ---
-echo "| phase | vo | hwdec / pixfmt | avsync mean / max-abs (ms) | drops dec / vo / delayed / mistimed | display sync | CPU (% of one core) | DRM planes (mid-run) | overlay transparency | overlay focus lost | vo errors logged |" >"$OUT/phases.md"
-echo "|---|---|---|---|---|---|---|---|---|---|---|" >>"$OUT/phases.md"
+echo "| phase | picture moving (distinct/10 frames) | vo | hwdec / pixfmt | avsync mean / max-abs (ms) | drops dec / vo / delayed / mistimed | display sync | CPU (% of one core) | DRM planes (mid-run) | overlay transparency | overlay focus lost | vo errors logged |" >"$OUT/phases.md"
+echo "|---|---|---|---|---|---|---|---|---|---|---|---|" >>"$OUT/phases.md"
 
 IFS=',' read -r -a VO_LIST <<<"$VOS"
 for entry in "${SOURCES[@]}"; do
@@ -380,6 +392,8 @@ done
     echo
     echo "## How to read this"
     echo
+    echo "- **picture moving** is measured from screenshots, not mpv: ~10/10 = live motion, ≤2/10 = FROZEN on screen"
+    echo "  (mpv's counters can look fine while nothing reaches the display)."
     echo "- **overlay transparency** must be \`Transparent\`; anything else means XWayland/Avalonia gave us an opaque window (video hidden)."
     echo "- **overlay focus lost** should be 0: mpv must never take keyboard focus from the UI."
     echo "- **DRM planes**: a YUV format (NV12/SAND128/YU12...) on its own plane means the video is scanned out directly"
