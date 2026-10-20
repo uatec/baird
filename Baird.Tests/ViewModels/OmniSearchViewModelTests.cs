@@ -173,5 +173,88 @@ namespace Baird.Tests.ViewModels
             Assert.Equal("Bravo", results[2].Name);
             Assert.Equal("Delta", results[3].Name);
         }
+
+        private class TestJellyseerrService : IJellyseerrService
+        {
+            public bool CreateRequestCalled { get; private set; }
+
+            public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string query, int page, System.Threading.CancellationToken cancellationToken = default)
+            {
+                var results = new List<JellyseerrSearchResult>
+                {
+                    new JellyseerrSearchResult
+                    {
+                        Id = 123,
+                        Title = "Dune: Part Two",
+                        MediaType = "movie",
+                        PosterPath = "/dune.jpg",
+                        MediaInfoStatus = 1
+                    }
+                };
+                return Task.FromResult((IEnumerable<JellyseerrSearchResult>)results);
+            }
+
+            public Task<JellyseerrRequestResponse> CreateRequestAsync(int mediaId, string mediaType, System.Threading.CancellationToken cancellationToken = default)
+            {
+                CreateRequestCalled = true;
+                return Task.FromResult(new JellyseerrRequestResponse { Success = true, RequestId = 42 });
+            }
+
+            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(System.Threading.CancellationToken cancellationToken = default)
+                => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
+
+            public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int page, System.Threading.CancellationToken cancellationToken = default)
+                => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
+        }
+
+        private static Task InvokePerformSearch(OmniSearchViewModel vm, string query)
+        {
+            var method = typeof(OmniSearchViewModel).GetMethod("PerformSearch", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("PerformSearch not found");
+            return (Task)method.Invoke(vm, new object?[] { query })!;
+        }
+
+        [Fact]
+        public void Constructor_WithJellyseerr_RegistersJellyseerrProviderStatus()
+        {
+            var dataService = new DataService(Enumerable.Empty<IMediaProvider>(), new MockHistoryService(), new MockWatchlistService(), new MediaItemCache(), new MockMediaDataCache());
+            var jellyseerr = new TestJellyseerrService();
+            var vm = new OmniSearchViewModel(dataService, new MockSearchHistoryService(), () => new List<MediaItemViewModel>(), jellyseerr);
+
+            Assert.Contains(vm.ProviderStatuses, p => p.Name == "Jellyseerr");
+        }
+
+        [Fact]
+        public async Task PerformSearch_WithJellyseerr_PopulatesDiscoverResults()
+        {
+            var dataService = new DataService(Enumerable.Empty<IMediaProvider>(), new MockHistoryService(), new MockWatchlistService(), new MediaItemCache(), new MockMediaDataCache());
+            var jellyseerr = new TestJellyseerrService();
+            var vm = new OmniSearchViewModel(dataService, new MockSearchHistoryService(), () => new List<MediaItemViewModel>(), jellyseerr);
+
+            await InvokePerformSearch(vm, "Dune");
+
+            Assert.Single(vm.DiscoverResults);
+            Assert.Equal("Dune: Part Two", vm.DiscoverResults[0].Title);
+            Assert.True(vm.HasAnyResults);
+        }
+
+        [Fact]
+        public async Task RequestItemCommand_WithJellyseerr_CallsCreateRequestAndSetsStatus()
+        {
+            var dataService = new DataService(Enumerable.Empty<IMediaProvider>(), new MockHistoryService(), new MockWatchlistService(), new MediaItemCache(), new MockMediaDataCache());
+            var jellyseerr = new TestJellyseerrService();
+            var vm = new OmniSearchViewModel(dataService, new MockSearchHistoryService(), () => new List<MediaItemViewModel>(), jellyseerr);
+
+            await InvokePerformSearch(vm, "Dune");
+            var item = vm.DiscoverResults.First();
+
+            var method = typeof(OmniSearchViewModel).GetMethod("RequestItem", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("RequestItem not found");
+            await (Task)method.Invoke(vm, new object[] { item })!;
+
+            Assert.True(jellyseerr.CreateRequestCalled);
+            Assert.True(vm.ShowRequestStatus);
+            Assert.Contains("Dune: Part Two", vm.RequestStatusMessage);
+        }
     }
 }

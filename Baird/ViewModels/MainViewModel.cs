@@ -107,7 +107,7 @@ namespace Baird.ViewModels
             SelectNextChannelCommand = ReactiveCommand.Create(SelectNextChannel);
             SelectPreviousChannelCommand = ReactiveCommand.Create(SelectPreviousChannel);
 
-            OmniSearch = new OmniSearchViewModel(dataService, searchHistoryService, () => AllChannels);
+            OmniSearch = new OmniSearchViewModel(dataService, searchHistoryService, () => AllChannels, jellyseerrService);
             History = new HistoryViewModel(dataService);
             Watchlist = new WatchlistViewModel(dataService);
             Epg = new EpgViewModel(dataService, epgService, () => AllChannels);
@@ -199,7 +199,6 @@ namespace Baird.ViewModels
                 new TabItem("Guide", Epg),
                 new TabItem("Search", OmniSearch),
                 new TabItem("Watchlist", Watchlist),
-                new TabItem("Discover", Seerrch),
                 new TabItem("Requests", Requests),
                 new TabItem("Settings", Settings),
                 new TabItem("CEC Debug", CecDebug),

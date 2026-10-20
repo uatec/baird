@@ -137,7 +137,22 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isSearching, value);
         }
 
-        public bool ShowSpinner => IsSearching && SearchResults.Count == 0;
+        public bool ShowSpinner => IsSearching && SearchResults.Count == 0 && DiscoverResults.Count == 0;
+        public bool HasAnyResults => SearchResults.Count > 0 || DiscoverResults.Count > 0;
+
+        private bool _showRequestStatus;
+        public bool ShowRequestStatus
+        {
+            get => _showRequestStatus;
+            set => this.RaiseAndSetIfChanged(ref _showRequestStatus, value);
+        }
+
+        private string _requestStatusMessage = "";
+        public string RequestStatusMessage
+        {
+            get => _requestStatusMessage;
+            set => this.RaiseAndSetIfChanged(ref _requestStatusMessage, value);
+        }
 
         private bool _isAutoActivationPending;
         public bool IsAutoActivationPending
@@ -154,6 +169,7 @@ namespace Baird.ViewModels
         }
 
         public ObservableCollection<MediaItemViewModel> SearchResults { get; } = new();
+        public ObservableCollection<SeerrchResultViewModel> DiscoverResults { get; } = new();
         public ObservableCollection<string> SuggestedTerms { get; } = new();
         public ObservableCollection<ProviderSearchStatus> ProviderStatuses { get; } = new();
 
@@ -175,24 +191,32 @@ namespace Baird.ViewModels
             {
                 ProviderStatuses.Add(new ProviderSearchStatus { Name = provider.Name });
             }
+
+            if (_jellyseerrService != null)
+            {
+                ProviderStatuses.Add(new ProviderSearchStatus { Name = "Jellyseerr" });
+            }
         }
 
         // private readonly IEnumerable<IMediaProvider> _providers; // Removed
         private readonly IDataService _dataService;
         private readonly ISearchHistoryService _searchHistoryService;
         private readonly Func<List<MediaItemViewModel>> _getAllChannels;
+        private readonly IJellyseerrService? _jellyseerrService;
         private DispatcherTimer? _autoActivationTimer;
         private DateTime _timerStartTime;
 
         public ReactiveCommand<string, Unit> SearchTermCommand { get; }
         public ReactiveCommand<MediaItemViewModel, Unit> AddToWatchlistCommand { get; }
+        public ReactiveCommand<SeerrchResultViewModel, Unit> RequestItemCommand { get; }
         public ReactiveCommand<Unit, Unit> LoadMoreCommand { get; }
 
-        public OmniSearchViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, Func<List<MediaItemViewModel>> getAllChannels)
+        public OmniSearchViewModel(IDataService dataService, ISearchHistoryService searchHistoryService, Func<List<MediaItemViewModel>> getAllChannels, IJellyseerrService? jellyseerrService = null)
         {
             _dataService = dataService;
             _searchHistoryService = searchHistoryService;
             _getAllChannels = getAllChannels;
+            _jellyseerrService = jellyseerrService;
 
             PlayCommand = ReactiveCommand.CreateFromTask<MediaItemViewModel>(async item =>
             {
@@ -241,6 +265,7 @@ namespace Baird.ViewModels
             });
 
             LoadMoreCommand = ReactiveCommand.Create(LoadMoreResults);
+            RequestItemCommand = ReactiveCommand.CreateFromTask<SeerrchResultViewModel>(RequestItem);
 
             var textChanges = this.WhenAnyValue(x => x.SearchText).Skip(1);
 
@@ -249,12 +274,23 @@ namespace Baird.ViewModels
             {
                 IsSearching = true;
                 SearchResults.Clear();
+                DiscoverResults.Clear();
                 StopAutoActivationTimer();
+                this.RaisePropertyChanged(nameof(HasAnyResults));
             });
 
-            // Notification for ShowSpinner
+            // Notification for ShowSpinner & HasAnyResults
             this.WhenAnyValue(x => x.IsSearching).Subscribe(_ => this.RaisePropertyChanged(nameof(ShowSpinner)));
-            SearchResults.CollectionChanged += (s, e) => this.RaisePropertyChanged(nameof(ShowSpinner));
+            SearchResults.CollectionChanged += (s, e) =>
+            {
+                this.RaisePropertyChanged(nameof(ShowSpinner));
+                this.RaisePropertyChanged(nameof(HasAnyResults));
+            };
+            DiscoverResults.CollectionChanged += (s, e) =>
+            {
+                this.RaisePropertyChanged(nameof(ShowSpinner));
+                this.RaisePropertyChanged(nameof(HasAnyResults));
+            };
 
             // Branch 1: Short numeric (<= 3 digits) -> Immediate
             textChanges
@@ -326,6 +362,7 @@ namespace Baird.ViewModels
 
             IsSearching = true;
             SearchResults.Clear(); // Already on UI thread due to Throttle scheduler
+            DiscoverResults.Clear();
             _allResults.Clear();
             HasMoreResults = false;
 
@@ -440,7 +477,51 @@ namespace Baird.ViewModels
                         Console.WriteLine($"[OmniSearch] Provider {provider.Name} failed: {ex}");
                         if (status != null) Dispatcher.UIThread.Post(() => status.SetError());
                     }
-                });
+                }).ToList();
+
+                if (_jellyseerrService != null)
+                {
+                    var jellyseerrTask = Task.Run(async () =>
+                    {
+                        var status = ProviderStatuses.FirstOrDefault(p => p.Name == "Jellyseerr");
+                        try
+                        {
+                            var results = await _jellyseerrService.SearchAsync(query, 1, token);
+                            if (token.IsCancellationRequested) return;
+
+                            var viewModels = results.Select(r => new SeerrchResultViewModel(r)).ToList();
+                            var count = viewModels.Count;
+
+                            Console.WriteLine($"[OmniSearch] Jellyseerr returned {count} result(s) for query '{query}'");
+
+                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            {
+                                if (viewModels.Any())
+                                {
+                                    DiscoverResults.AddRange(viewModels);
+                                }
+                                if (status != null)
+                                {
+                                    if (count > 0)
+                                        status.SetSuccess(count);
+                                    else
+                                        status.SetEmpty();
+                                }
+                            });
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            Console.WriteLine($"[OmniSearch] Jellyseerr search cancelled for query '{query}'");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[OmniSearch] Jellyseerr failed: {ex}");
+                            if (status != null) Dispatcher.UIThread.Post(() => status.SetError());
+                        }
+                    });
+
+                    tasks.Add(jellyseerrTask);
+                }
 
                 await Task.WhenAll(tasks);
 
@@ -541,16 +622,57 @@ namespace Baird.ViewModels
             }
         }
 
+        private async Task RequestItem(SeerrchResultViewModel item)
+        {
+            if (_jellyseerrService == null) return;
+
+            ShowRequestStatus = true;
+            RequestStatusMessage = $"Requesting {item.Title}...";
+
+            try
+            {
+                var response = await _jellyseerrService.CreateRequestAsync(item.Id, item.MediaType);
+
+                if (response.Success)
+                {
+                    RequestStatusMessage = $"✓ Successfully requested {item.Title}";
+                    Console.WriteLine($"[OmniSearch] Request successful: {item.Title} (ID: {response.RequestId})");
+
+                    // Auto-hide status after 3 seconds
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(3000);
+                        Dispatcher.UIThread.Post(() => ShowRequestStatus = false);
+                    });
+                }
+                else
+                {
+                    RequestStatusMessage = $"✗ Failed: {response.Message}";
+                    Console.WriteLine($"[OmniSearch] Request failed: {response.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                RequestStatusMessage = $"✗ Error: {ex.Message}";
+                Console.WriteLine($"[OmniSearch] Request error: {ex.Message}");
+            }
+        }
+
         public void Clear()
         {
+            _searchCts?.Cancel();
             SearchText = "";
             SearchResults.Clear();
+            DiscoverResults.Clear();
             _allResults.Clear();
             HasMoreResults = false;
             IsSearching = false;
+            ShowRequestStatus = false;
+            RequestStatusMessage = "";
             StopAutoActivationTimer();
             // Refresh suggestions on clear/open
             RefreshSuggestions();
+            this.RaisePropertyChanged(nameof(HasAnyResults));
         }
 
         private void LoadMoreResults()
