@@ -1,0 +1,311 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Baird.ViewModels"
+             xmlns:controls="using:Baird.Controls"
+             mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+             x:Class="Baird.Controls.NetflixSpikeControl"
+             x:CompileBindings="True"
+             x:DataType="vm:NetflixSpikeViewModel"
+             KeyDown="OnControlKeyDown">
+
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+    </UserControl.KeyBindings>
+
+    <UserControl.Styles>
+        <Style Selector="Button.ActionBtn">
+            <Setter Property="Background" Value="#E50914"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="20,12"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.ActionBtn:focus">
+            <Setter Property="Background" Value="#FF1E27"/>
+            <Setter Property="RenderTransform" Value="scale(1.04)"/>
+            <Setter Property="BorderBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+
+        <Style Selector="Button.SecondaryBtn">
+            <Setter Property="Background" Value="#1E232E"/>
+            <Setter Property="Foreground" Value="#CBD5E1"/>
+            <Setter Property="BorderBrush" Value="#334155"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="14,8"/>
+        </Style>
+        <Style Selector="Button.SecondaryBtn:focus">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="Foreground" Value="#0F172A"/>
+            <Setter Property="BorderBrush" Value="#FFFFFF"/>
+        </Style>
+
+        <Style Selector="Button.DangerBtn">
+            <Setter Property="Background" Value="#7F1D1D"/>
+            <Setter Property="Foreground" Value="#FECACA"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="18,10"/>
+        </Style>
+        <Style Selector="Button.DangerBtn:focus">
+            <Setter Property="Background" Value="#DC2626"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+
+        <Style Selector="Button.PinBtn">
+            <Setter Property="Background" Value="#1E293B"/>
+            <Setter Property="Foreground" Value="#F8FAFC"/>
+            <Setter Property="BorderBrush" Value="#475569"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="22"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Width" Value="52"/>
+            <Setter Property="Height" Value="52"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="4"/>
+        </Style>
+        <Style Selector="Button.PinBtn:focus">
+            <Setter Property="Background" Value="#E50914"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="RenderTransform" Value="scale(1.1)"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Background="#0B0E14" RowDefinitions="Auto,*">
+
+        <!-- Top Header Bar -->
+        <Border Grid.Row="0" Background="#121620" BorderBrush="#1E232E" BorderThickness="0,0,0,1" Padding="24,16">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                    <Border Background="#E50914" CornerRadius="4" Padding="8,3">
+                        <TextBlock Text="NETFLIX SPIKE 2" Foreground="White" FontWeight="Black" FontSize="13" LetterSpacing="0.5"/>
+                    </Border>
+                    <TextBlock Text="Hidden Browser &amp; In-App MFA Flow" Foreground="White" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- State Badge -->
+                <Border Grid.Column="2" CornerRadius="16" Padding="14,6" Background="{Binding StateBadgeColor}" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StateDisplayName}" Foreground="White" FontWeight="Bold" FontSize="14"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Main Body -->
+        <Grid Grid.Row="1" ColumnDefinitions="3*,2*" Margin="24">
+
+            <!-- Left Column: Controls & Configuration -->
+            <ScrollViewer Grid.Column="0" Margin="0,0,16,0">
+                <StackPanel Spacing="20">
+
+                    <!-- Status Banner -->
+                    <Border Background="#161B26" BorderBrush="#252F40" BorderThickness="1" CornerRadius="10" Padding="18">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="PIPELINE STATUS" Foreground="#94A3B8" FontSize="12" FontWeight="Bold" LetterSpacing="0.5"/>
+                            <TextBlock Text="{Binding StatusMessage}" Foreground="#F8FAFC" FontSize="16" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Target URL Section -->
+                    <Border Background="#161B26" BorderBrush="#252F40" BorderThickness="1" CornerRadius="10" Padding="18">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="TARGET VIDEO URL" Foreground="#94A3B8" FontSize="12" FontWeight="Bold" LetterSpacing="0.5"/>
+                            <TextBox Text="{Binding TargetUrl}" 
+                                     Background="#0F172A" 
+                                     Foreground="White" 
+                                     FontSize="14" 
+                                     CornerRadius="6" 
+                                     Padding="10"
+                                     IsEnabled="{Binding CanLaunch}"/>
+
+                            <!-- Preset URL Buttons -->
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="Presets:" Foreground="#64748B" VerticalAlignment="Center" FontSize="13"/>
+                                <Button Classes="SecondaryBtn" Content="Netflix Default (80107105)" 
+                                        Command="{Binding SelectPresetCommand}" 
+                                        CommandParameter="https://www.netflix.com/watch/80107105"
+                                        IsEnabled="{Binding CanLaunch}"/>
+                                <Button Classes="SecondaryBtn" Content="Big Buck Bunny (HTML5 Test)" 
+                                        Command="{Binding SelectPresetCommand}" 
+                                        CommandParameter="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+                                        IsEnabled="{Binding CanLaunch}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Flow Options & Execution -->
+                    <Border Background="#161B26" BorderBrush="#252F40" BorderThickness="1" CornerRadius="10" Padding="18">
+                        <StackPanel Spacing="16">
+                            <TextBlock Text="FLOW CONTROLS" Foreground="#94A3B8" FontSize="12" FontWeight="Bold" LetterSpacing="0.5"/>
+
+                            <!-- Simulate MFA Checkbox -->
+                            <CheckBox IsChecked="{Binding IsSimulateMfaEnabled}" 
+                                      IsEnabled="{Binding CanLaunch}"
+                                      Foreground="#E2E8F0"
+                                      FontSize="15">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Simulate MFA Challenge (Test in-app PIN entry dialog)"/>
+                                </StackPanel>
+                            </CheckBox>
+
+                            <!-- Primary Action Buttons -->
+                            <StackPanel Orientation="Horizontal" Spacing="14">
+                                <Button Name="LaunchButton"
+                                        Classes="ActionBtn" 
+                                        Content="▶  Launch Hidden Playback Flow" 
+                                        Command="{Binding LaunchCommand}" 
+                                        IsEnabled="{Binding CanLaunch}"/>
+
+                                <Button Classes="DangerBtn" 
+                                        Content="◼  Abort / Stop Playback" 
+                                        Command="{Binding StopCommand}" 
+                                        IsEnabled="{Binding CanStop}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Video Telemetry Card -->
+                    <Border Background="#161B26" BorderBrush="#252F40" BorderThickness="1" CornerRadius="10" Padding="18">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="PLAYBACK TELEMETRY" Foreground="#94A3B8" FontSize="12" FontWeight="Bold" LetterSpacing="0.5"/>
+                            <Grid ColumnDefinitions="*,*">
+                                <StackPanel Grid.Column="0" Spacing="4">
+                                    <TextBlock Text="Video CurrentTime:" Foreground="#64748B" FontSize="13"/>
+                                    <TextBlock Text="{Binding CurrentVideoTime, StringFormat='{}{0:F2} seconds'}" Foreground="#38BDF8" FontSize="18" FontWeight="Bold"/>
+                                    <TextBlock Text="(Threshold for reveal: > 0.10s)" Foreground="#64748B" FontSize="11"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Text="Browser Executable:" Foreground="#64748B" FontSize="13"/>
+                                    <TextBlock Text="{Binding DetectedBrowser}" Foreground="#94A3B8" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Port: 9222 (CDP)" Foreground="#64748B" FontSize="11"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right Column: Live CDP Diagnostics Log -->
+            <Border Grid.Column="1" Background="#121620" BorderBrush="#1E232E" BorderThickness="1" CornerRadius="10" Padding="16">
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock Grid.Row="0" Text="LIVE CDP DIAGNOSTICS LOG" Foreground="#94A3B8" FontSize="12" FontWeight="Bold" Margin="0,0,0,10"/>
+                    <ScrollViewer Grid.Row="1" Name="LogScrollViewer">
+                        <ItemsControl ItemsSource="{Binding LogEntries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" Foreground="#94A3B8" FontFamily="Monospace" FontSize="11" Margin="0,2" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+        </Grid>
+
+        <!-- In-App MFA PIN Entry Dialog Overlay -->
+        <Border Grid.Row="0" Grid.RowSpan="2" 
+                Background="#E605070B" 
+                IsVisible="{Binding IsMfaRequired}"
+                Focusable="True"
+                XYFocus.NavigationModes="Enabled">
+            <Border Background="#161B26" 
+                    BorderBrush="#E50914" 
+                    BorderThickness="2" 
+                    CornerRadius="16" 
+                    Width="880"
+                    MaxHeight="680"
+                    VerticalAlignment="Center" 
+                    HorizontalAlignment="Center"
+                    Padding="32"
+                    BoxShadow="0 12 36 0 #000000">
+
+                <StackPanel Spacing="20">
+
+                    <!-- Dialog Header -->
+                    <StackPanel Spacing="6" HorizontalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                            <Border Background="#E50914" CornerRadius="4" Padding="6,2">
+                                <TextBlock Text="SECURITY CHALLENGE" Foreground="White" FontWeight="Black" FontSize="11"/>
+                            </Border>
+                            <TextBlock Text="Netflix Two-Factor Verification" Foreground="White" FontSize="22" FontWeight="Bold"/>
+                        </StackPanel>
+                        <TextBlock Text="Enter the verification code or PIN sent to your email or mobile device:" 
+                                   Foreground="#94A3B8" 
+                                   FontSize="14" 
+                                   HorizontalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- PIN Display Slot Box -->
+                    <Border Background="#0F172A" BorderBrush="#334155" BorderThickness="2" CornerRadius="10" Padding="16,12" HorizontalAlignment="Center" MinWidth="320">
+                        <TextBlock Text="{Binding MfaPinDisplay}" 
+                                   Foreground="#38BDF8" 
+                                   FontSize="32" 
+                                   FontWeight="Black" 
+                                   LetterSpacing="8" 
+                                   HorizontalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Numeric Quick Pad (0-9 D-Pad friendly) -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4">
+                        <Button Classes="PinBtn" Content="1" Command="{Binding AppendMfaDigitCommand}" CommandParameter="1" Name="PinKey1"/>
+                        <Button Classes="PinBtn" Content="2" Command="{Binding AppendMfaDigitCommand}" CommandParameter="2"/>
+                        <Button Classes="PinBtn" Content="3" Command="{Binding AppendMfaDigitCommand}" CommandParameter="3"/>
+                        <Button Classes="PinBtn" Content="4" Command="{Binding AppendMfaDigitCommand}" CommandParameter="4"/>
+                        <Button Classes="PinBtn" Content="5" Command="{Binding AppendMfaDigitCommand}" CommandParameter="5"/>
+                        <Button Classes="PinBtn" Content="6" Command="{Binding AppendMfaDigitCommand}" CommandParameter="6"/>
+                        <Button Classes="PinBtn" Content="7" Command="{Binding AppendMfaDigitCommand}" CommandParameter="7"/>
+                        <Button Classes="PinBtn" Content="8" Command="{Binding AppendMfaDigitCommand}" CommandParameter="8"/>
+                        <Button Classes="PinBtn" Content="9" Command="{Binding AppendMfaDigitCommand}" CommandParameter="9"/>
+                        <Button Classes="PinBtn" Content="0" Command="{Binding AppendMfaDigitCommand}" CommandParameter="0"/>
+                    </StackPanel>
+
+                    <!-- Embedded Virtual Keyboard for Alphanumeric Entry -->
+                    <controls:VirtualKeyboardControl Name="MfaVirtualKeyboard"
+                                                   Height="200"
+                                                   HorizontalAlignment="Stretch"/>
+
+                    <!-- Action Buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="16">
+                        <Button Classes="ActionBtn" 
+                                Content="✓  Submit Verification Code" 
+                                Command="{Binding SubmitMfaCommand}"/>
+
+                        <Button Classes="SecondaryBtn" 
+                                Content="⌫  Backspace" 
+                                Command="{Binding BackspaceMfaCommand}"/>
+
+                        <Button Classes="SecondaryBtn" 
+                                Content="Clear" 
+                                Command="{Binding ClearMfaCommand}"/>
+
+                        <Button Classes="DangerBtn" 
+                                Content="Cancel / Abort" 
+                                Command="{Binding StopCommand}"/>
+                    </StackPanel>
+
+                </StackPanel>
+            </Border>
+        </Border>
+
+    </Grid>
+</UserControl>

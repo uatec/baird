@@ -1,0 +1,208 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Baird.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+             x:Class="Baird.Controls.RiveWebSpikeControl"
+             x:CompileBindings="True"
+             x:DataType="vm:RiveWebSpikeViewModel">
+
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+    </UserControl.KeyBindings>
+
+    <UserControl.Styles>
+        <Style Selector="Button.SpikeButton">
+            <Setter Property="Background" Value="#1E293B"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#334155"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="18,12"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="Button.SpikeButton:focus">
+            <Setter Property="BorderBrush" Value="#38BDF8"/>
+            <Setter Property="Background" Value="#0369A1"/>
+            <Setter Property="RenderTransform" Value="scale(1.03)"/>
+        </Style>
+
+        <Style Selector="Button.PrimaryAction">
+            <Setter Property="Background" Value="#0284C7"/>
+            <Setter Property="BorderBrush" Value="#38BDF8"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+
+        <Style Selector="Button.PrimaryAction:focus">
+            <Setter Property="Background" Value="#0284C7"/>
+            <Setter Property="BorderBrush" Value="#BAE6FD"/>
+            <Setter Property="RenderTransform" Value="scale(1.04)"/>
+        </Style>
+
+        <Style Selector="Border.Card">
+            <Setter Property="Background" Value="#131B2E"/>
+            <Setter Property="BorderBrush" Value="#22304A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Margin" Value="0,0,0,16"/>
+        </Style>
+
+        <Style Selector="TextBlock.CardTitle">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#38BDF8"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <Style Selector="TextBlock.BodyText">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="#CBD5E1"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="22"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Background="#090D16" RowDefinitions="Auto,*">
+
+        <!-- Top Header Bar -->
+        <Border Grid.Row="0" Background="#0F172A" BorderBrush="#1E293B" BorderThickness="0,0,0,1" Padding="28,16">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <!-- Title & Badge -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                    <Border Background="#0284C7" CornerRadius="6" Padding="10,4">
+                        <TextBlock Text="SPIKE 3" Foreground="White" FontWeight="Black" FontSize="13" LetterSpacing="0.5"/>
+                    </Border>
+                    <TextBlock Text="Rive Control in Web View" FontSize="20" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                    <Border Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="14" Padding="12,4" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ServerStatus}" Foreground="{Binding ServerStatusColor}" FontSize="12" FontWeight="SemiBold"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- Back Action -->
+                <Button Grid.Column="2" Classes="SpikeButton" Command="{Binding BackCommand}" Content="← Back" Padding="14,8" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- Main Content Area -->
+        <ScrollViewer Grid.Row="1" Padding="28,20">
+            <Grid ColumnDefinitions="380,*" Margin="0,0,0,20">
+
+                <!-- Left Column: Quick Actions & Launch Center -->
+                <StackPanel Grid.Column="0" Spacing="16" Margin="0,0,24,0">
+
+                    <!-- Actions Card -->
+                    <Border Classes="Card">
+                        <StackPanel Spacing="14">
+                            <TextBlock Classes="CardTitle" Text="LAUNCH &amp; RUNTIME CONTROL"/>
+
+                            <Button Name="LaunchBrowserButton" Classes="SpikeButton PrimaryAction"
+                                    Command="{Binding LaunchInBrowserCommand}"
+                                    HorizontalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                                    <TextBlock Text="🌐" FontSize="16"/>
+                                    <TextBlock Text="Launch Web Spike in Browser" FontWeight="Bold"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Grid ColumnDefinitions="*,*" Margin="0,4,0,0">
+                                <Button Grid.Column="0" Classes="SpikeButton"
+                                        Command="{Binding StartServerCommand}"
+                                        IsEnabled="{Binding CanStartServer}"
+                                        Content="Start Server"
+                                        HorizontalAlignment="Stretch"
+                                        Margin="0,0,4,0"/>
+                                <Button Grid.Column="1" Classes="SpikeButton"
+                                        Command="{Binding StopServerCommand}"
+                                        IsEnabled="{Binding CanStopServer}"
+                                        Content="Stop Server"
+                                        HorizontalAlignment="Stretch"
+                                        Margin="4,0,0,0"/>
+                            </Grid>
+
+                            <Button Classes="SpikeButton"
+                                    Command="{Binding OpenSpikeDirectoryCommand}"
+                                    Content="Open Spike Folder"
+                                    HorizontalAlignment="Stretch"/>
+
+                            <Border Background="#0B0F19" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,8,0,0">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="LOCAL SERVER URL" FontSize="11" FontWeight="Bold" Foreground="#64748B"/>
+                                    <TextBlock Text="{Binding ServerUrl}" FontSize="13" FontFamily="Monospace" Foreground="#38BDF8"/>
+                                    <TextBlock Text="SPIKE PATH" FontSize="11" FontWeight="Bold" Foreground="#64748B" Margin="0,4,0,0"/>
+                                    <TextBlock Text="{Binding SpikeDirectory}" FontSize="11" FontFamily="Monospace" Foreground="#94A3B8" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Interactive Assets Card -->
+                    <Border Classes="Card">
+                        <StackPanel Spacing="10">
+                            <TextBlock Classes="CardTitle" Text="BUNDLED RIVE ASSETS"/>
+                            <ItemsControl ItemsSource="{Binding AvailableRivAssets}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#0F172A" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,8" Margin="0,0,0,6">
+                                            <TextBlock Text="{Binding}" FontSize="13" Foreground="#E2E8F0"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="Includes official @rive-app/canvas v2.45.0 WASM runtime." FontSize="12" Foreground="#64748B" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Right Column: Technical Findings & Architectural Reports -->
+                <StackPanel Grid.Column="1" Spacing="16">
+
+                    <!-- Finding 1: Rive WASM Architecture -->
+                    <Border Classes="Card">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="CardTitle" Text="1. RIVE WEB RUNTIME &amp; WEBASSEMBLY ENGINE"/>
+                            <TextBlock Classes="BodyText" Text="{Binding WasmArchitectureSummary}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Finding 2: Linux / Wayland Performance -->
+                    <Border Classes="Card">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="CardTitle" Text="2. LINUX / WAYLAND PERFORMANCE &amp; COMPOSITING"/>
+                            <TextBlock Classes="BodyText" Text="{Binding WaylandPerformanceSummary}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Finding 3: Widevine DRM Overlay Integration -->
+                    <Border Classes="Card">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="CardTitle" Text="3. WIDEVINE DRM VIDEO OVERLAY STRATEGY"/>
+                            <TextBlock Classes="BodyText" Text="{Binding WidevineOverlaySummary}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Finding 4: Avalonia vs. Rive Comparison -->
+                    <Border Classes="Card">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="CardTitle" Text="4. ARCHITECTURAL COMPARISON: AVALONIA VS. RIVE"/>
+                            <TextBlock Classes="BodyText" Text="{Binding ComparisonSummary}"/>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

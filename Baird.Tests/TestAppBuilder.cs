@@ -1,8 +1,10 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Themes.Fluent;
+using Xunit;
 
 [assembly: AvaloniaTestApplication(typeof(Baird.Tests.TestAppBuilder))]
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace Baird.Tests
 {

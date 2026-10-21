@@ -1,0 +1,285 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:lottie="using:Avalonia.Labs.Lottie"
+             xmlns:vm="using:Baird.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+             x:Class="Baird.Controls.LottieSpikeControl"
+             x:CompileBindings="True"
+             x:DataType="vm:LottieSpikeViewModel">
+
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+    </UserControl.KeyBindings>
+
+    <UserControl.Styles>
+        <Style Selector="Button.SpikeButton">
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#3F3F46"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15"/>
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="Button.SpikeButton:pointerover">
+            <Setter Property="Background" Value="#3D3D42"/>
+            <Setter Property="BorderBrush" Value="#52525B"/>
+        </Style>
+
+        <Style Selector="Button.SpikeButton:focus">
+            <Setter Property="BorderBrush" Value="#38BDF8"/>
+            <Setter Property="Background" Value="#1E293B"/>
+            <Setter Property="RenderTransform" Value="scale(1.02)"/>
+        </Style>
+
+        <Style Selector="Button.PrimaryAction">
+            <Setter Property="Background" Value="#0284C7"/>
+            <Setter Property="BorderBrush" Value="#38BDF8"/>
+        </Style>
+
+        <Style Selector="Button.PrimaryAction:focus">
+            <Setter Property="Background" Value="#0369A1"/>
+            <Setter Property="BorderBrush" Value="#7DD3FC"/>
+        </Style>
+
+        <Style Selector="Button.ActiveSpeed">
+            <Setter Property="Background" Value="#0F766E"/>
+            <Setter Property="BorderBrush" Value="#2DD4BF"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+
+        <Style Selector="Border.Card">
+            <Setter Property="Background" Value="#252528"/>
+            <Setter Property="BorderBrush" Value="#38383E"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="16"/>
+        </Style>
+
+        <Style Selector="TextBlock.SectionTitle">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#F3F4F6"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="#18181B" Padding="24">
+        <Grid RowDefinitions="Auto,*" Margin="0">
+            <!-- Header Section -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <TextBlock Text="Lottie Native Vector Spike" FontSize="22" FontWeight="Bold" Foreground="White"/>
+                        <Border Background="#0284C7" CornerRadius="4" Padding="8,2" VerticalAlignment="Center">
+                            <TextBlock Text="Avalonia.Labs.Lottie + SkiaSharp.Skottie" FontSize="11" FontWeight="Bold" Foreground="White"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Text="High-fidelity vector animations running natively on Linux Framebuffer / X11 / Wayland (Pi &amp; PC)"
+                               FontSize="13" Foreground="#94A3B8"/>
+                </StackPanel>
+
+                <!-- Status Pill -->
+                <Border Grid.Column="1" Background="#27272A" BorderBrush="#3F3F46" BorderThickness="1"
+                        CornerRadius="16" Padding="14,6" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StatusText}" Foreground="#A1A1AA" FontSize="12" FontFamily="Monospace"/>
+                </Border>
+            </Grid>
+
+            <!-- Main Content: Left Stage (Animation) & Right Stage (Controls) -->
+            <Grid Grid.Row="1" ColumnDefinitions="1.2*,1*">
+
+                <!-- LEFT COLUMN: Vector Display & Canvas Stage -->
+                <Border Grid.Column="0" Classes="Card" Margin="0,0,12,0">
+                    <Grid RowDefinitions="*,Auto,Auto">
+
+                        <!-- Animation Viewport Stage -->
+                        <Border Grid.Row="0" Background="#111113" CornerRadius="6" BorderBrush="#27272A" BorderThickness="1"
+                                ClipToBounds="True">
+                            <Grid>
+                                <!-- Subtle Background Grid Marks -->
+                                <TextBlock Text="SKOTTIE HARDWARE ACCELERATED RASTERIZER"
+                                           FontSize="10" FontWeight="Bold" Foreground="#27272A"
+                                           HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"/>
+
+                                <!-- Vector Lottie Control -->
+                                <lottie:Lottie Name="LottiePlayer"
+                                               Path="{Binding CurrentAnimationPath}"
+                                               PlayBackRate="{Binding PlaybackRate}"
+                                               RepeatCount="{Binding RepeatCount}"
+                                               AutoPlay="{Binding AutoPlay}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Width="320" Height="320"
+                                               Stretch="Uniform"/>
+
+                                <!-- Animation Title Overlay -->
+                                <Border HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                        Background="#CC18181B" CornerRadius="4" Padding="10,6" Margin="12">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding SelectedAnimation.Title}" FontWeight="Bold" Foreground="White" FontSize="13"/>
+                                        <TextBlock Text="•" Foreground="#71717A"/>
+                                        <TextBlock Text="{Binding SelectedAnimation.Category}" Foreground="#38BDF8" FontSize="13"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Playback Rate Overlay (Top Right) -->
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Background="#CC18181B" CornerRadius="4" Padding="8,4" Margin="12">
+                                    <TextBlock Text="{Binding PlaybackRateText}" FontWeight="Bold" Foreground="#2DD4BF" FontSize="12"/>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- Scrubber / Progress Slider -->
+                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,16,0,8" VerticalAlignment="Center">
+                            <TextBlock Grid.Column="0" Text="Seek:" Foreground="#94A3B8" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <Slider Grid.Column="1" Name="SeekSlider" Minimum="0" Maximum="1" Value="{Binding SeekProgress, Mode=TwoWay}"
+                                    VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="{Binding ProgressPercentText}" Foreground="White" FontSize="12" FontFamily="Monospace"
+                                       VerticalAlignment="Center" Margin="10,0,0,0" Width="40" TextAlignment="Right"/>
+                        </Grid>
+
+                        <!-- Transport Quick Buttons under Stage -->
+                        <Grid Grid.Row="2" ColumnDefinitions="*,*,*" Margin="0,4,0,0">
+                            <Button Grid.Column="0" Content="{Binding PlayPauseButtonText}" Classes="SpikeButton PrimaryAction"
+                                    Command="{Binding TogglePlayPauseCommand}"/>
+                            <Button Grid.Column="1" Content="Restart ↺" Classes="SpikeButton"
+                                    Command="{Binding RestartCommand}"/>
+                            <Button Grid.Column="2" Content="{Binding LoopModeText}" Classes="SpikeButton"
+                                    Command="{Binding ToggleLoopCommand}"/>
+                        </Grid>
+
+                    </Grid>
+                </Border>
+
+                <!-- RIGHT COLUMN: Control Panel & Technical Inspection -->
+                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Margin="12,0,0,0">
+                    <StackPanel Spacing="16">
+
+                        <!-- SECTION 1: Animation Picker -->
+                        <Border Classes="Card">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Select Sample Vector Animation" Classes="SectionTitle"/>
+                                
+                                <ItemsControl ItemsSource="{Binding Animations}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LottieAnimationInfo">
+                                            <Button Classes="SpikeButton"
+                                                    HorizontalAlignment="Stretch"
+                                                    Margin="0,0,0,6"
+                                                    Padding="12,10"
+                                                    Command="{Binding $parent[UserControl].((vm:LottieSpikeViewModel)DataContext).SelectAnimationCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                                    <Border Grid.Column="0" Background="#18181B" CornerRadius="4" Padding="6,4" Margin="0,0,10,0">
+                                                        <TextBlock Text="▶" Foreground="#38BDF8" FontSize="11"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Title}" FontWeight="Bold" Foreground="White" FontSize="13"/>
+                                                        <TextBlock Text="{Binding Description}" Foreground="#94A3B8" FontSize="11" TextWrapping="Wrap"/>
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Category}" Foreground="#64748B" FontSize="11"
+                                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                </Grid>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- Target Baird Integration Callout -->
+                                <Border Background="#1E293B" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="6" Padding="12,10">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Target Baird Integration:" FontWeight="Bold" Foreground="#38BDF8" FontSize="12"/>
+                                        <TextBlock Text="{Binding SelectedAnimation.TargetFeature}" Foreground="#E2E8F0" FontSize="12" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- SECTION 2: Speed Controls -->
+                        <Border Classes="Card">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Playback Speed" Classes="SectionTitle"/>
+                                <Grid ColumnDefinitions="*,*,*,*">
+                                    <Button Grid.Column="0" Content="1x (Norm)" Classes="SpikeButton"
+                                            Command="{Binding SetSpeedCommand}">
+                                        <Button.CommandParameter>
+                                            <x:Int32>1</x:Int32>
+                                        </Button.CommandParameter>
+                                    </Button>
+                                    <Button Grid.Column="1" Content="2x (Fast)" Classes="SpikeButton"
+                                            Command="{Binding SetSpeedCommand}">
+                                        <Button.CommandParameter>
+                                            <x:Int32>2</x:Int32>
+                                        </Button.CommandParameter>
+                                    </Button>
+                                    <Button Grid.Column="2" Content="3x (Turbo)" Classes="SpikeButton"
+                                            Command="{Binding SetSpeedCommand}">
+                                        <Button.CommandParameter>
+                                            <x:Int32>3</x:Int32>
+                                        </Button.CommandParameter>
+                                    </Button>
+                                    <Button Grid.Column="3" Content="4x (Max)" Classes="SpikeButton"
+                                            Command="{Binding SetSpeedCommand}">
+                                        <Button.CommandParameter>
+                                            <x:Int32>4</x:Int32>
+                                        </Button.CommandParameter>
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- SECTION 3: Technical Architecture & Pi Performance Notes -->
+                        <Border Classes="Card">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Spike Architecture &amp; Verification" Classes="SectionTitle"/>
+                                
+                                <Grid ColumnDefinitions="140,*">
+                                    <TextBlock Grid.Column="0" Text="Package:" Foreground="#94A3B8" FontSize="12"/>
+                                    <TextBlock Grid.Column="1" Text="Avalonia.Labs.Lottie 11.3.1" Foreground="White" FontSize="12" FontFamily="Monospace"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="140,*">
+                                    <TextBlock Grid.Column="0" Text="Native Engine:" Foreground="#94A3B8" FontSize="12"/>
+                                    <TextBlock Grid.Column="1" Text="SkiaSharp.Skottie 2.88.8 (libSkiaSharp)" Foreground="White" FontSize="12" FontFamily="Monospace"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="140,*">
+                                    <TextBlock Grid.Column="0" Text="Current Asset:" Foreground="#94A3B8" FontSize="12"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding CurrentAnimationPath}" Foreground="#38BDF8" FontSize="11" FontFamily="Monospace" TextWrapping="Wrap"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="140,*">
+                                    <TextBlock Grid.Column="0" Text="Completed Loops:" Foreground="#94A3B8" FontSize="12"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding RepetitionCount}" Foreground="#2DD4BF" FontSize="12" FontFamily="Monospace"/>
+                                </Grid>
+
+                                <Separator Background="#3F3F46" Margin="0,6"/>
+
+                                <TextBlock Text="Embedded Linux / Raspberry Pi Characteristics:" FontWeight="Bold" Foreground="#F3F4F6" FontSize="12"/>
+                                <TextBlock Text="• Zero bitmap degradation: Skottie renders resolution-independent Bézier vector curves at 1080p and 4K with minimal memory footprint compared to GIF/APNG."
+                                           Foreground="#94A3B8" FontSize="11" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Avalonia rendering pipeline: Skottie renders directly into Avalonia's Skia drawing context, taking advantage of DRM/KMS / Mesa GPU acceleration."
+                                           Foreground="#94A3B8" FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+            </Grid>
+        </Grid>
+    </Border>
+
+</UserControl>

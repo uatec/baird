@@ -129,6 +129,15 @@
                 <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
                     <controls:SettingsControl/>
                 </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:NetflixSpikeViewModel}">
+                    <controls:NetflixSpikeControl/>
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:LottieSpikeViewModel}">
+                    <controls:LottieSpikeControl/>
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:RiveWebSpikeViewModel}">
+                    <controls:RiveWebSpikeControl/>
+                </DataTemplate>
             </ContentControl.DataTemplates>
         </ContentControl>
 
