@@ -58,6 +58,31 @@
             <Setter Property="BorderBrush" Value="#FFFFFF"/>
             <Setter Property="RenderTransform" Value="scale(1.05)"/>
         </Style>
+
+        <Style Selector="Button.SeerrchTileButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="3"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15"/>
+                    <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.SeerrchTileButton:focus">
+            <Setter Property="BorderBrush" Value="#FFFFFF"/>
+            <Setter Property="Background" Value="#1E2330"/>
+            <Setter Property="RenderTransform" Value="scale(1.04)"/>
+            <Setter Property="ZIndex" Value="10"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid Name="OmniSearchGrid" RowDefinitions="Auto,*,Auto" Background="Transparent"
@@ -114,6 +139,21 @@
                     </ItemsControl>
                 </Grid>
 
+                <!-- Request Status Banner -->
+                <Border IsVisible="{Binding ShowRequestStatus}"
+                        Background="#1E293B"
+                        BorderBrush="#334155"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16,10"
+                        Margin="0,0,0,4">
+                    <TextBlock Text="{Binding RequestStatusMessage}"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="#38BDF8"
+                               TextWrapping="Wrap"/>
+                </Border>
+
                 <!-- Suggested Terms Pills -->
                 <ItemsControl Name="SuggestionsList" 
                               ItemsSource="{Binding SuggestedTerms}"
@@ -146,38 +186,93 @@
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto"
                       KeyboardNavigation.TabNavigation="Contained">
-            <StackPanel>
-                <ItemsControl Name="ResultsList"
-                              ItemsSource="{Binding SearchResults}"
-                              Background="Transparent"
-                              XYFocus.NavigationModes="Enabled">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <UniformGrid Columns="6" HorizontalAlignment="Center" VerticalAlignment="Top"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:MediaItemViewModel">
-                            <controls:MediaTileControl
-                                Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
-                                CommandParameter="{Binding}"
-                                LongPressCommand="{Binding $parent[UserControl].DataContext.AddToWatchlistCommand}"
-                                LongPressCommandParameter="{Binding}"/>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+            <StackPanel Spacing="24" Margin="20,0,20,20">
+                <!-- Section 1: In Library & Live TV -->
+                <StackPanel Spacing="10" IsVisible="{Binding SearchResults.Count}">
+                    <TextBlock Text="In Library &amp; Live TV"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               Foreground="#94A3B8"
+                               Margin="4,0,0,0"/>
+                    <ItemsControl Name="ResultsList"
+                                  ItemsSource="{Binding SearchResults}"
+                                  Background="Transparent"
+                                  XYFocus.NavigationModes="Enabled">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="6" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MediaItemViewModel">
+                                <controls:MediaTileControl
+                                    Command="{Binding $parent[UserControl].DataContext.PlayCommand}"
+                                    CommandParameter="{Binding}"
+                                    LongPressCommand="{Binding $parent[UserControl].DataContext.AddToWatchlistCommand}"
+                                    LongPressCommandParameter="{Binding}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
-                <!-- Load More Button -->
-                <Button Content="Load More Results"
-                        Command="{Binding LoadMoreCommand}"
-                        IsVisible="{Binding HasMoreResults}"
-                        HorizontalAlignment="Center"
-                        Margin="20"
-                        Padding="30,15"
-                        FontSize="18"
-                        Background="#333333"
-                        Foreground="White"
-                        CornerRadius="8"/>
+                    <!-- Load More Button -->
+                    <Button Content="Load More Results"
+                            Command="{Binding LoadMoreCommand}"
+                            IsVisible="{Binding HasMoreResults}"
+                            HorizontalAlignment="Center"
+                            Margin="16"
+                            Padding="28,12"
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Background="#1E2330"
+                            Foreground="#94A3B8"
+                            CornerRadius="20"/>
+                </StackPanel>
+
+                <!-- Section 2: Discover & Request (Jellyseerr) -->
+                <StackPanel Spacing="10" IsVisible="{Binding DiscoverResults.Count}">
+                    <TextBlock Text="Discover &amp; Request"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               Foreground="#38BDF8"
+                               Margin="4,0,0,0"/>
+                    <ItemsControl Name="DiscoverResultsList"
+                                  ItemsSource="{Binding DiscoverResults}"
+                                  Background="Transparent"
+                                  XYFocus.NavigationModes="Enabled">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="6" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SeerrchResultViewModel">
+                                <Button Classes="SeerrchTileButton"
+                                        Command="{Binding $parent[controls:OmniSearchControl].DataContext.RequestItemCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Grid RowDefinitions="*, Auto, Auto">
+                                        <Border CornerRadius="8" ClipToBounds="True" Height="169" Background="#333333">
+                                            <Image asyncImage:ImageLoader.Source="{Binding FullPosterUrl}" Stretch="UniformToFill"/>
+                                        </Border>
+                                        <TextBlock Grid.Row="1" Text="{Binding Title}"
+                                                   Foreground="#F8FAFC" FontWeight="SemiBold"
+                                                   FontSize="14"
+                                                   TextTrimming="CharacterEllipsis" TextAlignment="Left"
+                                                   Margin="0,6,0,0"/>
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,3,0,0">
+                                            <Border Background="#1E293B" CornerRadius="4" Padding="5,1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding BadgeText}" Foreground="#38BDF8" FontSize="10" FontWeight="Bold"/>
+                                            </Border>
+                                            <Border Background="{Binding StatusColor}" CornerRadius="4" Padding="5,1" VerticalAlignment="Center"
+                                                    IsVisible="{Binding ShowStatusBadge}">
+                                                <TextBlock Text="{Binding StatusText}" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
         
@@ -191,6 +286,6 @@
                                          MaxWidth="760"
                                          HorizontalAlignment="Center"
                                          Margin="0,10,0,10"
-                                         IsVisible="{Binding !SearchResults.Count}"/>
+                                         IsVisible="{Binding !HasAnyResults}"/>
     </Grid>
 </UserControl>

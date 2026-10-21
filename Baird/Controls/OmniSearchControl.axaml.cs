@@ -121,9 +121,17 @@ namespace Baird.Controls
 
             // If we have results, focus results
             var itemsControl = this.FindControl<ItemsControl>("ResultsList");
-            if (itemsControl != null && itemsControl.ItemCount > 0)
+            if (itemsControl != null && itemsControl.ItemCount > 0 && itemsControl.IsEffectivelyVisible)
             {
                 FocusResults();
+                return;
+            }
+
+            // If we have Discover results, focus them
+            var discoverControl = this.FindControl<ItemsControl>("DiscoverResultsList");
+            if (discoverControl != null && discoverControl.ItemCount > 0 && discoverControl.IsEffectivelyVisible)
+            {
+                FocusDiscoverResults();
                 return;
             }
 
@@ -139,8 +147,11 @@ namespace Baird.Controls
                 }
             }
 
-            // Fallback to Results
-            FocusResults();
+            // Fallback
+            if (itemsControl != null && itemsControl.ItemCount > 0)
+                FocusResults();
+            else if (discoverControl != null && discoverControl.ItemCount > 0)
+                FocusDiscoverResults();
         }
 
         protected override void OnDataContextChanged(EventArgs e)
@@ -183,6 +194,23 @@ namespace Baird.Controls
         public void FocusResults()
         {
             var itemsControl = this.FindControl<ItemsControl>("ResultsList");
+            if (itemsControl == null) return;
+
+            // Try to focus the first button in the grid
+            if (itemsControl.ItemCount > 0)
+            {
+                var container = itemsControl.ContainerFromIndex(0);
+                if (container is Visual visual)
+                {
+                    var button = visual.FindDescendantOfType<Button>();
+                    button?.Focus();
+                }
+            }
+        }
+
+        public void FocusDiscoverResults()
+        {
+            var itemsControl = this.FindControl<ItemsControl>("DiscoverResultsList");
             if (itemsControl == null) return;
 
             // Try to focus the first button in the grid
