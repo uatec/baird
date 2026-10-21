@@ -116,7 +116,8 @@ namespace RiveSharp
                                   SKPoint[] uvs,
                                   UInt16[] indices,
                                   BlendMode blendMode,
-                                  float opacity) {
+                                  float opacity)
+        {
             if (uvs.Length != vertices.Length)
             {
                 throw new ArgumentException("uvs must be the same length as vertices.");
@@ -139,7 +140,7 @@ namespace RiveSharp
         // Transformation helpers.
         public void Translate(float x, float y) { Transform(Mat2D.FromTranslate(x, y)); }
         public void Scale(float sx, float sy) { Transform(Mat2D.FromScale(sx, sy)); }
-        public void Rotate(float radians) { Transform(Mat2D.FromRotation(radians));  }
+        public void Rotate(float radians) { Transform(Mat2D.FromRotation(radians)); }
         public void Align(Fit fit, Alignment alignment, AABB frame, AABB content)
         {
             Transform(ComputeAlignment(fit, alignment, frame, content));

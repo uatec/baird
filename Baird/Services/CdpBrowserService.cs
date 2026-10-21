@@ -86,7 +86,7 @@ namespace Baird.Services
 
         public string FindBrowserExecutable()
         {
-            var envBin = Environment.GetEnvironmentVariable("CHROME_BIN") 
+            var envBin = Environment.GetEnvironmentVariable("CHROME_BIN")
                          ?? Environment.GetEnvironmentVariable("CHROMIUM_BIN");
             if (!string.IsNullOrEmpty(envBin) && File.Exists(envBin))
             {
