@@ -118,6 +118,12 @@ TV: volume up/down/mute as CEC keys, power as `TogglePowerAsync()` (queries the 
 off or on). Powering off also pauses playback, as a TV standby does; powering on reclaims the input.
 `XF86PowerOff` has no Avalonia `Key`, so it is matched by `PhysicalKey.Power`.
 
+Volume keys pass through a `RemoteKeyGate`: a held key autorepeats at ~25/s but the bus carries
+only ~4 key presses/s, and the excess queues in cec-client and keeps changing the volume for
+minutes. Repeats are limited to one step per 300 ms and a hold is cut off after 5 s (the display
+server can lose a key release and autorepeat forever). Mute sends once per press. The Pi's own
+output is pinned to 50% by `baird.service` so there is always some sound.
+
 For the keys to reach Baird, `configure_pi.sh` clears labwc's default bindings for them (Pi volume,
 shutdown dialog) in `~/.config/labwc/rc.xml` and tells logind to ignore the power and sleep keys.
 
