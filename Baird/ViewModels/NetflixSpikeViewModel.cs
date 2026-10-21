@@ -196,15 +196,26 @@ namespace Baird.ViewModels
         /// <summary>How long to wait for the page to classify as something other than Unknown.</summary>
         public TimeSpan AuthCheckTimeout { get; set; } = TimeSpan.FromSeconds(8);
         public TimeSpan BufferingTimeout { get; set; } = TimeSpan.FromSeconds(90);
+        public TimeSpan SignInTimeout { get; set; } = TimeSpan.FromSeconds(30);
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(400);
 
-        public NetflixSpikeViewModel() : this(new CdpBrowserService())
+        private readonly NetflixCredentials? _credentials;
+        private bool _autoSignInAttempted;
+
+        /// <summary>True when NETFLIX_USER and NETFLIX_PASS are set in config.ini.</summary>
+        public bool HasCredentials => _credentials != null;
+        public string CredentialsStatus => _credentials == null
+            ? $"No Netflix credentials configured (set {NetflixCredentials.UserKey} and {NetflixCredentials.PasswordKey} in ~/.baird/config.ini)."
+            : $"Netflix credentials configured for {_credentials.User}.";
+
+        public NetflixSpikeViewModel(NetflixCredentials? credentials = null) : this(new CdpBrowserService(), credentials)
         {
         }
 
-        public NetflixSpikeViewModel(ICdpBrowserService browserService)
+        public NetflixSpikeViewModel(ICdpBrowserService browserService, NetflixCredentials? credentials = null)
         {
             _browserService = browserService;
+            _credentials = credentials;
             if (_browserService is CdpBrowserService cdp)
             {
                 cdp.LogMessage += msg => AddLog(msg);
@@ -212,6 +223,7 @@ namespace Baird.ViewModels
 
             DetectedBrowser = _browserService.FindBrowserExecutable();
             AddLog($"[Init] Detected browser executable: {DetectedBrowser}");
+            AddLog($"[Init] {CredentialsStatus}");
 
             LaunchCommand = ReactiveCommand.CreateFromTask(LaunchPlaybackFlowAsync);
             SignInCommand = ReactiveCommand.CreateFromTask(StartSignInAsync);
@@ -441,12 +453,24 @@ namespace Baird.ViewModels
         {
             if (kind == NetflixPageKind.LoginRequired)
             {
+                if (_credentials != null && !_autoSignInAttempted)
+                {
+                    _autoSignInAttempted = true; // one attempt per run: never hammer Netflix with a wrong password
+                    var outcome = await SignInWithConfiguredCredentialsAsync(ct);
+                    if (outcome == null) return false; // signed in, keep going
+                    SetState(outcome.Value.State, outcome.Value.Message);
+                    if (outcome.Value.State != NetflixSpikeState.MfaRequired) await _browserService.StopAsync();
+                    return true;
+                }
+
                 var why = string.Equals(membershipStatus, "ANONYMOUS", StringComparison.OrdinalIgnoreCase)
                     ? "Netflix sees an anonymous visitor: Baird's browser profile has no signed-in Netflix account."
                     : "Netflix is asking for credentials.";
+                var credHint = _credentials == null
+                    ? $"No Netflix credentials are configured: set {NetflixCredentials.UserKey} and {NetflixCredentials.PasswordKey} in ~/.baird/config.ini, or press 'Sign in (visible browser)' once."
+                    : "The configured credentials were already tried this run.";
                 SetState(NetflixSpikeState.NotLoggedIn,
-                    $"NOT LOGGED IN: {why} Baird stores no Netflix username or password; the session lives in the browser profile at {ProfileDir}. " +
-                    $"Playback was not attempted (page: {url}). Press 'Sign in (visible browser)' once to log in.");
+                    $"NOT LOGGED IN: {why} {credHint} The session lives in the browser profile at {ProfileDir}. Playback was not attempted (page: {url}).");
                 AddLog("[Auth Check] Login page detected. Stopping flow.");
                 await _browserService.StopAsync();
                 return true;
@@ -460,6 +484,49 @@ namespace Baird.ViewModels
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Types the configured credentials into the login page. Returns null when signed in (flow continues), otherwise
+        /// the terminal state + message. Messages never contain the password.
+        /// </summary>
+        private async Task<(NetflixSpikeState State, string Message)?> SignInWithConfiguredCredentialsAsync(CancellationToken ct)
+        {
+            var creds = _credentials!;
+            SetState(NetflixSpikeState.CheckingAuth, $"Not signed in. Signing in as {creds.User} with the configured credentials...");
+            AddLog($"[SignIn] Using configured credentials for {creds.User} (password not logged).");
+
+            if (!await _browserService.NavigateAsync("https://www.netflix.com/login", ct))
+                return (NetflixSpikeState.Failed, "Could not open the Netflix login page over CDP.");
+
+            var submit = await _browserService.SubmitCredentialsAsync(creds.User, creds.Password, ct);
+            AddLog($"[SignIn] {submit.Detail}");
+            if (!submit.Submitted) return (NetflixSpikeState.Failed, $"Could not fill in the Netflix login form: {submit.Detail}.");
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (sw.Elapsed < SignInTimeout && !ct.IsCancellationRequested)
+            {
+                await Task.Delay(PollInterval, ct);
+                var st = await _browserService.CheckAuthStatusAsync(ct);
+                if (st == null) continue;
+                AddLog($"[SignIn] URL: {st.Url} | Kind: {st.Kind} | membership: {st.MembershipStatus ?? "n/a"}");
+
+                if (st.Kind == NetflixPageKind.MfaRequired)
+                    return (NetflixSpikeState.MfaRequired, "Netflix is asking for a verification code after sign-in. Enter it (best-effort, unverified).");
+
+                if (st.IsSignedIn && st.Kind != NetflixPageKind.LoginRequired)
+                {
+                    AddLog($"[SignIn] Signed in (membership: {st.MembershipStatus}). Opening {TargetUrl}");
+                    await _browserService.NavigateAsync(TargetUrl, ct);
+                    return null;
+                }
+            }
+
+            var err = await _browserService.GetLoginErrorTextAsync(ct);
+            return (NetflixSpikeState.NotLoggedIn,
+                err != null
+                    ? $"NOT LOGGED IN: Netflix rejected the configured credentials for {creds.User}: \"{err}\". Check {NetflixCredentials.UserKey}/{NetflixCredentials.PasswordKey} in ~/.baird/config.ini."
+                    : $"NOT LOGGED IN: signing in as {creds.User} did not complete within {SignInTimeout.TotalSeconds:F0}s (no error shown by Netflix; possibly a captcha or an extra check).");
         }
 
         public async Task SubmitMfaAsync()

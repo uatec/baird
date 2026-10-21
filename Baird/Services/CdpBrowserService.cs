@@ -33,12 +33,18 @@ namespace Baird.Services
         string? MembershipStatus = null,
         bool HasSignInLink = false)
     {
+        /// <summary>Netflix itself reports a member (not ANONYMOUS). Used to confirm a sign-in worked.</summary>
+        public bool IsSignedIn => MembershipStatus is { Length: > 0 } m && !string.Equals(m, "ANONYMOUS", StringComparison.OrdinalIgnoreCase);
+
         public NetflixPageKind Kind =>
             NetflixPageClassifier.Classify(Url, HasLoginInput, HasMfaInput, IsVideo, CurrentTime, MembershipStatus, HasSignInLink);
     }
 
     /// <summary>Result of asking the launched browser for a Widevine key system. A fact about EME access only, not proof of playback.</summary>
     public record WidevineStatus(bool Available, string Detail);
+
+    /// <summary>Outcome of typing credentials into the login form. Detail never contains the credentials.</summary>
+    public record SignInSubmitResult(bool Submitted, string Detail);
 
     public interface ICdpBrowserService : IAsyncDisposable
     {
@@ -52,6 +58,9 @@ namespace Baird.Services
         Task<bool> LaunchAsync(string browserPath, string url, int port, string userDataDir, bool visible = false, CancellationToken ct = default);
         Task<AuthPageStatus?> CheckAuthStatusAsync(CancellationToken ct = default);
         Task<WidevineStatus> CheckWidevineAsync(CancellationToken ct = default);
+        Task<bool> NavigateAsync(string url, CancellationToken ct = default);
+        Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default);
+        Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default);
         Task<bool> SubmitMfaPinAsync(string pin, CancellationToken ct = default);
         Task<VideoPlaybackStatus?> PollVideoPlaybackAsync(CancellationToken ct = default);
         Task<bool> InjectOverlayScriptAsync(string? script = null, CancellationToken ct = default);
@@ -322,6 +331,76 @@ namespace Baird.Services
             }
 
             return null;
+        }
+
+        public async Task<bool> NavigateAsync(string url, CancellationToken ct = default)
+        {
+            if (_pageWs == null || _pageWs.State != WebSocketState.Open) return false;
+            try
+            {
+                await SendPageCommandAsync("Page.navigate", new JsonObject { ["url"] = url }, ct);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log($"[CDP] Navigate failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Types the credentials into Netflix's login form (userLoginId / password) with real input events and submits it.
+        /// The values go straight into CDP Input.insertText; they are never logged.
+        /// </summary>
+        public async Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default)
+        {
+            if (_pageWs == null || _pageWs.State != WebSocketState.Open) return new(false, "browser page is not connected");
+
+            // Wait for the form (the SPA renders it after load).
+            bool formReady = false;
+            for (int i = 0; i < 30 && !ct.IsCancellationRequested; i++)
+            {
+                var ready = await EvaluateInPageAsync("(function(){return !!document.querySelector('input[name=\"userLoginId\"]') && !!document.querySelector('input[name=\"password\"]');})()", ct);
+                if (ready is { ValueKind: JsonValueKind.True }) { formReady = true; break; }
+                await Task.Delay(500, ct);
+            }
+            if (!formReady) return new(false, "login form (userLoginId/password) did not appear");
+
+            foreach (var (field, value) in new[] { ("userLoginId", user), ("password", password) })
+            {
+                var focused = await EvaluateInPageAsync($"(function(){{const e=document.querySelector('input[name=\"{field}\"]');if(!e)return false;e.focus();e.select();return true;}})()", ct);
+                if (focused is not { ValueKind: JsonValueKind.True }) return new(false, $"could not focus the {field} field");
+                await SendPageCommandAsync("Input.insertText", new JsonObject { ["text"] = value }, ct);
+            }
+
+            var clicked = await EvaluateInPageAsync(
+                "(function(){const b=document.querySelector('[data-uia=\"login-submit-button\"]')||document.querySelector('button[type=\"submit\"]');if(!b)return false;b.click();return true;})()", ct);
+            if (clicked is not { ValueKind: JsonValueKind.True })
+            {
+                // No recognisable submit button: press Enter in the password field.
+                await EvaluateInPageAsync("(function(){const e=document.querySelector('input[name=\"password\"]');if(e)e.focus();})()", ct);
+                foreach (var type in new[] { "keyDown", "keyUp" })
+                {
+                    await SendPageCommandAsync("Input.dispatchKeyEvent", new JsonObject
+                    {
+                        ["type"] = type,
+                        ["key"] = "Enter",
+                        ["code"] = "Enter",
+                        ["windowsVirtualKeyCode"] = 13,
+                        ["text"] = type == "keyDown" ? "\r" : ""
+                    }, ct);
+                }
+                return new(true, "submitted with the Enter key (no submit button found)");
+            }
+            return new(true, "submitted");
+        }
+
+        /// <summary>Visible error text on the login page (e.g. wrong password), if any.</summary>
+        public async Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default)
+        {
+            var r = await EvaluateInPageAsync(
+                "(function(){const e=document.querySelector('[data-uia*=\"error\"],[role=\"alert\"]');return e?(e.innerText||'').trim().slice(0,300):null;})()", ct);
+            return r is { ValueKind: JsonValueKind.String } v && !string.IsNullOrWhiteSpace(v.GetString()) ? v.GetString() : null;
         }
 
         public async Task<WidevineStatus> CheckWidevineAsync(CancellationToken ct = default)

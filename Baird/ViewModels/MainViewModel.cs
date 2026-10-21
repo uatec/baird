@@ -140,7 +140,7 @@ namespace Baird.ViewModels
 
             Requests.PlayRequested += (s, item) => PlayItem(item);
 
-            NetflixSpike = new NetflixSpikeViewModel();
+            NetflixSpike = new NetflixSpikeViewModel(NetflixCredentials.FromConfiguration(configuration));
             NetflixSpike.BackRequested += (s, e) => GoBack();
 
             LottieSpike = new LottieSpikeViewModel();

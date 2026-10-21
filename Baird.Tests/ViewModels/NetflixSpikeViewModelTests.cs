@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System;
 using System.Reactive;
 using System.Threading;
@@ -47,8 +48,19 @@ namespace Baird.Tests.ViewModels
         public Task<AuthPageStatus?> CheckAuthStatusAsync(CancellationToken ct = default)
         {
             CheckAuthCalled = true;
-            return Task.FromResult(AuthStatusToReturn);
+            return Task.FromResult(AuthSequence != null ? AuthSequence() : AuthStatusToReturn);
         }
+
+        public bool NavigateCalled { get; private set; }
+        public string? LastNavigatedUrl { get; private set; }
+        public Func<SignInSubmitResult> SubmitResult { get; set; } = () => new(true, "submitted");
+        public int SubmitCredentialsCalls { get; private set; }
+        public string? LoginError { get; set; }
+        public Func<AuthPageStatus?>? AuthSequence { get; set; }
+
+        public Task<bool> NavigateAsync(string url, CancellationToken ct = default) { NavigateCalled = true; LastNavigatedUrl = url; return Task.FromResult(true); }
+        public Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default) { SubmitCredentialsCalls++; return Task.FromResult(SubmitResult()); }
+        public Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default) => Task.FromResult(LoginError);
 
         public Task<bool> SubmitMfaPinAsync(string pin, CancellationToken ct = default)
         {
@@ -379,6 +391,98 @@ namespace Baird.Tests.ViewModels
         public void Classify_UsesMembershipAndSignInLink_NotJustTheUrl(string url, string? membership, bool signInLink, NetflixPageKind expected)
         {
             Assert.Equal(expected, NetflixPageClassifier.Classify(url, false, false, false, 0, membership, signInLink));
+        }
+
+        // ---- configured credentials (NETFLIX_USER / NETFLIX_PASS) ----
+
+        private const string Secret = "s3cret-pass-DO-NOT-LEAK";
+
+        private static AuthPageStatus LoginPage() => new("https://www.netflix.com/gb/login", "Sign In", true, false, false, 0, "ANONYMOUS", false);
+        private static AuthPageStatus BrowsePage() => new("https://www.netflix.com/browse", "Netflix", false, false, false, 0, "CURRENT_MEMBER", false);
+
+        private static void AssertNoSecret(NetflixSpikeViewModel vm)
+        {
+            Assert.DoesNotContain(Secret, vm.StatusMessage);
+            Assert.DoesNotContain(vm.LogEntries, l => l.Contains(Secret));
+            Assert.DoesNotContain(Secret, new NetflixCredentials("u@example.com", Secret).ToString());
+        }
+
+        [Fact]
+        public async Task LoginPage_WithoutCredentials_ReportsNotLoggedInAndHowToConfigure()
+        {
+            var svc = new MockCdpBrowserService { AuthStatusToReturn = LoginPage() };
+            var vm = new NetflixSpikeViewModel(svc);
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.False(vm.HasCredentials);
+            Assert.Equal(NetflixSpikeState.NotLoggedIn, vm.State);
+            Assert.Contains("NETFLIX_USER", vm.StatusMessage);
+            Assert.Contains("NETFLIX_PASS", vm.StatusMessage);
+            Assert.Equal(0, svc.SubmitCredentialsCalls);
+        }
+
+        [Fact]
+        public async Task LoginPage_WithCredentials_SignsInOnceAndContinuesToTarget()
+        {
+            int reads = 0;
+            var svc = new MockCdpBrowserService { AuthSequence = () => reads++ < 1 ? LoginPage() : BrowsePage() };
+            var vm = new NetflixSpikeViewModel(svc, new NetflixCredentials("me@example.com", Secret)) { BufferingTimeout = TimeSpan.FromMilliseconds(300) };
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(1, svc.SubmitCredentialsCalls);
+            Assert.Equal(vm.TargetUrl, svc.LastNavigatedUrl); // after sign-in it opens the requested title
+            Assert.NotEqual(NetflixSpikeState.NotLoggedIn, vm.State);
+            AssertNoSecret(vm);
+        }
+
+        [Fact]
+        public async Task LoginPage_WithRejectedCredentials_ReportsNetflixErrorAndDoesNotRetry()
+        {
+            var svc = new MockCdpBrowserService { AuthStatusToReturn = LoginPage(), LoginError = "Incorrect password." };
+            var vm = new NetflixSpikeViewModel(svc, new NetflixCredentials("me@example.com", Secret)) { SignInTimeout = TimeSpan.FromMilliseconds(500), PollInterval = TimeSpan.FromMilliseconds(50) };
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(NetflixSpikeState.NotLoggedIn, vm.State);
+            Assert.Contains("Incorrect password.", vm.StatusMessage);
+            Assert.Contains("me@example.com", vm.StatusMessage);
+            Assert.Equal(1, svc.SubmitCredentialsCalls); // never hammer Netflix with a wrong password
+            AssertNoSecret(vm);
+        }
+
+        [Fact]
+        public async Task LoginForm_CannotBeFilled_FailsWithReason()
+        {
+            var svc = new MockCdpBrowserService { AuthStatusToReturn = LoginPage(), SubmitResult = () => new(false, "login form did not appear") };
+            var vm = new NetflixSpikeViewModel(svc, new NetflixCredentials("me@example.com", Secret));
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(NetflixSpikeState.Failed, vm.State);
+            Assert.Contains("login form did not appear", vm.StatusMessage);
+            AssertNoSecret(vm);
+        }
+
+        [Fact]
+        public void Credentials_FromConfigIni_RequiresBothKeys()
+        {
+            static Microsoft.Extensions.Configuration.IConfiguration Ini(string text)
+            {
+                var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "nfcreds-" + Guid.NewGuid().ToString("N") + ".ini");
+                System.IO.File.WriteAllText(path, text);
+                try { return new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddIniFile(path, optional: false, reloadOnChange: false).Build(); }
+                finally { System.IO.File.Delete(path); }
+            }
+
+            Assert.Null(NetflixCredentials.FromConfiguration(null));
+            Assert.Null(NetflixCredentials.FromConfiguration(Ini("[Baird]\nUiScale=1\n")));
+            Assert.Null(NetflixCredentials.FromConfiguration(Ini("NETFLIX_USER=a@b.c\n[Baird]\nUiScale=1\n")));
+            Assert.Null(NetflixCredentials.FromConfiguration(Ini("NETFLIX_USER=a@b.c\nNETFLIX_PASS=\n")));
+            var c = NetflixCredentials.FromConfiguration(Ini("NETFLIX_USER= a@b.c \nNETFLIX_PASS=pw-with-dashes\n[Baird]\nUiScale=1\n"));
+            Assert.Equal("a@b.c", c!.User);
+            Assert.Equal("pw-with-dashes", c.Password);
         }
     }
 }
