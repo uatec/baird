@@ -52,20 +52,33 @@ namespace Baird.Rive
                 if (string.IsNullOrEmpty(Source)) return;
                 try
                 {
-                    var path = Path.IsPathRooted(Source) ? Source : Path.Combine(AppContext.BaseDirectory, Source);
                     var scene = new Scene();
-                    if (!scene.LoadFile(File.ReadAllBytes(path))) { LastError = "LoadFile failed: " + path; return; }
+                    if (!scene.LoadFile(ReadSource(Source))) { LastError = "LoadFile failed (not a valid .riv, or unsupported version): " + Source; return; }
                     if (!scene.LoadArtboard("")) { LastError = "LoadArtboard failed"; return; }
                     var sm = StateMachine ?? "";
                     if (!scene.LoadStateMachine(sm)) { LastError = "LoadStateMachine failed: " + sm; return; }
                     _scene = scene;
                 }
-                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or IOException or BadImageFormatException)
+                catch (Exception e)
                 {
                     LastError = e.GetType().Name + ": " + e.Message;
                 }
             }
             InvalidateVisual();
+        }
+
+        /// <summary>avares:// URIs are embedded in the app (the shipped single-file exe runs from a cache dir, so loose files beside it are not reliable).</summary>
+        private static byte[] ReadSource(string source)
+        {
+            if (source.StartsWith("avares://", StringComparison.OrdinalIgnoreCase))
+            {
+                using var stream = AssetLoader.Open(new Uri(source));
+                using var ms = new MemoryStream();
+                stream.CopyTo(ms);
+                return ms.ToArray();
+            }
+            var path = Path.IsPathRooted(source) ? source : Path.Combine(AppContext.BaseDirectory, source);
+            return File.ReadAllBytes(path);
         }
 
         public void SetNumber(string name, float value) { lock (_gate) _scene?.SetNumber(name, value); InvalidateVisual(); }

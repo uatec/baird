@@ -13,7 +13,7 @@ namespace Baird.Tests.Controls
 
         private static RivePlayerControl Make()
         {
-            var c = new RivePlayerControl { Source = "assets/rive/rating.riv", StateMachine = "State Machine 1" };
+            var c = new RivePlayerControl { Source = "avares://Baird/Assets/Rive/rating.riv", StateMachine = "State Machine 1" };
             c.Load();
             Assert.True(c.IsLoaded, c.LastError);
             return c;

@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
@@ -151,6 +152,12 @@ namespace Baird.Services
 
             Directory.CreateDirectory(userDataDir);
 
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                var wv = WidevineStager.Stage(userDataDir);
+                Log($"[CDP] Widevine: {wv.Detail}");
+            }
+
             Log($"[CDP] Starting browser process: {browserPath}");
             Log($"[CDP] URL: {url}");
             Log($"[CDP] User data dir: {userDataDir}");
@@ -160,7 +167,7 @@ namespace Baird.Services
             {
                 FileName = browserPath,
                 Arguments = $"--remote-debugging-port={port} " +
-                            (visible ? "" : "--window-position=-4000,-4000 ") +
+                            (visible ? "--start-fullscreen " : "--window-position=-4000,-4000 ") +
                             $"--window-size=1920,1080 " +
                             $"--user-data-dir=\"{userDataDir}\" " +
                             $"--autoplay-policy=no-user-gesture-required " +

@@ -47,7 +47,6 @@
   <ItemGroup>
     <!-- Native Rive runtime (built from rive-cpp, see spikes/rive-avalonia-spike). x64 and arm64 builds are checked in. -->
     <None Include="runtimes/$(RiveNativeArch)/native/librive.so" Link="librive.so" CopyToOutputDirectory="PreserveNewest" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
-    <None Include="../spikes/rive-avalonia-spike/assets/*.riv" Link="assets/rive/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 

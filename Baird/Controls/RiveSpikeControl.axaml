@@ -18,6 +18,7 @@
         <rive:RivePlayerControl x:Name="Player" Grid.Row="1"
                                 Source="{Binding Source}" StateMachine="{Binding StateMachine}"/>
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center">
+            <TextBlock Text="{Binding LoadStatus}" Foreground="#94A3B8" VerticalAlignment="Center" FontSize="14"/>
             <Button Content="-" Command="{Binding DecrementCommand}"/>
             <TextBlock Text="{Binding Rating, StringFormat='rating input = {0}'}" Foreground="White" VerticalAlignment="Center" FontSize="18"/>
             <Button Content="+" Command="{Binding IncrementCommand}"/>

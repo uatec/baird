@@ -33,6 +33,9 @@ namespace Baird.Controls
             var player = this.FindControl<Baird.Rive.RivePlayerControl>("Player");
             if (player == null) return;
             if (!player.IsLoaded) player.Load();
+            _vm.LoadStatus = player.IsLoaded
+                ? $"Rive: loaded {_vm.Source}"
+                : $"Rive: FAILED - {player.LastError ?? "unknown error"}";
             player.SetNumber(_vm.InputName, _vm.Rating);
         }
     }

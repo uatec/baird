@@ -10,7 +10,7 @@ namespace Baird.ViewModels
 
         public event EventHandler? BackRequested;
 
-        public string Source => "assets/rive/rating.riv";
+        public string Source => "avares://Baird/Assets/Rive/rating.riv";
         public string StateMachine => "State Machine 1";
         public string InputName => "rating";
 
@@ -19,6 +19,14 @@ namespace Baird.ViewModels
         {
             get => _rating;
             set => this.RaiseAndSetIfChanged(ref _rating, Math.Clamp(value, 0, 5));
+        }
+
+        private string _loadStatus = "Rive: not loaded yet";
+        /// <summary>Visible load result so a failed .riv or missing native lib is never silent.</summary>
+        public string LoadStatus
+        {
+            get => _loadStatus;
+            set => this.RaiseAndSetIfChanged(ref _loadStatus, value);
         }
 
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
