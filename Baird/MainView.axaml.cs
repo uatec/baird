@@ -46,6 +46,10 @@ namespace Baird
         private bool _tvPowerToggleInFlight;
         private DateTime _lastTvPowerToggle = DateTime.MinValue;
         private static readonly TimeSpan TvPowerToggleCooldown = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan VolumeRepeatInterval = TimeSpan.FromMilliseconds(300);
+        private readonly RemoteKeyGate _volumeUpGate = new(VolumeRepeatInterval);
+        private readonly RemoteKeyGate _volumeDownGate = new(VolumeRepeatInterval);
+        private readonly RemoteKeyGate _muteGate = new(TimeSpan.MaxValue);
 
         // Voice command key — loaded from config (VOICE_COMMAND_KEY).
         // Avalonia's Key enum integers do NOT correspond to evdev keycodes; they go through
@@ -491,13 +495,13 @@ namespace Baird
             switch (e.Key)
             {
                 case Key.VolumeUp:
-                    _ = _cecService.VolumeUpAsync();
+                    if (_volumeUpGate.ShouldSend(DateTime.Now)) _ = _cecService.VolumeUpAsync();
                     return true;
                 case Key.VolumeDown:
-                    _ = _cecService.VolumeDownAsync();
+                    if (_volumeDownGate.ShouldSend(DateTime.Now)) _ = _cecService.VolumeDownAsync();
                     return true;
                 case Key.VolumeMute:
-                    _ = _cecService.MuteAsync();
+                    if (_muteGate.ShouldSend(DateTime.Now)) _ = _cecService.MuteAsync();
                     return true;
             }
 
