@@ -200,7 +200,7 @@
         hud.innerHTML = `
             <div class="baird-top-bar">
                 <div class="baird-title-row">
-                    <span class="baird-badge-drm">WIDEVINE DRM</span>
+                    <span class="baird-badge-drm" id="baird-drm-badge">DRM: checking</span>
                     <span class="baird-title" id="baird-title-text">Baird Media Platform</span>
                 </div>
                 <div class="baird-status" id="baird-status-text">Playing</div>
@@ -229,6 +229,18 @@
     }
 
     // HUD Elements
+    // Report the measured Widevine key-system access instead of a hardcoded claim.
+    const drmBadge = document.getElementById("baird-drm-badge");
+    if (drmBadge && navigator.requestMediaKeySystemAccess) {
+        navigator.requestMediaKeySystemAccess("com.widevine.alpha", [{
+            initDataTypes: ["cenc"],
+            videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.42E01E"' }]
+        }]).then(() => { drmBadge.textContent = "Widevine: available"; })
+          .catch(() => { drmBadge.textContent = "Widevine: unavailable"; });
+    } else if (drmBadge) {
+        drmBadge.textContent = "Widevine: unavailable";
+    }
+
     const titleEl = document.getElementById("baird-title-text");
     const statusEl = document.getElementById("baird-status-text");
     const curTimeEl = document.getElementById("baird-current-time");
