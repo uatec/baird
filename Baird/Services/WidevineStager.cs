@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Baird.Services
 {
@@ -46,7 +47,7 @@ namespace Baird.Services
                     File.Copy(manifestPath, Path.Combine(versionDir, "manifest.json"), overwrite: true);
                 }
                 File.WriteAllText(Path.Combine(root, "latest-component-updated-widevine-cdm"),
-                    JsonSerializer.Serialize(new { Path = versionDir }));
+                    new JsonObject { ["Path"] = versionDir }.ToJsonString());
                 return new Result(true, $"staged Widevine {version} into {versionDir}");
             }
             catch (Exception e)

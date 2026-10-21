@@ -109,6 +109,7 @@ namespace Baird.Tests.Controls
             var player = Avalonia.VisualTree.VisualExtensions.FindDescendantOfType<RivePlayerControl>(view)!;
             Assert.True(player.IsLoaded, player.LastError);
             Assert.True(player.FramesDrawn > 0, "Rive never drew through Avalonia's Skia canvas");
+            Assert.StartsWith("Rive: loaded", vm.LoadStatus); // no spurious "FAILED - unknown error" once loaded
 
             int changed = CountDiff(f0, f5);
             Console.WriteLine($"Avalonia headless: frames drawn={player.FramesDrawn}, differing pixels rating0->5 = {changed}");

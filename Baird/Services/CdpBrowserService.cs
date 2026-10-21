@@ -8,6 +8,7 @@ using System.Net.WebSockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -467,20 +468,20 @@ namespace Baird.Services
             {
                 try
                 {
-                    var windowForTarget = await SendBrowserCommandAsync("Browser.getWindowForTarget", new { }, ct);
+                    var windowForTarget = await SendBrowserCommandAsync("Browser.getWindowForTarget", new JsonObject(), ct);
                     if (windowForTarget.TryGetProperty("windowId", out var widProp))
                     {
                         var windowId = widProp.GetInt32();
-                        await SendBrowserCommandAsync("Browser.setWindowBounds", new
+                        await SendBrowserCommandAsync("Browser.setWindowBounds", new JsonObject
                         {
-                            windowId = windowId,
-                            bounds = new
+                            ["windowId"] = windowId,
+                            ["bounds"] = new JsonObject
                             {
-                                left = 0,
-                                top = 0,
-                                width = 1920,
-                                height = 1080,
-                                windowState = "fullscreen"
+                                ["left"] = 0,
+                                ["top"] = 0,
+                                ["width"] = 1920,
+                                ["height"] = 1080,
+                                ["windowState"] = "fullscreen"
                             }
                         }, ct);
                         Log($"[CDP] Set window bounds via CDP (windowId: {windowId}) to (0,0, 1920x1080, fullscreen).");
@@ -529,11 +530,11 @@ namespace Baird.Services
         {
             if (_pageWs == null || _pageWs.State != WebSocketState.Open) return null;
 
-            var result = await SendPageCommandAsync("Runtime.evaluate", new
+            var result = await SendPageCommandAsync("Runtime.evaluate", new JsonObject
             {
-                expression = script,
-                returnByValue = true,
-                awaitPromise = true
+                ["expression"] = script,
+                ["returnByValue"] = true,
+                ["awaitPromise"] = true
             }, ct);
 
             if (result.TryGetProperty("exceptionDetails", out var exc))
@@ -554,13 +555,13 @@ namespace Baird.Services
             return result;
         }
 
-        private async Task<JsonElement> SendPageCommandAsync(string method, object @params, CancellationToken ct)
+        private async Task<JsonElement> SendPageCommandAsync(string method, JsonObject @params, CancellationToken ct)
         {
             var id = Interlocked.Increment(ref _pageReqId);
             return await SendCommandAsync(_pageWs!, _pendingPageRequests, id, method, @params, ct);
         }
 
-        private async Task<JsonElement> SendBrowserCommandAsync(string method, object @params, CancellationToken ct)
+        private async Task<JsonElement> SendBrowserCommandAsync(string method, JsonObject @params, CancellationToken ct)
         {
             var id = Interlocked.Increment(ref _browserReqId);
             return await SendCommandAsync(_browserWs!, _pendingBrowserRequests, id, method, @params, ct);
@@ -571,7 +572,7 @@ namespace Baird.Services
             ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> pending,
             int id,
             string method,
-            object @params,
+            JsonObject @params,
             CancellationToken ct)
         {
             var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -585,12 +586,13 @@ namespace Baird.Services
                 }
             });
 
-            var payload = JsonSerializer.Serialize(new
+            // JsonObject, not anonymous types: the shipped build is trimmed with reflection-based JSON disabled.
+            var payload = new JsonObject
             {
-                id = id,
-                method = method,
-                @params = @params
-            });
+                ["id"] = id,
+                ["method"] = method,
+                ["params"] = @params
+            }.ToJsonString();
 
             var bytes = Encoding.UTF8.GetBytes(payload);
             await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
@@ -667,7 +669,7 @@ namespace Baird.Services
                 try
                 {
                     using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                    await SendBrowserCommandAsync("Browser.close", new { }, closeCts.Token);
+                    await SendBrowserCommandAsync("Browser.close", new JsonObject(), closeCts.Token);
                 }
                 catch { }
                 try { _browserProcess?.WaitForExit(4000); } catch { }

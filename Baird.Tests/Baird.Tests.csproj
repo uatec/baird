@@ -7,6 +7,8 @@
     <IsPackable>false</IsPackable>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <EnableAvaloniaCompiler>true</EnableAvaloniaCompiler>
+    <!-- Match the shipped trimmed build: reflection-based System.Text.Json is off, so un-sourcegen-ed serialization fails in tests too. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <ItemGroup>
