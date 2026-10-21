@@ -142,6 +142,9 @@ namespace Baird.Services
 
         // Every provider is asked about every id (e.g. a BBC pid like "m000vbrk"); Jellyfin answers
         // 400 for ids that aren't its own 32-hex-digit GUIDs, so don't ask.
+        private const string SourcePrefix = "Jellyfin: ";
+        public static bool IsJellyfinSource(string source) => source.StartsWith(SourcePrefix, StringComparison.Ordinal);
+
         private static bool IsJellyfinId(string id) => Guid.TryParseExact(id, "N", out _);
 
         private static string LoadOrCreateDeviceId()
@@ -333,7 +336,7 @@ namespace Baird.Services
                         // Use Series image for the folder
                         ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{itemId}/Images/Primary",
                         Type = MediaType.Brand,
-                        Source = $"Jellyfin: {_serverHostname}",
+                        Source = SourcePrefix + _serverHostname,
                         IsLive = false,
                         Synopsis = "Season " + s,
                         Subtitle = "Season " + s,  // TODO: should this stuff just be nullable or expicitly empty? or a subtype for Groupings
@@ -378,7 +381,7 @@ namespace Baird.Services
                 ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary",
                 IsLive = false,
                 StreamUrl = isContainer ? "" : GetStreamUrlInternal(m.Id),
-                Source = $"Jellyfin: {_serverHostname}",
+                Source = SourcePrefix + _serverHostname,
                 Type = type,
                 Subtitle = "",
                 Synopsis = "", // TODO: should this stuff just be nullable or expicitly empty? or a subtype for Groupings

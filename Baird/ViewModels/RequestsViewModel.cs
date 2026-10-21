@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
@@ -215,6 +216,17 @@ namespace Baird.ViewModels
             }
         }
 
+        /// <summary>
+        /// Search spans every provider, so a YouTube or iPlayer result with the same title must not
+        /// win: only Jellyfin results count. Prefers an exact title match.
+        /// </summary>
+        public static MediaItemViewModel? PickJellyfinMatch(IEnumerable<MediaItemViewModel> searchResults, string title)
+        {
+            var jellyfin = searchResults.Where(m => JellyfinService.IsJellyfinSource(m.Source)).ToList();
+            return jellyfin.FirstOrDefault(m => m.Name.Equals(title, StringComparison.OrdinalIgnoreCase))
+                ?? jellyfin.FirstOrDefault();
+        }
+
         private async Task PlayCompletedItem(RequestItemViewModel item)
         {
             StatusMessage = $"Searching for {item.Title} in Jellyfin...";
@@ -223,15 +235,10 @@ namespace Baird.ViewModels
             {
                 // Search Jellyfin for the title
                 var searchResults = await _dataService.SearchAsync(item.Title, CancellationToken.None);
-                var matches = searchResults.ToList();
+                var bestMatch = PickJellyfinMatch(searchResults, item.Title);
 
-                if (matches.Any())
+                if (bestMatch != null)
                 {
-                    // Try to find best match - prefer exact title match
-                    var bestMatch = matches.FirstOrDefault(m =>
-                        m.Name.Equals(item.Title, StringComparison.OrdinalIgnoreCase))
-                        ?? matches.First();
-
                     Console.WriteLine($"[RequestsViewModel] Found match in Jellyfin: {bestMatch.Name}");
                     StatusMessage = $"Playing {bestMatch.Name}...";
 
