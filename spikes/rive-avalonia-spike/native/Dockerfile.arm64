@@ -1,0 +1,2 @@
+FROM debian:bookworm
+RUN dpkg --add-architecture arm64 && apt-get update && apt-get install -y --no-install-recommends clang lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libstdc++-12-dev:arm64 libc6-dev:arm64 && rm -rf /var/lib/apt/lists/*

@@ -38,9 +38,15 @@
     <AvaloniaResource Include="Assets/**" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- Pi 5 / any arm64 Linux. Built in a Debian 12 container (glibc 2.29 max) by spikes/rive-avalonia-spike/native/build-arm64.sh. -->
+    <RiveNativeArch Condition="'$(RuntimeIdentifier)' == 'linux-arm64' Or ('$(RuntimeIdentifier)' == '' And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64')">linux-arm64</RiveNativeArch>
+    <RiveNativeArch Condition="'$(RiveNativeArch)' == ''">linux-x64</RiveNativeArch>
+  </PropertyGroup>
+
   <ItemGroup>
-    <!-- Native Rive runtime (built from rive-cpp, see spikes/rive-avalonia-spike). linux-x64 only so far. -->
-    <None Include="runtimes/linux-x64/native/librive.so" Link="librive.so" CopyToOutputDirectory="PreserveNewest" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+    <!-- Native Rive runtime (built from rive-cpp, see spikes/rive-avalonia-spike). x64 and arm64 builds are checked in. -->
+    <None Include="runtimes/$(RiveNativeArch)/native/librive.so" Link="librive.so" CopyToOutputDirectory="PreserveNewest" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
     <None Include="../spikes/rive-avalonia-spike/assets/*.riv" Link="assets/rive/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
