@@ -242,6 +242,47 @@ else
     echo "[Session] $LIGHTDM_CONF not found — select the labwc session manually."
 fi
 
+# --- 7. Remote power/volume keys go to Baird, not the Pi ---
+# The remote is a USB keyboard, so its power and volume buttons arrive as XF86PowerOff/XF86Sleep and
+# XF86Audio* keys. Baird turns them into HDMI-CEC power/volume commands for the TV, but labwc binds
+# them first (shutdown dialog, Pi volume) and logind acts on power/sleep keys. labwc runs with -m,
+# so this user rc.xml merges over /etc/xdg/labwc/rc.xml; action "None" clears a default binding.
+TARGET_USER="${SUDO_USER:-}"
+if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+    LABWC_RC="$(getent passwd "$TARGET_USER" | cut -d: -f6)/.config/labwc/rc.xml"
+    if [ ! -f "$LABWC_RC" ] || grep -q "Managed by Baird configure_pi.sh" "$LABWC_RC"; then
+        echo "[Remote] Writing $LABWC_RC..."
+        install -d -o "$TARGET_USER" -g "$TARGET_USER" "$(dirname "$LABWC_RC")"
+        cat > "$LABWC_RC" <<'LABWC_RC_XML'
+<?xml version="1.0"?>
+<!-- Managed by Baird configure_pi.sh: leave the remote's power/volume keys to Baird (HDMI-CEC). -->
+<labwc_config>
+  <keyboard>
+    <keybind key="XF86AudioRaiseVolume"><action name="None" /></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="None" /></keybind>
+    <keybind key="XF86AudioMute"><action name="None" /></keybind>
+    <keybind key="XF86PowerOff" onRelease="yes"><action name="None" /></keybind>
+  </keyboard>
+</labwc_config>
+LABWC_RC_XML
+        chown "$TARGET_USER:$TARGET_USER" "$LABWC_RC"
+    else
+        echo "[Remote] $LABWC_RC exists and isn't managed by Baird — add 'None' keybinds for"
+        echo "         XF86AudioRaiseVolume/LowerVolume/Mute and XF86PowerOff to it by hand."
+    fi
+else
+    echo "[Remote] Run via sudo from the desktop user to configure labwc key bindings."
+fi
+
+mkdir -p /etc/systemd/logind.conf.d
+cat > /etc/systemd/logind.conf.d/baird-remote.conf <<'LOGIND_CONF'
+# Managed by Baird configure_pi.sh — the remote's power/sleep keys switch the TV, not the Pi.
+[Login]
+HandlePowerKey=ignore
+HandleSuspendKey=ignore
+LOGIND_CONF
+echo "[Remote] Done (takes effect after reboot)."
+
 echo ""
 echo "=== Configuration complete ==="
 echo "Please reboot the Raspberry Pi for all changes to take effect:"

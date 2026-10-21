@@ -34,5 +34,24 @@ namespace Baird.Tests.Services
             var result = CecParser.ParseLine(line);
             Assert.Contains("Opcode FF", result);
         }
+
+        [Theory]
+        [InlineData("TRAFFIC: [  4210]\t>> 08:90:00", true, new byte[] { 0x08, 0x90, 0x00 })]
+        [InlineData("TRAFFIC: [  4211]\t<< 8f:82:30:00", false, new byte[] { 0x8F, 0x82, 0x30, 0x00 })]
+        [InlineData("<< 88", false, new byte[] { 0x88 })]
+        public void TryParseFrame_ExtractsDirectionAndBytes(string line, bool expectedIncoming, byte[] expectedFrame)
+        {
+            Assert.True(CecParser.TryParseFrame(line, out var incoming, out var frame));
+            Assert.Equal(expectedIncoming, incoming);
+            Assert.Equal(expectedFrame, frame);
+        }
+
+        [Theory]
+        [InlineData("DEBUG: some debug info")]
+        [InlineData("")]
+        public void TryParseFrame_RejectsNonTrafficLines(string line)
+        {
+            Assert.False(CecParser.TryParseFrame(line, out _, out _));
+        }
     }
 }

@@ -11,6 +11,15 @@ namespace Baird.Services
         public DateTime Timestamp { get; set; } = DateTime.Now;
     }
 
+    public enum TvPowerStatus
+    {
+        Unknown,
+        On,
+        Standby,
+        TransitioningToOn,
+        TransitioningToStandby,
+    }
+
     public interface ICecService
     {
         event EventHandler<CecCommandLoggedEventArgs>? CommandLogged;
@@ -22,13 +31,15 @@ namespace Baird.Services
         bool IsAvailable { get; }
 
         Task StartAsync();
-        Task TogglePowerAsync();
+        /// <summary>Queries the TV and switches it to the opposite state. Returns true if it was turned on.</summary>
+        Task<bool> TogglePowerAsync();
         Task PowerOnAsync();
         Task PowerOffAsync();
         Task VolumeUpAsync();
         Task VolumeDownAsync();
+        Task MuteAsync();
         Task ChangeInputToThisDeviceAsync();
         Task CycleInputsAsync();
-        Task<string> GetPowerStatusAsync();
+        Task<TvPowerStatus> GetPowerStatusAsync();
     }
 }

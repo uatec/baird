@@ -67,13 +67,20 @@ Commands are written as text to the process's stdin with a 1-second timeout:
 |--------|--------------------------|
 | `PowerOnAsync()` | `on 0` |
 | `PowerOffAsync()` | `standby 0` |
-| `VolumeUpAsync()` | `volup` |
-| `VolumeDownAsync()` | `voldown` |
+| `TogglePowerAsync()` | `pow 0`, then `on 0` or `standby 0` |
+| `VolumeUpAsync()` | `tx L0:44:41` then `tx L0:45` |
+| `VolumeDownAsync()` | `tx L0:44:42` then `tx L0:45` |
+| `MuteAsync()` | `tx L0:44:43` then `tx L0:45` |
 | `ChangeInputToThisDeviceAsync()` | `as` (Active Source) |
-| `CycleInputsAsync()` | `tx 10:44:34` then `tx 10:45` |
-| `GetPowerStatusAsync()` | `pow 0` |
+| `CycleInputsAsync()` | `tx L0:44:34` then `tx L0:45` |
+| `GetPowerStatusAsync()` | `pow 0`, awaiting the reply for up to 2 s |
 
-The address `0` in these commands refers to logical address 0, which is always the TV.
+The address `0` in these commands refers to logical address 0, which is always the TV. `L` is
+Baird's own logical address, learned from the frames cec-client transmits (Playback 1 is usually
+taken by another box, so Baird often ends up as Playback 2, `8`).
+
+Volume and mute are sent as *User Control Pressed* keys to the TV rather than cec-client's
+`volup`/`voldown`/`mute`, which only address a CEC audio system and do nothing without one.
 
 ### Output reading and event firing
 
@@ -102,6 +109,18 @@ When the TV powers back on (`TvPowerOn` fires):
 1. `ChangeInputToThisDeviceAsync()` is called immediately to assert Baird as the active source.
 2. If `_pausedForCecStandby` is set, the video is resumed.
 
+### Remote power and volume keys
+
+The remote is a USB keyboard, so its power and volume buttons arrive as key events (`XF86PowerOff` /
+`XF86Sleep` and `XF86Audio*`). `MainView.TryHandleTvKey` intercepts them before any other input
+handling — so they work while inputs are blocked or the screensaver is up — and sends them to the
+TV: volume up/down/mute as CEC keys, power as `TogglePowerAsync()` (queries the TV, then turns it
+off or on). Powering off also pauses playback, as a TV standby does; powering on reclaims the input.
+`XF86PowerOff` has no Avalonia `Key`, so it is matched by `PhysicalKey.Power`.
+
+For the keys to reach Baird, `configure_pi.sh` clears labwc's default bindings for them (Pi volume,
+shutdown dialog) in `~/.config/labwc/rc.xml` and tells logind to ignore the power and sleep keys.
+
 ### Debug panel
 
 A debug screen (accessible in the app) provides manual buttons for every CEC command and a live scrolling log of all CEC traffic with parsed annotations. This is useful for verifying the HDMI-CEC wiring is working and diagnosing TV compatibility issues.
@@ -125,17 +144,11 @@ Lines that do not match a traffic pattern are returned unchanged.
 
 ## Known Bugs and Limitations
 
-### `TogglePowerAsync` is not a real toggle
+### Power toggle falls back to "on"
 
-`TogglePowerAsync()` always calls `PowerOnAsync()`. The code comment acknowledges this explicitly. The UI exposes a "Toggle" button which misleadingly always sends a power-on command rather than toggling.
-
-### `GetPowerStatusAsync` never returns the actual status
-
-`GetPowerStatusAsync()` sends `pow 0` and immediately returns the string `"Check Log"`. The real response arrives later on stdout but is never correlated back to the caller. The status bar in the debug panel therefore always displays `Power Status: Check Log`.
-
-### `CycleInputsAsync` logs a failure before succeeding
-
-The method calls `LogCommand(...)` with `success: false` and the message "Not directly supported by cec-client simple commands" before proceeding to send the raw `tx 10:44:34` command that actually does the job. This creates a misleading error entry in the log every time cycle inputs is used.
+If the TV doesn't answer the power status query within 2 s, `TogglePowerAsync()` turns it on rather
+than risk switching off a TV that is in use — so the power key can't turn off a TV that doesn't
+reply.
 
 ### `cec-client` stderr is discarded
 
