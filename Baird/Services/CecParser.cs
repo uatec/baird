@@ -148,7 +148,7 @@ namespace Baird.Services
             { 0x91, "Active Source" }
         };
 
-        private static readonly Regex TrafficRegex = new(@"(?:TRAFFIC:.*)?(?:>>|<<)\s+([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2})*)", RegexOptions.Compiled);
+        private static readonly Regex TrafficRegex = new(@"(?:TRAFFIC:.*)?(>>|<<)\s+([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2})*)", RegexOptions.Compiled);
         private static readonly Regex RawHexRegex = new(@"^[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2})*$", RegexOptions.Compiled);
 
         private static string GetAddressName(int address) =>
@@ -163,7 +163,7 @@ namespace Baird.Services
             var trafficMatch = TrafficRegex.Match(line);
             if (trafficMatch.Success)
             {
-                var hexString = trafficMatch.Groups[1].Value;
+                var hexString = trafficMatch.Groups[2].Value;
                 return $"{line}  [{ParsePacket(hexString)}]";
             }
 
@@ -174,6 +174,24 @@ namespace Baird.Services
             }
 
             return line;
+        }
+
+        /// <summary>
+        /// Extracts the raw frame from a cec-client traffic line. <paramref name="incoming"/> is true for
+        /// frames received from the bus (">>") and false for frames we transmitted ("<<").
+        /// </summary>
+        public static bool TryParseFrame(string line, out bool incoming, out byte[] frame)
+        {
+            incoming = false;
+            frame = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(line)) return false;
+
+            var match = TrafficRegex.Match(line);
+            if (!match.Success) return false;
+
+            incoming = match.Groups[1].Value == ">>";
+            frame = match.Groups[2].Value.Split(':').Select(b => Convert.ToByte(b, 16)).ToArray();
+            return true;
         }
 
         private static string ParsePacket(string hexString)

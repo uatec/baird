@@ -43,6 +43,9 @@ namespace Baird
         private DispatcherTimer? _inputUnblockFallbackTimer; // Fallback unblock when TV switches silently (no Request Active Source)
         private DateTime _lastCecAssert = DateTime.MinValue;
         private static readonly TimeSpan CecAssertCooldown = TimeSpan.FromSeconds(30);
+        private bool _tvPowerToggleInFlight;
+        private DateTime _lastTvPowerToggle = DateTime.MinValue;
+        private static readonly TimeSpan TvPowerToggleCooldown = TimeSpan.FromSeconds(2);
 
         // Voice command key — loaded from config (VOICE_COMMAND_KEY).
         // Avalonia's Key enum integers do NOT correspond to evdev keycodes; they go through
@@ -326,23 +329,7 @@ namespace Baird
                 Console.WriteLine("[MainView] Starting CEC service...");
 
                 // Wire CEC TV power events for auto-pause/resume
-                EventHandler onTvStandby = (s, e) =>
-                {
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        Console.WriteLine("[MainView] TV standby via CEC — blocking inputs.");
-                        if (!_inputLockDisabled) _inputsBlocked = true;
-
-                        var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                        var player = videoLayer?.GetPlayer();
-                        if (player != null && player.GetState() == Baird.Mpv.PlaybackState.Playing)
-                        {
-                            Console.WriteLine("[MainView] TV standby via CEC — pausing video.");
-                            player.Pause();
-                            _pausedForCecStandby = true;
-                        }
-                    });
-                };
+                EventHandler onTvStandby = (s, e) => Dispatcher.UIThread.Post(OnTvStandby);
                 _cecService.TvStandby += onTvStandby;
                 _visualTreeSubscriptions.Add(Disposable.Create(() => _cecService.TvStandby -= onTvStandby));
 
@@ -480,6 +467,73 @@ namespace Baird
             };
         }
 
+        private void OnTvStandby()
+        {
+            Console.WriteLine("[MainView] TV standby via CEC — blocking inputs.");
+            if (!_inputLockDisabled) _inputsBlocked = true;
+
+            var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
+            var player = videoLayer?.GetPlayer();
+            if (player != null && player.GetState() == Baird.Mpv.PlaybackState.Playing)
+            {
+                Console.WriteLine("[MainView] TV standby via CEC — pausing video.");
+                player.Pause();
+                _pausedForCecStandby = true;
+            }
+        }
+
+        /// <summary>
+        /// The remote's power and volume keys drive the TV over CEC rather than the Pi (configure_pi.sh
+        /// removes labwc's bindings for them and stops logind acting on power/sleep).
+        /// </summary>
+        private bool TryHandleTvKey(KeyEventArgs e)
+        {
+            switch (e.Key)
+            {
+                case Key.VolumeUp:
+                    _ = _cecService.VolumeUpAsync();
+                    return true;
+                case Key.VolumeDown:
+                    _ = _cecService.VolumeDownAsync();
+                    return true;
+                case Key.VolumeMute:
+                    _ = _cecService.MuteAsync();
+                    return true;
+            }
+
+            // XF86PowerOff has no Avalonia Key (it arrives as Key.None), so match the physical key.
+            if (e.Key == Key.Sleep || e.PhysicalKey is PhysicalKey.Power or PhysicalKey.Sleep)
+            {
+                _ = ToggleTvPowerAsync();
+                return true;
+            }
+
+            return false;
+        }
+
+        private async Task ToggleTvPowerAsync()
+        {
+            // A held power key autorepeats, and the remote reports it on more than one device: one toggle per press.
+            if (_tvPowerToggleInFlight || DateTime.Now - _lastTvPowerToggle < TvPowerToggleCooldown) return;
+            _tvPowerToggleInFlight = true;
+            try
+            {
+                if (await _cecService.TogglePowerAsync())
+                    RequestInputRegain();
+                else
+                    OnTvStandby(); // The TV doesn't broadcast a standby we asked for, so act on it ourselves.
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MainView] TV power toggle failed: {ex.Message}");
+            }
+            finally
+            {
+                _lastTvPowerToggle = DateTime.Now;
+                _tvPowerToggleInFlight = false;
+            }
+        }
+
         /// <summary>
         /// On any user interaction, wake the TV and claim our AV input — but no more than once per
         /// <see cref="CecAssertCooldown"/> to avoid flooding the CEC bus.
@@ -543,6 +597,14 @@ namespace Baird
 
         private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
         {
+            // Before everything else: TV keys must work while inputs are blocked or the screensaver
+            // is up, and must not trigger AssertCecPresence's power-on.
+            if (TryHandleTvKey(e))
+            {
+                e.Handled = true;
+                return;
+            }
+
             // While inputs are blocked (TV off or wrong input), any key press requests focus back
             // but does NOT take effect — we wait for CEC to confirm we have the active source
             // (or for the fallback timer to fire if the TV switches silently).
@@ -705,7 +767,7 @@ namespace Baird
             _viewModel.ResetHudTimer();
 
             // Key diagnostics — set BAIRD_LOG_KEYS=true in config.ini to find voice button key codes.
-            Console.WriteLine($"[MainView] Key: {e.Key} ({(int)e.Key})");
+            Console.WriteLine($"[MainView] Key: {e.Key} ({(int)e.Key}), physical {e.PhysicalKey}");
 
             // Back/Esc Trigger
             if (e.Key == Key.Escape || e.Key == Key.BrowserBack)

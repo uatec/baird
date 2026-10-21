@@ -18,13 +18,14 @@ namespace Baird.Tests.Mocks
         public void SimulateTvPowerOn() => TvPowerOn?.Invoke(this, EventArgs.Empty);
 
         public Task StartAsync() => Task.CompletedTask;
-        public Task TogglePowerAsync() => Task.CompletedTask;
+        public Task<bool> TogglePowerAsync() => Task.FromResult(true);
         public Task PowerOnAsync() => Task.CompletedTask;
         public Task PowerOffAsync() => Task.CompletedTask;
         public Task VolumeUpAsync() => Task.CompletedTask;
         public Task VolumeDownAsync() => Task.CompletedTask;
+        public Task MuteAsync() => Task.CompletedTask;
         public Task ChangeInputToThisDeviceAsync() => Task.CompletedTask;
         public Task CycleInputsAsync() => Task.CompletedTask;
-        public Task<string> GetPowerStatusAsync() => Task.FromResult("Mock");
+        public Task<TvPowerStatus> GetPowerStatusAsync() => Task.FromResult(TvPowerStatus.Unknown);
     }
 }

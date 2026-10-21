@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,6 +20,25 @@ namespace Baird.Services
         private StreamWriter? _cecInput;
         private CancellationTokenSource? _outputReadCts;
         private bool _isDisposed;
+        private readonly SemaphoreSlim _writeLock = new(1, 1);
+
+        // Our logical address, learned from the frames we transmit. cec-client picks it at registration:
+        // Playback 1 (4) is usually taken by another box (e.g. a Chromecast), so we often end up as 8.
+        // Raw "tx" commands must use it as their source nibble. 0xF (unregistered) until known.
+        private volatile int _logicalAddress = 0xF;
+
+        private TaskCompletionSource<TvPowerStatus>? _pendingPowerStatus;
+        private static readonly TimeSpan PowerStatusTimeout = TimeSpan.FromSeconds(2);
+
+        // cec-client answers "pow 0" on stdout with e.g. "power status: on" or
+        // "power status: in transition from standby to on".
+        private static readonly Regex PowerStatusLineRegex = new(@"^power status:\s*(.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // CEC User Control codes (CEC 1.4 table 27).
+        private const byte UiVolumeUp = 0x41;
+        private const byte UiVolumeDown = 0x42;
+        private const byte UiMute = 0x43;
+        private const byte UiInputSelect = 0x34;
 
         public event EventHandler<CecCommandLoggedEventArgs>? CommandLogged;
         public event EventHandler? TvStandby;
@@ -103,6 +123,8 @@ namespace Baird.Services
                         }
                     }
 
+                    TrackFrame(line);
+
                     // Simple logging of all output for debug visibility
                     CommandLogged?.Invoke(this, new CecCommandLoggedEventArgs
                     {
@@ -152,6 +174,47 @@ namespace Baird.Services
             }
         }
 
+        private void TrackFrame(string line)
+        {
+            var statusMatch = PowerStatusLineRegex.Match(line.Trim());
+            if (statusMatch.Success)
+            {
+                _pendingPowerStatus?.TrySetResult(ParsePowerStatusText(statusMatch.Groups[1].Value));
+                return;
+            }
+
+            // Polls (single byte) are skipped: during address allocation cec-client polls candidate
+            // addresses it may not end up with.
+            if (!CecParser.TryParseFrame(line, out var incoming, out var frame) || frame.Length < 2) return;
+
+            if (!incoming)
+            {
+                _logicalAddress = frame[0] >> 4;
+            }
+            else if (frame[0] >> 4 == 0 && frame[1] == 0x90 && frame.Length > 2)
+            {
+                // Report Power Status from the TV.
+                _pendingPowerStatus?.TrySetResult(frame[2] switch
+                {
+                    0x00 => TvPowerStatus.On,
+                    0x01 => TvPowerStatus.Standby,
+                    0x02 => TvPowerStatus.TransitioningToOn,
+                    0x03 => TvPowerStatus.TransitioningToStandby,
+                    _ => TvPowerStatus.Unknown,
+                });
+            }
+        }
+
+        private static TvPowerStatus ParsePowerStatusText(string text)
+        {
+            text = text.Trim().ToLowerInvariant();
+            if (text.Contains("standby to on")) return TvPowerStatus.TransitioningToOn;
+            if (text.Contains("on to standby")) return TvPowerStatus.TransitioningToStandby;
+            if (text == "on") return TvPowerStatus.On;
+            if (text == "standby") return TvPowerStatus.Standby;
+            return TvPowerStatus.Unknown;
+        }
+
         private async Task SendCommandAsync(string command, string description)
         {
             if (_cecProcess == null || _cecProcess.HasExited)
@@ -169,6 +232,9 @@ namespace Baird.Services
 
             if (_cecInput == null) return;
 
+            // Commands are fired concurrently (e.g. power on + active source, held volume keys), and
+            // StreamWriter does not allow overlapping async writes.
+            await _writeLock.WaitAsync();
             try
             {
                 Console.WriteLine($"[CecService] Sending: {command}");
@@ -189,16 +255,32 @@ namespace Baird.Services
                 Console.WriteLine($"[CecService] Error sending command '{command}': {ex.Message}");
                 LogCommand(description, $"Error: {ex.Message}", false);
             }
+            finally
+            {
+                _writeLock.Release();
+            }
         }
 
-        public async Task TogglePowerAsync()
+        /// <summary>Sends a remote-control key press + release to the TV, as if pressed on its own remote.</summary>
+        private async Task SendUserControlToTvAsync(byte uiCommand, string description)
         {
-            // cec-client doesn't have a toggle, so we need to check status first
-            // But checking status is async and parsing output is hard in this simple implementation
-            // For now, let's just try to wake it up or prompt user
-            // Alternatively, just implementation PowerOn/Off explicitly
-            Console.WriteLine("[CecService] Toggle not fully supported in simple interactive mode without state tracking. Sending Power On.");
-            await PowerOnAsync();
+            var header = $"{_logicalAddress:x}0";
+            await SendCommandAsync($"tx {header}:44:{uiCommand:x2}", description);
+            await SendCommandAsync($"tx {header}:45", "Release Key");
+        }
+
+        public async Task<bool> TogglePowerAsync()
+        {
+            var status = await GetPowerStatusAsync();
+
+            // An unanswered query turns the TV on: harmless if it was already on, whereas a blind
+            // standby could switch off a TV that is in use.
+            var turnOn = status is TvPowerStatus.Standby or TvPowerStatus.TransitioningToStandby or TvPowerStatus.Unknown;
+            Console.WriteLine($"[CecService] Toggle power: TV is {status}, turning it {(turnOn ? "on" : "off")}.");
+
+            if (turnOn) await PowerOnAsync();
+            else await PowerOffAsync();
+            return turnOn;
         }
 
         public async Task PowerOnAsync()
@@ -211,15 +293,14 @@ namespace Baird.Services
             await SendCommandAsync("standby 0", "Power Off");
         }
 
-        public async Task VolumeUpAsync()
-        {
-            await SendCommandAsync("volup", "Volume Up");
-        }
+        // cec-client's volup/voldown/mute only address a CEC audio system (amp/soundbar), so with none
+        // on the bus they do nothing. Sending the keys to the TV works either way: it adjusts its own
+        // speakers or forwards to an ARC amp.
+        public Task VolumeUpAsync() => SendUserControlToTvAsync(UiVolumeUp, "Volume Up");
 
-        public async Task VolumeDownAsync()
-        {
-            await SendCommandAsync("voldown", "Volume Down");
-        }
+        public Task VolumeDownAsync() => SendUserControlToTvAsync(UiVolumeDown, "Volume Down");
+
+        public Task MuteAsync() => SendUserControlToTvAsync(UiMute, "Mute");
 
         public async Task ChangeInputToThisDeviceAsync()
         {
@@ -228,26 +309,19 @@ namespace Baird.Services
 
         public async Task CycleInputsAsync()
         {
-            // cec-client doesn't have a simple "cycle inputs" command
-            // We would need to send raw tx commands?
-            // "tx 10:44:00" ? (User Control Pressed: Input Select)
-            // But let's stick to supported commands
-            LogCommand("Cycle Inputs", "Not directly supported by cec-client simple commands", false);
-
-            // Try sending User Control Pressed: Input Select (0x34)
-            // 10:44:34
-            // 1->0 (TV), 44 (UCP), 34 (Input Select)
-            await SendCommandAsync("tx 10:44:34", "Cycle Inputs (Input Select)");
-            await Task.Delay(100);
-            await SendCommandAsync("tx 10:45", "Release Key");
+            // cec-client has no "cycle inputs" command, so press the TV's Input Select key.
+            await SendUserControlToTvAsync(UiInputSelect, "Cycle Inputs (Input Select)");
         }
 
-        public async Task<string> GetPowerStatusAsync()
+        public async Task<TvPowerStatus> GetPowerStatusAsync()
         {
-            // This is harder because we need to wait for the specific response in the stream
-            // For now, we fire the request and let the user see the result in the log
+            var pending = new TaskCompletionSource<TvPowerStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pendingPowerStatus = pending;
+
             await SendCommandAsync("pow 0", "Get Power Status");
-            return "Check Log";
+
+            var completed = await Task.WhenAny(pending.Task, Task.Delay(PowerStatusTimeout));
+            return completed == pending.Task ? pending.Task.Result : TvPowerStatus.Unknown;
         }
 
         private void LogCommand(string command, string response, bool success)
