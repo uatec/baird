@@ -135,8 +135,8 @@
                 <DataTemplate DataType="{x:Type vm:LottieSpikeViewModel}">
                     <controls:LottieSpikeControl/>
                 </DataTemplate>
-                <DataTemplate DataType="{x:Type vm:RiveWebSpikeViewModel}">
-                    <controls:RiveWebSpikeControl/>
+                <DataTemplate DataType="{x:Type vm:RiveSpikeViewModel}">
+                    <controls:RiveSpikeControl/>
                 </DataTemplate>
             </ContentControl.DataTemplates>
         </ContentControl>

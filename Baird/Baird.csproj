@@ -5,6 +5,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
@@ -35,6 +36,12 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources/baird-overlay.js" />
     <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Native Rive runtime (built from rive-cpp, see spikes/rive-avalonia-spike). linux-x64 only so far. -->
+    <None Include="runtimes/linux-x64/native/librive.so" Link="librive.so" CopyToOutputDirectory="PreserveNewest" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+    <None Include="../spikes/rive-avalonia-spike/assets/*.riv" Link="assets/rive/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 

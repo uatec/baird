@@ -48,7 +48,7 @@ namespace Baird.ViewModels
         public RequestsViewModel Requests { get; }
         public NetflixSpikeViewModel NetflixSpike { get; }
         public LottieSpikeViewModel LottieSpike { get; }
-        public RiveWebSpikeViewModel RiveWebSpike { get; }
+        public RiveSpikeViewModel RiveSpike { get; }
         public SettingsViewModel Settings { get; }
         public TabNavigationViewModel MainMenu { get; }
 
@@ -146,8 +146,8 @@ namespace Baird.ViewModels
             LottieSpike = new LottieSpikeViewModel();
             LottieSpike.BackRequested += (s, e) => GoBack();
 
-            RiveWebSpike = new RiveWebSpikeViewModel();
-            RiveWebSpike.BackRequested += (s, e) => GoBack();
+            RiveSpike = new RiveSpikeViewModel();
+            RiveSpike.BackRequested += (s, e) => GoBack();
 
             // Subscribe to history updates to keep HistoryViewModel in sync
             _dataService.HistoryUpdated += async (s, e) =>
@@ -215,7 +215,7 @@ namespace Baird.ViewModels
                 new TabItem("Requests", Requests),
                 new TabItem("Netflix Spike", NetflixSpike),
                 new TabItem("Lottie Spike", LottieSpike),
-                new TabItem("Rive Spike", RiveWebSpike),
+                new TabItem("Rive Spike", RiveSpike),
                 new TabItem("Settings", Settings),
                 new TabItem("CEC Debug", CecDebug),
                 new TabItem("A/V Debug", AvDebug),
