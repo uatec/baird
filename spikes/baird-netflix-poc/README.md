@@ -1,30 +1,41 @@
-# Baird Netflix 10-Foot HUD Proof of Concept
+# Baird Netflix spike: measured findings
 
-This Proof of Concept demonstrates:
-1. **Suppression of native Netflix controls:** Hiding all mouse-driven Netflix buttons, timelines, and overlays so only the pure hardware-accelerated video stream is shown.
-2. **Injection of Baird's 10-Foot TV HUD:** Rendering Baird's TV-styled top bar, bottom timeline, progress bar, time remaining, and finishing time directly on top of the Widevine DRM video.
-3. **D-Pad / Remote Navigation:** Capturing TV remote keystrokes (`ArrowLeft`/`Right` to seek, `Enter`/`Space` to play/pause, `Esc` for back).
-4. **Baird HUD Auto-Hide Policy:** Auto-hiding after 3 seconds during active playback, but remaining visible when paused or seeking.
+Netflix is driven through a Chrome/Chromium process controlled over the DevTools Protocol (CDP) by
+`Baird/Services/CdpBrowserService.cs`. The flow is orchestrated by `NetflixSpikeViewModel`.
+This sandbox had no Netflix credentials, so nothing below was run against netflix.com.
 
----
+## What the app does now
 
-## How to Test on Manjaro
+| Step | Behaviour |
+|---|---|
+| Sign in (visible browser) | Launches Chrome on screen with the persistent profile `~/.config/baird/browser-profile` at `https://www.netflix.com/login`. The user signs in by hand and presses "I've signed in - verify". The app re-classifies the page; if it is a signed-in page it closes Chrome through CDP `Browser.close` (so the profile is flushed) and shows `SignedIn`. |
+| Launch hidden | Same profile, window at (-4000,-4000). |
+| Login page detected | State `NotLoggedIn`, red on-screen banner, browser stopped, buffering never entered. |
+| Launch/CDP failure | State `Failed` with the reason (`LastError`). |
+| No playback seen | State `Failed` after the buffering timeout. "Playing" requires `video.currentTime` > 0.1 and strictly increasing between two polls. |
+| DRM check | Separate line on screen: result of `navigator.requestMediaKeySystemAccess('com.widevine.alpha', ...)` in the launched browser. It reports key-system access only, not playback. |
+| MFA | The "Simulate MFA" checkbox is a UI test only and is labelled so. The real PIN submission guesses at form field selectors and is unverified. |
 
-### Quickest Method: Developer Tools Console
+Page classification is a pure function, `NetflixPageClassifier.Classify(url, hasLoginInput, hasMfaInput, hasVideo, currentTime)`,
+covered by unit tests (login URL, `authURL`, password input, browse page, mfa URL, pin input, video playing, below-threshold, marketing page, blank).
 
-1. Open your browser on Manjaro (Firefox, Chrome, etc.).
-2. Navigate to your Netflix video:
-   ```
-   https://www.netflix.com/watch/80107105
-   ```
-3. Open Developer Tools: press **`F12`** or **`Ctrl + Shift + I`**, then click the **Console** tab.
-4. Open [baird-overlay.js](file:///home/uatec/.paseo/worktrees/0rojp50q/silly-newt/spikes/baird-netflix-poc/baird-overlay.js), copy the entire file content, paste it into the Console, and press **Enter**.
-5. Switch the browser to fullscreen (`F11`).
+## Measured
 
-### What to Verify
-* **Clean Video Plane:** Notice that Netflix's default desktop player controls, hover gradients, and cursor overlays are completely gone.
-* **Baird HUD:** The Baird top title bar, Widevine DRM badge, and bottom progress bar appear.
-* **Remote Control:**
-  * Press **`ArrowLeft`** / **`ArrowRight`**: Skips 10s backward/forward, updating time and progress bar immediately.
-  * Press **`Enter`** or **`Space`**: Toggles Play/Pause. Notice the HUD stays pinned while paused.
-  * Resume playback: The HUD automatically fades out after 3 seconds.
+- `dotnet test --filter Netflix`: 29 passed, 0 failed (classifier theory cases, VM state-machine tests with a mock browser service).
+- Local CDP run with `/usr/bin/google-chrome-stable` 152.0.7977.82 (headless, x86_64 Linux desktop, temp profile) against local test pages on `localhost`, via `Baird.Tests/Services/CdpBrowserLocalIntegrationTests.cs` (opt-in, needs `BAIRD_CDP_IT_URL_BASE`):
+  - A local page with a password input was classified `LoginRequired` through the real CDP path.
+  - `requestMediaKeySystemAccess('com.widevine.alpha')` resolved in that Chrome build.
+  - A local `<video>` fed from `canvas.captureStream()` was polled twice: `currentTime` 1.48 then 2.52, classified `VideoPlaying`.
+- Bug found by that run and fixed: `video.duration` is `Infinity`/`NaN` for streams, which serialises to JSON `null`; `GetDouble()` threw and aborted polling.
+- The old `baird-overlay.js` hardcoded a "WIDEVINE DRM" badge; it now shows the measured result.
+
+## Not verified
+
+- Any interaction with netflix.com: login page URL/field names, the real redirect for an unauthenticated `/watch/...` request, the `/browse` and `/watch` signed-in heuristics, and the MFA URL/field heuristics.
+- That a manual sign-in persists across restarts (cookie lifetime, "remember me" behaviour, Netflix device checks). The app only claims `SignedIn` after seeing a signed-in-looking page; the proof is a later hidden launch not hitting the login page.
+- That Widevine works on the Raspberry Pi 5 (arm64 Chromium). Only a desktop x86_64 Chrome was tested. Key-system access resolving is not proof of decrypted playback, and Netflix may require L1 or specific robustness levels for higher resolution.
+- Netflix video playback of any kind, including `currentTime` advancing on netflix.com, and the Baird HUD/overlay on a live Netflix player.
+- Hidden-window behaviour on the target compositor (labwc/Wayland): `--window-position=-4000,-4000` is an X11-style hint, and `wmctrl`/`xdotool` reveal calls do nothing on Wayland. `Browser.setWindowBounds` was not tested.
+- Headed (non-headless) Chrome launch; the integration run was headless.
+- Whether Netflix tolerates or blocks automation via `--remote-debugging-port`.
+- Hardware decode / CPU cost on the Pi (H.264/HEVC/VP9 via Netflix is untested).

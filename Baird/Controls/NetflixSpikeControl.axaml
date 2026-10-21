@@ -99,7 +99,7 @@
                     <Border Background="#E50914" CornerRadius="4" Padding="8,3">
                         <TextBlock Text="NETFLIX SPIKE 2" Foreground="White" FontWeight="Black" FontSize="13" LetterSpacing="0.5"/>
                     </Border>
-                    <TextBlock Text="Hidden Browser &amp; In-App MFA Flow" Foreground="White" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <TextBlock Text="Hidden Browser, Sign-in &amp; MFA Flow" Foreground="White" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- State Badge -->
@@ -121,6 +121,23 @@
                         <StackPanel Spacing="8">
                             <TextBlock Text="PIPELINE STATUS" Foreground="#94A3B8" FontSize="12" FontWeight="Bold" LetterSpacing="0.5"/>
                             <TextBlock Text="{Binding StatusMessage}" Foreground="#F8FAFC" FontSize="16" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Problem Banner (NotLoggedIn / Failed) -->
+                    <Border Background="#7F1D1D" BorderBrush="#DC2626" BorderThickness="2" CornerRadius="10" Padding="18"
+                            IsVisible="{Binding IsProblem}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="{Binding StateDisplayName}" Foreground="White" FontSize="18" FontWeight="Black"/>
+                            <TextBlock Text="{Binding StatusMessage}" Foreground="White" FontSize="16" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- DRM fact line (separate from playback) -->
+                    <Border Background="#161B26" BorderBrush="#252F40" BorderThickness="1" CornerRadius="10" Padding="18">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="DRM (WIDEVINE) AVAILABILITY - NOT A PLAYBACK RESULT" Foreground="#94A3B8" FontSize="12" FontWeight="Bold" LetterSpacing="0.5"/>
+                            <TextBlock Text="{Binding DrmStatus}" Foreground="#E2E8F0" FontSize="14" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
 
@@ -162,7 +179,7 @@
                                       Foreground="#E2E8F0"
                                       FontSize="15">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="Simulate MFA Challenge (Test in-app PIN entry dialog)"/>
+                                    <TextBlock Text="SIMULATE MFA (UI test only - nothing is sent to any page)"/>
                                 </StackPanel>
                             </CheckBox>
 
@@ -170,9 +187,19 @@
                             <StackPanel Orientation="Horizontal" Spacing="14">
                                 <Button Name="LaunchButton"
                                         Classes="ActionBtn" 
-                                        Content="▶  Launch Hidden Playback Flow" 
-                                        Command="{Binding LaunchCommand}" 
+                                        Content="▶  Launch Hidden Playback Flow"
+                                        Command="{Binding LaunchCommand}"
                                         IsEnabled="{Binding CanLaunch}"/>
+
+                                <Button Classes="SecondaryBtn"
+                                        Content="Sign in (visible browser)"
+                                        Command="{Binding SignInCommand}"
+                                        IsEnabled="{Binding CanLaunch}"/>
+
+                                <Button Classes="ActionBtn"
+                                        Content="I've signed in - verify"
+                                        Command="{Binding CompleteSignInCommand}"
+                                        IsVisible="{Binding IsSigningIn}"/>
 
                                 <Button Classes="DangerBtn" 
                                         Content="◼  Abort / Stop Playback" 

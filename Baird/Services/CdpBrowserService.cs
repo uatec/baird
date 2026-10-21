@@ -24,20 +24,30 @@ namespace Baird.Services
     public record AuthPageStatus(
         string Url,
         string Title,
-        bool IsMfa,
-        bool IsLogin,
+        bool HasLoginInput,
+        bool HasMfaInput,
         bool IsVideo,
-        double CurrentTime);
+        double CurrentTime)
+    {
+        public NetflixPageKind Kind =>
+            NetflixPageClassifier.Classify(Url, HasLoginInput, HasMfaInput, IsVideo, CurrentTime);
+    }
+
+    /// <summary>Result of asking the launched browser for a Widevine key system. A fact about EME access only, not proof of playback.</summary>
+    public record WidevineStatus(bool Available, string Detail);
 
     public interface ICdpBrowserService : IAsyncDisposable
     {
         bool IsRunning { get; }
         string? BrowserPath { get; }
         int ProcessId { get; }
+        /// <summary>Human-readable reason the last LaunchAsync returned false.</summary>
+        string? LastError { get; }
 
         string FindBrowserExecutable();
-        Task<bool> LaunchAsync(string browserPath, string url, int port, string userDataDir, CancellationToken ct = default);
+        Task<bool> LaunchAsync(string browserPath, string url, int port, string userDataDir, bool visible = false, CancellationToken ct = default);
         Task<AuthPageStatus?> CheckAuthStatusAsync(CancellationToken ct = default);
+        Task<WidevineStatus> CheckWidevineAsync(CancellationToken ct = default);
         Task<bool> SubmitMfaPinAsync(string pin, CancellationToken ct = default);
         Task<VideoPlaybackStatus?> PollVideoPlaybackAsync(CancellationToken ct = default);
         Task<bool> InjectOverlayScriptAsync(string? script = null, CancellationToken ct = default);
@@ -61,6 +71,14 @@ namespace Baird.Services
         public bool IsRunning => _browserProcess != null && !_browserProcess.HasExited;
         public string? BrowserPath { get; private set; }
         public int ProcessId => _browserProcess?.Id ?? 0;
+        public string? LastError { get; private set; }
+
+        private bool Fail(string message)
+        {
+            LastError = message;
+            Log("[CDP] " + message);
+            return false;
+        }
 
         public event Action<string>? LogMessage;
 
@@ -123,8 +141,9 @@ namespace Baird.Services
             return candidates[0]; // Default fallback
         }
 
-        public async Task<bool> LaunchAsync(string browserPath, string url, int port, string userDataDir, CancellationToken ct = default)
+        public async Task<bool> LaunchAsync(string browserPath, string url, int port, string userDataDir, bool visible = false, CancellationToken ct = default)
         {
+            LastError = null;
             await StopAsync();
 
             _cdpPort = port;
@@ -135,13 +154,13 @@ namespace Baird.Services
             Log($"[CDP] Starting browser process: {browserPath}");
             Log($"[CDP] URL: {url}");
             Log($"[CDP] User data dir: {userDataDir}");
-            Log($"[CDP] Position: -4000,-4000 (Offscreen hidden)");
+            Log(visible ? "[CDP] Mode: VISIBLE (sign-in)" : "[CDP] Mode: hidden, window at -4000,-4000");
 
             var psi = new ProcessStartInfo
             {
                 FileName = browserPath,
                 Arguments = $"--remote-debugging-port={port} " +
-                            $"--window-position=-4000,-4000 " +
+                            (visible ? "" : "--window-position=-4000,-4000 ") +
                             $"--window-size=1920,1080 " +
                             $"--user-data-dir=\"{userDataDir}\" " +
                             $"--autoplay-policy=no-user-gesture-required " +
@@ -150,6 +169,8 @@ namespace Baird.Services
                             $"--password-store=basic " +
                             $"--disable-session-crashed-bubble " +
                             $"--class=baird-netflix " +
+                            // Test hook only (e.g. "--headless=new" on a box without a display).
+                            (Environment.GetEnvironmentVariable("BAIRD_CHROME_EXTRA_ARGS") is { Length: > 0 } extra ? extra + " " : "") +
                             $"\"{url}\"",
                 UseShellExecute = false,
                 CreateNoWindow = false
@@ -160,15 +181,13 @@ namespace Baird.Services
                 _browserProcess = Process.Start(psi);
                 if (_browserProcess == null)
                 {
-                    Log("[CDP] Failed to start browser process.");
-                    return false;
+                    return Fail("Failed to start browser process.");
                 }
                 Log($"[CDP] Browser process started (PID: {_browserProcess.Id}). Waiting for CDP port {port}...");
             }
             catch (Exception ex)
             {
-                Log($"[CDP] Process start error: {ex.Message}");
-                return false;
+                return Fail($"Could not start '{browserPath}': {ex.Message}");
             }
 
             // Poll for CDP endpoint readiness
@@ -180,8 +199,7 @@ namespace Baird.Services
             {
                 if (_browserProcess.HasExited)
                 {
-                    Log($"[CDP] Browser process exited unexpectedly with code {_browserProcess.ExitCode}.");
-                    return false;
+                    return Fail($"Browser exited with code {_browserProcess.ExitCode} before CDP came up (is another instance using the same profile?).");
                 }
 
                 try
@@ -227,8 +245,7 @@ namespace Baird.Services
 
             if (pageWsUrl == null)
             {
-                Log("[CDP] Timeout waiting for browser DevTools WebSocket.");
-                return false;
+                return Fail($"Timed out after 15s waiting for the DevTools endpoint on port {port}.");
             }
 
             // Connect WebSockets
@@ -253,26 +270,21 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                Log($"[CDP] WebSocket connection error: {ex.Message}");
-                return false;
+                return Fail($"WebSocket connection error: {ex.Message}");
             }
         }
 
         public async Task<AuthPageStatus?> CheckAuthStatusAsync(CancellationToken ct = default)
         {
             const string script = @"(function() {
-                const url = window.location.href;
-                const title = document.title || '';
-                const isLoginUrl = url.includes('/login') || url.includes('authURL');
                 const hasLoginInput = !!document.querySelector('input[name=""userLoginId""], input[name=""password""], input[type=""password""]');
-                const isMfaUrl = url.includes('/mfa') || url.includes('/challenge') || url.includes('/verify') || url.includes('/security');
-                const mfaInput = document.querySelector('input[data-uia*=""pin""], input[name*=""code""], input[name*=""pin""], input[autocomplete=""one-time-code""], .mfa-input');
+                const hasMfaInput = !!document.querySelector('input[data-uia*=""pin""], input[name*=""pin""], input[autocomplete=""one-time-code""], .mfa-input');
                 const video = document.querySelector('video');
                 return {
-                    url: url,
-                    title: title,
-                    isMfa: isMfaUrl || !!mfaInput,
-                    isLogin: isLoginUrl || hasLoginInput,
+                    url: window.location.href,
+                    title: document.title || '',
+                    hasLoginInput: hasLoginInput,
+                    hasMfaInput: hasMfaInput,
                     isVideo: !!video,
                     currentTime: video ? video.currentTime : 0
                 };
@@ -285,14 +297,48 @@ namespace Baird.Services
                 return new AuthPageStatus(
                     Url: r.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "",
                     Title: r.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
-                    IsMfa: r.TryGetProperty("isMfa", out var m) && m.GetBoolean(),
-                    IsLogin: r.TryGetProperty("isLogin", out var l) && l.GetBoolean(),
+                    HasLoginInput: r.TryGetProperty("hasLoginInput", out var l) && l.GetBoolean(),
+                    HasMfaInput: r.TryGetProperty("hasMfaInput", out var m) && m.GetBoolean(),
                     IsVideo: r.TryGetProperty("isVideo", out var v) && v.GetBoolean(),
                     CurrentTime: r.TryGetProperty("currentTime", out var c) ? c.GetDouble() : 0
                 );
             }
 
             return null;
+        }
+
+        public async Task<WidevineStatus> CheckWidevineAsync(CancellationToken ct = default)
+        {
+            const string script = @"(async function() {
+                if (!navigator.requestMediaKeySystemAccess) return { available: false, detail: 'navigator.requestMediaKeySystemAccess missing (insecure context?)' };
+                try {
+                    const a = await navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{
+                        initDataTypes: ['cenc'],
+                        videoCapabilities: [{ contentType: 'video/mp4; codecs=""avc1.42E01E""' }],
+                        audioCapabilities: [{ contentType: 'audio/mp4; codecs=""mp4a.40.2""' }]
+                    }]);
+                    return { available: true, detail: 'requestMediaKeySystemAccess resolved for ' + a.keySystem };
+                } catch (e) {
+                    return { available: false, detail: String(e) };
+                }
+            })()";
+
+            try
+            {
+                var result = await EvaluateInPageAsync(script, ct);
+                if (result.HasValue && result.Value.ValueKind == JsonValueKind.Object)
+                {
+                    var r = result.Value;
+                    return new WidevineStatus(
+                        r.TryGetProperty("available", out var a) && a.ValueKind == JsonValueKind.True,
+                        r.TryGetProperty("detail", out var d) ? d.GetString() ?? "" : "");
+                }
+                return new WidevineStatus(false, "No result from page (CDP not connected or script error).");
+            }
+            catch (Exception ex)
+            {
+                return new WidevineStatus(false, "CDP error: " + ex.Message);
+            }
         }
 
         public async Task<bool> SubmitMfaPinAsync(string pin, CancellationToken ct = default)
@@ -314,7 +360,7 @@ namespace Baird.Services
                 return false;
             }})(""{escapedPin}"")";
 
-            Log($"[CDP] Submitting MFA PIN to page input fields: {pin}");
+            Log($"[CDP] Submitting MFA PIN ({pin.Length} chars) to page input fields.");
             var result = await EvaluateInPageAsync(script, ct);
             return result.HasValue && result.Value.ValueKind == JsonValueKind.True;
         }
@@ -354,7 +400,7 @@ namespace Baird.Services
                     CurrentTime: r.TryGetProperty("currentTime", out var c) ? c.GetDouble() : 0,
                     ReadyState: r.TryGetProperty("readyState", out var s) ? s.GetInt32() : 0,
                     Paused: r.TryGetProperty("paused", out var p) && p.GetBoolean(),
-                    Duration: r.TryGetProperty("duration", out var d) ? d.GetDouble() : 0,
+                    Duration: r.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number ? d.GetDouble() : 0, // NaN/Infinity serialise to null
                     Url: r.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "",
                     Title: r.TryGetProperty("title", out var t) ? t.GetString() ?? "" : ""
                 );
@@ -483,6 +529,12 @@ namespace Baird.Services
                 awaitPromise = true
             }, ct);
 
+            if (result.TryGetProperty("exceptionDetails", out var exc))
+            {
+                Log($"[CDP] Page script threw: {exc.GetRawText()}");
+                return null;
+            }
+
             if (result.TryGetProperty("result", out var resObj))
             {
                 if (resObj.TryGetProperty("value", out var val))
@@ -602,6 +654,18 @@ namespace Baird.Services
 
         public async Task StopAsync()
         {
+            // Ask Chrome to close itself first so cookies/profile are flushed to disk (needed for a sign-in to persist).
+            if (_browserWs != null && _browserWs.State == WebSocketState.Open && IsRunning)
+            {
+                try
+                {
+                    using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    await SendBrowserCommandAsync("Browser.close", new { }, closeCts.Token);
+                }
+                catch { }
+                try { _browserProcess?.WaitForExit(4000); } catch { }
+            }
+
             _recvCts?.Cancel();
             _recvCts?.Dispose();
             _recvCts = null;
