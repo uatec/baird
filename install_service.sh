@@ -33,4 +33,7 @@ for unit in baird.service baird-updater.timer; do
     echo "----------------------------------------"
 done
 
+# 4. Install/refresh the yt-dlp mpv uses (non-fatal).
+"$SCRIPT_DIR/update_ytdlp.sh"
+
 echo "All services installed successfully."

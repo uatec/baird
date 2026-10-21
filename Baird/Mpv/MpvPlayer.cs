@@ -156,6 +156,23 @@ namespace Baird.Mpv
             // on live streams no longer causes periodic frame-delivery misses.
             SetOption("video-sync", "display-vdrop");
 
+            // Use the yt-dlp Baird manages (update_ytdlp.sh) rather than whatever is on PATH: distro
+            // packages lag far behind the site changes that break it.
+            var ytdlPath = Path.Combine(
+                Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } xdg
+                    ? xdg
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share"),
+                "baird", "bin", "yt-dlp");
+            if (File.Exists(ytdlPath))
+            {
+                Console.WriteLine($"[MpvPlayer] Using yt-dlp at {ytdlPath}");
+                SetOption("script-opts", $"ytdl_hook-ytdl_path={ytdlPath}");
+            }
+            else
+            {
+                Console.WriteLine($"[MpvPlayer] {ytdlPath} not found; mpv will use yt-dlp from PATH");
+            }
+
             // Prefer English audio
             SetOption("alang", "eng,en");
             // Prefer English subtitles

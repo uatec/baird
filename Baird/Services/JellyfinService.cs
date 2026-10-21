@@ -140,6 +140,10 @@ namespace Baird.Services
             _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeaderWithToken);
         }
 
+        // Every provider is asked about every id (e.g. a BBC pid like "m000vbrk"); Jellyfin answers
+        // 400 for ids that aren't its own 32-hex-digit GUIDs, so don't ask.
+        private static bool IsJellyfinId(string id) => Guid.TryParseExact(id, "N", out _);
+
         private static string LoadOrCreateDeviceId()
         {
             var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".baird");
@@ -230,6 +234,7 @@ namespace Baird.Services
 
         public async Task<MediaItemData?> GetItemAsync(string id)
         {
+            if (!IsJellyfinId(id)) return null;
             await EnsureAuthenticatedAsync();
             if (!IsAuthenticated) return null;
 
@@ -257,6 +262,7 @@ namespace Baird.Services
 
         public async Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
         {
+            if (!IsJellyfinId(id)) return Enumerable.Empty<MediaItemData>();
             await EnsureAuthenticatedAsync();
             if (!IsAuthenticated) return Enumerable.Empty<MediaItemData>();
 

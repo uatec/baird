@@ -18,7 +18,16 @@ namespace Baird.Services
     /// </summary>
     public static class BbcIPlayerStreamResolver
     {
-        private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
+        private static readonly HttpClient _httpClient = CreateHttpClient();
+
+        // iBL answers 403 to requests without a User-Agent, which HttpClient doesn't send by default.
+        private static HttpClient CreateHttpClient()
+        {
+            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            return client;
+        }
 
         private static readonly Regex EpisodeUrl = new(
             @"^https?://(?:www\.)?bbc\.co\.uk/iplayer/episode/([a-z0-9]+)",
