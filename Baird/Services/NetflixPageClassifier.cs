@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 
 namespace Baird.Services
 {
@@ -18,7 +19,7 @@ namespace Baird.Services
 
     /// <summary>
     /// Pure classification of what the controlled page currently is, from signals gathered via CDP.
-    /// No I/O so it can be unit-tested. URL patterns are heuristics, not verified against live Netflix.
+    /// No I/O so it can be unit-tested. The logged-out redirect, membershipStatus and sign-in link were observed on live Netflix (logged-out side only); the logged-in side and other URL patterns are heuristics.
     /// </summary>
     public static class NetflixPageClassifier
     {
@@ -29,7 +30,9 @@ namespace Baird.Services
             bool hasLoginInput,
             bool hasMfaInput,
             bool hasVideo,
-            double videoCurrentTime)
+            double videoCurrentTime,
+            string? membershipStatus = null,
+            bool hasSignInLink = false)
         {
             url ??= "";
             string path = PathOf(url);
@@ -43,14 +46,24 @@ namespace Baird.Services
             bool loginUrl = path.Contains("/login") || url.Contains("authURL", StringComparison.OrdinalIgnoreCase);
             if (loginUrl) return NetflixPageKind.LoginRequired;
 
+            bool isNetflix = url.Contains("netflix.com", StringComparison.OrdinalIgnoreCase);
+
+            // Netflix serves logged-out visitors public pages that look like content (e.g. /watch/<id> redirects to
+            // /gb/title/<id>?fromWatch=true), and sets NetflixId cookies for anonymous visitors too, so neither the URL nor
+            // cookies prove a login. Observed live on a logged-out page: netflix.reactContext userInfo.membershipStatus
+            // == "ANONYMOUS" and a [data-uia=header-signin-link] link.
+            if (isNetflix && (string.Equals(membershipStatus, "ANONYMOUS", StringComparison.OrdinalIgnoreCase) || hasSignInLink))
+                return NetflixPageKind.LoginRequired;
+
             if (hasVideo && videoCurrentTime > PlayingThresholdSeconds) return NetflixPageKind.VideoPlaying;
 
-            bool isNetflix = url.Contains("netflix.com", StringComparison.OrdinalIgnoreCase);
-            if (isNetflix && (path.StartsWith("/browse") || path.StartsWith("/watch") || path.StartsWith("/title")))
-                return NetflixPageKind.LoggedIn;
+            if (isNetflix && ContentPath.IsMatch(path)) return NetflixPageKind.LoggedIn;
 
             return NetflixPageKind.Unknown;
         }
+
+        // Optional country prefix ("/gb/", "/us-en/") before browse|watch|title.
+        private static readonly Regex ContentPath = new(@"^/([a-z]{2}(-[a-z]{2})?/)?(browse|watch|title)(/|$|\?)", RegexOptions.Compiled);
 
         private static string PathOf(string url)
         {

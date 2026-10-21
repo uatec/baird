@@ -348,7 +348,7 @@ namespace Baird.ViewModels
                     return;
                 }
 
-                AddLog($"[SignIn] URL: {status.Url} | Kind: {status.Kind}");
+                AddLog($"[SignIn] URL: {status.Url} | Kind: {status.Kind} | membership: {status.MembershipStatus ?? "n/a"} | sign-in link: {status.HasSignInLink}");
                 switch (status.Kind)
                 {
                     case NetflixPageKind.LoginRequired:
@@ -410,7 +410,7 @@ namespace Baird.ViewModels
                         var kind = authStatus.Kind;
                         AddLog($"[Auth Check] URL: {authStatus.Url} | Kind: {kind} | Video: {authStatus.IsVideo} t={authStatus.CurrentTime:F2}");
 
-                        if (await HandleKindAsync(kind, authStatus.Url, ct)) return;
+                        if (await HandleKindAsync(kind, authStatus.Url, ct, authStatus.MembershipStatus)) return;
                         if (kind is NetflixPageKind.LoggedIn or NetflixPageKind.VideoPlaying) break;
                     }
 
@@ -437,12 +437,16 @@ namespace Baird.ViewModels
         }
 
         /// <summary>Handles terminal page kinds. Returns true if the flow was ended/redirected.</summary>
-        private async Task<bool> HandleKindAsync(NetflixPageKind kind, string url, CancellationToken ct)
+        private async Task<bool> HandleKindAsync(NetflixPageKind kind, string url, CancellationToken ct, string? membershipStatus = null)
         {
             if (kind == NetflixPageKind.LoginRequired)
             {
+                var why = string.Equals(membershipStatus, "ANONYMOUS", StringComparison.OrdinalIgnoreCase)
+                    ? "Netflix sees an anonymous visitor: Baird's browser profile has no signed-in Netflix account."
+                    : "Netflix is asking for credentials.";
                 SetState(NetflixSpikeState.NotLoggedIn,
-                    $"NOT LOGGED IN: Netflix is asking for credentials (page: {url}). Playback was not attempted. Use 'Sign in' to log in once.");
+                    $"NOT LOGGED IN: {why} Baird stores no Netflix username or password; the session lives in the browser profile at {ProfileDir}. " +
+                    $"Playback was not attempted (page: {url}). Press 'Sign in (visible browser)' once to log in.");
                 AddLog("[Auth Check] Login page detected. Stopping flow.");
                 await _browserService.StopAsync();
                 return true;
@@ -514,7 +518,7 @@ namespace Baird.ViewModels
                     if (kind == NetflixPageKind.LoginRequired ||
                         (kind == NetflixPageKind.MfaRequired && sw.Elapsed >= mfaGrace))
                     {
-                        if (await HandleKindAsync(kind, auth.Url, ct)) return;
+                        if (await HandleKindAsync(kind, auth.Url, ct, auth.MembershipStatus)) return;
                     }
                 }
 

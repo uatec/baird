@@ -364,5 +364,21 @@ namespace Baird.Tests.ViewModels
             Assert.Equal(NetflixPageKind.LoginRequired,
                 NetflixPageClassifier.Classify("https://www.netflix.com/watch/1", true, false, true, 5));
         }
+
+        [Theory]
+        // Observed live (logged out): /watch/<id> redirects to a public, country-prefixed title page that reports
+        // membershipStatus ANONYMOUS and shows a Sign In link.
+        [InlineData("https://www.netflix.com/gb/title/80107103?fromWatch=true", "ANONYMOUS", true, NetflixPageKind.LoginRequired)]
+        [InlineData("https://www.netflix.com/gb/title/80107103?fromWatch=true", "ANONYMOUS", false, NetflixPageKind.LoginRequired)]
+        [InlineData("https://www.netflix.com/gb/title/80107103?fromWatch=true", null, true, NetflixPageKind.LoginRequired)]
+        [InlineData("https://www.netflix.com/browse", "ANONYMOUS", false, NetflixPageKind.LoginRequired)]
+        // Logged-in side is NOT verified against live Netflix: member status value is an assumption.
+        [InlineData("https://www.netflix.com/gb/title/80107103?fromWatch=true", "CURRENT_MEMBER", false, NetflixPageKind.LoggedIn)]
+        [InlineData("https://www.netflix.com/browse", null, false, NetflixPageKind.LoggedIn)]
+        [InlineData("https://www.netflix.com/us-en/watch/80107105", null, false, NetflixPageKind.LoggedIn)]
+        public void Classify_UsesMembershipAndSignInLink_NotJustTheUrl(string url, string? membership, bool signInLink, NetflixPageKind expected)
+        {
+            Assert.Equal(expected, NetflixPageClassifier.Classify(url, false, false, false, 0, membership, signInLink));
+        }
     }
 }

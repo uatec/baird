@@ -29,10 +29,12 @@ namespace Baird.Services
         bool HasLoginInput,
         bool HasMfaInput,
         bool IsVideo,
-        double CurrentTime)
+        double CurrentTime,
+        string? MembershipStatus = null,
+        bool HasSignInLink = false)
     {
         public NetflixPageKind Kind =>
-            NetflixPageClassifier.Classify(Url, HasLoginInput, HasMfaInput, IsVideo, CurrentTime);
+            NetflixPageClassifier.Classify(Url, HasLoginInput, HasMfaInput, IsVideo, CurrentTime, MembershipStatus, HasSignInLink);
     }
 
     /// <summary>Result of asking the launched browser for a Widevine key system. A fact about EME access only, not proof of playback.</summary>
@@ -288,7 +290,12 @@ namespace Baird.Services
                 const hasLoginInput = !!document.querySelector('input[name=""userLoginId""], input[name=""password""], input[type=""password""]');
                 const hasMfaInput = !!document.querySelector('input[data-uia*=""pin""], input[name*=""pin""], input[autocomplete=""one-time-code""], .mfa-input');
                 const video = document.querySelector('video');
+                let membershipStatus = null;
+                try { membershipStatus = window.netflix.reactContext.models.userInfo.data.membershipStatus || null; } catch (e) { }
+                const hasSignInLink = !!document.querySelector('[data-uia=""header-signin-link""]');
                 return {
+                    membershipStatus: membershipStatus,
+                    hasSignInLink: hasSignInLink,
                     url: window.location.href,
                     title: document.title || '',
                     hasLoginInput: hasLoginInput,
@@ -308,7 +315,9 @@ namespace Baird.Services
                     HasLoginInput: r.TryGetProperty("hasLoginInput", out var l) && l.GetBoolean(),
                     HasMfaInput: r.TryGetProperty("hasMfaInput", out var m) && m.GetBoolean(),
                     IsVideo: r.TryGetProperty("isVideo", out var v) && v.GetBoolean(),
-                    CurrentTime: r.TryGetProperty("currentTime", out var c) ? c.GetDouble() : 0
+                    CurrentTime: r.TryGetProperty("currentTime", out var c) ? c.GetDouble() : 0,
+                    MembershipStatus: r.TryGetProperty("membershipStatus", out var ms) && ms.ValueKind == JsonValueKind.String ? ms.GetString() : null,
+                    HasSignInLink: r.TryGetProperty("hasSignInLink", out var sl) && sl.ValueKind == JsonValueKind.True
                 );
             }
 
