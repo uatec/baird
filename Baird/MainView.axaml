@@ -58,8 +58,8 @@
                     <DataTemplate DataType="{x:Type vm:LottieSpikeViewModel}">
                         <c:LottieSpikeControl/>
                     </DataTemplate>
-                    <DataTemplate DataType="{x:Type vm:RiveWebSpikeViewModel}">
-                        <c:RiveWebSpikeControl/>
+                    <DataTemplate DataType="{x:Type vm:RiveSpikeViewModel}">
+                        <c:RiveSpikeControl/>
                     </DataTemplate>
                     <DataTemplate DataType="{x:Type vm:ShowingVideoPlayerViewModel}">
                         <!-- Empty template - the video player is always rendered on the base layer -->
