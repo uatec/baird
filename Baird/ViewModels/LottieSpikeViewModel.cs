@@ -46,9 +46,21 @@ namespace Baird.ViewModels
                     this.RaiseAndSetIfChanged(ref _selectedAnimation, value);
                     this.RaisePropertyChanged(nameof(CurrentAnimationPath));
                     ResetRepetitionCount();
+                    RefreshLoadStatus();
                     UpdateStatus();
                 }
             }
+        }
+
+        private LottieProbeResult? _loadResult;
+        public string LoadStatusText => _loadResult == null ? "Load: not checked" : "Load: " + _loadResult.Summary;
+        public bool LoadSucceeded => _loadResult?.Loaded ?? false;
+
+        private void RefreshLoadStatus()
+        {
+            _loadResult = LottieProbe.Probe(CurrentAnimationPath);
+            this.RaisePropertyChanged(nameof(LoadStatusText));
+            this.RaisePropertyChanged(nameof(LoadSucceeded));
         }
 
         public string CurrentAnimationPath => SelectedAnimation?.Path ?? string.Empty;
@@ -248,6 +260,7 @@ namespace Baird.ViewModels
                 RequestSeek?.Invoke((float)progress);
             });
 
+            RefreshLoadStatus();
             UpdateStatus();
         }
 
@@ -296,7 +309,7 @@ namespace Baird.ViewModels
         {
             var state = IsPlaying ? $"Playing ({PlaybackRate}x)" : "Paused";
             var loopInfo = IsLooping ? $"Infinite Loop (Loops: {RepetitionCount})" : $"Single Run (Loops: {RepetitionCount})";
-            StatusText = $"{state} • {loopInfo} • SkiaSharp.Skottie Native Vector";
+            StatusText = $"{state} • {loopInfo} • SkiaSharp.Skottie";
         }
     }
 }

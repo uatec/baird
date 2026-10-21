@@ -111,7 +111,7 @@
                                 ClipToBounds="True">
                             <Grid>
                                 <!-- Subtle Background Grid Marks -->
-                                <TextBlock Text="SKOTTIE HARDWARE ACCELERATED RASTERIZER"
+                                <TextBlock Text="SKOTTIE VECTOR RENDER"
                                            FontSize="10" FontWeight="Bold" Foreground="#27272A"
                                            HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"/>
 
@@ -134,6 +134,22 @@
                                         <TextBlock Text="•" Foreground="#71717A"/>
                                         <TextBlock Text="{Binding SelectedAnimation.Category}" Foreground="#38BDF8" FontSize="13"/>
                                     </StackPanel>
+                                </Border>
+
+                                <!-- Load status (never silent on failure) -->
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                        Background="#CC18181B" CornerRadius="4" Padding="8,4" Margin="12">
+                                    <TextBlock Name="LoadStatusLine" Text="{Binding LoadStatusText}" FontSize="12" FontFamily="Monospace"
+                                               Classes.ok="{Binding LoadSucceeded}">
+                                        <TextBlock.Styles>
+                                            <Style Selector="TextBlock#LoadStatusLine">
+                                                <Setter Property="Foreground" Value="#F87171"/>
+                                            </Style>
+                                            <Style Selector="TextBlock#LoadStatusLine.ok">
+                                                <Setter Property="Foreground" Value="#4ADE80"/>
+                                            </Style>
+                                        </TextBlock.Styles>
+                                    </TextBlock>
                                 </Border>
 
                                 <!-- Playback Rate Overlay (Top Right) -->
