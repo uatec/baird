@@ -37,6 +37,7 @@ namespace Baird.Mpv
         private readonly Dictionary<string, string> _overrides = new(StringComparer.OrdinalIgnoreCase);
         private volatile bool _eventLoopRunning;
         private volatile bool _disposed;
+        private int _playGeneration;
         private Action? _requestRender;
 
         // Render parameters, allocated once in InitializeOpenGl and reused every frame.
@@ -635,8 +636,42 @@ namespace Baird.Mpv
             State = PlaybackState.Loading;
             Volatile.Write(ref _timePosSeconds, 0);
 
+            // Any Play supersedes an iPlayer resolution still in flight.
+            int generation = Interlocked.Increment(ref _playGeneration);
+
             string startArg = ((int)(startSeconds ?? 0)).ToString(CultureInfo.InvariantCulture);
             Console.WriteLine($"[MpvPlayer] Playing URL: {SecretRedactor.Redact(url)} (start={startArg})");
+
+            if (BbcIPlayerStreamResolver.TryGetEpisodePid(url, out var pid))
+            {
+                // yt-dlp can no longer extract iPlayer, so resolve the HLS stream ourselves.
+                _ = Task.Run(async () =>
+                {
+                    string target = url;
+                    try
+                    {
+                        target = await BbcIPlayerStreamResolver.ResolveAsync(pid).ConfigureAwait(false) ?? url;
+                        if (target == url) Console.WriteLine($"[MpvPlayer] iPlayer: no HLS stream found for {pid}, falling back to yt-dlp");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[MpvPlayer] iPlayer: resolving {pid} failed ({ex.Message}), falling back to yt-dlp");
+                    }
+                    if (Volatile.Read(ref _playGeneration) != generation) return;
+                    if (target != url) Console.WriteLine($"[MpvPlayer] iPlayer: resolved {pid} to HLS stream");
+                    LoadFile(target, startSeconds, startArg);
+                });
+            }
+            else
+            {
+                LoadFile(url, startSeconds, startArg);
+            }
+
+            SetPropertyString("pause", "no");
+        }
+
+        private void LoadFile(string url, double? startSeconds, string startArg)
+        {
             if (startSeconds.HasValue)
             {
                 // "replace" is the default flag (replace current file)
@@ -648,8 +683,6 @@ namespace Baird.Mpv
             {
                 Command("loadfile", url);
             }
-
-            SetPropertyString("pause", "no");
         }
 
         public void Pause()
@@ -683,6 +716,7 @@ namespace Baird.Mpv
 
         public void Stop()
         {
+            Interlocked.Increment(ref _playGeneration);
             Command("stop");
             State = PlaybackState.Idle;
         }

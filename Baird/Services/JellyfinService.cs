@@ -64,10 +64,9 @@ namespace Baird.Services
             var authHeader = $"MediaBrowser Client=\"Baird Media Player\", Device=\"Baird Device\", DeviceId=\"{_deviceId}\", Version=\"1.0.0\"";
 
             // Note: HttpClient DefaultRequestHeaders are persistent.
-            if (!_httpClient.DefaultRequestHeaders.Contains("X-Emby-Authorization"))
-            {
-                _httpClient.DefaultRequestHeaders.Add("X-Emby-Authorization", authHeader);
-            }
+            // Jellyfin 12 rejects the legacy X-Emby-Authorization / X-Emby-Token headers
+            // (400 on login, 401 afterwards); the standard Authorization header works on all versions.
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader);
 
             Console.WriteLine($"[JellyfinService] JellyfinService configured for {SecretRedactor.Redact(_serverUrl)} (authentication will happen on first use)");
         }
@@ -135,11 +134,10 @@ namespace Baird.Services
             Console.WriteLine($"[JellyfinService] Auth Success. Token received: {!string.IsNullOrEmpty(_accessToken)} User: {_userId}");
 
             // 3. Update Headers with Token
-            _httpClient.DefaultRequestHeaders.Remove("X-Emby-Authorization");
+            _httpClient.DefaultRequestHeaders.Remove("Authorization");
             var authHeader = $"MediaBrowser Client=\"Baird Media Player\", Device=\"Baird Device\", DeviceId=\"{_deviceId}\", Version=\"1.0.0\"";
             var authHeaderWithToken = $"{authHeader}, Token=\"{_accessToken}\"";
-            _httpClient.DefaultRequestHeaders.Add("X-Emby-Authorization", authHeaderWithToken);
-            _httpClient.DefaultRequestHeaders.Add("X-Emby-Token", _accessToken);
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeaderWithToken);
         }
 
         private static string LoadOrCreateDeviceId()
