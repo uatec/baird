@@ -271,6 +271,8 @@ fi
 # Keg dirs carry a formula revision suffix (0.0.201_1); the tap version doesn't.
 if [[ "${current%_*}" == "$latest" ]]; then
     info "Baird is already up to date ($current)."
+    # yt-dlp breaks (YouTube changes) between Baird releases; keep it current regardless.
+    "$(dirname "${BASH_SOURCE[0]}")/update_ytdlp.sh" | while IFS= read -r line; do info "$line"; done
     exit 0
 fi
 
