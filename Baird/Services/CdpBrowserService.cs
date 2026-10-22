@@ -31,7 +31,9 @@ namespace Baird.Services
         bool IsVideo,
         double CurrentTime,
         string? MembershipStatus = null,
-        bool HasSignInLink = false)
+        bool HasSignInLink = false,
+        string? PlaybackErrorCode = null,
+        string? PlaybackErrorMessage = null)
     {
         /// <summary>Netflix itself reports a member (not ANONYMOUS). Used to confirm a sign-in worked.</summary>
         public bool IsSignedIn => MembershipStatus is { Length: > 0 } m && !string.Equals(m, "ANONYMOUS", StringComparison.OrdinalIgnoreCase);
@@ -163,6 +165,7 @@ namespace Baird.Services
             BrowserPath = browserPath;
 
             Directory.CreateDirectory(userDataDir);
+            if (!ChromiumProfilePrefs.DisablePasswordManager(userDataDir)) Log("[CDP] Could not pre-seed the profile to disable the password manager.");
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
@@ -183,6 +186,9 @@ namespace Baird.Services
                             // --app window gets a title bar, and --window-position=-4000,-4000 is ignored, so the old
                             // "hidden, offscreen" launch was visible and framed. Kiosk is frameless wherever it appears.
                             $"--kiosk " +
+                            // No permission popups (Netflix asks for notifications): nobody can click them on a TV.
+                            // The save-password bubble is disabled through profile prefs (ChromiumProfilePrefs) instead.
+                            $"--deny-permission-prompts " +
                             $"--window-size=1920,1080 " +
                             $"--user-data-dir=\"{userDataDir}\" " +
                             $"--autoplay-policy=no-user-gesture-required " +
@@ -310,7 +316,22 @@ namespace Baird.Services
                 let membershipStatus = null;
                 try { membershipStatus = window.netflix.reactContext.models.userInfo.data.membershipStatus || null; } catch (e) { }
                 const hasSignInLink = !!document.querySelector('[data-uia=""header-signin-link""]');
+                // Cookie-consent banner (OneTrust): accept so it never covers the TV.
+                try { const ob = document.querySelector('#onetrust-accept-btn-handler'); if (ob) ob.click(); } catch (e) { }
+                // Netflix error page ('Pardon the interruption ... Error Code E100').
+                let playbackErrorCode = null, playbackErrorMessage = null;
+                try {
+                    const text = document.body ? document.body.innerText : '';
+                    const m = text.match(/Error Code\s*([A-Z0-9._-]+)/);
+                    if (m) {
+                        playbackErrorCode = m[1];
+                        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+                        playbackErrorMessage = lines.find(l => /please|unable|not available|went wrong/i.test(l)) || lines.slice(0, 3).join(' ');
+                    }
+                } catch (e) { }
                 return {
+                    playbackErrorCode: playbackErrorCode,
+                    playbackErrorMessage: playbackErrorMessage,
                     membershipStatus: membershipStatus,
                     hasSignInLink: hasSignInLink,
                     url: window.location.href,
@@ -334,7 +355,9 @@ namespace Baird.Services
                     IsVideo: r.TryGetProperty("isVideo", out var v) && v.GetBoolean(),
                     CurrentTime: r.TryGetProperty("currentTime", out var c) ? c.GetDouble() : 0,
                     MembershipStatus: r.TryGetProperty("membershipStatus", out var ms) && ms.ValueKind == JsonValueKind.String ? ms.GetString() : null,
-                    HasSignInLink: r.TryGetProperty("hasSignInLink", out var sl) && sl.ValueKind == JsonValueKind.True
+                    HasSignInLink: r.TryGetProperty("hasSignInLink", out var sl) && sl.ValueKind == JsonValueKind.True,
+                    PlaybackErrorCode: r.TryGetProperty("playbackErrorCode", out var pc) && pc.ValueKind == JsonValueKind.String ? pc.GetString() : null,
+                    PlaybackErrorMessage: r.TryGetProperty("playbackErrorMessage", out var pm) && pm.ValueKind == JsonValueKind.String ? pm.GetString() : null
                 );
             }
 
@@ -618,11 +641,11 @@ namespace Baird.Services
             // Chromium also creates a tiny (10x10) helper X window with the same class, so pick the biggest one, and wait for
             // it: handing focus back before the real window has mapped just lets the real window open on top afterwards.
             string? chromiumWindow = null;
-            for (int i = 0; i < 24 && !ct.IsCancellationRequested; i++)
+            for (int i = 0; i < 60 && !ct.IsCancellationRequested; i++)
             {
                 chromiumWindow = FindBrowserWindowId(minWidth: 640);
                 if (chromiumWindow != null) break;
-                await Task.Delay(250, ct);
+                await Task.Delay(100, ct);
             }
 
             if (chromiumWindow == null)
@@ -631,7 +654,7 @@ namespace Baird.Services
                 return;
             }
 
-            await Task.Delay(500, ct); // let the compositor finish mapping/focusing it
+            await Task.Delay(100, ct); // brief: any longer and the window is visible on top of Baird
             if (visible)
             {
                 RunShellCommand("xdotool", $"windowactivate {chromiumWindow}");

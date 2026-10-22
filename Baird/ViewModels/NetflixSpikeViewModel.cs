@@ -273,6 +273,7 @@ namespace Baird.ViewModels
         {
             var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
             LogEntries.Add(line);
+            Console.WriteLine($"[NetflixSpike] {message}"); // also to the journal (journalctl -t baird); messages never contain the password
             if (LogEntries.Count > 200)
             {
                 LogEntries.RemoveAt(0);
@@ -423,6 +424,7 @@ namespace Baird.ViewModels
                         AddLog($"[Auth Check] URL: {authStatus.Url} | Kind: {kind} | Video: {authStatus.IsVideo} t={authStatus.CurrentTime:F2}");
 
                         if (await HandleKindAsync(kind, authStatus.Url, ct, authStatus.MembershipStatus)) return;
+                        if (await HandlePlaybackErrorAsync(authStatus)) return;
                         if (kind is NetflixPageKind.LoggedIn or NetflixPageKind.VideoPlaying) break;
                     }
 
@@ -446,6 +448,19 @@ namespace Baird.ViewModels
                 Fail($"Playback flow error: {ex.Message}");
                 try { await _browserService.StopAsync(); } catch { }
             }
+        }
+
+        /// <summary>Netflix's own error page (e.g. E100 'not available to watch instantly'). Ends the flow with the reason.</summary>
+        private async Task<bool> HandlePlaybackErrorAsync(AuthPageStatus auth)
+        {
+            if (string.IsNullOrEmpty(auth.PlaybackErrorCode)) return false;
+
+            var reason = string.IsNullOrWhiteSpace(auth.PlaybackErrorMessage) ? "Netflix showed an error page." : auth.PlaybackErrorMessage;
+            Fail($"Netflix refused to play this title: \"{reason}\" (Error Code {auth.PlaybackErrorCode}). You are signed in. " +
+                 $"Try another title: edit the URL above, or set NETFLIX_TARGET_URL in ~/.baird/config.ini. Page: {auth.Url}");
+            AddLog($"[Playback] Netflix error page: code {auth.PlaybackErrorCode}, message \"{reason}\".");
+            await _browserService.StopAsync();
+            return true;
         }
 
         /// <summary>Handles terminal page kinds. Returns true if the flow was ended/redirected.</summary>
@@ -587,6 +602,8 @@ namespace Baird.ViewModels
                     {
                         if (await HandleKindAsync(kind, auth.Url, ct, auth.MembershipStatus)) return;
                     }
+
+                    if (await HandlePlaybackErrorAsync(auth)) return;
                 }
 
                 var status = await _browserService.PollVideoPlaybackAsync(ct);

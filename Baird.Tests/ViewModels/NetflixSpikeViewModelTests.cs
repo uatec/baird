@@ -484,5 +484,23 @@ namespace Baird.Tests.ViewModels
             Assert.Equal("a@b.c", c!.User);
             Assert.Equal("pw-with-dashes", c.Password);
         }
+
+        [Fact]
+        public async Task NetflixErrorPage_FailsWithCodeAndMessage_AndDoesNotRevealOrPlay()
+        {
+            var err = new AuthPageStatus("https://www.netflix.com/watch/80107105", "Netflix", false, false, false, 0, "CURRENT_MEMBER", false,
+                "E100", "This title is not available to watch instantly. Please try another title.");
+            var svc = new MockCdpBrowserService { AuthStatusToReturn = err };
+            var vm = new NetflixSpikeViewModel(svc);
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(NetflixSpikeState.Failed, vm.State);
+            Assert.Contains("E100", vm.StatusMessage);
+            Assert.Contains("not available to watch instantly", vm.StatusMessage);
+            Assert.Contains("NETFLIX_TARGET_URL", vm.StatusMessage);
+            Assert.False(svc.RevealWindowCalled);
+            Assert.True(svc.StopCalled);
+        }
     }
 }

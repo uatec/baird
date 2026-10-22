@@ -141,6 +141,7 @@ namespace Baird.ViewModels
             Requests.PlayRequested += (s, item) => PlayItem(item);
 
             NetflixSpike = new NetflixSpikeViewModel(NetflixCredentials.FromConfiguration(configuration));
+            if (configuration?["NETFLIX_TARGET_URL"] is { Length: > 0 } netflixTarget) NetflixSpike.TargetUrl = netflixTarget;
             NetflixSpike.BackRequested += (s, e) => GoBack();
 
             LottieSpike = new LottieSpikeViewModel();
