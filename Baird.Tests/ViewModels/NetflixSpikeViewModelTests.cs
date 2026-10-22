@@ -58,6 +58,9 @@ namespace Baird.Tests.ViewModels
         public string? LoginError { get; set; }
         public Func<AuthPageStatus?>? AuthSequence { get; set; }
 
+        public int WarmUpCalls { get; private set; }
+        public Task<string> WarmUpWidevineAsync(CancellationToken ct = default) { WarmUpCalls++; return Task.FromResult("mock warm-up"); }
+
         public Task<bool> NavigateAsync(string url, CancellationToken ct = default) { NavigateCalled = true; LastNavigatedUrl = url; return Task.FromResult(true); }
         public Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default) { SubmitCredentialsCalls++; return Task.FromResult(SubmitResult()); }
         public Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default) => Task.FromResult(LoginError);
@@ -499,8 +502,30 @@ namespace Baird.Tests.ViewModels
             Assert.Contains("E100", vm.StatusMessage);
             Assert.Contains("not available to watch instantly", vm.StatusMessage);
             Assert.Contains("NETFLIX_TARGET_URL", vm.StatusMessage);
+            Assert.Contains("warm-up", vm.StatusMessage);
+            Assert.Equal(1, svc.WarmUpCalls); // exactly one warm-up + reload before giving up
             Assert.False(svc.RevealWindowCalled);
             Assert.True(svc.StopCalled);
+        }
+
+        [Fact]
+        public async Task NetflixErrorPage_ThenWarmUpSucceeds_ContinuesToPlayback()
+        {
+            var err = new AuthPageStatus("https://www.netflix.com/watch/80107105", "Netflix", false, false, false, 0, "CURRENT_MEMBER", false,
+                "E100", "This title is not available to watch instantly. Please try another title.");
+            var ok = new AuthPageStatus("https://www.netflix.com/watch/80107105", "Netflix", false, false, true, 5, "CURRENT_MEMBER", false);
+            double t = 1.0;
+            var svc = new MockCdpBrowserService();
+            svc.AuthSequence = () => svc.WarmUpCalls > 0 ? ok : err;
+            // After the reload the video really plays: currentTime advances between polls.
+            svc.VideoSequence = () => new VideoPlaybackStatus(true, t += 0.5, 4, false, 1400, "https://www.netflix.com/watch/80107105", "Netflix");
+            var vm = new NetflixSpikeViewModel(svc) { PollInterval = TimeSpan.FromMilliseconds(5), BufferingTimeout = TimeSpan.FromSeconds(3) };
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(1, svc.WarmUpCalls);
+            Assert.Equal(vm.TargetUrl, svc.LastNavigatedUrl); // reloaded the title after the warm-up
+            Assert.Equal(NetflixSpikeState.Playing, vm.State);
         }
     }
 }

@@ -60,6 +60,7 @@ namespace Baird.Services
         Task<bool> LaunchAsync(string browserPath, string url, int port, string userDataDir, bool visible = false, CancellationToken ct = default);
         Task<AuthPageStatus?> CheckAuthStatusAsync(CancellationToken ct = default);
         Task<WidevineStatus> CheckWidevineAsync(CancellationToken ct = default);
+        Task<string> WarmUpWidevineAsync(CancellationToken ct = default);
         Task<bool> NavigateAsync(string url, CancellationToken ct = default);
         Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default);
         Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default);
@@ -432,6 +433,44 @@ namespace Baird.Services
             var r = await EvaluateInPageAsync(
                 "(function(){const e=document.querySelector('[data-uia*=\"error\"],[role=\"alert\"]');return e?(e.innerText||'').trim().slice(0,300):null;})()", ct);
             return r is { ValueKind: JsonValueKind.String } v && !string.IsNullOrWhiteSpace(v.GetString()) ? v.GetString() : null;
+        }
+
+        /// <summary>
+        /// Netflix answered E100 ("not available to watch instantly") for every title on the Pi's Chromium until the page had
+        /// asked Widevine about a wide range of configurations (measured on the Pi: after this, the same titles played at 720p;
+        /// a single-config check + createMediaKeys was NOT enough). Run on the Netflix origin, then reload the title.
+        /// </summary>
+        public async Task<string> WarmUpWidevineAsync(CancellationToken ct = default)
+        {
+            const string script = @"(async function() {
+                if (!navigator.requestMediaKeySystemAccess) return 'requestMediaKeySystemAccess missing';
+                let ok = 0, total = 0;
+                const cfg = (rob, codec) => [{
+                    initDataTypes: ['cenc'],
+                    videoCapabilities: [Object.assign({ contentType: 'video/mp4; codecs=""' + codec + '""' }, rob ? { robustness: rob } : {})],
+                    audioCapabilities: [{ contentType: 'audio/mp4; codecs=""mp4a.40.2""' }],
+                    persistentState: 'optional', distinctiveIdentifier: 'optional', sessionTypes: ['temporary']
+                }];
+                for (const rob of [null, 'SW_SECURE_CRYPTO', 'SW_SECURE_DECODE', 'HW_SECURE_CRYPTO']) {
+                    for (const codec of ['avc1.640028', 'avc1.4d401f', 'vp09.00.40.08']) {
+                        total++;
+                        try { await navigator.requestMediaKeySystemAccess('com.widevine.alpha', cfg(rob, codec)); ok++; } catch (e) { }
+                    }
+                }
+                let keys = 'no';
+                try { const a = await navigator.requestMediaKeySystemAccess('com.widevine.alpha', cfg(null, 'avc1.640028')); await a.createMediaKeys(); keys = 'ok'; } catch (e) { keys = 'FAIL ' + e; }
+                return ok + '/' + total + ' configurations supported; createMediaKeys ' + keys;
+            })()";
+
+            try
+            {
+                var result = await EvaluateInPageAsync(script, ct);
+                return result is { ValueKind: JsonValueKind.String } v ? v.GetString() ?? "no result" : "no result from page";
+            }
+            catch (Exception ex)
+            {
+                return "warm-up error: " + ex.Message;
+            }
         }
 
         public async Task<WidevineStatus> CheckWidevineAsync(CancellationToken ct = default)

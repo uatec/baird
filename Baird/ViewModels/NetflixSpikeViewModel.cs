@@ -201,6 +201,7 @@ namespace Baird.ViewModels
 
         private readonly NetflixCredentials? _credentials;
         private bool _autoSignInAttempted;
+        private bool _widevineWarmedUp;
 
         /// <summary>True when NETFLIX_USER and NETFLIX_PASS are set in config.ini.</summary>
         public bool HasCredentials => _credentials != null;
@@ -424,7 +425,7 @@ namespace Baird.ViewModels
                         AddLog($"[Auth Check] URL: {authStatus.Url} | Kind: {kind} | Video: {authStatus.IsVideo} t={authStatus.CurrentTime:F2}");
 
                         if (await HandleKindAsync(kind, authStatus.Url, ct, authStatus.MembershipStatus)) return;
-                        if (await HandlePlaybackErrorAsync(authStatus)) return;
+                        if (await HandlePlaybackErrorAsync(authStatus, ct)) return;
                         if (kind is NetflixPageKind.LoggedIn or NetflixPageKind.VideoPlaying) break;
                     }
 
@@ -451,14 +452,26 @@ namespace Baird.ViewModels
         }
 
         /// <summary>Netflix's own error page (e.g. E100 'not available to watch instantly'). Ends the flow with the reason.</summary>
-        private async Task<bool> HandlePlaybackErrorAsync(AuthPageStatus auth)
+        private async Task<bool> HandlePlaybackErrorAsync(AuthPageStatus auth, CancellationToken ct)
         {
             if (string.IsNullOrEmpty(auth.PlaybackErrorCode)) return false;
 
             var reason = string.IsNullOrWhiteSpace(auth.PlaybackErrorMessage) ? "Netflix showed an error page." : auth.PlaybackErrorMessage;
-            Fail($"Netflix refused to play this title: \"{reason}\" (Error Code {auth.PlaybackErrorCode}). You are signed in. " +
-                 $"Try another title: edit the URL above, or set NETFLIX_TARGET_URL in ~/.baird/config.ini. Page: {auth.Url}");
             AddLog($"[Playback] Netflix error page: code {auth.PlaybackErrorCode}, message \"{reason}\".");
+
+            // On the Pi's Chromium Netflix gives E100 until the page has probed Widevine widely; warm it up and retry once.
+            if (!_widevineWarmedUp)
+            {
+                _widevineWarmedUp = true;
+                AddLog("[Playback] Warming up Widevine (probing key-system configurations), then reloading the title once...");
+                var detail = await _browserService.WarmUpWidevineAsync(ct);
+                AddLog($"[Playback] Widevine warm-up: {detail}");
+                await _browserService.NavigateAsync(TargetUrl, ct);
+                return false; // keep polling: the reloaded page decides
+            }
+
+            Fail($"Netflix refused to play this title: \"{reason}\" (Error Code {auth.PlaybackErrorCode}) even after a Widevine warm-up and reload. You are signed in. " +
+                 $"Try another title: edit the URL above, or set NETFLIX_TARGET_URL in ~/.baird/config.ini. Page: {auth.Url}");
             await _browserService.StopAsync();
             return true;
         }
@@ -603,7 +616,7 @@ namespace Baird.ViewModels
                         if (await HandleKindAsync(kind, auth.Url, ct, auth.MembershipStatus)) return;
                     }
 
-                    if (await HandlePlaybackErrorAsync(auth)) return;
+                    if (await HandlePlaybackErrorAsync(auth, ct)) return;
                 }
 
                 var status = await _browserService.PollVideoPlaybackAsync(ct);
