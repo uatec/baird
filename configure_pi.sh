@@ -263,6 +263,11 @@ if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
     <keybind key="XF86AudioMute"><action name="None" /></keybind>
     <keybind key="XF86PowerOff" onRelease="yes"><action name="None" /></keybind>
   </keyboard>
+  <!-- The Netflix spike's Chromium (--class=baird-netflix, kiosk) opens at the bottom of the stack, behind Baird's fullscreen
+       window, and is raised with xdotool windowactivate when playback starts. Don't add ignoreFocusRequest: it blocks the raise. -->
+  <windowRules>
+    <windowRule identifier="baird-netflix" skipTaskbar="yes" skipWindowSwitcher="yes"><action name="Lower"/></windowRule>
+  </windowRules>
 </labwc_config>
 LABWC_RC_XML
         chown "$TARGET_USER:$TARGET_USER" "$LABWC_RC"

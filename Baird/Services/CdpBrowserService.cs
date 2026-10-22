@@ -173,7 +173,7 @@ namespace Baird.Services
             Log($"[CDP] Starting browser process: {browserPath}");
             Log($"[CDP] URL: {url}");
             Log($"[CDP] User data dir: {userDataDir}");
-            Log(visible ? "[CDP] Mode: VISIBLE (sign-in), kiosk (frameless)" : "[CDP] Mode: kiosk (frameless); note labwc ignores off-screen placement, so this window is not actually hidden");
+            Log(visible ? "[CDP] Mode: VISIBLE (sign-in), kiosk (frameless)" : "[CDP] Mode: kiosk (frameless), kept behind Baird until revealed");
 
             var psi = new ProcessStartInfo
             {
@@ -197,6 +197,9 @@ namespace Baird.Services
                 UseShellExecute = false,
                 CreateNoWindow = false
             };
+
+            // Chromium grabs keyboard focus when it opens; remember Baird's window so focus can go back to it.
+            var previousActive = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? RunShellOutput("xdotool", "getactivewindow") : null;
 
             try
             {
@@ -287,6 +290,8 @@ namespace Baird.Services
                     _ = Task.Run(() => ReceiveLoopAsync(_browserWs, _pendingBrowserRequests, _recvCts.Token));
                     Log("[CDP] Connected to Browser DevTools WebSocket.");
                 }
+
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) await SettleWindowStackingAsync(visible, previousActive, ct);
 
                 return true;
             }
@@ -552,7 +557,7 @@ namespace Baird.Services
 
         public async Task<bool> RevealWindowAsync(CancellationToken ct = default)
         {
-            Log("[CDP] Revealing browser window: moving to (0,0) and requesting fullscreen...");
+            Log("[CDP] Revealing browser window: raising it above Baird (fullscreen)...");
 
             // 1. Attempt CDP Browser.setWindowBounds
             if (_browserWs != null && _browserWs.State == WebSocketState.Open)
@@ -566,16 +571,9 @@ namespace Baird.Services
                         await SendBrowserCommandAsync("Browser.setWindowBounds", new JsonObject
                         {
                             ["windowId"] = windowId,
-                            ["bounds"] = new JsonObject
-                            {
-                                ["left"] = 0,
-                                ["top"] = 0,
-                                ["width"] = 1920,
-                                ["height"] = 1080,
-                                ["windowState"] = "fullscreen"
-                            }
+                            ["bounds"] = new JsonObject { ["windowState"] = "fullscreen" } // CDP rejects a state combined with left/top/size
                         }, ct);
-                        Log($"[CDP] Set window bounds via CDP (windowId: {windowId}) to (0,0, 1920x1080, fullscreen).");
+                        Log($"[CDP] Set window state via CDP (windowId: {windowId}) to fullscreen.");
                     }
                 }
                 catch (Exception ex)
@@ -587,7 +585,16 @@ namespace Baird.Services
             // 2. Attempt Linux wmctrl & xdotool
             RunShellCommand("wmctrl", "-x -r baird-netflix -e 0,0,0,1920,1080");
             RunShellCommand("wmctrl", "-x -r baird-netflix -b add,fullscreen");
-            RunShellCommand("xdotool", "search --class baird-netflix windowmove 0 0 windowactivate");
+            var browserWindow = FindBrowserWindowId(minWidth: 640);
+            if (browserWindow != null)
+            {
+                RunShellCommand("xdotool", $"windowactivate {browserWindow}");
+                Log("[CDP] Window stacking: browser raised above Baird.");
+            }
+            else
+            {
+                Log("[CDP] Window stacking: could not find the browser's window to raise it.");
+            }
 
             // 3. Request fullscreen in page context
             try
@@ -599,6 +606,90 @@ namespace Baird.Services
             catch { }
 
             return true;
+        }
+
+        /// <summary>
+        /// Chromium's window is lowered below Baird by a labwc windowRule (class baird-netflix, see configure_pi.sh), but it
+        /// still takes keyboard focus when it opens. Hidden mode: hand focus back to Baird so the remote keeps driving Baird's UI.
+        /// Visible (sign-in) mode: raise Chromium so the user can type into it.
+        /// </summary>
+        private async Task SettleWindowStackingAsync(bool visible, string? previousActive, CancellationToken ct)
+        {
+            // Chromium also creates a tiny (10x10) helper X window with the same class, so pick the biggest one, and wait for
+            // it: handing focus back before the real window has mapped just lets the real window open on top afterwards.
+            string? chromiumWindow = null;
+            for (int i = 0; i < 24 && !ct.IsCancellationRequested; i++)
+            {
+                chromiumWindow = FindBrowserWindowId(minWidth: 640);
+                if (chromiumWindow != null) break;
+                await Task.Delay(250, ct);
+            }
+
+            if (chromiumWindow == null)
+            {
+                Log("[CDP] Window stacking: could not find the browser's window via xdotool (not X11/XWayland?); leaving it as is.");
+                return;
+            }
+
+            await Task.Delay(500, ct); // let the compositor finish mapping/focusing it
+            if (visible)
+            {
+                RunShellCommand("xdotool", $"windowactivate {chromiumWindow}");
+                Log("[CDP] Window stacking: browser raised for sign-in.");
+            }
+            else if (!string.IsNullOrEmpty(previousActive))
+            {
+                RunShellCommand("xdotool", $"windowactivate {previousActive}");
+                Log("[CDP] Window stacking: browser stays behind Baird; focus returned to Baird.");
+            }
+            else
+            {
+                Log("[CDP] Window stacking: browser should be behind Baird, but Baird's window id is unknown so focus was not returned.");
+            }
+        }
+
+        /// <summary>The browser's main X window (largest window of class baird-netflix), or null if none is big enough yet.</summary>
+        private static string? FindBrowserWindowId(int minWidth)
+        {
+            var ids = RunShellOutput("xdotool", "search --class baird-netflix");
+            if (ids == null) return null;
+
+            string? best = null;
+            long bestArea = 0;
+            foreach (var id in ids.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var geo = RunShellOutput("xdotool", $"getwindowgeometry --shell {id}");
+                if (geo == null) continue;
+                long w = 0, h = 0;
+                foreach (var line in geo.Split('\n'))
+                {
+                    if (line.StartsWith("WIDTH=") && long.TryParse(line.AsSpan(6), out var pw)) w = pw;
+                    if (line.StartsWith("HEIGHT=") && long.TryParse(line.AsSpan(7), out var ph)) h = ph;
+                }
+                if (w >= minWidth && w * h > bestArea) { best = id; bestArea = w * h; }
+            }
+            return best;
+        }
+
+        private static string? RunShellOutput(string fileName, string args)
+        {
+            try
+            {
+                using var proc = Process.Start(new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = args,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                });
+                if (proc == null) return null;
+                var output = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit(2000);
+                return string.IsNullOrEmpty(output) ? null : output;
+            }
+            catch { return null; }
         }
 
         private static void RunShellCommand(string fileName, string args)
