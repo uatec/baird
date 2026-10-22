@@ -173,13 +173,16 @@ namespace Baird.Services
             Log($"[CDP] Starting browser process: {browserPath}");
             Log($"[CDP] URL: {url}");
             Log($"[CDP] User data dir: {userDataDir}");
-            Log(visible ? "[CDP] Mode: VISIBLE (sign-in)" : "[CDP] Mode: hidden, window at -4000,-4000");
+            Log(visible ? "[CDP] Mode: VISIBLE (sign-in), kiosk (frameless)" : "[CDP] Mode: kiosk (frameless); note labwc ignores off-screen placement, so this window is not actually hidden");
 
             var psi = new ProcessStartInfo
             {
                 FileName = browserPath,
                 Arguments = $"--remote-debugging-port={port} " +
-                            (visible ? "--start-fullscreen " : "--window-position=-4000,-4000 ") +
+                            // --kiosk = fullscreen with no frame, tab strip or toolbar. Measured on the Pi (labwc): a normal or
+                            // --app window gets a title bar, and --window-position=-4000,-4000 is ignored, so the old
+                            // "hidden, offscreen" launch was visible and framed. Kiosk is frameless wherever it appears.
+                            $"--kiosk " +
                             $"--window-size=1920,1080 " +
                             $"--user-data-dir=\"{userDataDir}\" " +
                             $"--autoplay-policy=no-user-gesture-required " +
