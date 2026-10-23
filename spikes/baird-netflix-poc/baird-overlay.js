@@ -188,8 +188,13 @@
     `;
 
     // 2. Locate the HTML5 Video element
+    // Disney+ renders two <video> elements and the first stays empty, so prefer the one that has a source.
     function getVideo() {
-        return document.querySelector("video");
+        const videos = document.querySelectorAll("video");
+        for (const v of videos) {
+            if (v.currentSrc && v.readyState > 0) return v;
+        }
+        return videos[0] || null;
     }
 
     // 3. Create Baird HUD DOM Structure

@@ -78,10 +78,9 @@ namespace Baird.ViewModels
         public string BadgeText => MediaType == "movie" ? "Movie" : "TV";
     }
 
-    public class SeerrchViewModel : ReactiveObject
+    public class SeerrchViewModel : ReactiveObject, ISearchTextInput
     {
         public event EventHandler? BackRequested;
-        public event EventHandler? SearchBoxFocusRequested;
 
         private readonly IJellyseerrService _jellyseerrService;
         private CancellationTokenSource? _searchCts;
@@ -169,9 +168,12 @@ namespace Baird.ViewModels
             _ = Task.Run(() => LoadTrending());
         }
 
-        public void RequestSearchBoxFocus()
+        public void AppendText(string text) => SearchText += text;
+
+        public void Backspace()
         {
-            SearchBoxFocusRequested?.Invoke(this, EventArgs.Empty);
+            if (!string.IsNullOrEmpty(SearchText))
+                SearchText = SearchText.Substring(0, SearchText.Length - 1);
         }
 
         private async Task LoadTrending()

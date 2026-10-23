@@ -5,80 +5,72 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Baird.Services;
 using System;
 
 namespace Baird.Controls
 {
     public partial class OmniSearchControl : UserControl
     {
-        public System.Windows.Input.ICommand MoveFocusDownCommand { get; }
-        public System.Windows.Input.ICommand MoveFocusUpCommand { get; }
+        // Must match the UniformGrid Columns of ResultsList in OmniSearchControl.axaml.
+        private const int ResultColumns = 4;
 
-        private bool _suppressNextSelectAll = false;
+        private SearchPaneNavigation? _navigation;
 
         public OmniSearchControl()
         {
             InitializeComponent();
-            MoveFocusDownCommand = ReactiveUI.ReactiveCommand.Create(MoveFocusDown);
-            MoveFocusUpCommand = ReactiveUI.ReactiveCommand.Create(MoveFocusUp);
+
+            // Tunnel so the pane hand-off runs before XY focus picks a neighbour.
+            AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
 
             this.AttachedToVisualTree += (s, e) =>
             {
-                var box = this.FindControl<TextBox>("SearchBox");
-                if (box != null)
-                {
-                    box.GotFocus += (sender, args) =>
-                    {
-                        UpdateFocusState(true);
-                        if (!_suppressNextSelectAll)
-                            Dispatcher.UIThread.Post(() => box.SelectAll(), DispatcherPriority.Input);
-                        else
-                            Dispatcher.UIThread.Post(() => { var len = box.Text?.Length ?? 0; box.SelectionStart = len; box.SelectionEnd = len; }, DispatcherPriority.Input);
-                        _suppressNextSelectAll = false;
-                    };
-                    box.LostFocus += (sender, args) => UpdateFocusState(false);
-                }
+                var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard")!;
+                keyboard.KeyPressed += key => (DataContext as ViewModels.ISearchTextInput)?.AppendText(key.ToLowerInvariant());
+                keyboard.BackspacePressed += () => (DataContext as ViewModels.ISearchTextInput)?.Backspace();
+                keyboard.EnterPressed += () => Navigation.FocusFirstResult();
 
-                var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
-                if (keyboard != null)
-                {
-                    keyboard.KeyPressed += key =>
-                    {
-                        if (box != null)
-                        {
-                            var text = box.Text ?? string.Empty;
-                            box.Text = text + key.ToLowerInvariant();
-                            box.CaretIndex = box.Text.Length;
-                        }
-                    };
-                    keyboard.BackspacePressed += () =>
-                    {
-                        if (box != null && !string.IsNullOrEmpty(box.Text))
-                        {
-                            box.Text = box.Text.Substring(0, box.Text.Length - 1);
-                            box.CaretIndex = box.Text.Length;
-                        }
-                    };
-                    keyboard.EnterPressed += () =>
-                    {
-                        FocusResults();
-                    };
-                }
-
-                if (DataContext is ViewModels.OmniSearchViewModel vm && vm.FocusSearchBoxOnLoad)
+                if (DataContext is ViewModels.OmniSearchViewModel vm && vm.FocusKeyboardOnLoad)
                 {
                     // Delay slightly to ensure layout is done and tab nav focus settled
                     Dispatcher.UIThread.Post(() =>
                     {
-                        FocusSearchBox();
-                        vm.FocusSearchBoxOnLoad = false;
+                        Navigation.FocusKeyboard();
+                        vm.FocusKeyboardOnLoad = false;
                     }, DispatcherPriority.Input);
                 }
             };
         }
 
-        private void MoveFocusUp()
+        private SearchPaneNavigation Navigation => _navigation ??= new SearchPaneNavigation(
+            this.FindControl<VirtualKeyboardControl>("VirtualKeyboard")!,
+            this.FindControl<ItemsControl>("ResultsList")!,
+            ResultColumns,
+            this.FindControl<ItemsControl>("SuggestionsList"),
+            FocusTabBar);
+
+        private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
+        {
+            // Remote number keys build a channel-number query without leaving the results.
+            if (TryGetDigit(e.Key) is { } digit)
+            {
+                (DataContext as ViewModels.ISearchTextInput)?.AppendText(digit);
+                e.Handled = true;
+                return;
+            }
+
+            if (Navigation.Handle(e.Key, TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement()))
+                e.Handled = true;
+        }
+
+        private static string? TryGetDigit(Key key)
+        {
+            if (key >= Key.D0 && key <= Key.D9) return ((int)key - (int)Key.D0).ToString();
+            if (key >= Key.NumPad0 && key <= Key.NumPad9) return ((int)key - (int)Key.NumPad0).ToString();
+            return null;
+        }
+
+        private void FocusTabBar()
         {
             var tabNav = this.FindAncestorOfType<TabNavigationControl>();
             if (tabNav != null)
@@ -94,53 +86,10 @@ namespace Baird.Controls
                         {
                             var button = visual.FindDescendantOfType<Button>();
                             button?.Focus();
-                            return;
                         }
                     }
                 }
             }
-        }
-
-        private void MoveFocusDown()
-        {
-            // Try Suggestions First
-            var suggestions = this.FindControl<ItemsControl>("SuggestionsList");
-            if (suggestions != null && suggestions.ItemCount > 0 && suggestions.IsVisible)
-            {
-                var container = suggestions.ContainerFromIndex(0);
-                if (container is Visual visual)
-                {
-                    var button = visual.FindDescendantOfType<Button>();
-                    if (button != null && button.IsEffectivelyVisible)
-                    {
-                        button.Focus();
-                        return;
-                    }
-                }
-            }
-
-            // If we have results, focus results
-            var itemsControl = this.FindControl<ItemsControl>("ResultsList");
-            if (itemsControl != null && itemsControl.ItemCount > 0)
-            {
-                FocusResults();
-                return;
-            }
-
-            // Otherwise, focus the virtual keyboard (KeyF)
-            var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
-            if (keyboard != null && keyboard.IsEffectivelyVisible)
-            {
-                var keyF = keyboard.FindControl<Button>("KeyF");
-                if (keyF != null && keyF.IsEffectivelyVisible)
-                {
-                    keyF.Focus();
-                    return;
-                }
-            }
-
-            // Fallback to Results
-            FocusResults();
         }
 
         protected override void OnDataContextChanged(EventArgs e)
@@ -148,67 +97,23 @@ namespace Baird.Controls
             base.OnDataContextChanged(e);
             if (DataContext is ViewModels.OmniSearchViewModel vm)
             {
-                vm.SearchBoxFocusRequested += (s, selectAll) =>
-                {
-                    // Set the suppress flag synchronously NOW, before any GotFocus event
-                    // can fire during tab-navigation to the search box.
-                    _suppressNextSelectAll = !selectAll;
-                    Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
-                };
+                vm.KeyboardFocusRequested += (s, args) =>
+                    Dispatcher.UIThread.Post(() => Navigation.FocusKeyboard(), DispatcherPriority.Input);
 
-                if (this.IsEffectivelyVisible && vm.FocusSearchBoxOnLoad)
+                if (this.IsEffectivelyVisible && vm.FocusKeyboardOnLoad)
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
-                        FocusSearchBox();
-                        vm.FocusSearchBoxOnLoad = false;
+                        Navigation.FocusKeyboard();
+                        vm.FocusKeyboardOnLoad = false;
                     }, DispatcherPriority.Input);
                 }
-            }
-        }
-
-        private void UpdateFocusState(bool isFocused)
-        {
-            if (DataContext is ViewModels.OmniSearchViewModel vm)
-            {
-                vm.IsSearchFieldFocused = isFocused;
             }
         }
 
         private void InitializeComponent()
         {
             AvaloniaXamlLoader.Load(this);
-        }
-
-        public void FocusResults()
-        {
-            var itemsControl = this.FindControl<ItemsControl>("ResultsList");
-            if (itemsControl == null) return;
-
-            // Try to focus the first button in the grid
-            if (itemsControl.ItemCount > 0)
-            {
-                var container = itemsControl.ContainerFromIndex(0);
-                if (container is Visual visual)
-                {
-                    var button = visual.FindDescendantOfType<Button>();
-                    button?.Focus();
-                }
-            }
-        }
-
-        public void FocusSearchBox()
-        {
-            var box = this.FindControl<TextBox>("SearchBox");
-            if (box == null) return;
-
-            // Read the intent directly from the ViewModel — durable regardless of
-            // whether the control was attached when RequestSearchBoxFocus was called.
-            bool selectAll = (DataContext is ViewModels.OmniSearchViewModel vm)
-                ? vm.SelectAllOnNextFocus
-                : true;
-            _suppressNextSelectAll = !selectAll;
-            box.Focus();
         }
     }
 }

@@ -78,11 +78,11 @@ namespace Baird.ViewModels
         }
     }
 
-    public class OmniSearchViewModel : ReactiveObject
+    public class OmniSearchViewModel : ReactiveObject, ISearchTextInput
     {
         public event EventHandler<MediaItemViewModel>? PlayRequested;
         public event EventHandler? BackRequested;
-        public event EventHandler<bool>? SearchBoxFocusRequested;
+        public event EventHandler? KeyboardFocusRequested;
 
         public ReactiveCommand<MediaItemViewModel, Unit> PlayCommand { get; }
         public ReactiveCommand<Unit, Unit> PlayFirstResultCommand { get; }
@@ -99,21 +99,26 @@ namespace Baird.ViewModels
             BackRequested?.Invoke(this, EventArgs.Empty);
         }
 
-        public void RequestSearchBoxFocus(bool selectAll = true)
+        public void RequestKeyboardFocus()
         {
-            SelectAllOnNextFocus = selectAll;
             // Set flag so view can pick it up if not attached yet
-            FocusSearchBoxOnLoad = true;
-            SearchBoxFocusRequested?.Invoke(this, selectAll);
+            FocusKeyboardOnLoad = true;
+            KeyboardFocusRequested?.Invoke(this, EventArgs.Empty);
         }
 
-        public bool SelectAllOnNextFocus { get; private set; } = true;
-
-        private bool _focusSearchBoxOnLoad;
-        public bool FocusSearchBoxOnLoad
+        private bool _focusKeyboardOnLoad;
+        public bool FocusKeyboardOnLoad
         {
-            get => _focusSearchBoxOnLoad;
-            set => this.RaiseAndSetIfChanged(ref _focusSearchBoxOnLoad, value);
+            get => _focusKeyboardOnLoad;
+            set => this.RaiseAndSetIfChanged(ref _focusKeyboardOnLoad, value);
+        }
+
+        public void AppendText(string text) => SearchText += text;
+
+        public void Backspace()
+        {
+            if (!string.IsNullOrEmpty(SearchText))
+                SearchText = SearchText.Substring(0, SearchText.Length - 1);
         }
 
         private string _searchText = "";
@@ -121,13 +126,6 @@ namespace Baird.ViewModels
         {
             get => _searchText;
             set => this.RaiseAndSetIfChanged(ref _searchText, value);
-        }
-
-        private bool _isSearchFieldFocused;
-        public bool IsSearchFieldFocused
-        {
-            get => _isSearchFieldFocused;
-            set => this.RaiseAndSetIfChanged(ref _isSearchFieldFocused, value);
         }
 
         private bool _isSearching;
@@ -229,7 +227,7 @@ namespace Baird.ViewModels
             SearchTermCommand = ReactiveCommand.CreateFromTask<string>(async term =>
             {
                 SearchText = term;
-                RequestSearchBoxFocus();
+                RequestKeyboardFocus();
                 await PerformSearch(term);
             });
 

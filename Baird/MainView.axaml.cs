@@ -27,7 +27,7 @@ namespace Baird
         private IJellyseerrService _jellyseerrService;
         private ISpeechToTextService _speechService = null!;
         private bool _isListeningForVoice = false;
-        private TextBox? _voiceTargetTextBox;
+        private Baird.ViewModels.ISearchTextInput? _voiceTarget;
 
         // Visual-tree subscription lifetime tracking
         private readonly CompositeDisposable _visualTreeSubscriptions = new();
@@ -652,17 +652,17 @@ namespace Baird
                 return;
             }
 
-            // Voice command: hold to record, release to transcribe into the search box.
-            // Only activates when focus is on the SearchBox inside OmniSearchControl or SeerrchControl.
+            // Voice command: hold to record, release to transcribe into the search query.
+            // Only activates when focus is inside OmniSearchControl or SeerrchControl.
             if (_voiceCommandKey != Key.None && e.Key == _voiceCommandKey && !_isListeningForVoice)
             {
                 var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
-                var focused = topLevel?.FocusManager?.GetFocusedElement() as TextBox;
-                if (focused?.Name == "SearchBox" &&
-                    (focused.FindAncestorOfType<Baird.Controls.OmniSearchControl>() != null ||
-                     focused.FindAncestorOfType<Baird.Controls.SeerrchControl>() != null))
+                var focused = topLevel?.FocusManager?.GetFocusedElement() as Visual;
+                var searchScreen = (Control?)focused?.FindAncestorOfType<Baird.Controls.OmniSearchControl>()
+                                   ?? focused?.FindAncestorOfType<Baird.Controls.SeerrchControl>();
+                if (searchScreen?.DataContext is Baird.ViewModels.ISearchTextInput target)
                 {
-                    _voiceTargetTextBox = focused;
+                    _voiceTarget = target;
                     _isListeningForVoice = true;
                     _ = _speechService.StartRecordingAsync();
                     Console.WriteLine("[MainView] Voice command: recording started.");
@@ -692,8 +692,8 @@ namespace Baird
             if (_voiceCommandKey != Key.None && e.Key == _voiceCommandKey && _isListeningForVoice)
             {
                 _isListeningForVoice = false;
-                var target = _voiceTargetTextBox;
-                _voiceTargetTextBox = null;
+                var target = _voiceTarget;
+                _voiceTarget = null;
                 e.Handled = true;
 
                 _ = Task.Run(async () =>
@@ -703,8 +703,7 @@ namespace Baird
                     {
                         Dispatcher.UIThread.Post(() =>
                         {
-                            target.Text = (target.Text ?? string.Empty) + transcript;
-                            target.CaretIndex = target.Text.Length;
+                            target.AppendText(transcript);
                             Console.WriteLine($"[MainView] Voice transcript appended: \"{transcript}\"");
                         });
                     }
