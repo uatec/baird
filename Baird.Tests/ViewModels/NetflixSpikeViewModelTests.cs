@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using System;
+using System.Collections.Generic;
 using System.Reactive;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,10 +52,24 @@ namespace Baird.Tests.ViewModels
             return Task.FromResult(AuthSequence != null ? AuthSequence() : AuthStatusToReturn);
         }
 
-        public Func<NetflixSearchPage?>? SearchPageSequence { get; set; }
+        public Func<NetflixSessionState?>? SessionSequence { get; set; }
+        public Func<string, string?>? GraphQlReply { get; set; }
+        public List<string> GraphQlBodies { get; } = new();
+        public string? CaptureResult { get; set; }
+        public int CaptureCalls { get; private set; }
+        public Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default) => Task.FromResult(SessionSequence?.Invoke());
+        public Task<string?> PostNetflixGraphQlAsync(string requestBody, CancellationToken ct = default)
+        {
+            GraphQlBodies.Add(requestBody);
+            return Task.FromResult(GraphQlReply?.Invoke(requestBody));
+        }
+        public Task<string?> CaptureNetflixSearchRequestAsync(string searchTerm, CancellationToken ct = default)
+        {
+            CaptureCalls++;
+            return Task.FromResult(CaptureResult);
+        }
         public string? LastProfileRequested { get; private set; }
         public int ProfileSelections { get; private set; }
-        public Task<NetflixSearchPage?> ReadNetflixSearchPageAsync(CancellationToken ct = default) => Task.FromResult(SearchPageSequence?.Invoke());
         public Task<string?> SelectNetflixProfileAsync(string? preferredName, CancellationToken ct = default)
         {
             ProfileSelections++;

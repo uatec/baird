@@ -62,7 +62,9 @@ namespace Baird.Services
         Task<WidevineStatus> CheckWidevineAsync(CancellationToken ct = default);
         Task<string> ClearSiteDataAsync(string origin, CancellationToken ct = default);
         Task<bool> NavigateAsync(string url, CancellationToken ct = default);
-        Task<NetflixSearchPage?> ReadNetflixSearchPageAsync(CancellationToken ct = default);
+        Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default);
+        Task<string?> PostNetflixGraphQlAsync(string requestBody, CancellationToken ct = default);
+        Task<string?> CaptureNetflixSearchRequestAsync(string searchTerm, CancellationToken ct = default);
         Task<string?> SelectNetflixProfileAsync(string? preferredName, CancellationToken ct = default);
         Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default);
         Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default);
@@ -76,6 +78,8 @@ namespace Baird.Services
     public class CdpBrowserService : ICdpBrowserService
     {
         private Process? _browserProcess;
+        // CDP events (messages without an id) from the page socket go here while something is listening.
+        private volatile Action<JsonElement>? _pageEventHandler;
         private ClientWebSocket? _pageWs;
         private ClientWebSocket? _browserWs;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(3) };
@@ -304,14 +308,14 @@ namespace Baird.Services
             {
                 _pageWs = new ClientWebSocket();
                 await _pageWs.ConnectAsync(new Uri(pageWsUrl), ct);
-                _ = Task.Run(() => ReceiveLoopAsync(_pageWs, _pendingPageRequests, _recvCts.Token));
+                _ = Task.Run(() => ReceiveLoopAsync(_pageWs, _pendingPageRequests, _recvCts.Token, m => _pageEventHandler?.Invoke(m)));
                 Log("[CDP] Connected to Page DevTools WebSocket.");
 
                 if (browserWsUrl != null)
                 {
                     _browserWs = new ClientWebSocket();
                     await _browserWs.ConnectAsync(new Uri(browserWsUrl), ct);
-                    _ = Task.Run(() => ReceiveLoopAsync(_browserWs, _pendingBrowserRequests, _recvCts.Token));
+                    _ = Task.Run(() => ReceiveLoopAsync(_browserWs, _pendingBrowserRequests, _recvCts.Token, null));
                     Log("[CDP] Connected to Browser DevTools WebSocket.");
                 }
 
@@ -398,45 +402,82 @@ namespace Baird.Services
         }
 
         /// <summary>
-        /// Reads Netflix's search page: signed-out state, the "Who's watching?" profile picker, and the result cards
-        /// (a[data-uia=standard-card]: title in aria-label, title id in the jbv= link parameter). Selectors observed on the
-        /// live site (Oct 2026); Netflix may change them.
+        /// Reads the Netflix session from an app page (e.g. /browse): signed out, member, and the "Who's watching?" picker.
         /// </summary>
-        public async Task<NetflixSearchPage?> ReadNetflixSearchPageAsync(CancellationToken ct = default)
+        public async Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default)
         {
             const string script = @"(function() {
                 let ms = null;
                 try { ms = window.netflix.reactContext.models.userInfo.data.membershipStatus || null; } catch (e) { }
                 const signedOut = ms === 'ANONYMOUS' || !!document.querySelector('input[name=""password""]') || !!document.querySelector('[data-uia=""header-signin-link""]');
                 const profiles = [...document.querySelectorAll('[data-uia^=""profile-selector+tile-""]')].map(b => (b.innerText || '').trim()).filter(Boolean);
-                const cards = [...document.querySelectorAll('a[data-uia=""standard-card""]')].map(a => ({
-                    title: a.getAttribute('aria-label') || '',
-                    href: a.getAttribute('href') || '',
-                    img: (a.querySelector('img') || {}).src || null
-                }));
-                return { url: location.href, signedOut: signedOut, profiles: profiles, cards: cards };
+                return { url: location.href, signedOut: signedOut, member: ms === 'CURRENT_MEMBER', profiles: profiles };
             })()";
 
             var r = await EvaluateInPageAsync(script, ct);
             if (r is not { ValueKind: JsonValueKind.Object } o) return null;
-
             var profiles = new List<string>();
             if (o.TryGetProperty("profiles", out var pa) && pa.ValueKind == JsonValueKind.Array)
                 foreach (var p in pa.EnumerateArray()) if (p.GetString() is { } name) profiles.Add(name);
-
-            var cards = new List<NetflixSearchCard>();
-            if (o.TryGetProperty("cards", out var ca) && ca.ValueKind == JsonValueKind.Array)
-                foreach (var c in ca.EnumerateArray())
-                    cards.Add(new NetflixSearchCard(
-                        c.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
-                        c.TryGetProperty("href", out var h) ? h.GetString() ?? "" : "",
-                        c.TryGetProperty("img", out var i) && i.ValueKind == JsonValueKind.String ? i.GetString() : null));
-
-            return new NetflixSearchPage(
+            return new NetflixSessionState(
                 o.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "",
                 o.TryGetProperty("signedOut", out var so) && so.ValueKind == JsonValueKind.True,
-                profiles,
-                cards);
+                o.TryGetProperty("member", out var m) && m.ValueKind == JsonValueKind.True,
+                profiles);
+        }
+
+        /// <summary>
+        /// POSTs a request body to Netflix's same-origin /graphql endpoint from inside the signed-in page (cookies included),
+        /// as the web app does. Returns the raw reply text. The page must be on https://www.netflix.com.
+        /// </summary>
+        public async Task<string?> PostNetflixGraphQlAsync(string requestBody, CancellationToken ct = default)
+        {
+            var bodyLiteral = JsonSerializer.Serialize(requestBody, BairdJsonContext.Default.String);
+            var script = @"(async function() {
+                const r = await fetch('/graphql', { method: 'POST', credentials: 'include',
+                    headers: { 'content-type': 'application/json' }, body: " + bodyLiteral + @" });
+                return await r.text();
+            })()";
+            var r = await EvaluateInPageAsync(script, ct);
+            return r is { ValueKind: JsonValueKind.String } v ? v.GetString() : null;
+        }
+
+        /// <summary>
+        /// Opens the real search page and captures the SearchPageQueryResults request Netflix's own web app sends, so a rotated
+        /// persisted-query id or changed variables can be picked up without a Baird release. Returns the request body or null.
+        /// </summary>
+        public async Task<string?> CaptureNetflixSearchRequestAsync(string searchTerm, CancellationToken ct = default)
+        {
+            if (_pageWs == null || _pageWs.State != WebSocketState.Open) return null;
+            var captured = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnEvent(JsonElement message)
+            {
+                if (message.TryGetProperty("method", out var m) && m.GetString() == "Network.requestWillBeSent" &&
+                    message.TryGetProperty("params", out var p) && p.TryGetProperty("request", out var req) &&
+                    req.TryGetProperty("postData", out var pd) && pd.GetString() is { } post && post.Contains("\"SearchPageQueryResults\""))
+                {
+                    captured.TrySetResult(post);
+                }
+            }
+
+            _pageEventHandler = OnEvent;
+            try
+            {
+                await SendPageCommandAsync("Network.enable", new JsonObject { ["maxPostDataSize"] = 1_000_000 }, ct);
+                await SendPageCommandAsync("Page.navigate", new JsonObject { ["url"] = NetflixSearchParser.SearchUrl(searchTerm) }, ct);
+                var done = await Task.WhenAny(captured.Task, Task.Delay(TimeSpan.FromSeconds(20), ct));
+                return done == captured.Task ? captured.Task.Result : null;
+            }
+            catch (Exception ex)
+            {
+                Log($"[CDP] Capturing Netflix's search request failed: {ex.Message}");
+                return null;
+            }
+            finally
+            {
+                _pageEventHandler = null;
+                try { await SendPageCommandAsync("Network.disable", new JsonObject(), CancellationToken.None); } catch { }
+            }
         }
 
         /// <summary>Clicks a profile on the "Who's watching?" picker: the named one if present, else the first. Returns the name clicked.</summary>
@@ -908,7 +949,8 @@ namespace Baird.Services
         private static async Task ReceiveLoopAsync(
             ClientWebSocket ws,
             ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> pending,
-            CancellationToken ct)
+            CancellationToken ct,
+            Action<JsonElement>? onEvent)
         {
             var buffer = new byte[65536];
             using var ms = new MemoryStream();
@@ -933,6 +975,12 @@ namespace Baird.Services
                     var bytes = ms.ToArray();
                     using var doc = JsonDocument.Parse(bytes);
                     var root = doc.RootElement.Clone();
+
+                    if (!root.TryGetProperty("id", out _) && onEvent != null)
+                    {
+                        try { onEvent(root); } catch { /* a listener must never kill the socket */ }
+                        continue;
+                    }
 
                     if (root.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var id))
                     {
