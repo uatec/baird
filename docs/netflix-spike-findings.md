@@ -131,16 +131,27 @@ for future page events (progress, ended). Tested in headless Chrome (`OverlayBac
 
 ### Core journey (Netflix in Baird's normal search and playback)
 
-- **One browser:** `NetflixSession` owns the only Netflix Chromium (port 9222, the shared profile). Search starts it hidden,
-  checks for a signed-in member on a chosen profile once, and keeps it open: the next search is one API call. It stops
-  after 10 min without a search. During playback, search answers "Netflix is playing" and does not touch the browser.
+- **One browser, always open:** `NetflixSession` owns the only Netflix Chromium (port 9222, the shared profile).
+  `Start` opens it hidden behind Baird 10 s after Baird starts, signs in and picks the profile, then leaves it on
+  `https://www.netflix.com/robots.txt`. That page is on Netflix's origin (the search API is a same-origin `fetch` with the
+  cookies) and has no video: covered Chromium keeps rendering, so idling on `/browse` would decode its trailer all the
+  time. A watchdog (every 60 s) opens it again if it stopped, unless something plays. During playback, search answers
+  "Netflix is playing" and does not touch the browser.
+- **Measured on the Pi (2026-10-23, two runs):** browser ready 6.5–14 s after it opens (in the background, 10 s after
+  Baird starts); Baird kept focus while it opened. First search: Netflix results after 1.8 s (API call ~0.5 s), from the
+  `robots.txt` idle page; before this change ~6 s (cold start and profile pick). Play to HUD: 6.6–6.9 s, reusing the open
+  browser. After Back: 11 Chromium processes still open, 0–8 % CPU (mostly ~1 %) over 5 s windows on the idle page.
+  Not measured: memory.
+- **Show and hide:** the browser never closes. It stays behind Baird; for playback Baird hides its main window (the
+  browser shows) and puts its HUD on top, and after Back shows the main window again.
 - **Search:** `NetflixProvider` is a normal `IMediaProvider`, added only when NETFLIX_USER/NETFLIX_PASS are configured.
   Items: id `netflix:<titleId>`, source `Netflix`, type Video, stream URL `https://www.netflix.com/watch/<titleId>`. For
   a series, Netflix plays the episode it would play next for the profile, and resumes at its own saved place.
 - **Play:** `MainViewModel.PlayItem` sends `Netflix` items to `PlayNetflix`, not to mpv. It pushes
   `NetflixPlaybackViewModel` (title, a simple step text, the reason for a problem), pauses live TV, and runs the proven
-  flow (`NetflixSpikeViewModel`) on the shared browser. The flow relaunches the browser at the watch URL (a few seconds).
-  Back on the page before the video starts stops the browser.
+  flow (`NetflixSpikeViewModel`, `KeepBrowserOpen = true`) on the shared browser: it navigates the open browser to the
+  watch URL, and at the end (Back, error, or Back on the page before the video starts) navigates it back to the idle page
+  instead of closing it. If the session is not ready, the page shows why and does not play.
 - **History:** when the HUD closes, the last position and duration go to `UpsertHistoryAsync`. `DataService` now also
   puts the item's data in the persistent cache, so Continue Watching finds Netflix items after a restart (Netflix has no
   lookup by id).

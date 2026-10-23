@@ -25,7 +25,6 @@ namespace Baird.Tests.Services
         {
             PollInterval = TimeSpan.FromMilliseconds(5),
             SettleDelay = TimeSpan.FromMilliseconds(5),
-            IdleTimeout = null,
             QueryCachePath = Path.Combine(_dir, "q.json"),
         };
 
@@ -102,17 +101,55 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
-        public async Task IdleTimeout_StopsTheHiddenBrowser()
+        public async Task Start_OpensSignsInAndWaitsOnTheIdlePage_BeforeAnySearch()
         {
             var svc = new MockCdpBrowserService { SessionSequence = Member, GraphQlReply = _ => Reply() };
             var session = Session(svc);
-            session.IdleTimeout = TimeSpan.FromMilliseconds(50);
 
+            session.Start(TimeSpan.Zero);
+            for (var i = 0; i < 200 && svc.LastNavigatedUrl != NetflixSession.IdleUrl; i++) await Task.Delay(10);
+
+            Assert.True(svc.LaunchCalled);
+            Assert.Equal(NetflixSession.IdleUrl, svc.LastNavigatedUrl);
+            svc.ResetLaunchCalled();
             await new NetflixProvider(session).SearchAsync("x");
-            Assert.False(svc.StopCalled);
-            for (var i = 0; i < 100 && !svc.StopCalled; i++) await Task.Delay(10);
+            Assert.False(svc.LaunchCalled); // the first search is just the API call
+            Assert.Single(svc.GraphQlBodies);
+            await session.DisposeAsync();
+        }
 
-            Assert.True(svc.StopCalled);
+        [Fact]
+        public async Task Watchdog_OpensTheBrowserAgainAfterItStops()
+        {
+            var svc = new MockCdpBrowserService { SessionSequence = Member, GraphQlReply = _ => Reply() };
+            var session = Session(svc);
+            session.WatchdogInterval = TimeSpan.FromMilliseconds(20);
+            session.Start(TimeSpan.Zero);
+            for (var i = 0; i < 200 && !svc.LaunchCalled; i++) await Task.Delay(10);
+            await Task.Delay(50);
+
+            svc.ResetLaunchCalled();
+            svc.IsRunning = false; // e.g. Chromium crashed
+            for (var i = 0; i < 200 && !svc.LaunchCalled; i++) await Task.Delay(10);
+
+            Assert.True(svc.LaunchCalled);
+            Assert.False(svc.StopCalled); // never closed on purpose
+            await session.DisposeAsync();
+        }
+
+        [Fact]
+        public async Task Watchdog_LeavesThePlayingBrowserAlone()
+        {
+            var svc = new MockCdpBrowserService { SessionSequence = Member };
+            var session = Session(svc);
+            session.WatchdogInterval = TimeSpan.FromMilliseconds(20);
+            session.IsPlaybackActive = true;
+
+            session.Start(TimeSpan.Zero);
+            await Task.Delay(150);
+
+            Assert.False(svc.LaunchCalled);
+            await session.DisposeAsync();
         }
 
         private static NetflixSessionState ProfileGate() => new("https://www.netflix.com/browse", false, true, new[] { "Robert", "Jeff" });

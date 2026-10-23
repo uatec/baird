@@ -144,7 +144,7 @@ namespace Baird.ViewModels
             Requests.PlayRequested += (s, item) => PlayItem(item);
 
             NetflixSpike = netflixSession != null
-                ? new NetflixSpikeViewModel(netflixSession.Browser, _netflixCredentials) { LogBrowserToJournal = false }
+                ? new NetflixSpikeViewModel(netflixSession.Browser, _netflixCredentials) { LogBrowserToJournal = false, KeepBrowserOpen = true }
                 : new NetflixSpikeViewModel(_netflixCredentials);
             if (configuration?["NETFLIX_TARGET_URL"] is { Length: > 0 } netflixTarget) NetflixSpike.TargetUrl = netflixTarget;
             NetflixSpike.BackRequested += (s, e) => GoBack();
@@ -159,7 +159,7 @@ namespace Baird.ViewModels
 
             var nfProfileName = configuration?["NETFLIX_PROFILE"] is { Length: > 0 } nfProfile ? nfProfile : null;
             NetflixSearchSpike = netflixSession != null
-                ? new NetflixSearchSpikeViewModel(netflixSession.Browser, _netflixCredentials, nfProfileName) { LogBrowserToJournal = false }
+                ? new NetflixSearchSpikeViewModel(netflixSession.Browser, _netflixCredentials, nfProfileName) { LogBrowserToJournal = false, StopBrowserAfterSearch = false }
                 : new NetflixSearchSpikeViewModel(_netflixCredentials, nfProfileName);
             NetflixSearchSpike.BackRequested += (s, e) => GoBack();
 
@@ -315,7 +315,8 @@ namespace Baird.ViewModels
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(8)); // let the UI come up
+                // Wait past the Netflix browser's warm-up (it starts 10 s after Baird), to measure what a viewer gets.
+                await Task.Delay(TimeSpan.FromSeconds(45));
                 var hudShown = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                 NetflixHudRequested += hud => hudShown.TrySetResult(hud.Title);
 
@@ -327,16 +328,17 @@ namespace Baird.ViewModels
                     OmniSearch.SearchText = "One Piece";
                 });
 
+                var searchClock = System.Diagnostics.Stopwatch.StartNew();
                 MediaItemViewModel? first = null;
-                for (var i = 0; i < 90 && first == null; i++)
+                for (var i = 0; i < 180 && first == null; i++)
                 {
-                    await Task.Delay(1000);
+                    await Task.Delay(500);
                     first = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
                         OmniSearch.SearchResults.FirstOrDefault(r => NetflixProvider.IsNetflix(r.Source)));
                 }
                 var counts = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
                     string.Join(", ", OmniSearch.SearchResults.GroupBy(r => r.Source).Select(g => $"{g.Key}={g.Count()}")));
-                Console.WriteLine($"[AutoTest] Search results by source: {counts}");
+                Console.WriteLine($"[AutoTest] Search results by source: {counts} (first Netflix result after {searchClock.Elapsed.TotalSeconds:F1} s)");
                 if (first == null)
                 {
                     Console.WriteLine("[AutoTest] RESULT core=FAILED reason=\"no Netflix result in search within 90 s\"");
@@ -345,12 +347,13 @@ namespace Baird.ViewModels
 
                 await Task.Delay(TimeSpan.FromSeconds(4)); // a screenshot of the results
                 Console.WriteLine($"[AutoTest] Playing the first Netflix result: {first.Name} ({first.Id}, {first.StreamUrl}).");
+                var playClock = System.Diagnostics.Stopwatch.StartNew();
                 await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => PlayItem(first));
 
                 var done = await Task.WhenAny(hudShown.Task, Task.Delay(TimeSpan.FromSeconds(120)));
                 var page = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => CurrentPage as NetflixPlaybackViewModel);
                 Console.WriteLine(done == hudShown.Task
-                    ? $"[AutoTest] RESULT core=PLAYING title=\"{hudShown.Task.Result}\""
+                    ? $"[AutoTest] RESULT core=PLAYING title=\"{hudShown.Task.Result}\" hud_after={playClock.Elapsed.TotalSeconds:F1}s"
                     : $"[AutoTest] RESULT core=FAILED page=\"{page?.StatusText}\"");
             }
             catch (Exception ex)

@@ -51,7 +51,7 @@ for i in $(seq 1 "$MAX"); do
       done
     fi
     sleep 15
-    for j in 1 2 3 4; do grim $SH/final-$j.png; echo "$(date +%T) final-$j: active=$(xdotool getactivewindow 2>/dev/null)" >> $SH/focus.log; sleep 4; done
+    for j in 1 2 3 4; do grim $SH/final-$j.png; echo "$(date +%T) final-$j: active=$(xdotool getactivewindow 2>/dev/null) chromium-procs=$(pgrep -c -x chromium) chromium-cpu-now=$(top -b -d 5 -n 2 | awk '/^top -/{n++} n==2 && $NF=="chromium" {s+=$9} END {print s+0}')%" >> $SH/focus.log; sleep 4; done
     break
   fi
 done

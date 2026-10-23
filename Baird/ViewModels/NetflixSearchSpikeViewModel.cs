@@ -89,6 +89,9 @@ namespace Baird.ViewModels
             if (LogEntries.Count > 200) LogEntries.RemoveAt(0);
         }
 
+        /// <summary>False when the browser is Baird's shared Netflix browser, which stays open.</summary>
+        public bool StopBrowserAfterSearch { get; set; } = true;
+
         public string QueryCachePath { get; set; } = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "baird", "netflix-search-query.json");
 
@@ -108,7 +111,6 @@ namespace Baird.ViewModels
                 QueryCachePath = QueryCachePath,
                 PollInterval = PollInterval,
                 SettleDelay = SettleDelay,
-                IdleTimeout = null,
             };
             session.Log += AddLog;
             try
@@ -142,7 +144,7 @@ namespace Baird.ViewModels
             }
             finally
             {
-                try { await _browser.StopAsync(); } catch { }
+                if (StopBrowserAfterSearch) { try { await _browser.StopAsync(); } catch { } }
                 IsBusy = false;
             }
         }

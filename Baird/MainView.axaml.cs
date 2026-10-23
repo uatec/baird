@@ -83,7 +83,12 @@ namespace Baird
             var netflixSession = new NetflixSession(netflixBrowser, netflixCredentials,
                 config["NETFLIX_PROFILE"] is { Length: > 0 } nfProfile ? nfProfile : null);
             netflixSession.Log += m => Console.WriteLine($"[NetflixSession] {m}");
-            if (netflixCredentials != null) _providers.Add(new NetflixProvider(netflixSession));
+            if (netflixCredentials != null)
+            {
+                _providers.Add(new NetflixProvider(netflixSession));
+                // Open, sign in and pick the profile in the background, so the first search or play does not wait for it.
+                netflixSession.Start(TimeSpan.FromSeconds(10));
+            }
             else Console.WriteLine("[MainView] Netflix not in search: no NETFLIX_USER/NETFLIX_PASS in config.ini.");
 
             _cecService = new CecService();

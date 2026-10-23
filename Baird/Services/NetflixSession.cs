@@ -14,19 +14,24 @@ namespace Baird.Services
 
     /// <summary>
     /// The one signed-in Chromium that Baird uses for Netflix: search and playback share it, because they share the browser
-    /// profile and Chromium locks a profile to one process. Search keeps the browser open (hidden behind Baird) so the next
-    /// search is one API call; it stops after <see cref="IdleTimeout"/> without use. A playback flow relaunches the same
-    /// browser at the watch URL and stops it when it ends.
+    /// profile and Chromium locks a profile to one process. <see cref="Start"/> opens it hidden behind Baird soon after Baird
+    /// starts, signs in and picks the profile, so the first search or play does not wait for that. It then stays open: a
+    /// playback navigates it to the watch URL and back to <see cref="IdleUrl"/>, and a watchdog opens it again if it stops.
     /// </summary>
     public sealed class NetflixSession : IAsyncDisposable
     {
         public const int CdpPort = 9222;
         public const string BrowseUrl = "https://www.netflix.com/browse";
+        /// <summary>
+        /// Where the browser waits between uses: on Netflix's origin (the search API is a same-origin fetch with the cookies)
+        /// but with no video. Covered Chromium keeps rendering, so an idle /browse page would decode its trailer all the time.
+        /// </summary>
+        public const string IdleUrl = "https://www.netflix.com/robots.txt";
 
         private readonly SemaphoreSlim _lock = new(1, 1);
         private readonly string? _profileName;
         private int _memberConfirmedPid;
-        private CancellationTokenSource? _idleCts;
+        private readonly CancellationTokenSource _lifetime = new();
 
         public ICdpBrowserService Browser { get; }
         public NetflixCredentials? Credentials { get; }
@@ -43,8 +48,8 @@ namespace Baird.Services
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(1);
         /// <summary>Pause after submitting credentials / picking a profile before reading the page again.</summary>
         public TimeSpan SettleDelay { get; set; } = TimeSpan.FromSeconds(4);
-        /// <summary>Stop the hidden browser after this long without a search. Null: never (the caller stops it).</summary>
-        public TimeSpan? IdleTimeout { get; set; } = TimeSpan.FromMinutes(10);
+        /// <summary>How often the watchdog checks that the browser is still open.</summary>
+        public TimeSpan WatchdogInterval { get; set; } = TimeSpan.FromSeconds(60);
 
         public event Action<string>? Log;
 
@@ -65,21 +70,8 @@ namespace Baird.Services
             await _lock.WaitAsync(ct);
             try
             {
-                _idleCts?.Cancel();
-
-                if (!Browser.IsRunning || _memberConfirmedPid != Browser.ProcessId)
-                {
-                    if (!Browser.IsRunning && !await Browser.LaunchAsync(Browser.FindBrowserExecutable(), BrowseUrl, Port, ProfileDir, false, ct))
-                    {
-                        return new(null, $"Could not start the browser: {Browser.LastError ?? "unknown error"}", 0);
-                    }
-
-                    // The search API also answers signed-out browsers, with the general country catalogue, which would not be
-                    // "filtered by this account": make sure this is a signed-in member on a chosen profile first.
-                    var failure = await EnsureMemberSessionAsync(ct);
-                    if (failure != null) return new(null, failure, 0);
-                    _memberConfirmedPid = Browser.ProcessId;
-                }
+                var failure = await EnsureReadyCoreAsync(ct);
+                if (failure != null) return new(null, failure, 0);
 
                 // One API call: POST /graphql SearchPageQueryResults (what Netflix's own search page sends).
                 var query = NetflixSearchQuery.Load(QueryCachePath);
@@ -98,6 +90,7 @@ namespace Baird.Services
                     {
                         return new(reply, $"Netflix rejected the stored search request ({reply.ErrorCode}) and a new one could not be captured.", sw.ElapsedMilliseconds);
                     }
+                    await Browser.NavigateAsync(IdleUrl, ct); // capturing left it on the search page
                     query = new NetflixSearchQuery(capturedBody);
                     query.Save(QueryCachePath);
                     AddLog($"Captured and cached the current request (query {query.PersistedQueryId}).");
@@ -112,27 +105,80 @@ namespace Baird.Services
             }
             finally
             {
-                ScheduleIdleStop();
                 _lock.Release();
             }
         }
 
-        private void ScheduleIdleStop()
+        /// <summary>
+        /// Opens the browser if it is not open, and makes sure it is a signed-in member on a chosen profile. Returns null when
+        /// ready, else the reason. Search and playback call it; it does the slow part only once per browser process.
+        /// </summary>
+        public async Task<string?> EnsureReadyAsync(CancellationToken ct)
         {
-            if (IdleTimeout is not { } timeout) return;
-            _idleCts?.Cancel();
-            var cts = _idleCts = new CancellationTokenSource();
+            await _lock.WaitAsync(ct);
+            try { return await EnsureReadyCoreAsync(ct); }
+            finally { _lock.Release(); }
+        }
+
+        private async Task<string?> EnsureReadyCoreAsync(CancellationToken ct)
+        {
+            if (Browser.IsRunning && _memberConfirmedPid == Browser.ProcessId) return null;
+
+            var sw = Stopwatch.StartNew();
+            if (!Browser.IsRunning)
+            {
+                AddLog("Opening the Netflix browser (hidden behind Baird)...");
+                if (!await Browser.LaunchAsync(Browser.FindBrowserExecutable(), BrowseUrl, Port, ProfileDir, false, ct))
+                    return $"Could not start the browser: {Browser.LastError ?? "unknown error"}";
+            }
+            else
+            {
+                await Browser.NavigateAsync(BrowseUrl, ct); // opened by something else (e.g. a spike tab): check from the start
+            }
+
+            // The search API also answers signed-out browsers, with the general country catalogue, which would not be
+            // "filtered by this account": make sure this is a signed-in member on a chosen profile first.
+            var failure = await EnsureMemberSessionAsync(ct);
+            if (failure != null) return failure;
+            _memberConfirmedPid = Browser.ProcessId;
+            await Browser.NavigateAsync(IdleUrl, ct);
+            AddLog($"Netflix browser ready in {sw.Elapsed.TotalSeconds:F1} s (signed in, profile chosen, waiting on {IdleUrl}).");
+            return null;
+        }
+
+        /// <summary>
+        /// Opens the browser in the background after <paramref name="delay"/> (let Baird's own start finish first), then keeps
+        /// it open: every <see cref="WatchdogInterval"/>, if it has stopped and nothing is playing, it is opened again.
+        /// </summary>
+        public void Start(TimeSpan delay)
+        {
+            var ct = _lifetime.Token;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await Task.Delay(timeout, cts.Token);
-                    if (IsPlaybackActive || !Browser.IsRunning) return;
-                    AddLog($"No Netflix search for {timeout.TotalMinutes:F0} min; stopping the hidden browser.");
-                    await Browser.StopAsync();
+                    await Task.Delay(delay, ct);
+                    while (!ct.IsCancellationRequested)
+                    {
+                        if (!IsPlaybackActive && (!Browser.IsRunning || _memberConfirmedPid != Browser.ProcessId))
+                        {
+                            try
+                            {
+                                using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                                attempt.CancelAfter(TimeSpan.FromMinutes(2));
+                                var failure = await EnsureReadyAsync(attempt.Token);
+                                if (failure != null) AddLog($"Netflix browser not ready: {failure}");
+                            }
+                            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                            {
+                                AddLog("Netflix browser not ready: gave up after 2 min; trying again later.");
+                            }
+                        }
+                        await Task.Delay(WatchdogInterval, ct);
+                    }
                 }
                 catch (OperationCanceledException) { }
-                catch (Exception ex) { AddLog($"Idle stop failed: {ex.Message}"); }
+                catch (Exception ex) { AddLog($"Netflix browser watchdog stopped: {ex.Message}"); }
             });
         }
 
@@ -194,7 +240,7 @@ namespace Baird.Services
 
         public async ValueTask DisposeAsync()
         {
-            _idleCts?.Cancel();
+            _lifetime.Cancel();
             await Browser.DisposeAsync();
         }
     }

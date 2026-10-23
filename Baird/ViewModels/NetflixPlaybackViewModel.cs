@@ -17,6 +17,7 @@ namespace Baird.ViewModels
         private readonly NetflixSession? _session;
         private NetflixHudViewModel? _hud;
         private bool _finished;
+        private string? _sessionFailure;
 
         public MediaItemViewModel Item { get; }
 
@@ -32,6 +33,7 @@ namespace Baird.ViewModels
             _flow = flow;
             _session = session;
             _flow.UseBairdHud = true;
+            _flow.KeepBrowserOpen = session != null;
             _flow.HudTitle = item.Name;
             _flow.PropertyChanged += OnFlowChanged;
             _flow.HudRequested += OnHudRequested;
@@ -41,6 +43,7 @@ namespace Baird.ViewModels
         /// <summary>A simple text for each step; for a problem, the flow's own message, which says what went wrong.</summary>
         public string StatusText => _flow.State switch
         {
+            _ when _sessionFailure != null => _sessionFailure,
             _ when IsProblem => _flow.StatusMessage,
             NetflixSpikeState.Idle or NetflixSpikeState.LaunchingHiddenBrowser => "Starting Netflix…",
             NetflixSpikeState.CheckingAuth or NetflixSpikeState.SigningIn or NetflixSpikeState.SignedIn => "Signing in to Netflix…",
@@ -48,25 +51,45 @@ namespace Baird.ViewModels
             NetflixSpikeState.Playing => "Playing.",
             _ => "Stopping…",
         };
-        public bool IsProblem => _flow.IsProblem || _flow.IsMfaRequired;
+        public bool IsProblem => _sessionFailure != null || _flow.IsProblem || _flow.IsMfaRequired;
         public bool IsWorking => !IsProblem && !_flow.IsStopped;
         public string HintText => IsProblem ? "Press Back to return." : "Press Back to cancel.";
 
         public async Task StartAsync()
         {
-            if (_session != null) _session.IsPlaybackActive = true;
             _flow.TargetUrl = Item.StreamUrl ?? "";
             Console.WriteLine($"[NetflixPlayback] Playing \"{Item.Name}\" ({_flow.TargetUrl}).");
+            if (_session != null)
+            {
+                // Normally ready already (opened and signed in when Baird started); otherwise this does it now.
+                string? failure;
+                using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(2)))
+                {
+                    try { failure = await _session.EnsureReadyAsync(cts.Token); }
+                    catch (OperationCanceledException) { failure = "The Netflix browser did not get ready within 2 minutes."; }
+                }
+                if (failure != null)
+                {
+                    Console.WriteLine($"[NetflixPlayback] Netflix is not ready: {failure}");
+                    _sessionFailure = failure;
+                    this.RaisePropertyChanged(nameof(IsProblem));
+                    this.RaisePropertyChanged(nameof(IsWorking));
+                    this.RaisePropertyChanged(nameof(StatusText));
+                    this.RaisePropertyChanged(nameof(HintText));
+                    return;
+                }
+                _session.IsPlaybackActive = true;
+            }
             await _flow.LaunchPlaybackFlowAsync();
             Console.WriteLine($"[NetflixPlayback] Flow settled: {_flow.State} \"{_flow.StatusMessage}\"");
             if (!_flow.CanStop) ReleaseBrowser(); // failed or not signed in: the browser is no longer playing
         }
 
-        /// <summary>The page was left (Back before the video started): stop the browser.</summary>
+        /// <summary>The page was left (Back before the video started): stop the video (the browser goes back to its idle page).</summary>
         public async Task CancelAsync()
         {
             if (_finished) return;
-            Console.WriteLine("[NetflixPlayback] Page left; stopping Netflix.");
+            Console.WriteLine("[NetflixPlayback] Page left; stopping the video.");
             if (_flow.CanStop) await _flow.StopPlaybackAsync();
             Finish();
         }

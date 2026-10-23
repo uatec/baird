@@ -89,7 +89,8 @@ namespace Baird.Tests.ViewModels
         public string? LastClearedOrigin { get; private set; }
         public Task<string> ClearSiteDataAsync(string origin, CancellationToken ct = default) { WarmUpCalls++; LastClearedOrigin = origin; return Task.FromResult("mock cleared"); }
 
-        public Task<bool> NavigateAsync(string url, CancellationToken ct = default) { NavigateCalled = true; LastNavigatedUrl = url; return Task.FromResult(true); }
+        public List<string> NavigatedUrls { get; } = new();
+        public Task<bool> NavigateAsync(string url, CancellationToken ct = default) { NavigateCalled = true; LastNavigatedUrl = url; NavigatedUrls.Add(url); return Task.FromResult(true); }
         public Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default) { SubmitCredentialsCalls++; return Task.FromResult(SubmitResult()); }
         public Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default) => Task.FromResult(LoginError);
 

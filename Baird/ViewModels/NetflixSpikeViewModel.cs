@@ -329,13 +329,49 @@ namespace Baird.ViewModels
             return _activeCts.Token;
         }
 
-        /// <summary>Launches the browser; on failure moves to Failed with the reason and returns false.</summary>
+        /// <summary>
+        /// True for Baird's shared Netflix browser (NetflixSession), which stays open: a playback navigates the open browser
+        /// instead of starting it, and when playback ends it goes back to <see cref="NetflixSession.IdleUrl"/> instead of closing.
+        /// </summary>
+        public bool KeepBrowserOpen { get; set; }
+
+        /// <summary>Ends this flow's use of the browser: back to the idle page if it stays open, else close it.</summary>
+        private async Task ReleaseBrowserAsync()
+        {
+            if (KeepBrowserOpen && _browserService.IsRunning)
+            {
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    if (await _browserService.NavigateAsync(NetflixSession.IdleUrl, cts.Token))
+                    {
+                        AddLog("[Control] Browser stays open, back on the idle page.");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AddLog($"[Control] Could not return the browser to the idle page ({ex.Message}); closing it.");
+                }
+            }
+            await _browserService.StopAsync();
+        }
+
+        /// <summary>Launches the browser (or reuses the open one); on failure moves to Failed with the reason and returns false.</summary>
         private async Task<bool> TryLaunchAsync(string url, bool visible, CancellationToken ct)
         {
             bool launched;
             try
             {
-                launched = await _browserService.LaunchAsync(DetectedBrowser, url, 9222, ProfileDir, visible, ct);
+                if (KeepBrowserOpen && !visible && _browserService.IsRunning)
+                {
+                    AddLog($"[Launch] Reusing the open browser: navigating to {url}");
+                    launched = await _browserService.NavigateAsync(url, ct);
+                }
+                else
+                {
+                    launched = await _browserService.LaunchAsync(DetectedBrowser, url, 9222, ProfileDir, visible, ct);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -475,7 +511,7 @@ namespace Baird.ViewModels
                 if (nullReads > 0 && sw.Elapsed >= AuthCheckTimeout && nullReads * PollInterval.TotalMilliseconds >= AuthCheckTimeout.TotalMilliseconds / 2)
                 {
                     Fail("Could not read the page state over CDP within the auth-check window.");
-                    await _browserService.StopAsync();
+                    await ReleaseBrowserAsync();
                     return;
                 }
 
@@ -485,7 +521,7 @@ namespace Baird.ViewModels
             catch (Exception ex)
             {
                 Fail($"Playback flow error: {ex.Message}");
-                try { await _browserService.StopAsync(); } catch { }
+                try { await ReleaseBrowserAsync(); } catch { }
             }
         }
 
@@ -519,7 +555,7 @@ namespace Baird.ViewModels
 
             Fail($"Netflix refused to play this title: \"{reason}\" (Error Code {auth.PlaybackErrorCode}) even after clearing its site data and reloading. You are signed in. " +
                  $"Try another title: edit the URL above, or set NETFLIX_TARGET_URL in ~/.baird/config.ini. Page: {auth.Url}");
-            await _browserService.StopAsync();
+            await ReleaseBrowserAsync();
             return true;
         }
 
@@ -534,7 +570,7 @@ namespace Baird.ViewModels
                     var outcome = await SignInWithConfiguredCredentialsAsync(ct);
                     if (outcome == null) return false; // signed in, keep going
                     SetState(outcome.Value.State, outcome.Value.Message);
-                    if (outcome.Value.State != NetflixSpikeState.MfaRequired) await _browserService.StopAsync();
+                    if (outcome.Value.State != NetflixSpikeState.MfaRequired) await ReleaseBrowserAsync();
                     return true;
                 }
 
@@ -547,7 +583,7 @@ namespace Baird.ViewModels
                 SetState(NetflixSpikeState.NotLoggedIn,
                     $"NOT LOGGED IN: {why} {credHint} The session lives in the browser profile at {ProfileDir}. Playback was not attempted (page: {url}).");
                 AddLog("[Auth Check] Login page detected. Stopping flow.");
-                await _browserService.StopAsync();
+                await ReleaseBrowserAsync();
                 return true;
             }
 
@@ -697,7 +733,7 @@ namespace Baird.ViewModels
             if (!ct.IsCancellationRequested && State == NetflixSpikeState.BufferingVideo)
             {
                 Fail($"No video playback observed within {BufferingTimeout.TotalSeconds:F0}s (video.currentTime never advanced). Page was not a login page.");
-                await _browserService.StopAsync();
+                await ReleaseBrowserAsync();
             }
         }
 
@@ -768,11 +804,11 @@ namespace Baird.ViewModels
             _activeCts?.Cancel();
             _activeCts = null;
 
-            await _browserService.StopAsync();
+            await ReleaseBrowserAsync();
             _hud?.Close();
             _hud = null;
 
-            SetState(NetflixSpikeState.Stopped, "Stopped. Browser closed.");
+            SetState(NetflixSpikeState.Stopped, KeepBrowserOpen ? "Stopped. The browser stays open on its idle page." : "Stopped. Browser closed.");
             CurrentVideoTime = 0;
             MfaPin = "";
         }

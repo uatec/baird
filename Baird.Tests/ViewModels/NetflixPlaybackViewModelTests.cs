@@ -21,8 +21,9 @@ namespace Baird.Tests.ViewModels
             {
                 AuthStatusToReturn = new AuthPageStatus("https://www.netflix.com/watch/80107103", "t", false, false, false, 0),
                 VideoSequence = video ?? (() => Video(t += 0.4)),
+                SessionSequence = () => new NetflixSessionState("https://www.netflix.com/browse", false, true, Array.Empty<string>()),
             };
-            var session = new NetflixSession(svc, null) { IdleTimeout = null };
+            var session = new NetflixSession(svc, null) { PollInterval = TimeSpan.FromMilliseconds(5), SettleDelay = TimeSpan.FromMilliseconds(5) };
             var flow = new NetflixSpikeViewModel(svc)
             {
                 PollInterval = TimeSpan.FromMilliseconds(5),
@@ -64,7 +65,7 @@ namespace Baird.Tests.ViewModels
 
             await hud.HandleKeyAsync(Key.Escape);
 
-            Assert.True(svc.StopCalled);
+            Assert.Equal(NetflixSession.IdleUrl, svc.LastNavigatedUrl);
             Assert.Equal(1, finished);
             Assert.False(session.IsPlaybackActive);
             Assert.NotNull(progress);
@@ -88,7 +89,7 @@ namespace Baird.Tests.ViewModels
         }
 
         [Fact]
-        public async Task LeavingThePage_StopsTheBrowser()
+        public async Task LeavingThePage_ReturnsTheBrowserToTheIdlePage()
         {
             var (svc, session, page) = Page();
             var finished = 0;
@@ -98,8 +99,43 @@ namespace Baird.Tests.ViewModels
             await page.CancelAsync();
             await page.CancelAsync();
 
-            Assert.True(svc.StopCalled);
+            Assert.Equal(NetflixSession.IdleUrl, svc.LastNavigatedUrl);
             Assert.Equal(1, finished);
+            Assert.False(session.IsPlaybackActive);
+        }
+
+        [Fact]
+        public async Task WithTheBrowserAlreadyOpen_PlayNavigatesIt_AndBackReturnsItToTheIdlePage()
+        {
+            var (svc, session, page) = Page();
+            Assert.Null(await session.EnsureReadyAsync(default)); // as at Baird's start
+            svc.ResetLaunchCalled();
+            NetflixHudViewModel? hud = null;
+            page.HudRequested += h => hud = h;
+
+            await page.StartAsync();
+            Assert.False(svc.LaunchCalled);
+            Assert.Contains("https://www.netflix.com/watch/80107103", svc.NavigatedUrls);
+
+            await hud!.HandleKeyAsync(Key.Escape);
+
+            Assert.False(svc.StopCalled); // stays open
+            Assert.True(svc.IsRunning);
+            Assert.Equal(NetflixSession.IdleUrl, svc.LastNavigatedUrl);
+            Assert.False(session.IsPlaybackActive);
+        }
+
+        [Fact]
+        public async Task SessionNotReady_ShowsTheReason_AndDoesNotPlay()
+        {
+            var (svc, session, page) = Page();
+            svc.SessionSequence = () => new NetflixSessionState("https://www.netflix.com/login", true, false, Array.Empty<string>());
+
+            await page.StartAsync();
+
+            Assert.True(page.IsProblem);
+            Assert.Contains("NETFLIX_USER", page.StatusText);
+            Assert.DoesNotContain("https://www.netflix.com/watch/80107103", svc.NavigatedUrls);
             Assert.False(session.IsPlaybackActive);
         }
     }
