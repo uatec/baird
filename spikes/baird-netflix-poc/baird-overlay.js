@@ -188,8 +188,13 @@
     `;
 
     // 2. Locate the HTML5 Video element
+    // Disney+ renders two <video> elements and the first stays empty, so prefer the one that has a source.
     function getVideo() {
-        return document.querySelector("video");
+        const videos = document.querySelectorAll("video");
+        for (const v of videos) {
+            if (v.currentSrc && v.readyState > 0) return v;
+        }
+        return videos[0] || null;
     }
 
     // 3. Create Baird HUD DOM Structure
@@ -261,6 +266,15 @@
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
+    // Length of the title in seconds, or 0 when unknown. On Disney+ video.duration is NOT the length: it is the end of the buffered
+    // range (Infinity at first, then growing 23 s, 36 s, 44 s ...) and seekable.end() is the same value, so it cannot be used.
+    // Baird can supply the real length (from the API's runtimeMs) as window.bairdRuntimeSeconds.
+    function mediaDuration(v) {
+        if (window.bairdRuntimeSeconds > 0) return window.bairdRuntimeSeconds;
+        if (/(^|\.)disneyplus\.com$/.test(location.hostname)) return 0;
+        return isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+    }
+
     // Auto-hide Timer management
     let hideTimer = null;
     function showHud() {
@@ -293,14 +307,16 @@
         syncTitle();
 
         const cur = v.currentTime || 0;
-        const dur = v.duration || 0;
+        const dur = mediaDuration(v);
         const progress = dur > 0 ? (cur / dur) * 100 : 0;
 
         curTimeEl.textContent = formatTime(cur);
-        remTimeEl.textContent = "-" + formatTime(Math.max(0, dur - cur));
+        remTimeEl.textContent = dur > 0 ? "-" + formatTime(Math.max(0, dur - cur)) : "--:--";
         progressFill.style.width = `${progress.toFixed(2)}%`;
 
-        if (dur > 0) {
+        if (dur <= 0) {
+            finishAtEl.textContent = "";
+        } else {
             const endsAt = new Date(Date.now() + (dur - cur) * 1000);
             finishAtEl.textContent = `Ends at ${endsAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
         }

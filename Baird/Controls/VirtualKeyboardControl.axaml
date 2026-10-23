@@ -74,7 +74,7 @@
         <Button Grid.Row="1" Grid.Column="7" Content="J" Click="OnKeyClick"/>
         <Button Grid.Row="1" Grid.Column="8" Content="K" Click="OnKeyClick"/>
         <Button Grid.Row="1" Grid.Column="9" Content="L" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="10" Content="ENTER" Classes="special" Click="OnEnterClick" FontSize="16"/>
+        <Button Grid.Row="1" Grid.Column="10" Content="ENTER" Classes="special" Click="OnEnterClick" FontSize="12"/>
 
         <!-- Row 2: ZXCV -->
         <!-- Skipping col 0 for alignment -->

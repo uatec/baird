@@ -1,9 +1,7 @@
-using Avalonia;
+using System;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
-using Avalonia.Threading;
-using System;
 
 namespace Baird.Controls
 {
@@ -21,19 +19,6 @@ namespace Baird.Controls
         private void InitializeComponent()
         {
             AvaloniaXamlLoader.Load(this);
-        }
-
-        protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
-        {
-            base.OnPropertyChanged(change);
-            if (change.Property == IsVisibleProperty && change.NewValue is true)
-            {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    var keyF = this.FindControl<Button>("KeyF");
-                    keyF?.Focus();
-                }, DispatcherPriority.Input);
-            }
         }
 
         private void OnKeyClick(object? sender, RoutedEventArgs e)
