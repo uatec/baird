@@ -337,6 +337,50 @@ namespace Baird.Tests.Services
             Assert.Contains(vm.LogEntries, l => l.Contains("already signed in"));
         }
 
+        private static async Task<(FakeDisneyBrowser, DisneySpikeViewModel)> PlayingVm()
+        {
+            var b = new FakeDisneyBrowser();
+            b.States.Enqueue(FakeDisneyBrowser.State(Play));
+            for (int t = 1; t <= 12; t++) b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: t));
+            var vm = Vm(b);
+            await vm.LaunchPlaybackFlowAsync();
+            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            return (b, vm);
+        }
+
+        [Fact]
+        public async Task Back_on_the_remote_while_playing_stops_the_browser_and_returns_to_Baird()
+        {
+            var (b, vm) = await PlayingVm();
+            Assert.False(b.StopCalled); // a playing session has not stopped the browser
+            b.RaisePageSignal("{\"type\":\"exit\"}");
+            Assert.True(b.StopCalled);
+            Assert.Equal(DisneySpikeState.Stopped, vm.State);
+        }
+
+        [Theory]
+        [InlineData("{\"type\":\"other\"}")]
+        [InlineData("{\"x\":1}")]
+        [InlineData("not json")]
+        [InlineData("[]")]
+        public async Task Other_or_malformed_signals_are_ignored(string payload)
+        {
+            var (b, vm) = await PlayingVm();
+            b.RaisePageSignal(payload);
+            Assert.False(b.StopCalled);
+            Assert.Equal(DisneySpikeState.Playing, vm.State);
+        }
+
+        [Fact]
+        public void An_exit_signal_when_nothing_is_playing_is_ignored()
+        {
+            var b = new FakeDisneyBrowser();
+            var vm = Vm(b);
+            b.RaisePageSignal("{\"type\":\"exit\"}");
+            Assert.False(b.StopCalled);
+            Assert.Equal(DisneySpikeState.Idle, vm.State);
+        }
+
         [Fact]
         public async Task A_browser_that_will_not_start_fails_with_its_reason()
         {

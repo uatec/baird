@@ -11,7 +11,7 @@ Status as of 2026-10-23. Two spikes, built like the Netflix ones: playback and s
 | Disney+ playback in Baird on the Pi | **Works** | Unattended test: `video.currentTime` advanced (20.12 s to 20.63 s), window revealed over Baird, screenshots show moving picture with the Baird HUD. 854 px wide (Widevine L3 gives standard definition). |
 | Disney+ search via Disney's internal API | **Works** | 6 results for "Mandalorian" in ~2.3 s (including browser sign-in check and token capture), with artwork, movie/series, rating and year. Screenshot shows the result grid on the TV. |
 | Playing a search result | Movie: works by URL. Series: play URL found and proven | See §3 "Series and episodes". |
-| Remote-control exit from the player | Not done | Same gap as Netflix. |
+| Remote-control exit from the player | Works (signal path) | The overlay's Back sends `{"type":"exit"}` through the `bairdSignal` CDP binding; `DisneySpikeViewModel` stops the browser. Checked on the Pi by calling `bairdSignal` over CDP, not by a physical key press. |
 | HUD end time / remaining time | Shows `--:--` | Disney+ gives no real duration in the page; needs `runtimeMs` from the API (see §2). |
 | CPU / smoothness over a full title | Not measured | |
 
@@ -76,6 +76,11 @@ One sign-in attempt per run. The password is typed with CDP `Input.insertText` a
   `.../widevine/v1/obtain-license`.
 - Playback is confirmed only when `currentTime` is above 0.1 s **and** increases between two polls. A failure ends in a
   red FAILED state with the last page URL and text, and in the journal.
+- **Back / exit:** since the Netflix integration merge, `baird-overlay.js` sends Back and Escape to Baird through a CDP binding
+  (`window.bairdSignal`) and returns, so a view model that does not listen leaves Back dead. `DisneySpikeViewModel` listens to
+  `ICdpBrowserService.PageSignalReceived` and stops playback on `{"type":"exit"}`. Netflix now uses a Baird-drawn HUD
+  (`NetflixHudWindow`) by default; Disney still uses the injected HTML overlay. Moving Disney to the Baird-drawn HUD needs a
+  Disney version of `ControlNetflixPlayerAsync`.
 - **Resume**: a title the account has started shows "CONTINUE", and `/play/{id}` resumes from the saved position. The
   test therefore started at 20 s, not 0 s.
 - Subtitles are on, following the profile's setting.

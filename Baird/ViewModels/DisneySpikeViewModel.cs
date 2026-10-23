@@ -2,6 +2,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Reactive;
+using System.Reactive.Concurrency;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Baird.Services;
@@ -123,6 +125,10 @@ namespace Baird.ViewModels
             if (_browser is CdpBrowserService cdp) cdp.LogMessage += AddLog;
             _session = new DisneySession(browser, (browser as ICdpPageDriver) ?? throw new ArgumentException("browser must also implement ICdpPageDriver"), AddLog);
 
+            // The overlay's Back/Escape key sends {"type":"exit"} through the CDP binding the browser service always adds.
+            // Without this handler Back does nothing on Disney+ (the overlay returns early when the binding exists).
+            _browser.PageSignalReceived += payload => RxApp.MainThreadScheduler.Schedule(() => OnPageSignal(payload));
+
             AddLog($"[Init] {CredentialsStatus}");
             LaunchCommand = ReactiveCommand.CreateFromTask(LaunchPlaybackFlowAsync);
             StopCommand = ReactiveCommand.CreateFromTask(StopPlaybackAsync);
@@ -242,6 +248,28 @@ namespace Baird.ViewModels
             await _browser.RevealWindowAsync(ct);
             SetState(DisneySpikeState.Playing, $"Playback observed (currentTime advancing, {VideoInfo}); window revealed with the Baird HUD.");
             AddLog("[Reveal] Window revealed.");
+        }
+
+        /// <summary>Handles a message from the overlay. Back on the remote sends {"type":"exit"}: close the browser and return to Baird.</summary>
+        private void OnPageSignal(string payload)
+        {
+            string? type = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(payload);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                    doc.RootElement.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String)
+                {
+                    type = t.GetString();
+                }
+            }
+            catch (JsonException) { }
+
+            if (type == "exit" && CanStop)
+            {
+                AddLog("[Control] Exit requested from the overlay (remote Back).");
+                _ = StopPlaybackAsync();
+            }
         }
 
         public async Task StopPlaybackAsync()
