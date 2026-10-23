@@ -64,6 +64,20 @@ namespace Baird.ViewModels
             BackCommand = ReactiveCommand.Create(() => BackRequested?.Invoke(this, EventArgs.Empty));
         }
 
+        private readonly NetflixSession? _sharedSession;
+
+        /// <summary>
+        /// Searches through Baird's shared Netflix session, so it takes part in the shared browser's rules (one service at a time,
+        /// the tab handed back to Netflix, no search while another service plays). The browser stays open.
+        /// </summary>
+        public NetflixSearchSpikeViewModel(NetflixSession session) : this(session.Browser, session.Credentials)
+        {
+            _sharedSession = session;
+            LogBrowserToJournal = false;
+            StopBrowserAfterSearch = false;
+            session.Log += AddScreenLog; // the session's lines reach the journal once, from where it was created
+        }
+
         /// <summary>
         /// False when the browser is shared (NetflixSession): it already writes its log to the journal once, so this screen
         /// only shows the browser's lines.
@@ -103,7 +117,7 @@ namespace Baird.ViewModels
             Results.Clear();
             var term = string.IsNullOrWhiteSpace(SearchTerm) ? DefaultSearchTerm : SearchTerm.Trim();
             using var cts = new CancellationTokenSource(Timeout);
-            var session = new NetflixSession(_browser, _credentials, _profileName)
+            var session = _sharedSession ?? new NetflixSession(_browser, _credentials, _profileName)
             {
                 // Port 9223, as before: the spike starts its own browser each time and closes it afterwards.
                 Port = 9223,
@@ -112,7 +126,7 @@ namespace Baird.ViewModels
                 PollInterval = PollInterval,
                 SettleDelay = SettleDelay,
             };
-            session.Log += AddLog;
+            if (_sharedSession == null) session.Log += AddLog;
             try
             {
                 Status = $"Searching Netflix for \"{term}\"...";

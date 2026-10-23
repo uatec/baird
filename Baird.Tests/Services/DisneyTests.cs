@@ -463,4 +463,197 @@ namespace Baird.Tests.Services
             Assert.Contains("DISNEY_USER", vm.Status);
         }
     }
+
+    /// <summary>One browser, one tab, two services: attach, hand the tab over, and never disturb a playing service.</summary>
+    public class SharedBrowserTests
+    {
+        private const string Home = "https://www.disneyplus.com/en-gb/home";
+        private const string Play = "https://www.disneyplus.com/en-gb/play/d830ec57-499e-498c-b6b3-2b85a18a5f51";
+
+        private static (FakeDisneyBrowser Browser, BrowserHub Hub, DisneyService Disney, NetflixSession Netflix) Setup()
+        {
+            var b = new FakeDisneyBrowser
+            {
+                LastState = FakeDisneyBrowser.State(Home, nav: true),
+                SessionSequence = () => new NetflixSessionState("https://www.netflix.com/browse", false, true, System.Array.Empty<string>())
+            };
+            var hub = new BrowserHub(b);
+            var disney = new DisneyService(hub, new DisneyCredentials("me@example.com", "pw"))
+            {
+                SignInTimeout = TimeSpan.FromSeconds(3),
+                PollInterval = TimeSpan.FromMilliseconds(10)
+            };
+            var netflix = new NetflixSession(b, new NetflixCredentials("me@example.com", "pw"), hub: hub)
+            {
+                PollInterval = TimeSpan.FromMilliseconds(10),
+                SettleDelay = TimeSpan.FromMilliseconds(10)
+            };
+            return (b, hub, disney, netflix);
+        }
+
+        [Fact]
+        public async Task Disney_attaches_to_a_browser_that_is_already_open_instead_of_starting_another()
+        {
+            var (b, hub, disney, _) = Setup();
+            b.IsRunning = true; // opened earlier (by the Netflix session)
+
+            var failure = await disney.EnsureReadyAsync(CancellationToken.None);
+
+            Assert.Null(failure);
+            Assert.False(b.LaunchCalled);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+            Assert.Equal("Disney+", hub.PageOwner);
+        }
+
+        [Fact]
+        public async Task Disney_starts_the_browser_on_the_shared_port_and_profile_when_nobody_has()
+        {
+            var (b, hub, disney, _) = Setup();
+            hub.Port = 9222;
+            var failure = await disney.EnsureReadyAsync(CancellationToken.None);
+            Assert.Null(failure);
+            Assert.True(b.LaunchCalled);
+        }
+
+        [Fact]
+        public async Task A_search_leaves_the_tab_on_the_idle_page_and_the_browser_open()
+        {
+            var (b, _, disney, _) = Setup();
+            b.SearchBody = DisneySearchParserTests.Reply(DisneySearchParserTests.Item("The Mandalorian", "id-1", "series"));
+
+            var outcome = await disney.SearchAsync("mandalorian", CancellationToken.None);
+
+            Assert.True(outcome.Ok);
+            Assert.Single(outcome.Reply!.Results);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+            Assert.False(b.StopCalled);
+        }
+
+        [Fact]
+        public async Task Netflix_takes_the_tab_back_after_Disney_used_it()
+        {
+            var (b, hub, disney, netflix) = Setup();
+
+            Assert.Null(await netflix.EnsureReadyAsync(CancellationToken.None));
+            Assert.Equal("Netflix", hub.PageOwner);
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None));
+            Assert.Equal("Disney+", hub.PageOwner);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+
+            Assert.Null(await netflix.EnsureReadyAsync(CancellationToken.None));
+
+            Assert.Equal("Netflix", hub.PageOwner);
+            Assert.Equal(NetflixSession.IdleUrl, b.LastNavigatedUrl); // Netflix's search is a same-origin fetch: it must be on netflix.com
+        }
+
+        [Fact]
+        public async Task Disney_takes_the_tab_back_after_Netflix_used_it()
+        {
+            var (b, hub, disney, netflix) = Setup();
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None));
+            Assert.Null(await netflix.EnsureReadyAsync(CancellationToken.None));
+            Assert.Equal("Netflix", hub.PageOwner);
+
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None));
+
+            Assert.Equal("Disney+", hub.PageOwner);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+        }
+
+        [Fact]
+        public async Task A_playing_Disney_blocks_Netflix_from_the_tab()
+        {
+            var (b, _, disney, netflix) = Setup();
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None));
+            disney.IsPlaybackActive = true;
+
+            var ready = await netflix.EnsureReadyAsync(CancellationToken.None);
+            var search = await netflix.SearchAsync("x", CancellationToken.None);
+
+            Assert.Contains("Disney+ is playing", ready);
+            Assert.Contains("Disney+ is playing", search.Failure);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl); // untouched
+        }
+
+        [Fact]
+        public async Task A_playing_Netflix_blocks_Disney_from_the_tab()
+        {
+            var (b, _, disney, netflix) = Setup();
+            Assert.Null(await netflix.EnsureReadyAsync(CancellationToken.None));
+            netflix.IsPlaybackActive = true;
+            var urlBefore = b.LastNavigatedUrl;
+
+            var ready = await disney.EnsureReadyAsync(CancellationToken.None);
+            var search = await disney.SearchAsync("x", CancellationToken.None);
+
+            Assert.Contains("Netflix is playing", ready);
+            Assert.Contains("Netflix is playing", search.Failure);
+            Assert.Equal(urlBefore, b.LastNavigatedUrl);
+        }
+
+        [Fact]
+        public async Task Beginning_playback_inside_EnsureReady_marks_it_only_on_success()
+        {
+            var (b, hub, disney, _) = Setup();
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None, beginPlayback: true));
+            Assert.Equal("Disney+", hub.ActivePlayback);
+            disney.IsPlaybackActive = false;
+
+            b.LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/identity/login/enter-email", login: true);
+            var other = new DisneyService(new BrowserHub(b), null) { SignInTimeout = TimeSpan.FromMilliseconds(300), PollInterval = TimeSpan.FromMilliseconds(10) };
+            Assert.NotNull(await other.EnsureReadyAsync(CancellationToken.None, beginPlayback: true));
+            Assert.Null(other.Hub.ActivePlayback);
+        }
+
+        [Fact]
+        public async Task The_playback_flag_of_one_service_never_clears_the_other()
+        {
+            var (_, hub, disney, netflix) = Setup();
+            disney.IsPlaybackActive = true;
+            netflix.IsPlaybackActive = false; // a stale "playback ended" from Netflix
+            Assert.Equal("Disney+", hub.ActivePlayback);
+            disney.IsPlaybackActive = false;
+            Assert.Null(hub.ActivePlayback);
+        }
+
+        [Fact]
+        public async Task Shared_Disney_playback_keeps_the_browser_open_and_returns_the_tab_to_the_idle_page()
+        {
+            var (b, hub, disney, _) = Setup();
+            b.States.Enqueue(FakeDisneyBrowser.State(Home, nav: true));
+            for (int t = 1; t <= 12; t++) b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: t));
+            var vm = new DisneySpikeViewModel(disney) { BufferingTimeout = TimeSpan.FromSeconds(2) };
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal("Disney+", hub.ActivePlayback);
+            Assert.True(vm.KeepBrowserOpen);
+
+            b.RaisePageSignal("{\"type\":\"exit\"}"); // remote Back
+
+            Assert.Equal(DisneySpikeState.Stopped, vm.State);
+            Assert.False(b.StopCalled);
+            Assert.True(b.HideWindowCalled); // the revealed window must go back behind Baird, or the TV keeps showing the browser
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+            Assert.Null(hub.ActivePlayback);
+            Assert.Contains("stays open", vm.StatusMessage);
+        }
+
+        [Fact]
+        public async Task A_failed_shared_playback_returns_the_tab_and_frees_the_browser()
+        {
+            var (b, hub, disney, _) = Setup();
+            b.LastState = FakeDisneyBrowser.State(Home, nav: true);
+            var vm = new DisneySpikeViewModel(disney) { BufferingTimeout = TimeSpan.FromMilliseconds(300) };
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(DisneySpikeState.Failed, vm.State);
+            Assert.False(b.StopCalled);
+            Assert.Null(hub.ActivePlayback);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+        }
+    }
 }
+

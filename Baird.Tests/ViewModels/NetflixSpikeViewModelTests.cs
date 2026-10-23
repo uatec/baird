@@ -115,6 +115,9 @@ namespace Baird.Tests.ViewModels
             return Task.FromResult(true);
         }
 
+        public bool HideWindowCalled { get; private set; }
+        public Task HideWindowAsync(CancellationToken ct = default) { HideWindowCalled = true; return Task.CompletedTask; }
+
         public Task<bool> RevealWindowAsync(CancellationToken ct = default)
         {
             RevealWindowCalled = true;

@@ -93,7 +93,7 @@ namespace Baird.ViewModels
 
         public ScreensaverViewModel Screensaver { get; }
 
-        public MainViewModel(IConfiguration configuration, IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService, IJellyseerrService jellyseerrService, IEpgService epgService, NetflixSession? netflixSession = null)
+        public MainViewModel(IConfiguration configuration, IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService, IJellyseerrService jellyseerrService, IEpgService epgService, NetflixSession? netflixSession = null, DisneyService? disneyService = null)
         {
             _dataService = dataService;
             _netflixSession = netflixSession;
@@ -161,16 +161,21 @@ namespace Baird.ViewModels
 
             var nfProfileName = configuration?["NETFLIX_PROFILE"] is { Length: > 0 } nfProfile ? nfProfile : null;
             NetflixSearchSpike = netflixSession != null
-                ? new NetflixSearchSpikeViewModel(netflixSession.Browser, _netflixCredentials, nfProfileName) { LogBrowserToJournal = false, StopBrowserAfterSearch = false }
+                ? new NetflixSearchSpikeViewModel(netflixSession)
                 : new NetflixSearchSpikeViewModel(_netflixCredentials, nfProfileName);
             NetflixSearchSpike.BackRequested += (s, e) => GoBack();
 
             var disneyCredentials = DisneyCredentials.FromConfiguration(configuration);
             var disneyProfile = configuration?["DISNEY_PROFILE"] is { Length: > 0 } dnProfile ? dnProfile : null;
-            DisneySpike = new DisneySpikeViewModel(disneyCredentials, disneyProfile);
+            // With the shared browser (BrowserHub, also used by Netflix) the Disney+ screens attach to it; without it they own a browser.
+            DisneySpike = disneyService != null
+                ? new DisneySpikeViewModel(disneyService)
+                : new DisneySpikeViewModel(disneyCredentials, disneyProfile);
             if (configuration?["DISNEY_TARGET_URL"] is { Length: > 0 } disneyTarget) DisneySpike.TargetUrl = disneyTarget;
             DisneySpike.BackRequested += (s, e) => GoBack();
-            DisneySearchSpike = new DisneySearchSpikeViewModel(disneyCredentials, disneyProfile);
+            DisneySearchSpike = disneyService != null
+                ? new DisneySearchSpikeViewModel(disneyService)
+                : new DisneySearchSpikeViewModel(disneyCredentials, disneyProfile);
             DisneySearchSpike.BackRequested += (s, e) => GoBack();
 
             LottieSpike = new LottieSpikeViewModel();
@@ -272,6 +277,11 @@ namespace Baird.ViewModels
                 _ = Task.Run(RunNetflixCoreAutoTestAsync);
                 return;
             }
+            if (string.Equals(autotest, "shared-browser", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Task.Run(RunSharedBrowserAutoTestAsync);
+                return;
+            }
             if (string.Equals(autotest, "netflix-search", StringComparison.OrdinalIgnoreCase))
             {
                 _ = Task.Run(async () =>
@@ -364,6 +374,57 @@ namespace Baird.ViewModels
                     Console.WriteLine($"[AutoTest] ERROR {ex}");
                 }
             });
+        }
+
+        /// <summary>
+        /// BAIRD_AUTOTEST=shared-browser: Netflix and Disney+ take turns on the ONE shared browser, as a user switching between
+        /// them would: Netflix search, Disney+ search, Netflix search, Disney+ playback, remote Back, Netflix search. Logs a line per
+        /// step and "[AutoTest] RESULT shared-browser ..." with every step's outcome. Does nothing unless the variable is set.
+        /// </summary>
+        private async Task RunSharedBrowserAutoTestAsync()
+        {
+            var steps = new System.Collections.Generic.List<string>();
+            void Step(string name, bool ok, string detail)
+            {
+                steps.Add($"{name}={(ok ? "ok" : "FAILED")}");
+                Console.WriteLine($"[AutoTest] STEP {name} {(ok ? "ok" : "FAILED")}: {detail}");
+            }
+            async Task OnUi(Func<Task> work) => await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(work);
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(8));
+                await NetflixSearchSpike.SearchAsync();
+                Step("netflix-search-1", NetflixSearchSpike.Succeeded, NetflixSearchSpike.Status);
+                await DisneySearchSpike.SearchAsync();
+                Step("disney-search", DisneySearchSpike.Succeeded, DisneySearchSpike.Status);
+                await NetflixSearchSpike.SearchAsync();
+                Step("netflix-search-2", NetflixSearchSpike.Succeeded, NetflixSearchSpike.Status);
+
+                await OnUi(async () =>
+                {
+                    var index = MainMenu.Tabs.ToList().FindIndex(t => t.Title == "Disney Spike");
+                    OpenMainMenu(index >= 0 ? index : null);
+                    await DisneySpike.LaunchPlaybackFlowAsync();
+                });
+                Step("disney-playback", DisneySpike.State == DisneySpikeState.Playing, DisneySpike.StatusMessage);
+
+                await Task.Delay(TimeSpan.FromSeconds(10)); // let it play on screen (a screenshot is taken meanwhile)
+                await NetflixSearchSpike.SearchAsync();
+                Step("netflix-search-blocked-while-disney-plays", !NetflixSearchSpike.Succeeded && NetflixSearchSpike.Status.Contains("playing", StringComparison.OrdinalIgnoreCase), NetflixSearchSpike.Status);
+
+                await OnUi(async () => { await DisneySpike.StopPlaybackAsync(); });
+                Step("disney-stop", DisneySpike.State == DisneySpikeState.Stopped, DisneySpike.StatusMessage);
+
+                await NetflixSearchSpike.SearchAsync();
+                Step("netflix-search-3", NetflixSearchSpike.Succeeded, NetflixSearchSpike.Status);
+                await DisneySearchSpike.SearchAsync();
+                Step("disney-search-2", DisneySearchSpike.Succeeded, DisneySearchSpike.Status);
+            }
+            catch (Exception ex)
+            {
+                Step("exception", false, ex.ToString());
+            }
+            Console.WriteLine($"[AutoTest] RESULT shared-browser {string.Join(" ", steps)}");
         }
 
         /// <summary>

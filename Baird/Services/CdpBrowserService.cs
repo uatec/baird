@@ -73,6 +73,8 @@ namespace Baird.Services
         Task<string?> ControlNetflixPlayerAsync(NetflixPlayerAction action, double seconds = 0, CancellationToken ct = default);
         Task<bool> InjectOverlayScriptAsync(string? script = null, CancellationToken ct = default);
         Task<bool> RevealWindowAsync(CancellationToken ct = default);
+        /// <summary>The opposite of <see cref="RevealWindowAsync"/> for a browser that stays open: leave fullscreen and put Baird back on top.</summary>
+        Task HideWindowAsync(CancellationToken ct = default);
         Task StopAsync();
 
         /// <summary>A message the overlay sent with <c>window.bairdSignal(text)</c>, e.g. <c>{"type":"exit"}</c>. Raised on a background thread.</summary>
@@ -885,6 +887,26 @@ namespace Baird.Services
             catch { }
 
             return true;
+        }
+
+        public async Task HideWindowAsync(CancellationToken ct = default)
+        {
+            Log("[CDP] Hiding the browser window: leaving fullscreen and putting Baird back on top...");
+            try
+            {
+                await EvaluateInPageAsync("if (document.fullscreenElement && document.exitFullscreen) { document.exitFullscreen().catch(() => {}); }", ct);
+            }
+            catch { }
+            RunShellCommand("wmctrl", "-x -r baird-netflix -b remove,fullscreen");
+            if (!string.IsNullOrEmpty(_bairdWindowId))
+            {
+                RunShellCommand("xdotool", $"windowactivate {_bairdWindowId}");
+                Log("[CDP] Window stacking: Baird raised above the browser.");
+            }
+            else
+            {
+                Log("[CDP] Window stacking: Baird's window id is unknown, so the browser could not be put behind it.");
+            }
         }
 
         /// <summary>

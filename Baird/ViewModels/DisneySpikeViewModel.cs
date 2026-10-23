@@ -32,10 +32,10 @@ namespace Baird.ViewModels
     {
         public const string DefaultTargetUrl = "https://www.disneyplus.com/en-gb/play/d830ec57-499e-498c-b6b3-2b85a18a5f51";
 
+        private readonly DisneyService _service;
         private readonly ICdpBrowserService _browser;
         private readonly DisneySession _session;
-        private readonly DisneyCredentials? _credentials;
-        private readonly string? _profileName;
+        private readonly bool _shared;
         private CancellationTokenSource? _activeCts;
 
         public event EventHandler? BackRequested;
@@ -102,28 +102,43 @@ namespace Baird.ViewModels
         public ReactiveCommand<Unit, Unit> StopCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
 
-        /// <summary>Shared with the Netflix spikes: Chromium keeps one session per site in one profile.</summary>
-        public string ProfileDir { get; set; } = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "baird", "browser-profile");
+        /// <summary>The browser profile (shared with Netflix: Chromium keeps one session per site in one profile).</summary>
+        public string ProfileDir { get => _service.Hub.ProfileDir; set => _service.Hub.ProfileDir = value; }
 
-        public TimeSpan SignInTimeout { get; set; } = TimeSpan.FromSeconds(60);
+        public TimeSpan SignInTimeout { get => _service.SignInTimeout; set => _service.SignInTimeout = value; }
+        public TimeSpan PollInterval { get => _service.PollInterval; set => _service.PollInterval = value; }
         public TimeSpan BufferingTimeout { get; set; } = TimeSpan.FromSeconds(90);
-        public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(500);
 
-        public string CredentialsStatus => _credentials == null
+        /// <summary>
+        /// True for Baird's shared browser (<see cref="BrowserHub"/>), which stays open: when playback ends the tab goes back to
+        /// <see cref="DisneyService.IdleUrl"/> instead of the browser closing.
+        /// </summary>
+        public bool KeepBrowserOpen { get; set; }
+
+        public string CredentialsStatus => _service.Credentials == null
             ? $"No Disney+ credentials configured (set {DisneyCredentials.UserKey} and {DisneyCredentials.PasswordKey} in ~/.baird/config.ini)."
-            : $"Disney+ credentials configured for {_credentials.User}.";
+            : $"Disney+ credentials configured for {_service.Credentials.User}.";
 
         public DisneySpikeViewModel(DisneyCredentials? credentials = null, string? profileName = null)
             : this(new CdpBrowserService(), credentials, profileName) { }
 
+        /// <summary>A Disney+-only browser (tests, no shared browser). It closes the browser when playback ends.</summary>
         public DisneySpikeViewModel(ICdpBrowserService browser, DisneyCredentials? credentials = null, string? profileName = null)
+            : this(new DisneyService(new BrowserHub(browser) { Port = 9224 }, credentials, profileName), shared: false)
         {
-            _browser = browser;
-            _credentials = credentials;
-            _profileName = profileName;
-            if (_browser is CdpBrowserService cdp) cdp.LogMessage += AddLog;
-            _session = new DisneySession(browser, (browser as ICdpPageDriver) ?? throw new ArgumentException("browser must also implement ICdpPageDriver"), AddLog);
+            if (browser is CdpBrowserService cdp) cdp.LogMessage += AddLog;
+        }
+
+        /// <summary>Disney+ on Baird's shared browser. The service's log reaches the journal once, from where it was created.</summary>
+        public DisneySpikeViewModel(DisneyService service) : this(service, shared: true) { KeepBrowserOpen = true; }
+
+        private DisneySpikeViewModel(DisneyService service, bool shared)
+        {
+            _service = service;
+            _shared = shared;
+            _browser = service.Browser;
+            _session = service.Session;
+            _service.Log += shared ? AddScreenLog : AddLog; // shared: the service's lines reach the journal once, from where it was created
 
             // The overlay's Back/Escape key sends {"type":"exit"} through the CDP binding the browser service always adds.
             // Without this handler Back does nothing on Disney+ (the overlay returns early when the binding exists).
@@ -135,11 +150,16 @@ namespace Baird.ViewModels
             BackCommand = ReactiveCommand.Create(() => BackRequested?.Invoke(this, EventArgs.Empty));
         }
 
-        public void AddLog(string message)
+        private void AddScreenLog(string message)
         {
             LogEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-            Console.WriteLine($"[DisneySpike] {message}"); // journal (journalctl -t baird); never contains the password
             if (LogEntries.Count > 200) LogEntries.RemoveAt(0);
+        }
+
+        public void AddLog(string message)
+        {
+            AddScreenLog(message);
+            Console.WriteLine($"[DisneySpike] {message}"); // journal (journalctl -t baird); never contains the password
         }
 
         public async Task LaunchPlaybackFlowAsync()
@@ -153,11 +173,12 @@ namespace Baird.ViewModels
 
             try
             {
-                SetState(DisneySpikeState.Launching, $"Launching the browser on {TargetUrl} ...");
-                // Port 9224: the Netflix spikes use 9222 and 9223. They share the profile, so never run at the same time.
-                if (!await _browser.LaunchAsync(_browser.FindBrowserExecutable(), TargetUrl, 9224, ProfileDir, false, ct))
+                SetState(DisneySpikeState.SigningIn, "Opening the browser and checking that Disney+ is signed in...");
+                var failure = await _service.EnsureReadyAsync(ct, beginPlayback: true);
+                if (failure != null)
                 {
-                    Fail($"Browser launch failed: {_browser.LastError ?? "unknown error"} (is a Netflix spike still running?)");
+                    Fail(failure.StartsWith("FAILED", StringComparison.Ordinal) ? failure : "FAILED: " + failure);
+                    await ReleaseBrowserAsync();
                     return;
                 }
 
@@ -167,22 +188,10 @@ namespace Baird.ViewModels
                     : $"Widevine: NOT available ({w.Detail})";
                 AddLog("[DRM] " + DrmStatus);
 
-                SetState(DisneySpikeState.SigningIn, "Checking that Disney+ is signed in and a profile is chosen...");
-                var problem = await _session.EnsureSignedInAsync(_credentials, _profileName, SignInTimeout, PollInterval, ct);
-                if (problem != null)
-                {
-                    Fail(problem);
-                    await _browser.StopAsync();
-                    return;
-                }
-
-                // Login and the profile picker redirect away from the title: make sure we end on it.
-                var now = await _session.ReadStateAsync(ct);
-                if (now != null && !now.Url.Contains("/play/", StringComparison.OrdinalIgnoreCase))
-                {
-                    AddLog($"[Nav] Opening {TargetUrl} (page was {now.Url}).");
-                    await _browser.NavigateAsync(TargetUrl, ct);
-                }
+                // The browser is ready on Disney+'s idle page, and the tab is ours until playback ends (EnsureReadyAsync marked it
+                // as playing inside the gate).
+                SetState(DisneySpikeState.Launching, $"Opening {TargetUrl} ...");
+                await _browser.NavigateAsync(TargetUrl, ct);
 
                 await WaitForPlaybackAsync(ct);
             }
@@ -190,7 +199,7 @@ namespace Baird.ViewModels
             catch (Exception ex)
             {
                 Fail($"Playback flow error: {ex.Message}");
-                try { await _browser.StopAsync(); } catch { }
+                try { await ReleaseBrowserAsync(); } catch { }
             }
         }
 
@@ -210,7 +219,7 @@ namespace Baird.ViewModels
                     if (st.Kind == DisneyPageKind.LoginRequired || st.Kind == DisneyPageKind.ProfilePicker)
                     {
                         Fail($"Disney+ went back to {st.Kind} while loading the title (page: {st.Url}).");
-                        await _browser.StopAsync();
+                        await ReleaseBrowserAsync();
                         return;
                     }
                     if (st.IsVideo)
@@ -237,7 +246,7 @@ namespace Baird.ViewModels
             if (!ct.IsCancellationRequested && State == DisneySpikeState.BufferingVideo)
             {
                 Fail($"No video playback observed within {BufferingTimeout.TotalSeconds:F0}s. Last page: {last?.Url ?? "unreadable"} \"{last?.Text}\"");
-                await _browser.StopAsync();
+                await ReleaseBrowserAsync();
             }
         }
 
@@ -277,9 +286,33 @@ namespace Baird.ViewModels
             AddLog("[Control] Stop requested.");
             _activeCts?.Cancel();
             _activeCts = null;
-            await _browser.StopAsync();
-            SetState(DisneySpikeState.Stopped, "Stopped. Browser closed.");
+            await ReleaseBrowserAsync();
+            SetState(DisneySpikeState.Stopped, KeepBrowserOpen ? "Stopped. The browser stays open on its idle page." : "Stopped. Browser closed.");
             CurrentVideoTime = 0;
+        }
+
+        /// <summary>Ends this flow's use of the browser: back to the idle page if it stays open, else close it.</summary>
+        private async Task ReleaseBrowserAsync()
+        {
+            _service.IsPlaybackActive = false;
+            if (KeepBrowserOpen && _browser.IsRunning)
+            {
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await _browser.HideWindowAsync(cts.Token); // the revealed window is above Baird: put Baird back on top
+                    if (await _browser.NavigateAsync(DisneyService.IdleUrl, cts.Token))
+                    {
+                        AddLog("[Control] Browser stays open, back on the idle page.");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AddLog($"[Control] Could not return the browser to the idle page ({ex.Message}); closing it.");
+                }
+            }
+            await _browser.StopAsync();
         }
 
         private void Fail(string message)

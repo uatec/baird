@@ -343,6 +343,7 @@ namespace Baird.ViewModels
                 try
                 {
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await _browserService.HideWindowAsync(cts.Token); // a revealed window is above Baird: put Baird back on top
                     if (await _browserService.NavigateAsync(NetflixSession.IdleUrl, cts.Token))
                     {
                         AddLog("[Control] Browser stays open, back on the idle page.");
