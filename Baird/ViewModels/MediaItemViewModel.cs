@@ -20,6 +20,9 @@ namespace Baird.ViewModels
             _data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
+        /// <summary>The item's data, e.g. to store it in the persistent cache.</summary>
+        public MediaItemData Data => _data;
+
         /// <summary>
         /// Replaces the underlying data (e.g. after a background refresh from a provider)
         /// and raises property-changed notifications so the UI updates.

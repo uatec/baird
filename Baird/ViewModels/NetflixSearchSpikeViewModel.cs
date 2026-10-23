@@ -59,9 +59,27 @@ namespace Baird.ViewModels
             _browser = browser;
             _credentials = credentials;
             _profileName = profileName;
-            if (_browser is CdpBrowserService cdp) cdp.LogMessage += AddLog;
+            if (_browser is CdpBrowserService cdp) cdp.LogMessage += OnBrowserLog;
             SearchCommand = ReactiveCommand.CreateFromTask(SearchAsync, this.WhenAnyValue(x => x.CanSearch));
             BackCommand = ReactiveCommand.Create(() => BackRequested?.Invoke(this, EventArgs.Empty));
+        }
+
+        /// <summary>
+        /// False when the browser is shared (NetflixSession): it already writes its log to the journal once, so this screen
+        /// only shows the browser's lines.
+        /// </summary>
+        public bool LogBrowserToJournal { get; set; } = true;
+
+        private void OnBrowserLog(string message)
+        {
+            if (LogBrowserToJournal) AddLog(message);
+            else AddScreenLog(message);
+        }
+
+        private void AddScreenLog(string message)
+        {
+            LogEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+            if (LogEntries.Count > 200) LogEntries.RemoveAt(0);
         }
 
         public void AddLog(string message)
@@ -71,7 +89,6 @@ namespace Baird.ViewModels
             if (LogEntries.Count > 200) LogEntries.RemoveAt(0);
         }
 
-        /// <summary>Where a refreshed copy of Netflix's search request is cached (next to the browser profile).</summary>
         public string QueryCachePath { get; set; } = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "baird", "netflix-search-query.json");
 
@@ -83,58 +100,33 @@ namespace Baird.ViewModels
             Results.Clear();
             var term = string.IsNullOrWhiteSpace(SearchTerm) ? DefaultSearchTerm : SearchTerm.Trim();
             using var cts = new CancellationTokenSource(Timeout);
-            var ct = cts.Token;
+            var session = new NetflixSession(_browser, _credentials, _profileName)
+            {
+                // Port 9223, as before: the spike starts its own browser each time and closes it afterwards.
+                Port = 9223,
+                ProfileDir = ProfileDir,
+                QueryCachePath = QueryCachePath,
+                PollInterval = PollInterval,
+                SettleDelay = SettleDelay,
+                IdleTimeout = null,
+            };
+            session.Log += AddLog;
             try
             {
                 Status = $"Searching Netflix for \"{term}\"...";
-                // Port 9223 so it never collides with the playback spike's 9222 (they share the profile, so not concurrently).
-                if (!await _browser.LaunchAsync(_browser.FindBrowserExecutable(), "https://www.netflix.com/browse", 9223, ProfileDir, false, ct))
+                var outcome = await session.SearchAsync(term, cts.Token);
+                if (!outcome.Ok)
                 {
-                    Status = $"FAILED: could not start the browser: {_browser.LastError ?? "unknown error"} (is the Netflix spike still running?)";
+                    Status = $"FAILED: {outcome.Failure}";
+                    AddLog(Status);
                     return;
                 }
 
-                // 1. Make sure this is a signed-in member on a chosen profile: the search API also answers signed-out browsers,
-                //    with the general country catalogue, which would not be "filtered by this account".
-                var session = await EnsureMemberSessionAsync(ct);
-                if (session != null) { Status = session; return; }
-
-                // 2. One API call: POST /graphql SearchPageQueryResults (what Netflix's own search page sends).
-                var query = NetflixSearchQuery.Load(QueryCachePath);
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                var reply = NetflixSearchParser.Parse(await _browser.PostNetflixGraphQlAsync(query.BodyFor(term), ct));
-                AddLog(reply.Ok ? $"API: {reply.Results.Count} results in {sw.ElapsedMilliseconds} ms (query {query.PersistedQueryId})"
-                                : $"API error {reply.ErrorCode}: {reply.ErrorMessage}");
-
-                // 3. Netflix rotated the persisted query or changed its variables: take the current request from its own search
-                //    page, cache it, retry once.
-                if (reply.NeedsNewTemplate)
-                {
-                    AddLog("Stored search request is out of date; capturing the current one from Netflix's search page...");
-                    var capturedBody = await _browser.CaptureNetflixSearchRequestAsync(term, ct);
-                    if (capturedBody == null)
-                    {
-                        Status = $"FAILED: Netflix rejected the stored search request ({reply.ErrorCode}) and a new one could not be captured.";
-                        return;
-                    }
-                    query = new NetflixSearchQuery(capturedBody);
-                    query.Save(QueryCachePath);
-                    AddLog($"Captured and cached the current request (query {query.PersistedQueryId}).");
-                    sw.Restart();
-                    reply = NetflixSearchParser.Parse(await _browser.PostNetflixGraphQlAsync(query.BodyFor(term), ct));
-                    AddLog(reply.Ok ? $"API: {reply.Results.Count} results in {sw.ElapsedMilliseconds} ms" : $"API error {reply.ErrorCode}: {reply.ErrorMessage}");
-                }
-
-                if (!reply.Ok)
-                {
-                    Status = $"FAILED: Netflix search API error {reply.ErrorCode}: {reply.ErrorMessage}";
-                    return;
-                }
-
+                var reply = outcome.Reply!;
                 foreach (var r in reply.Results) Results.Add(r);
                 Succeeded = Results.Count > 0;
                 Status = Succeeded
-                    ? $"Found {Results.Count} titles for \"{term}\" in this account's catalogue (Netflix API, {sw.ElapsedMilliseconds} ms{(reply.HasNextPage ? ", more available" : "")})."
+                    ? $"Found {Results.Count} titles for \"{term}\" in this account's catalogue (Netflix API, {outcome.ElapsedMs} ms{(reply.HasNextPage ? ", more available" : "")})."
                     : $"No titles found for \"{term}\".";
                 AddLog(Status);
             }
@@ -152,51 +144,6 @@ namespace Baird.ViewModels
             {
                 try { await _browser.StopAsync(); } catch { }
                 IsBusy = false;
-            }
-        }
-
-        /// <summary>Signs in / picks a profile until the page reports a member. Returns null when ready, else a FAILED status.</summary>
-        private async Task<string?> EnsureMemberSessionAsync(CancellationToken ct)
-        {
-            bool signInTried = false;
-            string? profileChosen = null;
-            while (true)
-            {
-                await Task.Delay(PollInterval, ct);
-                var state = await _browser.ReadNetflixSessionStateAsync(ct);
-                if (state == null) continue;
-
-                if (state.SignedOut)
-                {
-                    if (_credentials == null)
-                        return "FAILED: not signed in to Netflix and no NETFLIX_USER/NETFLIX_PASS in ~/.baird/config.ini.";
-                    if (signInTried)
-                        return "FAILED: not signed in to Netflix; signing in with the configured credentials did not work.";
-                    signInTried = true;
-                    AddLog($"Not signed in; signing in as {_credentials.User} (password not logged).");
-                    await _browser.NavigateAsync("https://www.netflix.com/login", ct);
-                    var submit = await _browser.SubmitCredentialsAsync(_credentials.User, _credentials.Password, ct);
-                    AddLog($"Sign-in: {submit.Detail}");
-                    await Task.Delay(SettleDelay, ct);
-                    await _browser.NavigateAsync("https://www.netflix.com/browse", ct);
-                    continue;
-                }
-
-                if (state.Profiles.Count > 0)
-                {
-                    if (profileChosen != null) continue; // still transitioning
-                    profileChosen = await _browser.SelectNetflixProfileAsync(_profileName, ct);
-                    AddLog($"\"Who's watching?\" shown ({string.Join(", ", state.Profiles)}); chose {profileChosen ?? "nothing"}" +
-                           (_profileName == null ? " (set NETFLIX_PROFILE in config.ini to choose)" : ""));
-                    await Task.Delay(SettleDelay, ct);
-                    continue;
-                }
-
-                if (state.IsMember)
-                {
-                    AddLog("Signed in as a Netflix member.");
-                    return null;
-                }
             }
         }
     }

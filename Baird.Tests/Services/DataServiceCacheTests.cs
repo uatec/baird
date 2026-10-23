@@ -112,5 +112,22 @@ namespace Baird.Tests.Services
             Assert.NotNull(result);
             Assert.Equal("test1", result.Id);
         }
+
+        [Fact]
+        public async Task UpsertHistory_StoresTheItem_SoItIsFoundAfterARestartWithoutAProviderLookup()
+        {
+            var provider = new MockMediaProvider(); // cannot look anything up by id, like Netflix
+            var dataCache = new Baird.Tests.Mocks.MockMediaDataCache();
+            var data = NetflixProvider.ToMediaItem(new NetflixSearchResult("One Piece", "80107103", null, "Show"));
+            var first = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService(), new MediaItemCache(), dataCache);
+
+            await first.UpsertHistoryAsync(new MediaItemViewModel(data), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(25));
+
+            var afterRestart = new DataService(new[] { provider }, new MockHistoryService(), new MockWatchlistService(), new MediaItemCache(), dataCache);
+            var item = await afterRestart.GetItemAsync("netflix:80107103");
+            Assert.NotNull(item);
+            Assert.Equal("One Piece", item!.Name);
+            Assert.Equal("Netflix", item.Source);
+        }
     }
 }

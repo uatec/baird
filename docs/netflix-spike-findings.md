@@ -9,6 +9,7 @@ How these were found, and how to test, is in [spike-strategy.md](spike-strategy.
 |---|---|---|
 | Netflix playback in Baird on the Pi | **Works** (release 0.0.220) | Unattended test on the installed build: playback started, window revealed over Baird. Screenshots exist (not in repo). |
 | Baird HUD over Netflix (Baird keeps all input) | **Works** (test build, 2026-10-23) | Screenshots on the Pi: video shows through Baird's transparent window; real uinput keys OK/Right/Left/Back reached Baird and drove Netflix's player API. See §1 "Baird-drawn HUD". |
+| Netflix in the core journey (Search → play → HUD → Back) | **Works** (test build, 2026-10-23) | `BAIRD_AUTOTEST=netflix-core` on the Pi: 48 Netflix results beside BBC iPlayer and YouTube, first result played, HUD keys worked, Back wrote history and returned to the results. Netflix resumed at the saved place on the next run. See §1 "Core journey". |
 | Netflix sign-in with configured credentials | **Works** | Signed in on the Pi from a signed-out profile; Netflix reported `CURRENT_MEMBER`. |
 | Netflix search via Netflix's internal API | **Works** (branch `spike/netflix-search`, not deployed) | 48 results for "One Piece" in ~360 ms. Self-heals a stale query id (tested by planting one). |
 | Lottie animations | Work on the Pi | User-confirmed on the TV. |
@@ -128,6 +129,26 @@ Baird never gives focus to Chromium. All remote keys go to Baird, and Baird send
 The page-signal channel (`Runtime.addBinding` `bairdSignal`, `Runtime.bindingCalled`) stays for the HTML overlay mode and
 for future page events (progress, ended). Tested in headless Chrome (`OverlayBackKey_SignalsBairdToExit`).
 
+### Core journey (Netflix in Baird's normal search and playback)
+
+- **One browser:** `NetflixSession` owns the only Netflix Chromium (port 9222, the shared profile). Search starts it hidden,
+  checks for a signed-in member on a chosen profile once, and keeps it open: the next search is one API call. It stops
+  after 10 min without a search. During playback, search answers "Netflix is playing" and does not touch the browser.
+- **Search:** `NetflixProvider` is a normal `IMediaProvider`, added only when NETFLIX_USER/NETFLIX_PASS are configured.
+  Items: id `netflix:<titleId>`, source `Netflix`, type Video, stream URL `https://www.netflix.com/watch/<titleId>`. For
+  a series, Netflix plays the episode it would play next for the profile, and resumes at its own saved place.
+- **Play:** `MainViewModel.PlayItem` sends `Netflix` items to `PlayNetflix`, not to mpv. It pushes
+  `NetflixPlaybackViewModel` (title, a simple step text, the reason for a problem), pauses live TV, and runs the proven
+  flow (`NetflixSpikeViewModel`) on the shared browser. The flow relaunches the browser at the watch URL (a few seconds).
+  Back on the page before the video starts stops the browser.
+- **History:** when the HUD closes, the last position and duration go to `UpsertHistoryAsync`. `DataService` now also
+  puts the item's data in the persistent cache, so Continue Watching finds Netflix items after a restart (Netflix has no
+  lookup by id).
+- **"Who's watching?" click ignored:** on the Pi the first profile click came while the page was still loading
+  (`readyState=interactive`) and Netflix ignored it; the old code then waited until its timeout. The session now clicks
+  again after the settle time (max 3), and fails with the reason. It logs each change of session state.
+- **Journal:** the shared browser's log is written once, as `[NetflixBrowser]`. The spike screens show it on screen only.
+
 ### Known gaps (playback)
 
 - Netflix prompts ("Are you still watching?", "Skip intro", "Next episode") are hidden or not reachable: Chromium never
@@ -208,13 +229,14 @@ for future page events (progress, ended). Tested in headless Chrome (`OverlayBac
 | What | Where |
 |---|---|
 | Playback spike | `Baird/ViewModels/NetflixSpikeViewModel.cs`, `Baird/Controls/NetflixSpikeControl.*` |
+| Core journey | `Baird/Services/NetflixSession.cs`, `NetflixProvider.cs`, `Baird/ViewModels/NetflixPlaybackViewModel.cs`, `Baird/Controls/NetflixPlaybackControl.*`, `MainViewModel.PlayNetflix` |
 | Baird HUD over Netflix | `Baird/ViewModels/NetflixHudViewModel.cs`, `Baird/Controls/NetflixHudWindow.cs`, `MainView.ShowNetflixHud`, `Baird/Resources/netflix-page-style.js` |
 | Browser control (CDP) | `Baird/Services/CdpBrowserService.cs` |
 | Widevine staging (never downgrades) | `Baird/Services/WidevineStager.cs` |
 | Sign-in detection | `Baird/Services/NetflixPageClassifier.cs`, `NetflixCredentials.cs` |
 | Profile prefs (no password manager) | `Baird/Services/ChromiumProfilePrefs.cs` |
 | Search spike | `Baird/ViewModels/NetflixSearchSpikeViewModel.cs`, `Baird/Services/NetflixSearch.cs`, `Baird/Resources/netflix-search-query.json` |
-| Unattended test hook | `MainViewModel.StartAutoTestIfRequested` (`BAIRD_AUTOTEST=netflix` or `netflix-search`) |
+| Unattended test hook | `MainViewModel.StartAutoTestIfRequested` (`BAIRD_AUTOTEST=netflix`, `netflix-search` or `netflix-core`) |
 | Test tooling | `spikes/netflix-tooling/` (see [spike-strategy.md](spike-strategy.md)) |
 | labwc rule | `configure_pi.sh` and, on the Pi, `~/.config/labwc/rc.xml` |
 | yt-dlp temp fix | `Baird/Mpv/YtDlpTempDir.cs`, `Baird/Mpv/MpvPlayer.cs` |

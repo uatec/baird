@@ -157,6 +157,9 @@ namespace Baird.Services
 
         public async Task UpsertHistoryAsync(MediaItemViewModel item, TimeSpan position, TimeSpan duration)
         {
+            // Keep the item's data on disk too: history shows it after a restart even if no provider can look it up by id
+            // (Netflix titles come only from search).
+            _mediaDataCache.Put(item.Data);
             await _historyService.UpsertAsync(item, position, duration);
             // Also update the local item's history
             item.History = _historyService.GetProgress(item.Id);

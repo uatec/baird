@@ -76,6 +76,16 @@ namespace Baird
             _providers.Add(new BbcIPlayerService());
             _providers.Add(new YouTubeService());
 
+            // One shared browser for Netflix search and playback (they share the signed-in profile).
+            var netflixCredentials = NetflixCredentials.FromConfiguration(config);
+            var netflixBrowser = new CdpBrowserService();
+            netflixBrowser.LogMessage += m => Console.WriteLine($"[NetflixBrowser] {m}");
+            var netflixSession = new NetflixSession(netflixBrowser, netflixCredentials,
+                config["NETFLIX_PROFILE"] is { Length: > 0 } nfProfile ? nfProfile : null);
+            netflixSession.Log += m => Console.WriteLine($"[NetflixSession] {m}");
+            if (netflixCredentials != null) _providers.Add(new NetflixProvider(netflixSession));
+            else Console.WriteLine("[MainView] Netflix not in search: no NETFLIX_USER/NETFLIX_PASS in config.ini.");
+
             _cecService = new CecService();
             _historyService = new JsonHistoryService();
             var watchlistService = new JsonWatchlistService();
@@ -103,10 +113,10 @@ namespace Baird
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
 
-            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService);
+            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession);
 
             DataContext = _viewModel;
-            _viewModel.NetflixSpike.HudRequested += hud => Dispatcher.UIThread.Post(() => ShowNetflixHud(hud));
+            _viewModel.NetflixHudRequested += hud => Dispatcher.UIThread.Post(() => ShowNetflixHud(hud));
 
             this.AttachedToVisualTree += async (s, e) =>
             {

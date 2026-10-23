@@ -81,7 +81,7 @@ namespace Baird.ViewModels
             private set => this.RaiseAndSetIfChanged(ref _statusText, value);
         }
 
-        public string Title => "Netflix";
+        public string Title { get; init; } = "Netflix";
         public string PositionText => Format(PositionSeconds);
         public string DurationText => Format(DurationSeconds);
         public double Progress => DurationSeconds > 0 ? Math.Clamp(PositionSeconds / DurationSeconds, 0, 1) : 0;

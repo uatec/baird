@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Baird.ViewModels"
+             x:Class="Baird.Controls.NetflixPlaybackControl"
+             x:CompileBindings="True"
+             x:DataType="vm:NetflixPlaybackViewModel">
+    <!-- Shown while Netflix starts, and for errors. When the video plays, Baird's HUD window covers it. -->
+    <Grid Background="#0B0F17">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="24" MaxWidth="1100">
+            <Border Background="#E50914" CornerRadius="4" Padding="12,4" HorizontalAlignment="Center">
+                <TextBlock Text="NETFLIX" FontWeight="Bold" FontSize="20" Foreground="White"/>
+            </Border>
+            <TextBlock Text="{Binding Title}" FontSize="48" FontWeight="Bold" Foreground="White"
+                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsWorking}" Width="420" Height="6"
+                         Foreground="#E50914" HorizontalAlignment="Center"/>
+            <TextBlock Text="{Binding StatusText}" FontSize="24" Foreground="#CBD5E1"
+                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                       IsVisible="{Binding !IsProblem}"/>
+            <TextBlock Text="{Binding StatusText}" FontSize="26" FontWeight="SemiBold" Foreground="#FCA5A5"
+                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                       IsVisible="{Binding IsProblem}"/>
+            <TextBlock Text="{Binding HintText}" FontSize="22" Foreground="#94A3B8" HorizontalAlignment="Center"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

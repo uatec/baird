@@ -30,7 +30,7 @@ namespace Baird.ViewModels
         Stopped
     }
 
-    public class NetflixSpikeViewModel : ReactiveObject
+    public class NetflixSpikeViewModel : ReactiveObject, IDisposable
     {
         public const string SignInUrl = "https://www.netflix.com/login";
 
@@ -238,9 +238,9 @@ namespace Baird.ViewModels
             _credentials = credentials;
             if (_browserService is CdpBrowserService cdp)
             {
-                cdp.LogMessage += msg => AddLog(msg);
+                cdp.LogMessage += OnBrowserLog;
             }
-            _browserService.PageSignalReceived += payload => RxApp.MainThreadScheduler.Schedule(() => OnPageSignal(payload));
+            _browserService.PageSignalReceived += OnPageSignalReceived;
 
             DetectedBrowser = _browserService.FindBrowserExecutable();
             AddLog($"[Init] Detected browser executable: {DetectedBrowser}");
@@ -288,6 +288,24 @@ namespace Baird.ViewModels
             {
                 MfaPin = MfaPin.Substring(0, MfaPin.Length - 1);
             }
+        }
+
+        /// <summary>
+        /// False when the browser is shared (NetflixSession): it already writes its log to the journal once, so this screen
+        /// only shows the browser's lines.
+        /// </summary>
+        public bool LogBrowserToJournal { get; set; } = true;
+
+        private void OnBrowserLog(string message)
+        {
+            if (LogBrowserToJournal) AddLog(message);
+            else AddScreenLog(message);
+        }
+
+        private void AddScreenLog(string message)
+        {
+            LogEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+            if (LogEntries.Count > 200) LogEntries.RemoveAt(0);
         }
 
         public void AddLog(string message)
@@ -691,7 +709,7 @@ namespace Baird.ViewModels
                 var styled = await _browserService.InjectOverlayScriptAsync(CdpBrowserService.LoadNetflixPageStyleScript(), ct);
                 AddLog(styled ? "[Reveal] Netflix page style applied." : "[Reveal] WARNING: the Netflix page style was not applied; Netflix's own UI may show.");
 
-                _hud = new NetflixHudViewModel(_browserService);
+                _hud = new NetflixHudViewModel(_browserService) { Title = HudTitle };
                 _hud.ExitRequested += () => _ = StopPlaybackAsync();
                 HudRequested?.Invoke(_hud);
 
@@ -709,6 +727,18 @@ namespace Baird.ViewModels
             SetState(NetflixSpikeState.Playing, "Playback observed (currentTime advancing); window revealed with Baird HUD.");
             AddLog("[Reveal] Window revealed.");
         }
+
+        /// <summary>Title shown on Baird's HUD.</summary>
+        public string HudTitle { get; set; } = "Netflix";
+
+        /// <summary>Removes this flow's handlers from the browser service, which can be shared (see NetflixSession).</summary>
+        public void Dispose()
+        {
+            if (_browserService is CdpBrowserService cdp) cdp.LogMessage -= OnBrowserLog;
+            _browserService.PageSignalReceived -= OnPageSignalReceived;
+        }
+
+        private void OnPageSignalReceived(string payload) => RxApp.MainThreadScheduler.Schedule(() => OnPageSignal(payload));
 
         /// <summary>Handles a message from the overlay. Back on the remote sends {"type":"exit"}: close Netflix and return to Baird.</summary>
         private void OnPageSignal(string payload)

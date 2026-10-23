@@ -22,6 +22,7 @@ namespace Baird.Tests.ViewModels
         public Func<VideoPlaybackStatus?>? VideoSequence { get; set; }
 
         public bool LaunchCalled { get; private set; }
+        public void ResetLaunchCalled() => LaunchCalled = false;
         public bool CheckAuthCalled { get; private set; }
         public bool SubmitMfaCalled { get; private set; }
         public bool PollVideoCalled { get; private set; }
