@@ -144,6 +144,13 @@ namespace Baird.ViewModels
             NetflixSpike = new NetflixSpikeViewModel(NetflixCredentials.FromConfiguration(configuration));
             if (configuration?["NETFLIX_TARGET_URL"] is { Length: > 0 } netflixTarget) NetflixSpike.TargetUrl = netflixTarget;
             NetflixSpike.BackRequested += (s, e) => GoBack();
+            NetflixSpike.HudRequested += hud =>
+            {
+                // Netflix has the screen and the sound: pause live TV, and put it back as it was afterwards.
+                var wasPaused = IsPaused;
+                IsPaused = true;
+                hud.Closed += () => Avalonia.Threading.Dispatcher.UIThread.Post(() => IsPaused = wasPaused);
+            };
 
             NetflixSearchSpike = new NetflixSearchSpikeViewModel(NetflixCredentials.FromConfiguration(configuration),
                 configuration?["NETFLIX_PROFILE"] is { Length: > 0 } nfProfile ? nfProfile : null);

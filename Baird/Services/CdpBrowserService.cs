@@ -70,16 +70,28 @@ namespace Baird.Services
         Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default);
         Task<bool> SubmitMfaPinAsync(string pin, CancellationToken ct = default);
         Task<VideoPlaybackStatus?> PollVideoPlaybackAsync(CancellationToken ct = default);
+        Task<string?> ControlNetflixPlayerAsync(NetflixPlayerAction action, double seconds = 0, CancellationToken ct = default);
         Task<bool> InjectOverlayScriptAsync(string? script = null, CancellationToken ct = default);
         Task<bool> RevealWindowAsync(CancellationToken ct = default);
         Task StopAsync();
+
+        /// <summary>A message the overlay sent with <c>window.bairdSignal(text)</c>, e.g. <c>{"type":"exit"}</c>. Raised on a background thread.</summary>
+        event Action<string>? PageSignalReceived;
     }
+
+    public enum NetflixPlayerAction { Play, Pause, SeekBy }
 
     public class CdpBrowserService : ICdpBrowserService
     {
         private Process? _browserProcess;
         // CDP events (messages without an id) from the page socket go here while something is listening.
         private volatile Action<JsonElement>? _pageEventHandler;
+        // Baird's own X window, so focus can go back to it when the browser closes.
+        private string? _bairdWindowId;
+
+        /// <summary>Name of the page function (a CDP binding) the overlay calls to send a message to Baird.</summary>
+        public const string PageSignalBinding = "bairdSignal";
+        public event Action<string>? PageSignalReceived;
         private ClientWebSocket? _pageWs;
         private ClientWebSocket? _browserWs;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(3) };
@@ -228,6 +240,7 @@ namespace Baird.Services
 
             // Chromium grabs keyboard focus when it opens; remember Baird's window so focus can go back to it.
             var previousActive = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? RunShellOutput("xdotool", "getactivewindow") : null;
+            _bairdWindowId = previousActive;
 
             try
             {
@@ -308,7 +321,7 @@ namespace Baird.Services
             {
                 _pageWs = new ClientWebSocket();
                 await _pageWs.ConnectAsync(new Uri(pageWsUrl), ct);
-                _ = Task.Run(() => ReceiveLoopAsync(_pageWs, _pendingPageRequests, _recvCts.Token, m => _pageEventHandler?.Invoke(m)));
+                _ = Task.Run(() => ReceiveLoopAsync(_pageWs, _pendingPageRequests, _recvCts.Token, OnPageEvent));
                 Log("[CDP] Connected to Page DevTools WebSocket.");
 
                 if (browserWsUrl != null)
@@ -675,8 +688,85 @@ namespace Baird.Services
             return null;
         }
 
+        /// <summary>
+        /// Plays, pauses or seeks through Netflix's own player API. A direct video.currentTime change can make Netflix
+        /// fail (M7375), so the video element is only a fallback. Returns which path was used ("api" or "video"), or null
+        /// if the page has no player.
+        /// </summary>
+        public async Task<string?> ControlNetflixPlayerAsync(NetflixPlayerAction action, double seconds = 0, CancellationToken ct = default)
+        {
+            var script = NetflixPlayerScript(action, seconds);
+            var result = await EvaluateInPageAsync(script, ct);
+            var path = result is { ValueKind: JsonValueKind.String } r ? r.GetString() : null;
+            Log($"[CDP] Netflix player {action} {(action == NetflixPlayerAction.SeekBy ? seconds + "s " : "")}-> {path ?? "no player"}");
+            return path;
+        }
+
+        public static string NetflixPlayerScript(NetflixPlayerAction action, double seconds)
+        {
+            var arg = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return $@"(function(action, seconds) {{
+                const v = document.querySelector('video');
+                let p = null;
+                try {{
+                    const vp = netflix.appContext.state.playerApp.getAPI().videoPlayer;
+                    const ids = vp.getAllPlayerSessionIds();
+                    const id = ids.find(i => i.startsWith('watch')) || ids[ids.length - 1];
+                    p = id ? vp.getVideoPlayerBySessionId(id) : null;
+                }} catch (e) {{ p = null; }}
+                if (action === 'SeekBy') {{
+                    if (p) {{
+                        const target = p.getCurrentTime() + seconds * 1000;
+                        p.seek(Math.max(0, Math.min(target, p.getDuration() - 1000)));
+                        return 'api';
+                    }}
+                    if (v) {{ v.currentTime = Math.max(0, v.currentTime + seconds); return 'video'; }}
+                    return null;
+                }}
+                if (action === 'Play') {{
+                    if (p) {{ p.play(); return 'api'; }}
+                    if (v) {{ v.play(); return 'video'; }}
+                    return null;
+                }}
+                if (action === 'Pause') {{
+                    if (p) {{ p.pause(); return 'api'; }}
+                    if (v) {{ v.pause(); return 'video'; }}
+                    return null;
+                }}
+                return null;
+            }})('{action}', {arg})";
+        }
+
+        private void OnPageEvent(JsonElement message)
+        {
+            if (TryReadPageSignal(message, out var payload))
+            {
+                Log($"[CDP] Page signal: {payload}");
+                PageSignalReceived?.Invoke(payload);
+            }
+            _pageEventHandler?.Invoke(message);
+        }
+
+        /// <summary>True if <paramref name="message"/> is a call of the <see cref="PageSignalBinding"/> page function.</summary>
+        public static bool TryReadPageSignal(JsonElement message, out string payload)
+        {
+            payload = "";
+            if (!message.TryGetProperty("method", out var m) || m.GetString() != "Runtime.bindingCalled") return false;
+            if (!message.TryGetProperty("params", out var p) ||
+                !p.TryGetProperty("name", out var name) || name.GetString() != PageSignalBinding) return false;
+            payload = p.TryGetProperty("payload", out var pl) ? pl.GetString() ?? "" : "";
+            return true;
+        }
+
         public async Task<bool> InjectOverlayScriptAsync(string? script = null, CancellationToken ct = default)
         {
+            if (_pageWs != null && _pageWs.State == WebSocketState.Open)
+            {
+                // Gives the page window.bairdSignal(text). The binding stays across navigations and reloads.
+                try { await SendPageCommandAsync("Runtime.addBinding", new JsonObject { ["name"] = PageSignalBinding }, ct); }
+                catch (Exception ex) { Log($"[CDP] Runtime.addBinding failed; the overlay cannot signal Baird: {ex.Message}"); }
+            }
+
             var code = script ?? LoadDefaultOverlayScript();
             Log($"[CDP] Injecting Baird 10-foot HUD script ({code.Length} bytes)...");
             var res = await EvaluateInPageAsync(code, ct);
@@ -715,6 +805,15 @@ namespace Baird.Services
             catch { }
 
             return "console.log('[Baird] Overlay script not found.');";
+        }
+
+        /// <summary>The page style for Baird-drawn HUD mode (Resources/netflix-page-style.js), embedded in the app.</summary>
+        public static string LoadNetflixPageStyleScript()
+        {
+            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.netflix-page-style.js");
+            if (stream == null) return "console.log('[Baird] Netflix page style not found.'); false";
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
         }
 
         public async Task<bool> RevealWindowAsync(CancellationToken ct = default)
@@ -1076,6 +1175,12 @@ namespace Baird.Services
                 {
                     _browserProcess.Dispose();
                     _browserProcess = null;
+                }
+
+                // A revealed browser had focus; give it back to Baird so the remote drives Baird's UI again.
+                if (!string.IsNullOrEmpty(_bairdWindowId))
+                {
+                    RunShellCommand("xdotool", $"windowactivate {_bairdWindowId}");
                 }
             }
 

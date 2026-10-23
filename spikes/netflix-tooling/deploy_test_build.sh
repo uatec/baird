@@ -9,5 +9,5 @@ dotnet publish Baird/Baird.csproj -c Release -r linux-arm64 --self-contained tru
   -p:PublishSingleFile=true -p:PublishTrimmed=true -p:Version=0.0.999-autotest -o "$OUT" | grep -E "error|Baird ->" || true
 ssh -o HostKeyAlias=baird baird.local 'mkdir -p ~/baird-test'
 scp -q -o HostKeyAlias=baird "$OUT"/Baird "$OUT"/libSkiaSharp.so "$OUT"/libHarfBuzzSharp.so "$OUT"/librive.so \
-  spikes/netflix-tooling/pi_autotest.sh spikes/netflix-tooling/pi_harness.sh baird.local:baird-test/
+  spikes/netflix-tooling/pi_autotest.sh spikes/netflix-tooling/pi_harness.sh spikes/netflix-tooling/pi_keys.py baird.local:baird-test/
 echo "Deployed. Run e.g.: ssh -o HostKeyAlias=baird baird.local 'bash ~/baird-test/pi_autotest.sh netflix test'"

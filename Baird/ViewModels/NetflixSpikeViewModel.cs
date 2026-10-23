@@ -2,6 +2,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Reactive;
+using System.Reactive.Concurrency;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Baird.Services;
@@ -36,6 +38,18 @@ namespace Baird.ViewModels
         private CancellationTokenSource? _activeCts;
 
         public event EventHandler? BackRequested;
+        /// <summary>Playback started in Baird-HUD mode: the view must hide Baird's main window and show this HUD on top, with focus.</summary>
+        public event Action<NetflixHudViewModel>? HudRequested;
+
+        /// <summary>
+        /// True (default): Baird keeps focus and draws the HUD in its own transparent window over the browser.
+        /// False (BAIRD_NETFLIX_HUD=html): the old way, the browser is raised with focus and the HTML overlay.
+        /// </summary>
+        public bool UseBairdHud { get; set; } =
+            !string.Equals(Environment.GetEnvironmentVariable("BAIRD_NETFLIX_HUD"), "html", StringComparison.OrdinalIgnoreCase);
+
+        private NetflixHudViewModel? _hud;
+        public NetflixHudViewModel? Hud => _hud;
 
         private string _targetUrl = "https://www.netflix.com/watch/80107105";
         public string TargetUrl
@@ -226,6 +240,7 @@ namespace Baird.ViewModels
             {
                 cdp.LogMessage += msg => AddLog(msg);
             }
+            _browserService.PageSignalReceived += payload => RxApp.MainThreadScheduler.Schedule(() => OnPageSignal(payload));
 
             DetectedBrowser = _browserService.FindBrowserExecutable();
             AddLog($"[Init] Detected browser executable: {DetectedBrowser}");
@@ -670,6 +685,21 @@ namespace Baird.ViewModels
 
         private async Task OnPlaybackConfirmedActiveAsync(CancellationToken ct)
         {
+            if (UseBairdHud)
+            {
+                SetState(NetflixSpikeState.Playing, "video.currentTime is advancing. Hiding Netflix's UI and opening Baird's HUD...");
+                var styled = await _browserService.InjectOverlayScriptAsync(CdpBrowserService.LoadNetflixPageStyleScript(), ct);
+                AddLog(styled ? "[Reveal] Netflix page style applied." : "[Reveal] WARNING: the Netflix page style was not applied; Netflix's own UI may show.");
+
+                _hud = new NetflixHudViewModel(_browserService);
+                _hud.ExitRequested += () => _ = StopPlaybackAsync();
+                HudRequested?.Invoke(_hud);
+
+                SetState(NetflixSpikeState.Playing, "Playback observed (currentTime advancing); Baird HUD shown over the browser.");
+                AddLog("[Reveal] Baird HUD requested (Baird keeps focus).");
+                return;
+            }
+
             SetState(NetflixSpikeState.Playing, "video.currentTime is advancing. Injecting HUD and moving window to (0,0)...");
             AddLog("[Reveal] Injecting baird-overlay.js...");
 
@@ -680,6 +710,28 @@ namespace Baird.ViewModels
             AddLog("[Reveal] Window revealed.");
         }
 
+        /// <summary>Handles a message from the overlay. Back on the remote sends {"type":"exit"}: close Netflix and return to Baird.</summary>
+        private void OnPageSignal(string payload)
+        {
+            string? type = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(payload);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                    doc.RootElement.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String)
+                {
+                    type = t.GetString();
+                }
+            }
+            catch (JsonException) { }
+
+            if (type == "exit" && CanStop)
+            {
+                AddLog("[Control] Exit requested from the Netflix overlay (remote Back).");
+                _ = StopPlaybackAsync();
+            }
+        }
+
         public async Task StopPlaybackAsync()
         {
             AddLog("[Control] Abort / Stop requested.");
@@ -687,6 +739,8 @@ namespace Baird.ViewModels
             _activeCts = null;
 
             await _browserService.StopAsync();
+            _hud?.Close();
+            _hud = null;
 
             SetState(NetflixSpikeState.Stopped, "Stopped. Browser closed.");
             CurrentVideoTime = 0;

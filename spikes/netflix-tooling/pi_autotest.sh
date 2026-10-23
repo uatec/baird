@@ -5,6 +5,8 @@
 #     netflix-search  -> the search spike   (BAIRD_AUTOTEST=netflix-search)
 #     test            -> run the test build in ~/baird-test (copied there by deploy_test_build.sh)
 #     installed       -> run the brew-installed build via its wrapper (/home/linuxbrew/.linuxbrew/bin/baird)
+#   KEYS="ENTER RIGHT ESC" (optional): after the RESULT line, press each key through uinput (pi_keys.py, sudo) and take
+#     two screenshots 0.5 s apart after each one (hud-NN-KEY-{a,b}.png), so motion and the HUD state can be checked.
 # Output: ~/baird-test/shots/{shot-NNN,final-N}.png every 3 s, focus.log (which window had focus), autotest.log (journal lines).
 set -u
 TEST=${1:-netflix}; WHICH=${2:-test}; MAX=${3:-100}
@@ -37,10 +39,20 @@ for i in $(seq 1 "$MAX"); do
   echo "$(date +%T) shot-$(printf %03d $i): active=$(xdotool getactivewindow 2>/dev/null) chromium=$(xdotool search --class baird-netflix 2>/dev/null | tr '\n' ' ')" >> $SH/focus.log
   # NB: the system journal (no --user): the transient unit's output lands there.
   if journalctl -t baird-autotest --since "$START" --no-pager 2>/dev/null | grep -q "\[AutoTest\] RESULT"; then
+    if [ -n "${KEYS:-}" ]; then
+      sleep 6; n=0
+      for k in START $KEYS; do
+        [ "$k" != START ] && sudo python3 $T/pi_keys.py "$k" >> $SH/focus.log 2>&1 && sleep 2.5
+        tag=$(printf %02d $n)-$k
+        grim $SH/hud-$tag-a.png; sleep 0.5; grim $SH/hud-$tag-b.png
+        echo "$(date +%T) hud-$tag: active=$(xdotool getactivewindow 2>/dev/null) chromium=$(xdotool search --class baird-netflix 2>/dev/null | tr '\n' ' ')" >> $SH/focus.log
+        n=$((n+1))
+      done
+    fi
     sleep 15
     for j in 1 2 3 4; do grim $SH/final-$j.png; echo "$(date +%T) final-$j: active=$(xdotool getactivewindow 2>/dev/null)" >> $SH/focus.log; sleep 4; done
     break
   fi
 done
-journalctl -t baird-autotest --since "$START" --no-pager 2>/dev/null | grep -E "AutoTest|NetflixSpike|NetflixSearch|YtDlpTempDir" | cut -c1-300 > $SH/autotest.log
+journalctl -t baird-autotest --since "$START" --no-pager 2>/dev/null | grep -E "AutoTest|NetflixSpike|NetflixHud|NetflixSearch|YtDlpTempDir" | cut -c1-300 > $SH/autotest.log
 echo "--- journal ---"; cat $SH/autotest.log
