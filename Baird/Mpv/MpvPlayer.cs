@@ -163,15 +163,20 @@ namespace Baird.Mpv
                     ? xdg
                     : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share"),
                 "baird", "bin", "yt-dlp");
+            // Never run yt-dlp for local streams (TVHeadend on 127.0.0.1): when a channel fails to load, mpv otherwise falls back
+            // to yt-dlp on every retry, which can't help and leaked an 85 MB unpack folder each time (see YtDlpTempDir).
+            // The pattern is matched against the URL without its http(s):// prefix; '|' separates Lua patterns.
+            var scriptOpts = "ytdl_hook-exclude=^127%.0%.0%.1[:/]|^localhost[:/]";
             if (File.Exists(ytdlPath))
             {
                 Console.WriteLine($"[MpvPlayer] Using yt-dlp at {ytdlPath}");
-                SetOption("script-opts", $"ytdl_hook-ytdl_path={ytdlPath}");
+                scriptOpts = $"ytdl_hook-ytdl_path={ytdlPath},{scriptOpts}";
             }
             else
             {
                 Console.WriteLine($"[MpvPlayer] {ytdlPath} not found; mpv will use yt-dlp from PATH");
             }
+            SetOption("script-opts", scriptOpts);
 
             // Prefer English audio
             SetOption("alang", "eng,en");
