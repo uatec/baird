@@ -51,6 +51,17 @@ namespace Baird.Tests.ViewModels
             return Task.FromResult(AuthSequence != null ? AuthSequence() : AuthStatusToReturn);
         }
 
+        public Func<NetflixSearchPage?>? SearchPageSequence { get; set; }
+        public string? LastProfileRequested { get; private set; }
+        public int ProfileSelections { get; private set; }
+        public Task<NetflixSearchPage?> ReadNetflixSearchPageAsync(CancellationToken ct = default) => Task.FromResult(SearchPageSequence?.Invoke());
+        public Task<string?> SelectNetflixProfileAsync(string? preferredName, CancellationToken ct = default)
+        {
+            ProfileSelections++;
+            LastProfileRequested = preferredName;
+            return Task.FromResult<string?>(preferredName ?? "Robert");
+        }
+
         public bool NavigateCalled { get; private set; }
         public string? LastNavigatedUrl { get; private set; }
         public Func<SignInSubmitResult> SubmitResult { get; set; } = () => new(true, "submitted");

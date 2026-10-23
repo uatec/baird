@@ -62,6 +62,8 @@ namespace Baird.Services
         Task<WidevineStatus> CheckWidevineAsync(CancellationToken ct = default);
         Task<string> ClearSiteDataAsync(string origin, CancellationToken ct = default);
         Task<bool> NavigateAsync(string url, CancellationToken ct = default);
+        Task<NetflixSearchPage?> ReadNetflixSearchPageAsync(CancellationToken ct = default);
+        Task<string?> SelectNetflixProfileAsync(string? preferredName, CancellationToken ct = default);
         Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default);
         Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default);
         Task<bool> SubmitMfaPinAsync(string pin, CancellationToken ct = default);
@@ -393,6 +395,64 @@ namespace Baird.Services
                 Log($"[CDP] Navigate failed: {ex.Message}");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Reads Netflix's search page: signed-out state, the "Who's watching?" profile picker, and the result cards
+        /// (a[data-uia=standard-card]: title in aria-label, title id in the jbv= link parameter). Selectors observed on the
+        /// live site (Oct 2026); Netflix may change them.
+        /// </summary>
+        public async Task<NetflixSearchPage?> ReadNetflixSearchPageAsync(CancellationToken ct = default)
+        {
+            const string script = @"(function() {
+                let ms = null;
+                try { ms = window.netflix.reactContext.models.userInfo.data.membershipStatus || null; } catch (e) { }
+                const signedOut = ms === 'ANONYMOUS' || !!document.querySelector('input[name=""password""]') || !!document.querySelector('[data-uia=""header-signin-link""]');
+                const profiles = [...document.querySelectorAll('[data-uia^=""profile-selector+tile-""]')].map(b => (b.innerText || '').trim()).filter(Boolean);
+                const cards = [...document.querySelectorAll('a[data-uia=""standard-card""]')].map(a => ({
+                    title: a.getAttribute('aria-label') || '',
+                    href: a.getAttribute('href') || '',
+                    img: (a.querySelector('img') || {}).src || null
+                }));
+                return { url: location.href, signedOut: signedOut, profiles: profiles, cards: cards };
+            })()";
+
+            var r = await EvaluateInPageAsync(script, ct);
+            if (r is not { ValueKind: JsonValueKind.Object } o) return null;
+
+            var profiles = new List<string>();
+            if (o.TryGetProperty("profiles", out var pa) && pa.ValueKind == JsonValueKind.Array)
+                foreach (var p in pa.EnumerateArray()) if (p.GetString() is { } name) profiles.Add(name);
+
+            var cards = new List<NetflixSearchCard>();
+            if (o.TryGetProperty("cards", out var ca) && ca.ValueKind == JsonValueKind.Array)
+                foreach (var c in ca.EnumerateArray())
+                    cards.Add(new NetflixSearchCard(
+                        c.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
+                        c.TryGetProperty("href", out var h) ? h.GetString() ?? "" : "",
+                        c.TryGetProperty("img", out var i) && i.ValueKind == JsonValueKind.String ? i.GetString() : null));
+
+            return new NetflixSearchPage(
+                o.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "",
+                o.TryGetProperty("signedOut", out var so) && so.ValueKind == JsonValueKind.True,
+                profiles,
+                cards);
+        }
+
+        /// <summary>Clicks a profile on the "Who's watching?" picker: the named one if present, else the first. Returns the name clicked.</summary>
+        public async Task<string?> SelectNetflixProfileAsync(string? preferredName, CancellationToken ct = default)
+        {
+            var wanted = JsonSerializer.Serialize(preferredName ?? "", BairdJsonContext.Default.String);
+            var script = @"(function() {
+                const wanted = " + wanted + @".trim().toLowerCase();
+                const tiles = [...document.querySelectorAll('[data-uia^=""profile-selector+tile-""]')];
+                if (!tiles.length) return null;
+                const tile = (wanted && tiles.find(b => (b.innerText || '').trim().toLowerCase() === wanted)) || tiles[0];
+                tile.click();
+                return (tile.innerText || '').trim();
+            })()";
+            var r = await EvaluateInPageAsync(script, ct);
+            return r is { ValueKind: JsonValueKind.String } v ? v.GetString() : null;
         }
 
         /// <summary>

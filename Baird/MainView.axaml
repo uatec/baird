@@ -52,6 +52,9 @@
                     <DataTemplate DataType="{x:Type vm:RequestsViewModel}">
                         <c:RequestsControl/>
                     </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:NetflixSearchSpikeViewModel}">
+                        <c:NetflixSearchSpikeControl/>
+                    </DataTemplate>
                     <DataTemplate DataType="{x:Type vm:NetflixSpikeViewModel}">
                         <c:NetflixSpikeControl/>
                     </DataTemplate>
