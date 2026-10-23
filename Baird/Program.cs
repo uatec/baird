@@ -15,6 +15,8 @@ namespace Baird
         [STAThread]
         public static void Main(string[] args)
         {
+            // Before any threads start (setenv isn't thread-safe): keep yt-dlp's unpack folders out of the RAM-backed /tmp.
+            Baird.Mpv.YtDlpTempDir.Configure();
             Trace.Listeners.Add(new ConsoleTraceListener());
 
             // Global safety nets: log anything that would otherwise silently kill the process.

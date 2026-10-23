@@ -201,7 +201,12 @@ namespace Baird.ViewModels
 
         private readonly NetflixCredentials? _credentials;
         private bool _autoSignInAttempted;
-        private bool _widevineWarmedUp;
+        private bool _siteDataCleared;
+        private bool _loggedPlaybackError;
+        private DateTime _errorGraceUntil = DateTime.MinValue;
+
+        /// <summary>After the site-data clear and reload, how long the old error page may still be on screen before it counts as a second failure.</summary>
+        public TimeSpan ErrorRetryGrace { get; set; } = TimeSpan.FromSeconds(20);
 
         /// <summary>True when NETFLIX_USER and NETFLIX_PASS are set in config.ini.</summary>
         public bool HasCredentials => _credentials != null;
@@ -457,20 +462,29 @@ namespace Baird.ViewModels
             if (string.IsNullOrEmpty(auth.PlaybackErrorCode)) return false;
 
             var reason = string.IsNullOrWhiteSpace(auth.PlaybackErrorMessage) ? "Netflix showed an error page." : auth.PlaybackErrorMessage;
-            AddLog($"[Playback] Netflix error page: code {auth.PlaybackErrorCode}, message \"{reason}\".");
-
-            // On the Pi's Chromium Netflix gives E100 until the page has probed Widevine widely; warm it up and retry once.
-            if (!_widevineWarmedUp)
+            if (!_loggedPlaybackError)
             {
-                _widevineWarmedUp = true;
-                AddLog("[Playback] Warming up Widevine (probing key-system configurations), then reloading the title once...");
-                var detail = await _browserService.WarmUpWidevineAsync(ct);
-                AddLog($"[Playback] Widevine warm-up: {detail}");
+                _loggedPlaybackError = true;
+                AddLog($"[Playback] Netflix error page: code {auth.PlaybackErrorCode}, message \"{reason}\".");
+            }
+
+            // On the Pi, Netflix keeps answering E100 until its saved site data is cleared (stale service worker/storage state).
+            // Clear it (cookies stay, so the login survives) and reload once.
+            if (!_siteDataCleared)
+            {
+                _siteDataCleared = true;
+                AddLog("[Playback] Clearing Netflix's saved site data (cookies kept) and reloading the title once...");
+                var detail = await _browserService.ClearSiteDataAsync("https://www.netflix.com", ct);
+                AddLog($"[Playback] Site data: {detail}");
                 await _browserService.NavigateAsync(TargetUrl, ct);
+                _errorGraceUntil = DateTime.UtcNow + ErrorRetryGrace;
                 return false; // keep polling: the reloaded page decides
             }
 
-            Fail($"Netflix refused to play this title: \"{reason}\" (Error Code {auth.PlaybackErrorCode}) even after a Widevine warm-up and reload. You are signed in. " +
+            // The reload is still loading, so the old error page may still be what we are reading. Give it time.
+            if (DateTime.UtcNow < _errorGraceUntil) return false;
+
+            Fail($"Netflix refused to play this title: \"{reason}\" (Error Code {auth.PlaybackErrorCode}) even after clearing its site data and reloading. You are signed in. " +
                  $"Try another title: edit the URL above, or set NETFLIX_TARGET_URL in ~/.baird/config.ini. Page: {auth.Url}");
             await _browserService.StopAsync();
             return true;
