@@ -1006,7 +1006,10 @@ namespace Baird.Services
             {
                 await SendPageCommandAsync("Input.dispatchKeyEvent", new JsonObject
                 {
-                    ["type"] = type, ["key"] = "Enter", ["code"] = "Enter", ["windowsVirtualKeyCode"] = 13,
+                    ["type"] = type,
+                    ["key"] = "Enter",
+                    ["code"] = "Enter",
+                    ["windowsVirtualKeyCode"] = 13,
                     ["text"] = type == "keyDown" ? "\r" : ""
                 }, ct);
             }

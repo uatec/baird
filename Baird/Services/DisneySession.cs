@@ -104,7 +104,7 @@ namespace Baird.Services
             DisneyPageStatus? last = null;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var unknownSince = TimeSpan.Zero;
-            bool wasUnknown = false;
+            bool wasUnknown = false, loggedSignedOut = false;
             while (sw.Elapsed < timeout)
             {
                 ct.ThrowIfCancellationRequested();
@@ -119,7 +119,8 @@ namespace Baird.Services
                     if (!wasUnknown) { wasUnknown = true; unknownSince = sw.Elapsed; }
                     if (IsNotFoundPage(st.Text) || sw.Elapsed - unknownSince > UnknownGrace)
                     {
-                        _log("[Auth] Page is not a Disney+ app page (" + (IsNotFoundPage(st.Text) ? "not-found page" : "no recognisable page for " + UnknownGrace.TotalSeconds + " s") + "): treating the profile as signed out.");
+                        if (!loggedSignedOut) _log("[Auth] Page is not a Disney+ app page (" + (IsNotFoundPage(st.Text) ? "not-found page" : "no recognisable page for " + UnknownGrace.TotalSeconds + " s") + "): treating the profile as signed out.");
+                        loggedSignedOut = true;
                         kind = DisneyPageKind.LoginRequired;
                     }
                 }
@@ -165,7 +166,16 @@ namespace Baird.Services
             _log($"[SignIn] Signing in as {creds.User} (password not logged).");
             if (!await _browser.NavigateAsync(LoginUrl, ct)) return "could not open the Disney+ login page over CDP.";
 
-            if (!await WaitForAsync("!!document.querySelector('input[type=email]')", ct)) return "the email field did not appear on the login page.";
+            // A session that is already valid is redirected away from the login page (to /profiles/loading, /select-profile, /home).
+            // Wait for the email field OR for that redirect; if redirected, there is nothing to type and the caller keeps polling.
+            if (!await WaitForAsync("!!document.querySelector('input[type=email]') || (location.pathname.indexOf('/identity/') < 0 && document.readyState === 'complete')", ct))
+                return "the email field did not appear on the login page.";
+            var emailShown = await TryEvaluateAsync("(function(){return !!document.querySelector('input[type=email]');})()", ct);
+            if (emailShown is not { ValueKind: JsonValueKind.True })
+            {
+                _log("[SignIn] The login page redirected away: the session is already signed in. Nothing to type.");
+                return null;
+            }
             if (!await _page.TypeIntoAsync("input[type=email]", creds.User, ct)) return "could not type into the email field.";
             await ClickAsync("[data-testid=continue-btn]", ct);
 

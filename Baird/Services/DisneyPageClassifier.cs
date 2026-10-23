@@ -33,7 +33,11 @@ namespace Baird.Services
             if (!url.Contains("disneyplus.com", StringComparison.OrdinalIgnoreCase)) return DisneyPageKind.Unknown;
             var path = PathOf(url);
 
-            if (hasLoginInput || path.Contains("/identity/")) return DisneyPageKind.LoginRequired;
+            // Only a visible email/password field proves the login flow is waiting for us. An /identity/... URL with no field is
+            // usually a redirect in progress: a SIGNED-IN session that opens a login URL is sent on to /profiles/loading and
+            // /select-profile (measured on the Pi after a reboot), so that is Unknown, not "signed out".
+            if (hasLoginInput) return DisneyPageKind.LoginRequired;
+            if (path.Contains("/identity/")) return DisneyPageKind.Unknown;
             if (hasProfilePicker || path.Contains("/select-profile")) return DisneyPageKind.ProfilePicker;
             if (hasVideo && videoCurrentTime > PlayingThresholdSeconds) return DisneyPageKind.VideoPlaying;
             // The URL alone proves nothing: a signed-out visitor is first served /browse/... and only then redirected to the login

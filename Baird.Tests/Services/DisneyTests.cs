@@ -14,10 +14,11 @@ namespace Baird.Tests.Services
     public class DisneyPageClassifierTests
     {
         [Theory]
-        [InlineData("https://www.disneyplus.com/identity/login/enter-email", false, false, false, 0, DisneyPageKind.LoginRequired)]
-        [InlineData("https://www.disneyplus.com/en-gb/identity/login/enter-email", false, false, false, 0, DisneyPageKind.LoginRequired)]
-        [InlineData("https://www.disneyplus.com/identity/login/passwordless", false, false, false, 0, DisneyPageKind.LoginRequired)]
-        [InlineData("https://www.disneyplus.com/identity/login/enter-password", false, false, false, 0, DisneyPageKind.LoginRequired)]
+        [InlineData("https://www.disneyplus.com/identity/login/enter-email", true, false, false, 0, DisneyPageKind.LoginRequired)]
+        [InlineData("https://www.disneyplus.com/identity/login/enter-email", false, false, false, 0, DisneyPageKind.Unknown)] // no field: a redirect may be in progress
+        [InlineData("https://www.disneyplus.com/en-gb/identity/login/enter-email", true, false, false, 0, DisneyPageKind.LoginRequired)]
+        [InlineData("https://www.disneyplus.com/identity/login/passwordless", false, false, false, 0, DisneyPageKind.Unknown)]
+        [InlineData("https://www.disneyplus.com/identity/login/enter-password", true, false, false, 0, DisneyPageKind.LoginRequired)]
         [InlineData("https://www.disneyplus.com/en-gb/select-profile", false, false, false, 0, DisneyPageKind.ProfilePicker)]
         [InlineData("https://www.disneyplus.com/en-gb/profiles/loading", false, false, false, 0, DisneyPageKind.Unknown)]
         [InlineData("https://www.disneyplus.com/en-gb/home", false, false, false, 0, DisneyPageKind.Unknown)] // no app shell yet: not proof of a login
@@ -152,11 +153,21 @@ namespace Baird.Tests.Services
         public string? ProfileClicked { get; set; }
         public int ThrowOnStateReads { get; set; }
         public Queue<string>? ProfileClickResults { get; set; }
+        public bool EmailPresent { get; set; } = true;
 
         public static JsonObject State(string url, bool login = false, bool picker = false, bool video = false, double t = 0, string text = "", bool nav = false) => new()
         {
-            ["url"] = url, ["title"] = "Disney+", ["hasLoginInput"] = login, ["hasProfilePicker"] = picker, ["isVideo"] = video,
-            ["currentTime"] = t, ["duration"] = video ? 6000 : 0, ["paused"] = false, ["videoWidth"] = video ? 854 : 0, ["text"] = text, ["hasAppNav"] = nav
+            ["url"] = url,
+            ["title"] = "Disney+",
+            ["hasLoginInput"] = login,
+            ["hasProfilePicker"] = picker,
+            ["isVideo"] = video,
+            ["currentTime"] = t,
+            ["duration"] = video ? 6000 : 0,
+            ["paused"] = false,
+            ["videoWidth"] = video ? 854 : 0,
+            ["text"] = text,
+            ["hasAppNav"] = nav
         };
 
         public Task<JsonElement?> EvaluateAsync(string script, CancellationToken ct = default)
@@ -164,6 +175,7 @@ namespace Baird.Tests.Services
             Scripts.Add(script);
             string json;
             if (script.Contains("hasProfilePicker")) { if (ThrowOnStateReads-- > 0) throw new InvalidOperationException("CDP Error: Inspected target navigated or closed"); if (States.Count > 0) LastState = States.Dequeue(); json = LastState.ToJsonString(); }
+            else if (script.Contains("return !!document.querySelector('input[type=email]');")) json = EmailPresent ? "true" : "false";
             else if (script.Contains("fetch(")) json = JsonValue.Create(new JsonObject { ["status"] = SearchStatus, ["body"] = SearchBody }.ToJsonString())!.ToJsonString();
             else if (script.Contains("profile-avatar")) { json = ProfileClickResults is { Count: > 0 } q ? q.Dequeue() : "\"Robert\""; if (json != "null") ProfileClicked = "Robert"; }
             else json = "true"; // WaitFor conditions and clicks
@@ -294,6 +306,35 @@ namespace Baird.Tests.Services
             var vm = Vm(b);
             await vm.LaunchPlaybackFlowAsync();
             Assert.Equal(DisneySpikeState.Playing, vm.State);
+        }
+
+        [Fact]
+        public async Task A_signed_in_session_redirected_through_an_identity_url_is_not_signed_in_again()
+        {
+            // Measured on the Pi after a reboot: /identity/... with no login field, then the profile picker.
+            var b = new FakeDisneyBrowser();
+            b.States.Enqueue(FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/identity/login/enter-email"));
+            b.States.Enqueue(FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/profiles/loading"));
+            b.States.Enqueue(FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/select-profile", picker: true));
+            b.States.Enqueue(FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true));
+            b.States.Enqueue(FakeDisneyBrowser.State(Play));
+            b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: 1));
+            b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: 2));
+            b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: 3));
+            var vm = Vm(b, new DisneyCredentials("me@example.com", "pw"));
+            await vm.LaunchPlaybackFlowAsync();
+            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Empty(b.Typed);
+        }
+
+        [Fact]
+        public async Task If_the_login_page_redirects_away_the_sign_in_types_nothing()
+        {
+            var b = new FakeDisneyBrowser { EmailPresent = false, LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/browse/search", text: "The page you were looking for cannot be found.") };
+            var vm = Vm(b, new DisneyCredentials("me@example.com", "pw"));
+            await vm.LaunchPlaybackFlowAsync();
+            Assert.Empty(b.Typed);
+            Assert.Contains(vm.LogEntries, l => l.Contains("already signed in"));
         }
 
         [Fact]
