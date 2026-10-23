@@ -1,3 +1,5 @@
+> **Superseded 2026-10-23:** playback now works on the Pi. For current findings (E100 = Widevine downgrade, window handling, sign-in, search API) see `docs/netflix-spike-findings.md`; for how to test see `docs/spike-strategy.md`.
+
 # Baird Netflix spike: measured findings
 
 Netflix is driven through a Chrome/Chromium process controlled over the DevTools Protocol (CDP) by

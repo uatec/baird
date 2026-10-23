@@ -47,6 +47,7 @@ namespace Baird.ViewModels
         public SeerrchViewModel Seerrch { get; }
         public RequestsViewModel Requests { get; }
         public NetflixSpikeViewModel NetflixSpike { get; }
+        public NetflixSearchSpikeViewModel NetflixSearchSpike { get; }
         public LottieSpikeViewModel LottieSpike { get; }
         public RiveSpikeViewModel RiveSpike { get; }
         public SettingsViewModel Settings { get; }
@@ -144,6 +145,10 @@ namespace Baird.ViewModels
             if (configuration?["NETFLIX_TARGET_URL"] is { Length: > 0 } netflixTarget) NetflixSpike.TargetUrl = netflixTarget;
             NetflixSpike.BackRequested += (s, e) => GoBack();
 
+            NetflixSearchSpike = new NetflixSearchSpikeViewModel(NetflixCredentials.FromConfiguration(configuration),
+                configuration?["NETFLIX_PROFILE"] is { Length: > 0 } nfProfile ? nfProfile : null);
+            NetflixSearchSpike.BackRequested += (s, e) => GoBack();
+
             LottieSpike = new LottieSpikeViewModel();
             LottieSpike.BackRequested += (s, e) => GoBack();
 
@@ -215,6 +220,7 @@ namespace Baird.ViewModels
                 new TabItem("Discover", Seerrch),
                 new TabItem("Requests", Requests),
                 new TabItem("Netflix Spike", NetflixSpike),
+                new TabItem("Netflix Search", NetflixSearchSpike),
                 new TabItem("Lottie Spike", LottieSpike),
                 new TabItem("Rive Spike", RiveSpike),
                 new TabItem("Settings", Settings),
@@ -234,7 +240,32 @@ namespace Baird.ViewModels
         /// </summary>
         private void StartAutoTestIfRequested()
         {
-            if (!string.Equals(Environment.GetEnvironmentVariable("BAIRD_AUTOTEST"), "netflix", StringComparison.OrdinalIgnoreCase)) return;
+            var autotest = Environment.GetEnvironmentVariable("BAIRD_AUTOTEST");
+            if (string.Equals(autotest, "netflix-search", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(8));
+                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+                        {
+                            var index = MainMenu.Tabs.ToList().FindIndex(t => t.Title == "Netflix Search");
+                            Console.WriteLine($"[AutoTest] Opening the Netflix Search tab (index {index}) and searching.");
+                            OpenMainMenu(index >= 0 ? index : null);
+                            await NetflixSearchSpike.SearchAsync();
+                            var first = string.Join(" | ", NetflixSearchSpike.Results.Take(8).Select(r => $"{r.Title} ({r.TitleId})"));
+                            Console.WriteLine($"[AutoTest] RESULT search succeeded={NetflixSearchSpike.Succeeded} count={NetflixSearchSpike.Results.Count} status=\"{NetflixSearchSpike.Status}\" first: {first}");
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[AutoTest] ERROR {ex}");
+                    }
+                });
+                return;
+            }
+            if (!string.Equals(autotest, "netflix", StringComparison.OrdinalIgnoreCase)) return;
 
             _ = Task.Run(async () =>
             {

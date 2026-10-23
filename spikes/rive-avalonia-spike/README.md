@@ -1,3 +1,5 @@
+> **Update 2026-10-23:** linux-arm64 is now built (Debian 12 container, `native/build-arm64.sh`) and Rive renders on the Pi, after embedding the `.riv` files as Avalonia resources. See `docs/netflix-spike-findings.md` §3.
+
 # Rive in Avalonia (in-process) - spike
 
 ## Verdict: VIABLE on linux-x64 (proven); linux-arm64 (the Pi) NOT yet built or tested

@@ -129,6 +129,9 @@
                 <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
                     <controls:SettingsControl/>
                 </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:NetflixSearchSpikeViewModel}">
+                    <controls:NetflixSearchSpikeControl/>
+                </DataTemplate>
                 <DataTemplate DataType="{x:Type vm:NetflixSpikeViewModel}">
                     <controls:NetflixSpikeControl/>
                 </DataTemplate>

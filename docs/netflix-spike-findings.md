@@ -1,0 +1,190 @@
+# Netflix (and friends) on the Pi: findings
+
+Status as of 2026-10-23. Written so another agent can continue without repeating the dead ends.
+How these were found, and how to test, is in [spike-strategy.md](spike-strategy.md).
+
+## TL;DR
+
+| Thing | State | Evidence |
+|---|---|---|
+| Netflix playback in Baird on the Pi | **Works** (release 0.0.220) | Unattended test on the installed build: playback started, window revealed over Baird. Screenshots exist (not in repo). |
+| Netflix sign-in with configured credentials | **Works** | Signed in on the Pi from a signed-out profile; Netflix reported `CURRENT_MEMBER`. |
+| Netflix search via Netflix's internal API | **Works** (branch `spike/netflix-search`, not deployed) | 48 results for "One Piece" in ~360 ms. Self-heals a stale query id (tested by planting one). |
+| Lottie animations | Work on the Pi | User-confirmed on the TV. |
+| Rive animations (native, in-process) | Work on the Pi | User-confirmed on the TV after the asset fix. |
+| `/tmp` filling up on the Pi | **Fixed** (0.0.220) | 60 × 85 MB leaked yt-dlp folders cleared; no new ones after the fix. |
+
+## 1. Netflix playback
+
+### Architecture (what the code does)
+
+- `Baird/Services/CdpBrowserService.cs` launches the system Chromium (`/usr/bin/chromium`) with a persistent profile
+  (`~/.config/baird/browser-profile`) and drives it over the Chrome DevTools Protocol (CDP), on port **9222**.
+- `Baird/ViewModels/NetflixSpikeViewModel.cs` runs the flow:
+  1. Launch on the target URL.
+  2. Check auth (`NetflixPageClassifier`).
+  3. Sign in with configured credentials if needed.
+  4. Wait for `video.currentTime` to advance.
+  5. Reveal the window, with the HUD overlay injected from `Baird/Resources/baird-overlay.js`.
+- Netflix error pages (e.g. E100) are read from the page text and shown in Baird's UI with code and message. One recovery
+  attempt clears the Netflix origin's site data (keeping cookies) and reloads.
+
+### Root cause of E100 ("This title is not available to watch instantly")
+
+**A Widevine downgrade.**
+- **What happened:** Chromium's component updater installs a newer Widevine CDM into the profile itself
+  (`<profile>/WidevineCdm/4.10.3112.0`). The OS package in `/opt/WidevineCdm` is the 2023 **4.10.2662.3**.
+  Baird's `WidevineStager` re-pointed Chromium's hint file (`WidevineCdm/latest-component-updated-widevine-cdm`) at the
+  old copy on **every launch**. Netflix refuses the old CDM, and the user sees E100.
+- **How it was isolated:** a switch matrix in the real app. Only the run with staging disabled played.
+- **Fix:** `WidevineStager.Stage` stages only when the profile has no Widevine, or only an older one. It also repairs a
+  hint left pointing at an older copy by earlier Baird versions. Unit tests: `Baird.Tests/Services/WidevineStagerTests.cs`.
+
+Why the staging exists at all: on a brand-new profile, Pi OS Chromium logs "Widevine enabled but no library found" and
+denies `com.widevine.alpha` until its component updater has downloaded a CDM. Staging the system copy bootstraps that.
+
+**Red herrings.** All were measured, and none was the cause. Don't redo them.
+
+| Hypothesis | Result |
+|---|---|
+| The title isn't available to the account | False. It plays in the user's browser and on the Pi once the CDM is right. |
+| Kids or restricted profile | False. The profile is an adult one, `isKids:false`, GB. |
+| User-agent / "Linux ARM" detection | False. Pi Chromium already reports `X11; Linux x86_64`, and overrides changed nothing. |
+| Widevine capability ("warm-up" probes) | Not the cause. EME grants SW_SECURE_CRYPTO and SW_SECURE_DECODE; HW_SECURE_* is denied (expected on L3). |
+| Stale site data (service worker, IndexedDB) | Coincidental. Clearing sometimes "helped" only because the updater swapped CDMs mid-session. |
+| Netflix MSL error `7/205064 "Invalid device state for renewal"` | Seen in one phase (after heavy profile copying), but E100 also happens without it. Don't copy a live profile and use both copies. |
+| `logs.netflix.com` refused (the user's DNS ad-blocker) | Harmless. Playback works with it blocked. |
+| Full `/tmp` | A real problem (see §4), but not the E100 cause. |
+| Inherited env (`LD_LIBRARY_PATH`, .NET vars) | Not the cause. The browser env is stripped anyway. |
+| Pi clock skew | No. NTP is synced. |
+
+### Window handling on the Pi (labwc, Wayland session, XWayland)
+
+- **Must use `--ozone-platform=x11`.** In the real service environment (`XDG_SESSION_TYPE=wayland`), Chromium otherwise
+  runs as a native Wayland client, and `xdotool` can't see or move it. Tests run over ssh have `XDG_SESSION_TYPE=tty`
+  and silently fall back to X11, which hides this. This is why early "it works in my test" results were misleading.
+- **`--kiosk`** means fullscreen with no frame. A normal or `--app` window gets a labwc title bar. `--window-position` is
+  ignored by labwc, so the old "off-screen" hiding never worked.
+- **Hide behind Baird:** a labwc `windowRule` (`identifier="baird-netflix"`, `<action name="Lower"/>`) in
+  `~/.config/labwc/rc.xml`. `configure_pi.sh` writes it; the updater does not re-run `configure_pi.sh`. After launch,
+  Baird hands focus back to its own window (`xdotool windowactivate <baird>`). At reveal it activates Chromium's window.
+  Don't add `ignoreFocusRequest`: it blocks the reveal.
+- Chromium also creates a 10×10 helper X window with the same class, so always pick the **largest** window.
+- Chromium keeps rendering while covered (`visibilityState=visible`, rAF running), so playback isn't throttled.
+
+### Sign-in, profiles and popups
+
+- Config keys in `~/.baird/config.ini` (flat keys at the top, mode 600):
+  - `NETFLIX_USER` and `NETFLIX_PASS`: the account credentials.
+  - `NETFLIX_TARGET_URL`: the default title.
+  - `NETFLIX_PROFILE`: which profile to pick on "Who's watching?". If unset, the first one is used.
+- **Signed-out detection** comes from page signals, not the URL or cookies:
+  - Netflix sends logged-out `/watch/<id>` to a public `/gb/title/<id>?fromWatch=true` page.
+  - It sets `NetflixId` cookies for **anonymous** visitors too.
+  - The reliable signals are `netflix.reactContext.models.userInfo.data.membershipStatus` (`ANONYMOUS` vs
+    `CURRENT_MEMBER`) and the `[data-uia="header-signin-link"]` element.
+- **The login form:** fields `input[name=userLoginId]` and `input[name=password]`, submit
+  `[data-uia="login-submit-button"]`. Values are typed with CDP `Input.insertText`. One attempt per run, and the password
+  is never logged (tested).
+- **Popups:**
+  - Notifications: suppressed with `--deny-permission-prompts`.
+  - Cookie banner: auto-clicked (`#onetrust-accept-btn-handler`).
+  - Save-password bubble: the `--disable-save-password-bubble` switch **does not exist** in this Chromium. Instead,
+    `ChromiumProfilePrefs` seeds `credentials_enable_service=false` and `profile.password_manager_enabled=false`.
+- **Every fresh profile or sign-in registers a new Netflix device.** Don't churn profiles. During testing Netflix once
+  signed the Pi out entirely.
+
+### Trimming gotcha
+
+The shipped build is trimmed with reflection-based System.Text.Json **disabled**. Any `JsonSerializer.Serialize(new {...})`
+throws on the Pi. Use `JsonObject` or the source-generated `BairdJsonContext`. The test project now sets
+`JsonSerializerIsReflectionEnabledByDefault=false`, so this fails in CI.
+
+### Known gaps (playback)
+
+- **No remote-control exit.** Once revealed, Chromium has focus. The overlay's ESC/Back only exits page-fullscreen or
+  goes back in history; it never returns to Baird. The user chose to leave this for now. A fix would be for the overlay
+  to signal Baird (e.g. a flag polled over CDP) so Baird calls `StopAsync`.
+- A brief flash of Chromium can appear before it's lowered behind Baird.
+- Not measured: CPU/smoothness over a full episode, remote keys inside the Netflix player.
+
+## 2. Netflix search (branch `spike/netflix-search`, not yet merged)
+
+- **Tab:** "Netflix Search". Code is `Baird/ViewModels/NetflixSearchSpikeViewModel.cs` and
+  `Baird/Services/NetflixSearch.cs`.
+- **Endpoint:** `POST https://www.netflix.com/graphql`, operation **`SearchPageQueryResults`**, sent from inside the
+  signed-in hidden browser with `fetch(..., {credentials:'include'})`. Only `content-type: application/json` is needed.
+  The browser uses CDP port **9223**.
+- **The request:** a **persisted query** `extensions.persistedQuery = {id, version}` plus `variables`. Required
+  variables are `searchTerm`, `pageSize` (48), `endCursor` (paging) and a large required `options` object. The template
+  is stored in `Baird/Resources/netflix-search-query.json`; it contains no account data.
+- **The reply:** `data.page.sections.edges[].node` with `__typename == "PinotGallerySection"` ("Films & Series").
+  - Per entity: `displayString` (title); `unifiedEntity.{__typename (Show/Movie), videoId,
+    contentAdvisory.maturityLevel}`; `contextualArtwork.artwork.url`.
+  - `entities.pageInfo.{endCursor, hasNextPage}` gives paging.
+  - The `PinotListSection` "More to explore" holds suggestions, which are ignored.
+- **Errors:** `errors[0].extensions.code`.
+  - `PERSISTED_QUERY_NOT_FOUND` means Netflix rotated the query id.
+  - `INVALID_VARIABLES` / `ValidationError` means the variables changed.
+  - On either, the spike opens the real search page, captures the web app's own request via CDP `Network.requestWillBeSent`,
+    caches it at `~/.config/baird/netflix-search-query.json` and retries once. This was tested on the Pi with a planted
+    stale id.
+- **Important:** the API also answers **signed-out** browsers, with the general country catalogue. Results are only
+  "filtered by this account" after the session is confirmed as `CURRENT_MEMBER` on a chosen profile, which the spike
+  checks first, from `/browse`.
+- **Cost:** ~7 s per search end to end (browser start + session check), of which the API call is ~0.4 s. Keeping the
+  browser alive between searches would remove most of that.
+- **Not done:** paging beyond 48 results; integration with Baird's own search; playing a result.
+- **Alternatives considered:** Netflix has had no public API since 2014. TMDB "watch providers" (also via the existing
+  Jellyseerr) is stable but country-level only, with no Netflix ids. Third-party catalogues (Watchmode, uNoGS) are paid
+  or rate-limited and unverified. A suggested future shape: TMDB/Jellyseerr for discovery, and this internal API only to
+  resolve a Netflix id at play time.
+
+## 3. Lottie and Rive spikes
+
+- **Lottie** (`spikes/lottie-avalonia-spike/README.md`): the blank viewport was missing
+  `<AvaloniaResource Include="Assets/**"/>`. It now renders. `loading-ring.json` has an opaque background layer.
+- **Rive** (`spikes/rive-avalonia-spike/README.md`, whose "arm64 not tested" section is now out of date):
+  - **Runtime:** in-process via `rive-sharp` with natively built `librive.so`. Builds for both architectures are in
+    `Baird/runtimes/*/native/` and are produced in Debian 12 containers (`native/build-*.sh`, glibc ≥ 2.29), so they run
+    on CI's Ubuntu, Manjaro and the Pi.
+  - **Blank-screen fix:** on the Pi the `.riv` files must be embedded as Avalonia resources. The shipped exe runs from
+    `~/.cache/baird` (the brew wrapper gunzips it there), so loose files next to it don't exist. This is why Rive was blank.
+  - **Old runtime:** the rive-sharp runtime is frozen at Dec 2022, so new editor files may not load.
+
+## 4. Pi platform findings (not Netflix-specific)
+
+- **`/tmp` is a 4 GB RAM-backed tmpfs.**
+  - **The leak:** Baird's managed yt-dlp (`~/.local/share/baird/bin/yt-dlp`) is a PyInstaller one-file binary that
+    unpacks ~85 MB into `$TMPDIR/_MEI*` each run, and leaks it when mpv kills it. mpv fell back to yt-dlp on every failed
+    TV-channel retry, so `/tmp` hit 100% and used half the RAM.
+  - **The fix (0.0.220):** mpv's `ytdl_hook-exclude` skips `127.0.0.1`/`localhost`, and yt-dlp's native `TMPDIR` points
+    at `~/.cache/baird/ytdlp-tmp`, which is cleaned at startup (`Baird/Mpv/YtDlpTempDir.cs`, set via libc `setenv`
+    before any threads).
+  - **Interaction with Chromium:** `/etc/chromium.d/dev-shm` makes Chromium use `/tmp` for shared memory when
+    `/dev/shm` has under 3.8 GB free, so a full `/tmp` also hurts Chromium.
+- **Updater:**
+  - **Deferring:** the updater defers when the TV looks in use (ALSA playback running, or Baird CPU ≥ 30%). Force it with
+    `systemd-run --user --unit=baird-force-update --setenv=FORCE=1 --collect
+    /home/linuxbrew/.linuxbrew/opt/baird/libexec/update_baird.sh`.
+  - **Config:** it does not re-run `configure_pi.sh`. Changes there (e.g. labwc rules) must also be applied by hand on
+    the existing Pi.
+- **CI:** the Release workflow's "Install Dependencies" (`apt-get`) step sometimes hangs. Cancelling and re-running fixes
+  it, and the CI workflow's identical step usually passes.
+- **Chromium** on the Pi: 155, Debian trixie build, wrapper `/usr/bin/chromium` (adds `/etc/chromium.d/*` flags, runs in
+  its own systemd scope).
+
+## 5. Where things are
+
+| What | Where |
+|---|---|
+| Playback spike | `Baird/ViewModels/NetflixSpikeViewModel.cs`, `Baird/Controls/NetflixSpikeControl.*` |
+| Browser control (CDP) | `Baird/Services/CdpBrowserService.cs` |
+| Widevine staging (never downgrades) | `Baird/Services/WidevineStager.cs` |
+| Sign-in detection | `Baird/Services/NetflixPageClassifier.cs`, `NetflixCredentials.cs` |
+| Profile prefs (no password manager) | `Baird/Services/ChromiumProfilePrefs.cs` |
+| Search spike | `Baird/ViewModels/NetflixSearchSpikeViewModel.cs`, `Baird/Services/NetflixSearch.cs`, `Baird/Resources/netflix-search-query.json` |
+| Unattended test hook | `MainViewModel.StartAutoTestIfRequested` (`BAIRD_AUTOTEST=netflix` or `netflix-search`) |
+| Test tooling | `spikes/netflix-tooling/` (see [spike-strategy.md](spike-strategy.md)) |
+| labwc rule | `configure_pi.sh` and, on the Pi, `~/.config/labwc/rc.xml` |
+| yt-dlp temp fix | `Baird/Mpv/YtDlpTempDir.cs`, `Baird/Mpv/MpvPlayer.cs` |
