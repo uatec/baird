@@ -3,7 +3,7 @@
  * Injected script that:
  * 1. Suppresses native Netflix mouse-driven player controls
  * 2. Injects Baird's TV-styled HUD (progress bar, timestamps, 10-foot remote hints)
- * 3. Binds D-pad remote controls (Arrow keys, Enter, Space, Escape) directly to the HTML5 video
+ * 3. Binds D-pad remote controls (Arrow keys, Enter, Space) directly to the HTML5 video; Back (Escape) asks Baird to exit
  * 4. Implements Baird's HUD auto-hide policy (auto-hides during playback, stays pinned when paused)
  */
 (function() {
@@ -319,6 +319,16 @@
 
     // 4. Remote Control / Keyboard Event Interception (D-Pad)
     function onKeyDown(e) {
+        // D-pad Back: ask Baird to close this window. Baird adds window.bairdSignal (a CDP binding) before it injects
+        // this script. Handle Back before the video check, so Back works on an error page or before the video loads.
+        if ((e.key === "Escape" || e.key === "Backspace") && typeof window.bairdSignal === "function") {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("[Baird PoC] Back requested via Remote: asking Baird to exit.");
+            window.bairdSignal(JSON.stringify({ type: "exit" }));
+            return;
+        }
+
         const v = getVideo();
         if (!v) return;
 
@@ -353,7 +363,7 @@
                 break;
 
             case "Escape":
-            case "Backspace": // D-pad Back
+            case "Backspace": // D-pad Back, without Baird (e.g. the userscript PoC)
                 console.log("[Baird PoC] Back requested via Remote.");
                 // If in fullscreen, exit fullscreen or go back in history
                 if (document.fullscreenElement) {

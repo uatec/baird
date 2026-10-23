@@ -8,6 +8,7 @@ How these were found, and how to test, is in [spike-strategy.md](spike-strategy.
 | Thing | State | Evidence |
 |---|---|---|
 | Netflix playback in Baird on the Pi | **Works** (release 0.0.220) | Unattended test on the installed build: playback started, window revealed over Baird. Screenshots exist (not in repo). |
+| Baird HUD over Netflix (Baird keeps all input) | **Works** (test build, 2026-10-23) | Screenshots on the Pi: video shows through Baird's transparent window; real uinput keys OK/Right/Left/Back reached Baird and drove Netflix's player API. See §1 "Baird-drawn HUD". |
 | Netflix sign-in with configured credentials | **Works** | Signed in on the Pi from a signed-out profile; Netflix reported `CURRENT_MEMBER`. |
 | Netflix search via Netflix's internal API | **Works** (branch `spike/netflix-search`, not deployed) | 48 results for "One Piece" in ~360 ms. Self-heals a stale query id (tested by planting one). |
 | Lottie animations | Work on the Pi | User-confirmed on the TV. |
@@ -100,13 +101,41 @@ The shipped build is trimmed with reflection-based System.Text.Json **disabled**
 throws on the Pi. Use `JsonObject` or the source-generated `BairdJsonContext`. The test project now sets
 `JsonSerializerIsReflectionEnabledByDefault=false`, so this fails in CI.
 
+### Baird-drawn HUD (default since 2026-10-23; `BAIRD_NETFLIX_HUD=html` gives the old HTML overlay)
+
+Baird never gives focus to Chromium. All remote keys go to Baird, and Baird sends commands to the page over CDP.
+
+- **Windows:** when playback is confirmed, Baird hides its main window, so Chromium (kiosk, fullscreen) shows. Then it
+  opens `NetflixHudWindow`: fullscreen, `Topmost`, transparent (`TransparencyLevelHint = Transparent`, same as the
+  Wayland overlay spike). Under XWayland on labwc it reported `transparency=Transparent` and kept focus all the time.
+- **Commands:** `ControlNetflixPlayerAsync` uses Netflix's player API
+  (`netflix.appContext.state.playerApp.getAPI().videoPlayer`, session id starting `watch`): `seek(ms)`, `play()`,
+  `pause()`. It returns `"api"`, `"video"` (fallback to the `<video>` element) or null, and the HUD shows an error for
+  null. On the Pi, every command used `"api"`. A direct `video.currentTime` change can cause Netflix error M7375 (reported
+  by other projects; not tried here).
+- **Status:** the HUD polls `PollVideoPlaybackAsync` every 500 ms. The bar repaints only when a value changes, and hides
+  after 5 s while playing (stays while paused).
+- **Page:** `Resources/netflix-page-style.js` hides Netflix's own UI and the pointer. The age-rating overlay at the start
+  is `.watch-video--advisories-container` (found by probing the live page over CDP).
+- **Exit:** Back (`Escape`, `BrowserBack`, `Back`) stops Chromium and closes the HUD. Then the main window comes back.
+  Under XWayland, `Hide()`/`Show()` loses fullscreen, and setting the same `WindowState` again does nothing; Baird sets
+  `Normal` and then the old state.
+- **Live TV** is paused while the HUD is open (`MainViewModel.IsPaused`), and restored after.
+- **Test:** `KEYS="ENTER ENTER RIGHT LEFT ESC" bash ~/baird-test/pi_autotest.sh netflix test`. `pi_keys.py` presses keys
+  through a uinput device, so they go through labwc like the real remote (xdotool skips the compositor). Motion checked
+  by comparing screenshot pairs 0.5 s apart: moving while playing, 0% change while paused.
+
+The page-signal channel (`Runtime.addBinding` `bairdSignal`, `Runtime.bindingCalled`) stays for the HTML overlay mode and
+for future page events (progress, ended). Tested in headless Chrome (`OverlayBackKey_SignalsBairdToExit`).
+
 ### Known gaps (playback)
 
-- **No remote-control exit.** Once revealed, Chromium has focus. The overlay's ESC/Back only exits page-fullscreen or
-  goes back in history; it never returns to Baird. The user chose to leave this for now. A fix would be for the overlay
-  to signal Baird (e.g. a flag polled over CDP) so Baird calls `StopAsync`.
+- Netflix prompts ("Are you still watching?", "Skip intro", "Next episode") are hidden or not reachable: Chromium never
+  has focus. Baird must find them over CDP and show its own buttons.
+- Not tested with the real remote by a person yet (only uinput keys). The remote's Back key must arrive as `Escape` or
+  `BrowserBack`, as it does in the rest of Baird.
 - A brief flash of Chromium can appear before it's lowered behind Baird.
-- Not measured: CPU/smoothness over a full episode, remote keys inside the Netflix player.
+- Not measured: CPU/smoothness over a full episode with the HUD.
 
 ## 2. Netflix search (branch `spike/netflix-search`, not yet merged)
 
@@ -179,6 +208,7 @@ throws on the Pi. Use `JsonObject` or the source-generated `BairdJsonContext`. T
 | What | Where |
 |---|---|
 | Playback spike | `Baird/ViewModels/NetflixSpikeViewModel.cs`, `Baird/Controls/NetflixSpikeControl.*` |
+| Baird HUD over Netflix | `Baird/ViewModels/NetflixHudViewModel.cs`, `Baird/Controls/NetflixHudWindow.cs`, `MainView.ShowNetflixHud`, `Baird/Resources/netflix-page-style.js` |
 | Browser control (CDP) | `Baird/Services/CdpBrowserService.cs` |
 | Widevine staging (never downgrades) | `Baird/Services/WidevineStager.cs` |
 | Sign-in detection | `Baird/Services/NetflixPageClassifier.cs`, `NetflixCredentials.cs` |

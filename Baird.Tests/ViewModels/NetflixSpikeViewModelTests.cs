@@ -105,9 +105,11 @@ namespace Baird.Tests.ViewModels
             return Task.FromResult(VideoSequence != null ? VideoSequence() : VideoStatusToReturn);
         }
 
+        public string? LastInjectedScript { get; private set; }
         public Task<bool> InjectOverlayScriptAsync(string? script = null, CancellationToken ct = default)
         {
             InjectOverlayCalled = true;
+            LastInjectedScript = script;
             return Task.FromResult(true);
         }
 
@@ -123,6 +125,17 @@ namespace Baird.Tests.ViewModels
             IsRunning = false;
             return Task.CompletedTask;
         }
+
+        public List<(NetflixPlayerAction Action, double Seconds)> PlayerActions { get; } = new();
+        public string? PlayerPath { get; set; } = "api";
+        public Task<string?> ControlNetflixPlayerAsync(NetflixPlayerAction action, double seconds = 0, CancellationToken ct = default)
+        {
+            PlayerActions.Add((action, seconds));
+            return Task.FromResult(PlayerPath);
+        }
+
+        public event Action<string>? PageSignalReceived;
+        public void RaisePageSignal(string payload) => PageSignalReceived?.Invoke(payload);
 
         public ValueTask DisposeAsync()
         {
@@ -140,6 +153,7 @@ namespace Baird.Tests.ViewModels
 
         private static NetflixSpikeViewModel Vm(MockCdpBrowserService svc) => new(svc)
         {
+            UseBairdHud = false,
             PollInterval = TimeSpan.FromMilliseconds(5),
             AuthCheckTimeout = TimeSpan.FromMilliseconds(200),
             BufferingTimeout = TimeSpan.FromMilliseconds(300),
@@ -206,6 +220,83 @@ namespace Baird.Tests.ViewModels
 
             await vm.LaunchPlaybackFlowAsync();
 
+            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+        }
+
+        private static async Task<(MockCdpBrowserService svc, NetflixSpikeViewModel vm)> PlayingVm()
+        {
+            double t = 0;
+            var svc = new MockCdpBrowserService
+            {
+                AuthStatusToReturn = Auth("https://www.netflix.com/browse"),
+                VideoSequence = () => Video(t += 0.4)
+            };
+            var vm = Vm(svc);
+            await vm.LaunchPlaybackFlowAsync();
+            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+            return (svc, vm);
+        }
+
+        [Fact]
+        public async Task ExitSignalFromOverlay_WhilePlaying_StopsBrowser()
+        {
+            var (svc, vm) = await PlayingVm();
+
+            svc.RaisePageSignal("{\"type\":\"exit\"}");
+
+            Assert.True(svc.StopCalled);
+            Assert.Equal(NetflixSpikeState.Stopped, vm.State);
+        }
+
+        [Fact]
+        public async Task BairdHudMode_DoesNotRaiseBrowser_AndRequestsTheHud()
+        {
+            double t = 0;
+            var svc = new MockCdpBrowserService { AuthStatusToReturn = Auth("https://www.netflix.com/browse"), VideoSequence = () => Video(t += 0.4) };
+            var vm = Vm(svc);
+            vm.UseBairdHud = true;
+            NetflixHudViewModel? hud = null;
+            vm.HudRequested += h => hud = h;
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+            Assert.False(svc.RevealWindowCalled);
+            Assert.NotNull(hud);
+            Assert.Contains("baird-page-style", svc.LastInjectedScript);
+        }
+
+        [Fact]
+        public async Task BairdHudMode_BackOnTheHud_StopsTheBrowserAndClosesTheHud()
+        {
+            double t = 0;
+            var svc = new MockCdpBrowserService { AuthStatusToReturn = Auth("https://www.netflix.com/browse"), VideoSequence = () => Video(t += 0.4) };
+            var vm = Vm(svc);
+            vm.UseBairdHud = true;
+            NetflixHudViewModel? hud = null;
+            vm.HudRequested += h => hud = h;
+            await vm.LaunchPlaybackFlowAsync();
+            var closed = false;
+            hud!.Closed += () => closed = true;
+
+            await hud.HandleKeyAsync(Avalonia.Input.Key.Escape);
+
+            Assert.True(svc.StopCalled);
+            Assert.True(closed);
+            Assert.Equal(NetflixSpikeState.Stopped, vm.State);
+        }
+
+        [Theory]
+        [InlineData("{\"type\":\"progress\"}")]
+        [InlineData("not json")]
+        [InlineData("[]")]
+        public async Task OtherOrMalformedSignals_AreIgnored(string payload)
+        {
+            var (svc, vm) = await PlayingVm();
+
+            svc.RaisePageSignal(payload);
+
+            Assert.False(svc.StopCalled);
             Assert.Equal(NetflixSpikeState.Playing, vm.State);
         }
 
@@ -343,6 +434,7 @@ namespace Baird.Tests.ViewModels
 
             var vm = new NetflixSpikeViewModel(mockService)
             {
+                UseBairdHud = false,
                 IsSimulateMfaEnabled = true,
                 PollInterval = TimeSpan.FromMilliseconds(5)
             };
