@@ -223,6 +223,38 @@ namespace Baird.ViewModels
             };
             MainMenu = new TabNavigationViewModel(tabs);
             MainMenu.BackRequested += (s, e) => GoBack();
+
+            StartAutoTestIfRequested();
+        }
+
+        /// <summary>
+        /// Opt-in test hook for unattended runs on the device: BAIRD_AUTOTEST=netflix opens the Netflix spike tab and starts its
+        /// flow a few seconds after startup, then logs "[AutoTest] RESULT ..." (to the journal) when the flow settles. Does nothing
+        /// unless the variable is set.
+        /// </summary>
+        private void StartAutoTestIfRequested()
+        {
+            if (!string.Equals(Environment.GetEnvironmentVariable("BAIRD_AUTOTEST"), "netflix", StringComparison.OrdinalIgnoreCase)) return;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(8)); // let the UI come up
+                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+                    {
+                        var index = MainMenu.Tabs.ToList().FindIndex(t => t.Title == "Netflix Spike");
+                        Console.WriteLine($"[AutoTest] Opening the Netflix Spike tab (index {index}) and starting the flow.");
+                        OpenMainMenu(index >= 0 ? index : null);
+                        await NetflixSpike.LaunchPlaybackFlowAsync();
+                        Console.WriteLine($"[AutoTest] RESULT state={NetflixSpike.State} message=\"{NetflixSpike.StatusMessage}\"");
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AutoTest] ERROR {ex}");
+                }
+            });
         }
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
