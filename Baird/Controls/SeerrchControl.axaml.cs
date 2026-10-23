@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System;
@@ -10,17 +11,42 @@ namespace Baird.Controls
 {
     public partial class SeerrchControl : UserControl
     {
-        public System.Windows.Input.ICommand MoveFocusDownCommand { get; }
-        public System.Windows.Input.ICommand MoveFocusUpCommand { get; }
+        // Must match the UniformGrid Columns of ResultsList in SeerrchControl.axaml.
+        private const int ResultColumns = 4;
+
+        private SearchPaneNavigation? _navigation;
 
         public SeerrchControl()
         {
             InitializeComponent();
-            MoveFocusDownCommand = ReactiveUI.ReactiveCommand.Create(MoveFocusDown);
-            MoveFocusUpCommand = ReactiveUI.ReactiveCommand.Create(MoveFocusUp);
+
+            // Tunnel so the pane hand-off runs before XY focus picks a neighbour.
+            AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+
+            this.AttachedToVisualTree += (s, e) =>
+            {
+                // Don't auto-focus - let user press Down from tab navigation
+                var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard")!;
+                keyboard.KeyPressed += key => (DataContext as ViewModels.ISearchTextInput)?.AppendText(key.ToLowerInvariant());
+                keyboard.BackspacePressed += () => (DataContext as ViewModels.ISearchTextInput)?.Backspace();
+                keyboard.EnterPressed += () => Navigation.FocusFirstResult();
+            };
         }
 
-        private void MoveFocusUp()
+        private SearchPaneNavigation Navigation => _navigation ??= new SearchPaneNavigation(
+            this.FindControl<VirtualKeyboardControl>("VirtualKeyboard")!,
+            this.FindControl<ItemsControl>("ResultsList")!,
+            ResultColumns,
+            suggestions: null,
+            FocusTabBar);
+
+        private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (Navigation.Handle(e.Key, TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement()))
+                e.Handled = true;
+        }
+
+        private void FocusTabBar()
         {
             var tabNav = this.FindAncestorOfType<TabNavigationControl>();
             if (tabNav != null)
@@ -36,119 +62,15 @@ namespace Baird.Controls
                         {
                             var button = visual.FindDescendantOfType<Button>();
                             button?.Focus();
-                            return;
                         }
                     }
                 }
             }
         }
 
-        private void MoveFocusDown()
-        {
-            var itemsControl = this.FindControl<ItemsControl>("ResultsList");
-            if (itemsControl != null && itemsControl.ItemCount > 0)
-            {
-                FocusResults();
-                return;
-            }
-
-            var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
-            if (keyboard != null && keyboard.IsEffectivelyVisible)
-            {
-                var keyF = keyboard.FindControl<Button>("KeyF");
-                if (keyF != null && keyF.IsEffectivelyVisible)
-                {
-                    keyF.Focus();
-                    return;
-                }
-            }
-
-            FocusResults();
-        }
-
-        protected override void OnDataContextChanged(EventArgs e)
-        {
-            base.OnDataContextChanged(e);
-            if (DataContext is ViewModels.SeerrchViewModel vm)
-            {
-                vm.SearchBoxFocusRequested += (s, args) =>
-                {
-                    Dispatcher.UIThread.Post(FocusSearchBox, DispatcherPriority.Input);
-                };
-            }
-        }
-
         private void InitializeComponent()
         {
             AvaloniaXamlLoader.Load(this);
-        }
-
-        public void FocusResults()
-        {
-            var itemsControl = this.FindControl<ItemsControl>("ResultsList");
-            if (itemsControl == null) return;
-
-            // Try to focus the first button in the grid
-            if (itemsControl.ItemCount > 0)
-            {
-                var container = itemsControl.ContainerFromIndex(0);
-                if (container is Visual visual)
-                {
-                    var button = visual.FindDescendantOfType<Button>();
-                    button?.Focus();
-                }
-            }
-        }
-
-        public void FocusSearchBox()
-        {
-            var box = this.FindControl<TextBox>("SearchBox");
-            if (box != null)
-            {
-                box.Focus();
-                box.SelectAll();
-            }
-        }
-
-        protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
-        {
-            base.OnAttachedToVisualTree(e);
-            // Don't auto-focus - let user press Down from tab navigation
-
-            var box = this.FindControl<TextBox>("SearchBox");
-            if (box != null)
-            {
-                box.GotFocus += (sender, args) =>
-                {
-                    Dispatcher.UIThread.Post(() => box.SelectAll(), DispatcherPriority.Input);
-                };
-            }
-
-            var keyboard = this.FindControl<VirtualKeyboardControl>("VirtualKeyboard");
-            if (keyboard != null)
-            {
-                keyboard.KeyPressed += key =>
-                {
-                    if (box != null)
-                    {
-                        var text = box.Text ?? string.Empty;
-                        box.Text = text + key.ToLowerInvariant();
-                        box.CaretIndex = box.Text.Length;
-                    }
-                };
-                keyboard.BackspacePressed += () =>
-                {
-                    if (box != null && !string.IsNullOrEmpty(box.Text))
-                    {
-                        box.Text = box.Text.Substring(0, box.Text.Length - 1);
-                        box.CaretIndex = box.Text.Length;
-                    }
-                };
-                keyboard.EnterPressed += () =>
-                {
-                    FocusResults();
-                };
-            }
         }
     }
 }
