@@ -48,6 +48,8 @@ namespace Baird.ViewModels
         public RequestsViewModel Requests { get; }
         public NetflixSpikeViewModel NetflixSpike { get; }
         public NetflixSearchSpikeViewModel NetflixSearchSpike { get; }
+        public DisneySpikeViewModel DisneySpike { get; }
+        public DisneySearchSpikeViewModel DisneySearchSpike { get; }
         public LottieSpikeViewModel LottieSpike { get; }
         public RiveSpikeViewModel RiveSpike { get; }
         public SettingsViewModel Settings { get; }
@@ -149,6 +151,14 @@ namespace Baird.ViewModels
                 configuration?["NETFLIX_PROFILE"] is { Length: > 0 } nfProfile ? nfProfile : null);
             NetflixSearchSpike.BackRequested += (s, e) => GoBack();
 
+            var disneyCredentials = DisneyCredentials.FromConfiguration(configuration);
+            var disneyProfile = configuration?["DISNEY_PROFILE"] is { Length: > 0 } dnProfile ? dnProfile : null;
+            DisneySpike = new DisneySpikeViewModel(disneyCredentials, disneyProfile);
+            if (configuration?["DISNEY_TARGET_URL"] is { Length: > 0 } disneyTarget) DisneySpike.TargetUrl = disneyTarget;
+            DisneySpike.BackRequested += (s, e) => GoBack();
+            DisneySearchSpike = new DisneySearchSpikeViewModel(disneyCredentials, disneyProfile);
+            DisneySearchSpike.BackRequested += (s, e) => GoBack();
+
             LottieSpike = new LottieSpikeViewModel();
             LottieSpike.BackRequested += (s, e) => GoBack();
 
@@ -221,6 +231,8 @@ namespace Baird.ViewModels
                 new TabItem("Requests", Requests),
                 new TabItem("Netflix Spike", NetflixSpike),
                 new TabItem("Netflix Search", NetflixSearchSpike),
+                new TabItem("Disney Spike", DisneySpike),
+                new TabItem("Disney Search", DisneySearchSpike),
                 new TabItem("Lottie Spike", LottieSpike),
                 new TabItem("Rive Spike", RiveSpike),
                 new TabItem("Settings", Settings),
@@ -256,6 +268,53 @@ namespace Baird.ViewModels
                             await NetflixSearchSpike.SearchAsync();
                             var first = string.Join(" | ", NetflixSearchSpike.Results.Take(8).Select(r => $"{r.Title} ({r.TitleId})"));
                             Console.WriteLine($"[AutoTest] RESULT search succeeded={NetflixSearchSpike.Succeeded} count={NetflixSearchSpike.Results.Count} status=\"{NetflixSearchSpike.Status}\" first: {first}");
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[AutoTest] ERROR {ex}");
+                    }
+                });
+                return;
+            }
+            if (string.Equals(autotest, "disney-search", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(8));
+                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+                        {
+                            var index = MainMenu.Tabs.ToList().FindIndex(t => t.Title == "Disney Search");
+                            Console.WriteLine($"[AutoTest] Opening the Disney Search tab (index {index}) and searching.");
+                            OpenMainMenu(index >= 0 ? index : null);
+                            await DisneySearchSpike.SearchAsync();
+                            var first = string.Join(" | ", DisneySearchSpike.Results.Take(8).Select(r => $"{r.Title} ({r.Kind}, {r.EntityId})"));
+                            Console.WriteLine($"[AutoTest] RESULT search succeeded={DisneySearchSpike.Succeeded} count={DisneySearchSpike.Results.Count} status=\"{DisneySearchSpike.Status}\" first: {first}");
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[AutoTest] ERROR {ex}");
+                    }
+                });
+                return;
+            }
+            if (string.Equals(autotest, "disney", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(8));
+                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+                        {
+                            var index = MainMenu.Tabs.ToList().FindIndex(t => t.Title == "Disney Spike");
+                            Console.WriteLine($"[AutoTest] Opening the Disney Spike tab (index {index}) and starting the flow.");
+                            OpenMainMenu(index >= 0 ? index : null);
+                            await DisneySpike.LaunchPlaybackFlowAsync();
+                            Console.WriteLine($"[AutoTest] RESULT state={DisneySpike.State} message=\"{DisneySpike.StatusMessage}\"");
                         });
                     }
                     catch (Exception ex)

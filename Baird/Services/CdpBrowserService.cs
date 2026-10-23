@@ -75,7 +75,25 @@ namespace Baird.Services
         Task StopAsync();
     }
 
-    public class CdpBrowserService : ICdpBrowserService
+    /// <summary>A request the page sent, as seen by CDP Network.requestWillBeSent (headers can include a bearer token: never log it).</summary>
+    public sealed record CapturedRequest(string Url, string Method, string? PostData, IReadOnlyDictionary<string, string> Headers);
+
+    /// <summary>
+    /// Site-agnostic page primitives (evaluate, type, key press, request capture) for spikes that drive a site other than
+    /// Netflix. Implemented by <see cref="CdpBrowserService"/> next to <see cref="ICdpBrowserService"/>.
+    /// </summary>
+    public interface ICdpPageDriver
+    {
+        /// <summary>Evaluates JS in the page (promises awaited) and returns its JSON-serialisable value, or null on error.</summary>
+        Task<JsonElement?> EvaluateAsync(string script, CancellationToken ct = default);
+        /// <summary>Focuses the element matching <paramref name="selector"/> and types <paramref name="text"/> with real input events. The text is never logged.</summary>
+        Task<bool> TypeIntoAsync(string selector, string text, CancellationToken ct = default);
+        Task PressEnterAsync(CancellationToken ct = default);
+        /// <summary>Navigates to <paramref name="url"/> and returns the first request for which <paramref name="match"/> is true (or null after the timeout).</summary>
+        Task<CapturedRequest?> NavigateAndCaptureAsync(string url, Func<CapturedRequest, bool> match, TimeSpan timeout, CancellationToken ct = default);
+    }
+
+    public class CdpBrowserService : ICdpBrowserService, ICdpPageDriver
     {
         private Process? _browserProcess;
         // CDP events (messages without an id) from the page socket go here while something is listening.
@@ -870,6 +888,68 @@ namespace Baird.Services
                 proc?.WaitForExit(1000);
             }
             catch { }
+        }
+
+        public Task<JsonElement?> EvaluateAsync(string script, CancellationToken ct = default) => EvaluateInPageAsync(script, ct);
+
+        public async Task<bool> TypeIntoAsync(string selector, string text, CancellationToken ct = default)
+        {
+            var sel = JsonSerializer.Serialize(selector, BairdJsonContext.Default.String);
+            var focused = await EvaluateInPageAsync($"(function(){{const e=document.querySelector({sel});if(!e)return false;e.focus();if(e.select)e.select();return true;}})()", ct);
+            if (focused is not { ValueKind: JsonValueKind.True }) return false;
+            await SendPageCommandAsync("Input.insertText", new JsonObject { ["text"] = text }, ct);
+            return true;
+        }
+
+        public async Task PressEnterAsync(CancellationToken ct = default)
+        {
+            foreach (var type in new[] { "keyDown", "keyUp" })
+            {
+                await SendPageCommandAsync("Input.dispatchKeyEvent", new JsonObject
+                {
+                    ["type"] = type, ["key"] = "Enter", ["code"] = "Enter", ["windowsVirtualKeyCode"] = 13,
+                    ["text"] = type == "keyDown" ? "\r" : ""
+                }, ct);
+            }
+        }
+
+        public async Task<CapturedRequest?> NavigateAndCaptureAsync(string url, Func<CapturedRequest, bool> match, TimeSpan timeout, CancellationToken ct = default)
+        {
+            if (_pageWs == null || _pageWs.State != WebSocketState.Open) return null;
+            var captured = new TaskCompletionSource<CapturedRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnEvent(JsonElement message)
+            {
+                if (!message.TryGetProperty("method", out var m) || m.GetString() != "Network.requestWillBeSent" ||
+                    !message.TryGetProperty("params", out var p) || !p.TryGetProperty("request", out var req)) return;
+                var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (req.TryGetProperty("headers", out var h) && h.ValueKind == JsonValueKind.Object)
+                    foreach (var kv in h.EnumerateObject()) headers[kv.Name] = kv.Value.ValueKind == JsonValueKind.String ? kv.Value.GetString() ?? "" : kv.Value.GetRawText();
+                var cr = new CapturedRequest(
+                    req.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "",
+                    req.TryGetProperty("method", out var me) ? me.GetString() ?? "" : "",
+                    req.TryGetProperty("postData", out var pd) ? pd.GetString() : null,
+                    headers);
+                try { if (match(cr)) captured.TrySetResult(cr); } catch { }
+            }
+
+            _pageEventHandler = OnEvent;
+            try
+            {
+                await SendPageCommandAsync("Network.enable", new JsonObject { ["maxPostDataSize"] = 1_000_000 }, ct);
+                await SendPageCommandAsync("Page.navigate", new JsonObject { ["url"] = url }, ct);
+                var done = await Task.WhenAny(captured.Task, Task.Delay(timeout, ct));
+                return done == captured.Task ? captured.Task.Result : null;
+            }
+            catch (Exception ex)
+            {
+                Log($"[CDP] Request capture failed: {ex.Message}");
+                return null;
+            }
+            finally
+            {
+                _pageEventHandler = null;
+                try { await SendPageCommandAsync("Network.disable", new JsonObject(), CancellationToken.None); } catch { }
+            }
         }
 
         private async Task<JsonElement?> EvaluateInPageAsync(string script, CancellationToken ct = default)
