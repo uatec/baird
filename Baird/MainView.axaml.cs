@@ -303,6 +303,15 @@ namespace Baird
                     var player = vLayer.GetPlayer();
                     if (player != null)
                     {
+                        // Netflix plays in the browser behind Baird: the window goes transparent while it shows.
+                        player.NetflixEngine = _viewModel.NetflixEngine;
+                        _visualTreeSubscriptions.Add(player.GetObservable(Controls.VideoPlayer.IsShowingBrowserProperty).Subscribe(showing =>
+                        {
+                            if (TopLevel.GetTopLevel(this) is not Window window) return;
+                            Console.WriteLine($"[MainView] Showing the browser through the main window: {showing}");
+                            window.Background = showing ? Avalonia.Media.Brushes.Transparent : Avalonia.Media.Brushes.Black;
+                        }));
+
                         // A/V debug page samples the main player; M while watching drops a mark.
                         _viewModel.AvDebug.Source = player;
                         EventHandler onMarkRequested = (sender, args) => _viewModel.AvDebug.Mark();

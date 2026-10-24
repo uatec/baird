@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Baird.Mpv;
+using Baird.Playback;
+using Baird.Services;
 using Baird.ViewModels;
 using System;
 using System.Runtime.InteropServices;
@@ -11,9 +13,11 @@ namespace Baird.Controls
 {
     public class VideoPlayer : OpenGlControlBase, IAvDiagnosticsSource
     {
-        private MpvPlayer? _player;
-        // private IntPtr _mpvRenderContext; // Moved to MpvPlayer
-        // private LibMpv.MpvRenderUpdateFn _renderUpdateDelegate; // Moved to MpvPlayer
+        private MpvPlayer? _mpv;                // mpv-only features: rendering, stats, quality settings
+        private IPlaybackEngine? _mpvEngine;    // mpv (or a test fake) as a playback engine
+        private IPlaybackEngine? _engine;       // the engine playing now
+        private NetflixPlaybackEngine? _netflixEngine;
+        private bool _showingFailure;           // the loading overlay shows why Netflix could not play
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private Avalonia.Threading.DispatcherTimer _loadTimeoutTimer;
@@ -25,78 +29,34 @@ namespace Baird.Controls
         private int _loadRetryCount;
         private const int MaxLoadRetries = 3;
         private const int LoadTimeoutSeconds = 15;
+        private const string DefaultLoadingText = "Loading...";
 
         public Baird.Services.IDataService? DataService { get; set; }
 
-        public VideoPlayer()
+        public VideoPlayer() : this(Avalonia.Controls.Design.IsDesignMode ? null : new MpvPlayer(ReadMpvOverrides()))
         {
-            if (!Avalonia.Controls.Design.IsDesignMode)
-            {
-                _player = new MpvPlayer(ReadMpvOverrides());
-            }
-            // _renderUpdateDelegate = UpdateCallback; // Moved to MpvPlayer internal logic
+        }
 
-            // Subscribe to player's StreamEnded event
-            // StreamEnded fires on the MpvEventLoop background thread, so marshal to UI thread
-            // since we access Avalonia properties (Duration) and invoke UI-bound events
-            if (_player != null)
+        /// <summary>Plays non-Netflix sources through <paramref name="mpvEngine"/> (tests pass a fake instead of mpv).</summary>
+        internal VideoPlayer(IPlaybackEngine? mpvEngine)
+        {
+            _mpv = mpvEngine as MpvPlayer;
+            _mpvEngine = mpvEngine;
+            _engine = mpvEngine;
+
+            if (_mpv != null)
             {
-                _player.StreamLoadFailed += (sender, errorCode) =>
+                _mpv.StreamLoadFailed += (sender, errorCode) =>
                 {
                     Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                     {
+                        if (_engine != _mpvEngine) return;
                         Console.WriteLine($"[VideoPlayer] StreamLoadFailed received (error={errorCode})");
                         HandleLoadFailure($"mpv error code {errorCode}");
                     });
                 };
-
-                _player.StreamEnded += (sender, args) =>
-            {
-                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                {
-                    Console.WriteLine("[VideoPlayer] StreamEnded event received from MpvPlayer");
-
-                    if (_currentMediaItem != null)
-                    {
-                        // Save progress immediately when stream ends naturally (EOF)
-                        // We pass Duration as override to SaveProgress to ensure it marks as finished
-                        SaveProgress(Duration);
-                    }
-
-                    StreamEnded?.Invoke(this, EventArgs.Empty);
-                });
-            };
-
-                _player.FileLoaded += (sender, e) =>
-                {
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                    {
-                        Console.WriteLine("[VideoPlayer] FileLoaded event received");
-                        _loadTimeoutTimer.Stop();
-                        _loadRetryCount = 0;
-                        IsLoading = false;
-                        PlayerState = PlaybackState.Playing.ToString();
-                    });
-                };
-
-                _player.PauseStateChanged += (sender, isPaused) =>
-                {
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                    {
-                        SetCurrentValue(IsPausedProperty, isPaused);
-                    });
-                };
-
-                _player.DurationChanged += (sender, dur) =>
-                {
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                    {
-                        var tsDur = TimeSpan.FromSeconds(dur);
-                        Duration = tsDur;
-                        DurationSeconds = dur;
-                    });
-                };
             }
+            if (mpvEngine != null) SubscribeEngine(mpvEngine);
 
             _hudTimer = new Avalonia.Threading.DispatcherTimer
             {
@@ -112,14 +72,136 @@ namespace Baird.Controls
             _loadTimeoutTimer.Tick += (s, e) =>
             {
                 _loadTimeoutTimer.Stop();
-                if (_player?.State == PlaybackState.Loading)
+                if (_engine == _mpvEngine && _mpvEngine?.State == PlaybackState.Loading)
                 {
-                    Console.WriteLine($"[VideoPlayer] Load timed out after {LoadTimeoutSeconds}s for {Baird.Services.SecretRedactor.Redact(_pendingUrl)}");
+                    Console.WriteLine($"[VideoPlayer] Load timed out after {LoadTimeout.TotalSeconds:0}s for {Baird.Services.SecretRedactor.Redact(_pendingUrl)}");
                     HandleLoadFailure("timeout");
                 }
             };
 
             Focusable = true;
+        }
+
+        /// <summary>How long mpv may take to open a stream before a retry (mpv only; Netflix has its own timeouts).</summary>
+        internal TimeSpan LoadTimeout
+        {
+            get => _loadTimeoutTimer.Interval;
+            set => _loadTimeoutTimer.Interval = value;
+        }
+
+        /// <summary>
+        /// Plays Netflix watch URLs in the shared Netflix browser behind Baird. Set once by MainView; null when Netflix is
+        /// not configured (Netflix items never reach the player then).
+        /// </summary>
+        public NetflixPlaybackEngine? NetflixEngine
+        {
+            get => _netflixEngine;
+            set
+            {
+                if (_netflixEngine != null || value == null) return;
+                _netflixEngine = value;
+                SubscribeEngine(value);
+                value.StatusChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_engine == value && !_showingFailure && value.State == PlaybackState.Loading) LoadingText = value.StatusText;
+                });
+                value.Failed += (_, reason) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_engine != value) return;
+                    Console.WriteLine($"[VideoPlayer] Netflix could not play: {reason}");
+                    _showingFailure = true;
+                    LoadingText = $"{reason}\nPress Back to return.";
+                    IsLoading = true;
+                    IsShowingBrowser = false;
+                });
+            }
+        }
+
+        private bool IsNetflixActive => _engine != null && _engine == _netflixEngine;
+
+        /// <summary>Engine events come from background threads; only the engine playing now may change the player.</summary>
+        private void SubscribeEngine(IPlaybackEngine engine)
+        {
+            engine.StreamEnded += (sender, args) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_engine != engine) return;
+                    Console.WriteLine("[VideoPlayer] StreamEnded event received from the engine");
+                    if (engine == _netflixEngine) IsShowingBrowser = false;
+
+                    if (_currentMediaItem != null)
+                    {
+                        // Save progress immediately when stream ends naturally (EOF)
+                        // We pass Duration as override to SaveProgress to ensure it marks as finished
+                        SaveProgress(Duration);
+                    }
+
+                    StreamEnded?.Invoke(this, EventArgs.Empty);
+                });
+            };
+
+            engine.FileLoaded += (sender, e) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_engine != engine) return;
+                    Console.WriteLine("[VideoPlayer] FileLoaded event received");
+                    _loadTimeoutTimer.Stop();
+                    _loadRetryCount = 0;
+                    IsLoading = false;
+                    PlayerState = PlaybackState.Playing.ToString();
+                    if (engine == _netflixEngine) IsShowingBrowser = true;
+                });
+            };
+
+            engine.PauseStateChanged += (sender, isPaused) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_engine != engine) return;
+                    SetCurrentValue(IsPausedProperty, isPaused);
+                });
+            };
+
+            engine.DurationChanged += (sender, dur) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_engine != engine) return;
+                    var tsDur = TimeSpan.FromSeconds(dur);
+                    Duration = tsDur;
+                    DurationSeconds = dur;
+                });
+            };
+        }
+
+        private bool _isShowingBrowser;
+        public static readonly DirectProperty<VideoPlayer, bool> IsShowingBrowserProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, bool>(nameof(IsShowingBrowser), o => o._isShowingBrowser);
+
+        /// <summary>
+        /// The video plays in the Netflix browser behind Baird: this control draws nothing (fully transparent), and the
+        /// window must be transparent too (MainView does that).
+        /// </summary>
+        public bool IsShowingBrowser
+        {
+            get => _isShowingBrowser;
+            private set
+            {
+                if (SetAndRaise(IsShowingBrowserProperty, ref _isShowingBrowser, value)) RequestNextFrameRendering();
+            }
+        }
+
+        private string _loadingText = DefaultLoadingText;
+        public static readonly DirectProperty<VideoPlayer, string> LoadingTextProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, string>(nameof(LoadingText), o => o._loadingText);
+
+        /// <summary>Text on the loading overlay: "Loading...", Netflix's step, or why Netflix could not play.</summary>
+        public string LoadingText
+        {
+            get => _loadingText;
+            private set => SetAndRaise(LoadingTextProperty, ref _loadingText, value);
         }
 
         /// <summary>
@@ -264,7 +346,7 @@ namespace Baird.Controls
             }
 
             // Perform the seek
-            _player?.SeekRelative(seconds);
+            _engine?.SeekRelative(seconds);
         }
 
 
@@ -508,13 +590,14 @@ namespace Baird.Controls
 
         private void UpdateHud()
         {
-            if (_player == null) return;
+            var engine = _engine;
+            if (engine == null) return;
 
             // State — PlayerState and IsLoading are DirectProperties; SetAndRaise skips
             // notification when the value is unchanged, so this is cheap at 1 Hz.
-            var state = _player.State;
+            var state = engine.State;
             PlayerState = state.ToString();
-            IsLoading = state == PlaybackState.Loading;
+            IsLoading = _showingFailure || state == PlaybackState.Loading;
 
             if (IsLive)
             {
@@ -522,7 +605,7 @@ namespace Baird.Controls
                 FormattedTime = DateTime.Now.ToString("HH:mm");
 
                 // Reset delay counter when the channel changes.
-                var currentSource = _player?.CurrentPath ?? "";
+                var currentSource = _mpv?.CurrentPath ?? "";
                 if (currentSource != _lastLiveSource)
                 {
                     _liveDelaySeconds = 0;
@@ -561,7 +644,7 @@ namespace Baird.Controls
 
                 // time-pos is cached from mpv's property observer (no blocking call on the UI
                 // thread); Duration/DurationSeconds are maintained by the DurationChanged event.
-                var pos = _player.TimePositionSeconds;
+                var pos = engine.TimePositionSeconds;
                 var tsPos = TimeSpan.FromSeconds(pos);
 
                 // Keep MediaItem history in sync with current position
@@ -705,16 +788,17 @@ namespace Baird.Controls
             {
                 if (change.NewValue is bool paused)
                 {
-                    if (_player != null)
+                    var engine = _engine;
+                    if (engine != null)
                     {
                         // Pausing while Loading is allowed: mpv honours it once the file opens.
-                        if (paused && (_player.State == PlaybackState.Playing || _player.State == PlaybackState.Buffering || _player.State == PlaybackState.Loading))
+                        if (paused && (engine.State == PlaybackState.Playing || engine.State == PlaybackState.Buffering || engine.State == PlaybackState.Loading))
                         {
-                            _player.Pause();
+                            engine.Pause();
                         }
-                        else if (!paused && _player.State == PlaybackState.Paused)
+                        else if (!paused && engine.State == PlaybackState.Paused)
                         {
-                            _player.Resume();
+                            engine.Resume();
                         }
                     }
 
@@ -728,41 +812,52 @@ namespace Baird.Controls
             }
         }
 
-        public void Play(string url)
-        {
-            _pendingUrl = url;
-            _pendingStartSeconds = null;
-            _loadRetryCount = 0;
-            _currentVideoStartTime = DateTime.Now;
-            _player?.ConfigureForSource(IsLive);
-            _player?.Play(url);
-            IsLoading = true;
-            IsPaused = false;
-            RestartLoadTimeout();
-        }
+        public void Play(string url) => StartPlayback(url, null);
 
-        public void Play(string url, TimeSpan startTime)
+        public void Play(string url, TimeSpan startTime) => StartPlayback(url, startTime.TotalSeconds);
+
+        /// <summary>Picks the engine for <paramref name="url"/> (Netflix watch pages: the Netflix browser; the rest: mpv).</summary>
+        private void StartPlayback(string url, double? startSeconds)
         {
+            var next = _netflixEngine != null && NetflixPlaybackEngine.Handles(url) ? _netflixEngine : _mpvEngine;
+            if (_engine != null && _engine != next)
+            {
+                Console.WriteLine($"[VideoPlayer] Switching engine to {(next == _netflixEngine ? "Netflix" : "mpv")}.");
+                _engine.Stop();
+            }
+            _engine = next;
+            IsShowingBrowser = false;
+            _showingFailure = false;
+            LoadingText = next != null && next == _netflixEngine ? "Starting Netflix…" : DefaultLoadingText;
+
             _pendingUrl = url;
-            _pendingStartSeconds = startTime.TotalSeconds;
+            _pendingStartSeconds = startSeconds;
             _loadRetryCount = 0;
             _currentVideoStartTime = DateTime.Now;
-            _player?.ConfigureForSource(IsLive);
-            _player?.Play(url, startTime.TotalSeconds);
+            if (next == _mpvEngine)
+            {
+                _mpv?.ConfigureForSource(IsLive);
+                next?.Play(url, startSeconds);
+                RestartLoadTimeout();
+            }
+            else
+            {
+                _loadTimeoutTimer.Stop(); // the Netflix flow has its own timeouts
+                next?.Play(url, startSeconds);
+            }
             IsLoading = true;
             IsPaused = false;
-            RestartLoadTimeout();
         }
 
         // Video-quality feature flags, forwarded to the underlying mpv player. Driven live from the
         // Settings page (see MainView wiring) so each can be A/B tested on the device.
-        public void SetHighQualityScaling(bool enabled) => _player?.SetHighQualityScaling(enabled);
-        public void SetSharperDeinterlacing(bool enabled) => _player?.SetSharperDeinterlacing(enabled);
-        public void SetRenderLogging(bool enabled) => _player?.SetRenderLogging(enabled);
+        public void SetHighQualityScaling(bool enabled) => _mpv?.SetHighQualityScaling(enabled);
+        public void SetSharperDeinterlacing(bool enabled) => _mpv?.SetSharperDeinterlacing(enabled);
+        public void SetRenderLogging(bool enabled) => _mpv?.SetRenderLogging(enabled);
 
         // A/V debug page
-        public Task<AvStats?> SampleAvStatsAsync() => _player?.SampleAvStatsAsync() ?? Task.FromResult<AvStats?>(null);
-        public void SetAudioDelay(double seconds) => _player?.SetAudioDelay(seconds);
+        public Task<AvStats?> SampleAvStatsAsync() => _mpv?.SampleAvStatsAsync() ?? Task.FromResult<AvStats?>(null);
+        public void SetAudioDelay(double seconds) => _mpv?.SetAudioDelay(seconds);
 
         private void RestartLoadTimeout()
         {
@@ -779,9 +874,9 @@ namespace Baird.Controls
                 Console.WriteLine($"[VideoPlayer] Retrying load (attempt {_loadRetryCount}/{MaxLoadRetries}) after {reason}: {Baird.Services.SecretRedactor.Redact(_pendingUrl)}");
                 _currentVideoStartTime = DateTime.Now;
                 if (_pendingStartSeconds.HasValue)
-                    _player?.Play(_pendingUrl, _pendingStartSeconds.Value);
+                    _mpvEngine?.Play(_pendingUrl, _pendingStartSeconds.Value);
                 else
-                    _player?.Play(_pendingUrl);
+                    _mpvEngine?.Play(_pendingUrl);
                 RestartLoadTimeout();
             }
             else
@@ -792,35 +887,37 @@ namespace Baird.Controls
 
         public void Pause()
         {
-            _player?.Pause();
+            _engine?.Pause();
             IsPaused = true;
         }
 
         public void Resume()
         {
-            _player?.Resume();
+            _engine?.Resume();
             IsPaused = false;
         }
 
-        public void SetSubtitle(bool enabled) => _player?.SetSubtitle(enabled);
+        public void SetSubtitle(bool enabled) => _engine?.SetSubtitle(enabled);
 
-        public void Seek(double s) => _player?.Seek(s);
+        public void Seek(double s) => _engine?.Seek(s);
         public void Stop()
         {
             Console.WriteLine("[VideoPlayer] Stopping");
             _loadTimeoutTimer.Stop();
             _pendingUrl = null;
             SaveProgress();
-            _player?.Stop();
+            _engine?.Stop();
+            IsShowingBrowser = false;
+            _showingFailure = false;
             IsLoading = false;
             IsPaused = true;
         }
 
-        public PlaybackState GetState() => _player?.State ?? PlaybackState.Idle;
+        public PlaybackState GetState() => _engine?.State ?? PlaybackState.Idle;
 
         public void ToggleStats()
         {
-            _player?.Command("script-binding", "stats/display-stats-toggle");
+            _mpv?.Command("script-binding", "stats/display-stats-toggle");
         }
 
         private LibMpv.MpvGetProcAddressFn? _getProcAddress;
@@ -847,9 +944,9 @@ namespace Baird.Controls
 
             try
             {
-                if (_player != null)
+                if (_mpv != null)
                 {
-                    _player.InitializeOpenGl(ptr, () =>
+                    _mpv.InitializeOpenGl(ptr, () =>
                     {
                         Avalonia.Threading.Dispatcher.UIThread.Post(RequestNextFrameRendering, Avalonia.Threading.DispatcherPriority.Render);
                     });
@@ -870,17 +967,28 @@ namespace Baird.Controls
             // Stop timers first so nothing calls into the player after its handle is gone.
             _hudTimer.Stop();
             _loadTimeoutTimer.Stop();
-            _player?.Dispose(); // This frees the render context and the mpv handle
-            _player = null;
+            _mpv?.Dispose(); // This frees the render context and the mpv handle
+            if (_engine == _mpvEngine && _mpvEngine == _mpv) _engine = null;
+            if (_mpvEngine == _mpv) _mpvEngine = null;
+            _mpv = null;
             base.OnOpenGlDeinit(gl);
         }
 
         protected override void OnOpenGlRender(GlInterface gl, int fb)
         {
-            if (Avalonia.Controls.Design.IsDesignMode || _player == null) return;
+            if (Avalonia.Controls.Design.IsDesignMode) return;
+
+            // Netflix: the video is in the browser behind Baird's window, so draw nothing at all.
+            if (IsShowingBrowser)
+            {
+                gl.ClearColor(0f, 0f, 0f, 0f);
+                gl.Clear(GlConsts.GL_COLOR_BUFFER_BIT);
+                return;
+            }
+            if (_mpv == null) return;
 
             // If Loading, clear to black
-            if (_player.State == PlaybackState.Loading)
+            if (_mpv.State == PlaybackState.Loading)
             {
                 gl.ClearColor(0f, 0f, 0f, 1f);
                 gl.Clear(GlConsts.GL_COLOR_BUFFER_BIT);
@@ -891,7 +999,7 @@ namespace Baird.Controls
             int w = (int)(Bounds.Width * scaling);
             int h = (int)(Bounds.Height * scaling);
 
-            _player.Render(fb, w, h);
+            _mpv.Render(fb, w, h);
         }
     }
 }

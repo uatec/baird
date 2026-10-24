@@ -18,7 +18,7 @@ namespace Baird.Tests.Services
 
         private static VideoPlaybackStatus NoVideo() => new(false, 0, 0, false, 0, WatchUrl, "Netflix");
 
-        private static (MockCdpBrowserService svc, NetflixSession session, NetflixPlaybackEngine engine) Engine(Func<VideoPlaybackStatus?>? video = null)
+        internal static (MockCdpBrowserService svc, NetflixSession session, NetflixPlaybackEngine engine) Engine(Func<VideoPlaybackStatus?>? video = null)
         {
             double t = 0;
             var svc = new MockCdpBrowserService

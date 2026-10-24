@@ -147,6 +147,14 @@ namespace Baird.ViewModels
 
             Requests.PlayRequested += (s, item) => PlayItem(item);
 
+            if (netflixSession != null)
+            {
+                // Netflix titles play through the normal video player, in the shared browser behind Baird.
+                var credentials = _netflixCredentials;
+                NetflixEngine = new NetflixPlaybackEngine(netflixSession,
+                    () => new NetflixSpikeViewModel(netflixSession.Browser, credentials) { LogBrowserToJournal = false });
+            }
+
             NetflixSpike = netflixSession != null
                 ? new NetflixSpikeViewModel(netflixSession.Browser, _netflixCredentials) { LogBrowserToJournal = false, KeepBrowserOpen = true }
                 : new NetflixSpikeViewModel(_netflixCredentials);
@@ -518,6 +526,8 @@ namespace Baird.ViewModels
         }
 
         private readonly NetflixSession? _netflixSession;
+        /// <summary>Plays Netflix items for the video player (MainView hands it over); null when Netflix is not configured.</summary>
+        public NetflixPlaybackEngine? NetflixEngine { get; }
         private readonly NetflixCredentials? _netflixCredentials;
 
         /// <summary>Netflix video is playing: the view must show this HUD over the browser (see MainView.ShowNetflixHud).</summary>
