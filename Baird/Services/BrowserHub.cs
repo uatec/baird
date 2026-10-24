@@ -43,6 +43,23 @@ namespace Baird.Services
             ActivePlayback is { } p && p != service ? $"{p} is playing; wait until playback ends." : null;
 
         /// <summary>
+        /// Waits until no OTHER service is playing. VideoPlayer stops the previous engine when the viewer picks something else,
+        /// but that stop finishes asynchronously (the tab goes back to its idle page, then the flag is cleared), so the next
+        /// service must wait for it before it takes the tab. Returns false when the other service is still playing after
+        /// <paramref name="timeout"/>.
+        /// </summary>
+        public async Task<bool> WaitForOtherPlaybackToEndAsync(string service, TimeSpan timeout, CancellationToken ct = default)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (BlockedFor(service) != null)
+            {
+                if (sw.Elapsed >= timeout) return false;
+                await Task.Delay(50, ct);
+            }
+            return true;
+        }
+
+        /// <summary>
         /// Starts the browser on <paramref name="startUrl"/> unless it is already open (opened by any service). Returns null on
         /// success (and says whether it was already open), else the reason.
         /// </summary>

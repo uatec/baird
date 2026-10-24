@@ -14,7 +14,7 @@ namespace Baird.Services
     /// It runs the proven playback flow (<see cref="NetflixSpikeViewModel"/>) on the browser that <see cref="NetflixSession"/>
     /// keeps open, polls the video, and returns the browser to its idle page when playback stops.
     /// </summary>
-    public sealed class NetflixPlaybackEngine : IPlaybackEngine
+    public sealed class NetflixPlaybackEngine : IBrowserPlaybackEngine
     {
         private const string WatchPrefix = "https://www.netflix.com/watch/";
         /// <summary>Polls in a row without a video before playback counts as ended (Netflix left the watch page).</summary>
@@ -46,6 +46,9 @@ namespace Baird.Services
         }
 
         public static bool Handles(string? url) => url != null && url.StartsWith(WatchPrefix, StringComparison.Ordinal);
+
+        public string Name => "Netflix";
+        public bool CanPlay(string? url) => Handles(url);
 
         public PlaybackState State => _state;
         public double TimePositionSeconds => Volatile.Read(ref _position);
@@ -79,11 +82,17 @@ namespace Baird.Services
             Volatile.Write(ref _duration, 0);
             _state = PlaybackState.Loading;
             SetStatus("Starting Netflix…");
-            _session.IsPlaybackActive = true;
             Console.WriteLine($"[NetflixEngine] Playing {url}.");
 
             try
             {
+                // Another service (Disney+) may still be stopping: its tab must be back on its idle page before Netflix takes it.
+                if (!await _session.Hub.WaitForOtherPlaybackToEndAsync("Netflix", TimeSpan.FromSeconds(15)))
+                {
+                    Fail(generation, $"{_session.Hub.ActivePlayback} is still playing.");
+                    return;
+                }
+                _session.IsPlaybackActive = true;
                 await stopping;
                 if (generation != _generation) return;
 

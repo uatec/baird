@@ -7,6 +7,8 @@ using Baird.Playback;
 using Baird.Services;
 using Baird.ViewModels;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace Baird.Controls
@@ -17,7 +19,8 @@ namespace Baird.Controls
         private IPlaybackEngine? _mpvEngine;    // mpv (or a test fake) as a playback engine
         private IPlaybackEngine? _engine;       // the engine playing now
         private NetflixPlaybackEngine? _netflixEngine;
-        private bool _showingFailure;           // the loading overlay shows why Netflix could not play
+        private readonly List<IBrowserPlaybackEngine> _browserEngines = new(); // Netflix, Disney+: play in the browser behind Baird
+        private bool _showingFailure;           // the loading overlay shows why a browser engine could not play
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private Avalonia.Threading.DispatcherTimer _loadTimeoutTimer;
@@ -100,24 +103,35 @@ namespace Baird.Controls
             {
                 if (_netflixEngine != null || value == null) return;
                 _netflixEngine = value;
-                SubscribeEngine(value);
-                value.StatusChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                {
-                    if (_engine == value && !_showingFailure && value.State == PlaybackState.Loading) LoadingText = value.StatusText;
-                });
-                value.Failed += (_, reason) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                {
-                    if (_engine != value) return;
-                    Console.WriteLine($"[VideoPlayer] Netflix could not play: {reason}");
-                    _showingFailure = true;
-                    LoadingText = $"{reason}\nPress Back to return.";
-                    IsLoading = true;
-                    IsShowingBrowser = false;
-                });
+                AddBrowserEngine(value);
             }
         }
 
-        private bool IsNetflixActive => _engine != null && _engine == _netflixEngine;
+        /// <summary>
+        /// Plays the URLs <paramref name="engine"/> accepts in the shared browser behind Baird (Netflix, Disney+). Set once per
+        /// service by MainView; a service that is not configured is simply not added.
+        /// </summary>
+        public void AddBrowserEngine(IBrowserPlaybackEngine? engine)
+        {
+            if (engine == null || _browserEngines.Contains(engine)) return;
+            _browserEngines.Add(engine);
+            SubscribeEngine(engine);
+            engine.StatusChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (_engine == engine && !_showingFailure && engine.State == PlaybackState.Loading) LoadingText = engine.StatusText;
+            });
+            engine.Failed += (_, reason) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (_engine != engine) return;
+                Console.WriteLine($"[VideoPlayer] {engine.Name} could not play: {reason}");
+                _showingFailure = true;
+                LoadingText = $"{reason}\nPress Back to return.";
+                IsLoading = true;
+                IsShowingBrowser = false;
+            });
+        }
+
+        private bool IsBrowserEngine(IPlaybackEngine? engine) => engine is IBrowserPlaybackEngine b && _browserEngines.Contains(b);
 
         /// <summary>Engine events come from background threads; only the engine playing now may change the player.</summary>
         private void SubscribeEngine(IPlaybackEngine engine)
@@ -128,7 +142,7 @@ namespace Baird.Controls
                 {
                     if (_engine != engine) return;
                     Console.WriteLine("[VideoPlayer] StreamEnded event received from the engine");
-                    if (engine == _netflixEngine) IsShowingBrowser = false;
+                    if (IsBrowserEngine(engine)) IsShowingBrowser = false;
 
                     if (_currentMediaItem != null)
                     {
@@ -151,7 +165,7 @@ namespace Baird.Controls
                     _loadRetryCount = 0;
                     IsLoading = false;
                     PlayerState = PlaybackState.Playing.ToString();
-                    if (engine == _netflixEngine) IsShowingBrowser = true;
+                    if (IsBrowserEngine(engine)) IsShowingBrowser = true;
                 });
             };
 
@@ -816,19 +830,19 @@ namespace Baird.Controls
 
         public void Play(string url, TimeSpan startTime) => StartPlayback(url, startTime.TotalSeconds);
 
-        /// <summary>Picks the engine for <paramref name="url"/> (Netflix watch pages: the Netflix browser; the rest: mpv).</summary>
+        /// <summary>Picks the engine for <paramref name="url"/> (a streaming site's pages: that site's browser engine; the rest: mpv).</summary>
         private void StartPlayback(string url, double? startSeconds)
         {
-            var next = _netflixEngine != null && NetflixPlaybackEngine.Handles(url) ? _netflixEngine : _mpvEngine;
+            IPlaybackEngine? next = _browserEngines.FirstOrDefault(e => e.CanPlay(url)) ?? _mpvEngine;
             if (_engine != null && _engine != next)
             {
-                Console.WriteLine($"[VideoPlayer] Switching engine to {(next == _netflixEngine ? "Netflix" : "mpv")}.");
+                Console.WriteLine($"[VideoPlayer] Switching engine to {(next is IBrowserPlaybackEngine named ? named.Name : "mpv")}.");
                 _engine.Stop();
             }
             _engine = next;
             IsShowingBrowser = false;
             _showingFailure = false;
-            LoadingText = next != null && next == _netflixEngine ? "Starting Netflix…" : DefaultLoadingText;
+            LoadingText = next is IBrowserPlaybackEngine browserEngine ? $"Starting {browserEngine.Name}…" : DefaultLoadingText;
 
             _pendingUrl = url;
             _pendingStartSeconds = startSeconds;

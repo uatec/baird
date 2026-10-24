@@ -60,8 +60,8 @@ namespace Baird.Services
                 Details = details,
                 ImageUrl = r.ImageUrl ?? "",
                 IsLive = false,
-                // The entity page, not a play URL: a series id is not a play id. The playback page resolves what to play.
-                StreamUrl = DisneySearchParser.EntityUrl(r.EntityId),
+                // The entity page, not a play URL: a series id is not a play id. The engine reads the page to find what to play.
+                StreamUrl = DisneySearchParser.EntityStreamUrl(r.EntityId, r.Kind == "movie"),
                 Source = SourceName,
                 Type = MediaType.Video,
                 Synopsis = r.Description ?? "",

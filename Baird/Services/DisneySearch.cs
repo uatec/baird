@@ -41,6 +41,30 @@ namespace Baird.Services
         public static string SearchPageUrl => $"https://www.disneyplus.com/{Locale}/browse/search";
         public static string EntityUrl(string id) => $"https://www.disneyplus.com/{Locale}/browse/entity-{id}";
         public static string PlayUrl(string id) => $"https://www.disneyplus.com/{Locale}/play/{id}";
+
+        private const string FilmMarker = "baird=film";
+
+        /// <summary>
+        /// The stream URL of a search result: the entity page (a series id is not a play id, so the engine reads the page to find
+        /// the episode). A film carries <c>?baird=film</c>, so that the engine can play it by its entity id if the page cannot be read.
+        /// </summary>
+        public static string EntityStreamUrl(string id, bool isFilm) => EntityUrl(id) + (isFilm ? "?" + FilmMarker : "");
+
+        /// <summary>True for any Disney+ page URL (what the Disney+ engine plays).</summary>
+        public static bool IsDisneyUrl(string? url) => url != null && url.StartsWith("https://www.disneyplus.com/", StringComparison.Ordinal);
+
+        /// <summary>Reads an entity stream URL (see <see cref="EntityStreamUrl"/>); false for any other URL.</summary>
+        public static bool TryParseEntityUrl(string? url, out string entityId, out bool isFilm)
+        {
+            entityId = "";
+            isFilm = false;
+            if (!IsDisneyUrl(url)) return false;
+            var m = System.Text.RegularExpressions.Regex.Match(url!, @"/browse/entity-(?<id>[0-9A-Za-z-]+)");
+            if (!m.Success) return false;
+            entityId = m.Groups["id"].Value;
+            isFilm = url!.Contains("?" + FilmMarker, StringComparison.Ordinal) || url.Contains("&" + FilmMarker, StringComparison.Ordinal);
+            return true;
+        }
         public static string SearchApiUrl(string term) => $"{ApiBase}/search?query={Uri.EscapeDataString(term)}";
         public static string EntityApiUrl(string entityId) => $"{ApiBase}/page/entity-{Uri.EscapeDataString(entityId)}?limit=15";
 
