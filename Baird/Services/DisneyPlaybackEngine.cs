@@ -38,6 +38,7 @@ namespace Baird.Services
         private double _position;
         private double _duration;
         private double _runtime;
+        private string? _playId; // the title being played; the page leaving it means this title is over
         private volatile PlaybackState _state = PlaybackState.Idle;
 
         public DisneyPlaybackEngine(DisneyService service, Func<DisneySpikeViewModel> createFlow)
@@ -78,6 +79,7 @@ namespace Baird.Services
             _badPolls = 0;
             _paused = false;
             _runtime = 0;
+            _playId = null;
             Volatile.Write(ref _position, 0);
             Volatile.Write(ref _duration, 0);
             _state = PlaybackState.Loading;
@@ -112,8 +114,15 @@ namespace Baird.Services
                         return;
                     }
                     playUrl = target.PlayUrl;
+                    _playId = target.PlayId;
                     _runtime = target.RuntimeSeconds;
                     SetStatus("Starting Disney+…");
+                }
+                else if (DisneySearchParser.TryParsePlayId(url, out var directId))
+                {
+                    // An episode from the episode list: its length was read with that list. (Else the length stays unknown.)
+                    _playId = directId;
+                    _runtime = _service.KnownRuntimeSeconds(directId);
                 }
 
                 var flow = _createFlow();
@@ -214,6 +223,15 @@ namespace Baird.Services
             }
 
             _missingPolls = 0;
+            // Disney+ moved on by itself (autoplay, or "Next episode" pressed): the title Baird was playing is over. Baird then plays
+            // the next episode of its own list, so the length, position, history and title stay those of the episode on screen.
+            if (_playId != null && status.Url.Length > 0 && !status.Url.Contains("/play/" + _playId, StringComparison.Ordinal))
+            {
+                Console.WriteLine($"[DisneyEngine] The page left {_playId} ({status.Url}): playback ended.");
+                await StopAsync();
+                StreamEnded?.Invoke(this, EventArgs.Empty);
+                return;
+            }
             if (double.IsFinite(status.CurrentTime)) Volatile.Write(ref _position, status.CurrentTime);
             SetPaused(status.Paused);
         }

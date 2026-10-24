@@ -25,6 +25,20 @@ namespace Baird.Services
         public string PlayUrl => DisneySearchParser.PlayUrl(PlayId);
     }
 
+    /// <summary>One episode on a series page. <see cref="RuntimeSeconds"/> is 0 when Disney+ gives no length.</summary>
+    public sealed record DisneyEpisode(string Id, string Title, int Season, int Number, double RuntimeSeconds, string? Description, string? ImageUrl)
+    {
+        public string PlayUrl => DisneySearchParser.PlayUrl(Id);
+    }
+
+    public sealed record DisneySeason(int Number, string Name, IReadOnlyList<DisneyEpisode> Episodes);
+
+    /// <summary>The seasons and episodes of a series, from its entity page.</summary>
+    public sealed record DisneyEpisodeGuide(string SeriesTitle, IReadOnlyList<DisneySeason> Seasons)
+    {
+        public IEnumerable<DisneyEpisode> AllEpisodes => Seasons.SelectMany(s => s.Episodes);
+    }
+
     /// <summary>Outcome of one search call: results, or an HTTP / API error.</summary>
     public sealed record DisneySearchReply(IReadOnlyList<DisneySearchResult> Results, int Status, string? ErrorMessage)
     {
@@ -49,6 +63,17 @@ namespace Baird.Services
         /// the episode). A film carries <c>?baird=film</c>, so that the engine can play it by its entity id if the page cannot be read.
         /// </summary>
         public static string EntityStreamUrl(string id, bool isFilm) => EntityUrl(id) + (isFilm ? "?" + FilmMarker : "");
+
+        /// <summary>Reads the play id from a play URL ("/play/{id}"); false for any other URL.</summary>
+        public static bool TryParsePlayId(string? url, out string playId)
+        {
+            playId = "";
+            if (!IsDisneyUrl(url)) return false;
+            var m = System.Text.RegularExpressions.Regex.Match(url!, @"/play/(?<id>[0-9A-Za-z-]+)");
+            if (!m.Success) return false;
+            playId = m.Groups["id"].Value;
+            return true;
+        }
 
         /// <summary>True for any Disney+ page URL (what the Disney+ engine plays).</summary>
         public static bool IsDisneyUrl(string? url) => url != null && url.StartsWith("https://www.disneyplus.com/", StringComparison.Ordinal);
@@ -204,6 +229,70 @@ namespace Baird.Services
                     label = Str(pv, "title");
                 }
                 return new DisneyPlayTarget(playId, runtime, label);
+            }
+            catch (JsonException ex)
+            {
+                failure = "BAD_JSON: " + ex.Message;
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Parses the seasons and episodes of a series from its entity page: <c>containers[type == "episodes"].seasons[]</c>, each with
+        /// <c>visuals.name</c> ("Season 1") and <c>items[]</c> (id, visuals.episodeTitle / seasonNumber / episodeNumber /
+        /// description.brief / artwork.standard.tile["1.78"] / metastringParts.runtime.runtimeMs). A page without episodes (a film)
+        /// gives an empty guide, not a failure.
+        /// </summary>
+        public static DisneyEpisodeGuide? ParseEpisodeGuide(int status, string? json, out string? failure)
+        {
+            failure = null;
+            if (status is < 200 or >= 300) { failure = $"HTTP {status}" + (string.IsNullOrWhiteSpace(json) ? "" : ": " + Trim(json)); return null; }
+            if (string.IsNullOrWhiteSpace(json)) { failure = "no reply from Disney+"; return null; }
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("data", out var data) || !data.TryGetProperty("page", out var page) || page.ValueKind != JsonValueKind.Object)
+                {
+                    failure = "the entity page has no data.page";
+                    return null;
+                }
+                var title = page.TryGetProperty("visuals", out var pv) ? Str(pv, "title") ?? "" : "";
+                var seasons = new List<DisneySeason>();
+                if (page.TryGetProperty("containers", out var containers) && containers.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var c in containers.EnumerateArray())
+                    {
+                        if (Str(c, "type") != "episodes" || !c.TryGetProperty("seasons", out var seasonList) || seasonList.ValueKind != JsonValueKind.Array) continue;
+                        var ordinal = 0;
+                        foreach (var season in seasonList.EnumerateArray())
+                        {
+                            ordinal++;
+                            var episodes = new List<DisneyEpisode>();
+                            if (season.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var item in items.EnumerateArray())
+                                {
+                                    var id = Str(item, "id");
+                                    if (string.IsNullOrEmpty(id) || !item.TryGetProperty("visuals", out var v) || v.ValueKind != JsonValueKind.Object) continue;
+                                    var epTitle = Str(v, "episodeTitle") ?? Str(v, "title") ?? "Episode";
+                                    int.TryParse(Str(v, "seasonNumber"), out var sNo);
+                                    int.TryParse(Str(v, "episodeNumber"), out var eNo);
+                                    double runtime = v.TryGetProperty("metastringParts", out var mp) ? RuntimeSecondsOf(mp) ?? 0 : 0;
+                                    string? description = v.TryGetProperty("description", out var d) ? Str(d, "brief") : null;
+                                    string? image = null;
+                                    if (v.TryGetProperty("artwork", out var art) && art.TryGetProperty("standard", out var std) &&
+                                        std.TryGetProperty("tile", out var tile) && tile.TryGetProperty("1.78", out var t178) && Str(t178, "imageId") is { Length: > 0 } imageId)
+                                        image = ImageUrl(imageId);
+                                    episodes.Add(new DisneyEpisode(id, epTitle, sNo > 0 ? sNo : ordinal, eNo > 0 ? eNo : episodes.Count + 1, runtime, description, image));
+                                }
+                            }
+                            var number = episodes.Count > 0 ? episodes[0].Season : ordinal;
+                            var name = season.TryGetProperty("visuals", out var sv) ? Str(sv, "name") ?? $"Season {number}" : $"Season {number}";
+                            if (episodes.Count > 0) seasons.Add(new DisneySeason(number, name, episodes));
+                        }
+                    }
+                }
+                return new DisneyEpisodeGuide(title, seasons);
             }
             catch (JsonException ex)
             {

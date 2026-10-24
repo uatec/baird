@@ -364,7 +364,7 @@ namespace Baird.Tests.Services
             var series = DisneyProvider.ToMediaItem(new DisneySearchResult("S", "series-1", null, "series"));
 
             Assert.EndsWith("/browse/entity-film-1?baird=film", film.StreamUrl);
-            Assert.EndsWith("/browse/entity-series-1", series.StreamUrl);
+            Assert.Equal("", series.StreamUrl);
             Assert.True(DisneyPlaybackEngine.Handles(film.StreamUrl));
         }
     }
@@ -511,6 +511,257 @@ namespace Baird.Tests.Services
             var (hub, _, disney) = Setup();
             hub.ActivePlayback = "Disney+";
             Assert.Empty(await disney.SearchAsync("mandalorian"));
+        }
+    }
+}
+
+namespace Baird.Tests.Services
+{
+    using System;
+    using System.Linq;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using Baird.Models;
+    using Baird.Mpv;
+    using Baird.Services;
+    using Baird.ViewModels;
+    using Xunit;
+
+    public class DisneyEpisodeGuideTests
+    {
+        [Fact]
+        public void The_guide_lists_seasons_and_episodes_with_numbers_titles_runtimes_and_artwork()
+        {
+            var guide = DisneySearchParser.ParseEpisodeGuide(200, DisneyEntityFixtures.TwoSeasons(), out var failure)!;
+
+            Assert.Null(failure);
+            Assert.Equal("The Mandalorian", guide.SeriesTitle);
+            Assert.Equal(new[] { "Season 1", "Season 2" }, guide.Seasons.Select(s => s.Name));
+            Assert.Equal(new[] { 1, 2 }, guide.Seasons.Select(s => s.Number));
+            var first = guide.Seasons[0].Episodes[0];
+            Assert.Equal(DisneyEntityFixtures.Episode1, first.Id);
+            Assert.Equal("Chapter 1: The Mandalorian", first.Title);
+            Assert.Equal((1, 1), (first.Season, first.Number));
+            Assert.Equal(2037, first.RuntimeSeconds);
+            Assert.Equal("https://www.disneyplus.com/en-gb/play/" + DisneyEntityFixtures.Episode1, first.PlayUrl);
+            Assert.Equal(0, guide.Seasons[0].Episodes[1].RuntimeSeconds); // Disney+ gave no length for this one
+            Assert.Equal(3, guide.AllEpisodes.Count());
+        }
+
+        [Fact]
+        public void A_film_page_has_no_episodes_which_is_an_empty_guide_not_a_failure()
+        {
+            var guide = DisneySearchParser.ParseEpisodeGuide(200, DisneyEntityFixtures.Film("film-1"), out var failure);
+            Assert.Null(failure);
+            Assert.Empty(guide!.Seasons);
+        }
+
+        [Theory]
+        [InlineData(500, "{}", "HTTP 500")]
+        [InlineData(200, "", "no reply")]
+        [InlineData(200, "<html>", "BAD_JSON")]
+        [InlineData(200, "{\"data\":{}}", "no data.page")]
+        public void Errors_are_reported(int status, string body, string expected)
+        {
+            Assert.Null(DisneySearchParser.ParseEpisodeGuide(status, body, out var failure));
+            Assert.Contains(expected, failure);
+        }
+
+        [Theory]
+        [InlineData("https://www.disneyplus.com/en-gb/play/abc-123", true, "abc-123")]
+        [InlineData("https://www.disneyplus.com/en-gb/play/abc-123?x=1", true, "abc-123")]
+        [InlineData("https://www.disneyplus.com/en-gb/browse/entity-abc", false, "")]
+        [InlineData("https://www.netflix.com/watch/1", false, "")]
+        [InlineData(null, false, "")]
+        public void A_play_id_is_read_from_a_play_url(string? url, bool ok, string expectedId)
+        {
+            Assert.Equal(ok, DisneySearchParser.TryParsePlayId(url, out var id));
+            Assert.Equal(expectedId, id);
+        }
+    }
+
+    public class DisneyChildrenTests
+    {
+        private static (FakeDisneyBrowser Browser, DisneyService Service, DisneyProvider Provider) Setup(string body)
+        {
+            var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true), EntityBody = body };
+            var service = new DisneyService(new BrowserHub(b), new DisneyCredentials("me@example.com", "pw"))
+            {
+                SignInTimeout = TimeSpan.FromSeconds(3),
+                PollInterval = TimeSpan.FromMilliseconds(5)
+            };
+            return (b, service, new DisneyProvider(service));
+        }
+
+        [Fact]
+        public async Task A_series_with_several_seasons_gives_season_folders()
+        {
+            var (_, _, provider) = Setup(DisneyEntityFixtures.TwoSeasons());
+
+            var children = (await provider.GetChildrenAsync("disney:series-1")).ToList();
+
+            Assert.Equal(new[] { "Season 1", "Season 2" }, children.Select(c => c.Name));
+            Assert.All(children, c => { Assert.Equal(MediaType.Brand, c.Type); Assert.Equal("", c.StreamUrl); Assert.Equal("Disney+", c.Source); });
+            Assert.Equal(new[] { "disney:series-1|1", "disney:series-1|2" }, children.Select(c => c.Id));
+            Assert.Equal("2 Episodes", children[0].Details);
+            Assert.Equal("1 Episode", children[1].Details);
+        }
+
+        [Fact]
+        public async Task A_season_gives_its_episodes_as_playable_items_with_play_urls_and_lengths()
+        {
+            var (_, _, provider) = Setup(DisneyEntityFixtures.TwoSeasons());
+
+            var episodes = (await provider.GetChildrenAsync("disney:series-1|1")).ToList();
+
+            Assert.Equal(2, episodes.Count);
+            var e1 = episodes[0];
+            Assert.Equal("disney:ep:" + DisneyEntityFixtures.Episode1, e1.Id);
+            Assert.DoesNotContain("|", e1.Id); // Baird's season and continuous-play code splits ids on '|'
+            Assert.Equal("Chapter 1: The Mandalorian", e1.Name);
+            Assert.Equal("S1:E1", e1.Details);
+            Assert.Equal(MediaType.Video, e1.Type);
+            Assert.Equal("https://www.disneyplus.com/en-gb/play/" + DisneyEntityFixtures.Episode1, e1.StreamUrl);
+            Assert.Equal(TimeSpan.FromSeconds(2037), e1.Duration);
+            Assert.Equal(TimeSpan.Zero, episodes[1].Duration);
+            Assert.True(DisneyPlaybackEngine.Handles(e1.StreamUrl));
+        }
+
+        [Fact]
+        public async Task A_series_with_one_season_gives_the_episodes_directly()
+        {
+            var (_, _, provider) = Setup(DisneyEntityFixtures.Series());
+
+            var children = (await provider.GetChildrenAsync("disney:series-1")).ToList();
+
+            Assert.Equal(2, children.Count);
+            Assert.All(children, c => Assert.Equal(MediaType.Video, c.Type));
+        }
+
+        [Theory]
+        [InlineData("jellyfin:abc")]
+        [InlineData("netflix:123")]
+        [InlineData("disney:ep:8b4a1f96")]
+        [InlineData("")]
+        public async Task Other_providers_ids_and_episodes_have_no_children(string id)
+        {
+            var (b, _, provider) = Setup(DisneyEntityFixtures.TwoSeasons());
+            Assert.Empty(await provider.GetChildrenAsync(id));
+            Assert.Equal(0, b.FetchCalls);
+        }
+
+        [Fact]
+        public async Task A_film_has_no_children()
+        {
+            var (_, _, provider) = Setup(DisneyEntityFixtures.Film("film-1"));
+            Assert.Empty(await provider.GetChildrenAsync("disney:film-1"));
+        }
+
+        [Fact]
+        public async Task A_Disney_failure_throws_so_the_data_service_logs_it_and_continues()
+        {
+            var (b, _, provider) = Setup("{}");
+            b.FetchStatuses.Enqueue(500);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetChildrenAsync("disney:series-1"));
+
+            Assert.Contains("Disney+ episodes failed", ex.Message);
+        }
+
+        [Fact]
+        public async Task The_episode_list_is_reused_until_it_is_old()
+        {
+            var (b, service, provider) = Setup(DisneyEntityFixtures.TwoSeasons());
+
+            await provider.GetChildrenAsync("disney:series-1");
+            await provider.GetChildrenAsync("disney:series-1|1");
+            Assert.Equal(1, b.FetchCalls);
+
+            service.GuideLifetime = TimeSpan.Zero;
+            await provider.GetChildrenAsync("disney:series-1|2");
+            Assert.Equal(2, b.FetchCalls);
+        }
+
+        [Fact]
+        public async Task Reading_the_list_teaches_the_service_every_episodes_length()
+        {
+            var (_, service, provider) = Setup(DisneyEntityFixtures.TwoSeasons());
+            Assert.Equal(0, service.KnownRuntimeSeconds(DisneyEntityFixtures.Episode3));
+
+            await provider.GetChildrenAsync("disney:series-1");
+
+            Assert.Equal(2037, service.KnownRuntimeSeconds(DisneyEntityFixtures.Episode1));
+            Assert.Equal(2700, service.KnownRuntimeSeconds(DisneyEntityFixtures.Episode3));
+            Assert.Equal(0, service.KnownRuntimeSeconds(DisneyEntityFixtures.Episode2)); // Disney+ gave none
+        }
+
+        [Fact]
+        public async Task Resolving_a_series_also_teaches_the_lengths_of_its_other_episodes()
+        {
+            var (_, service, _) = Setup(DisneyEntityFixtures.Series());
+
+            await service.ResolvePlayTargetAsync("series-1", false, 0, CancellationToken.None);
+
+            Assert.Equal(1860, service.KnownRuntimeSeconds(DisneyEntityFixtures.Episode2));
+        }
+    }
+
+    public class DisneyEpisodeLengthTests
+    {
+        [Fact]
+        public async Task An_episode_played_by_its_url_after_the_list_was_read_has_its_length()
+        {
+            var (b, service, engine) = DisneyPlaybackEngineTests.Engine();
+            service.RememberRuntime(DisneyEntityFixtures.Episode1, 2037);
+            double? duration = null;
+            engine.DurationChanged += (_, d) => duration = d;
+
+            await engine.PlayAsync(DisneyPlaybackEngineTests.EpisodePlayUrl);
+
+            Assert.Equal(PlaybackState.Playing, engine.State);
+            Assert.Equal(2037, duration);
+            Assert.Equal(2037, engine.DurationSeconds);
+            Assert.Equal(0, b.FetchCalls); // no page was read: the length was already known
+        }
+
+        [Fact]
+        public async Task An_episode_whose_length_is_unknown_plays_with_no_length_not_a_wrong_one()
+        {
+            var (_, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.EpisodePlayUrl);
+            Assert.Equal(0, engine.DurationSeconds);
+        }
+
+        [Fact]
+        public async Task When_Disney_moves_to_another_episode_the_title_is_over_and_Baird_plays_the_next_one_itself()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            await engine.PollOnceAsync();
+            Assert.Equal(0, ended); // same title: carry on
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(3, url: "https://www.disneyplus.com/en-gb/play/" + DisneyEntityFixtures.Episode2);
+            await engine.PollOnceAsync();
+
+            Assert.Equal(1, ended);
+            Assert.Equal(PlaybackState.Idle, engine.State);
+        }
+
+        [Fact]
+        public async Task Another_episode_does_not_leave_the_wrong_length_behind_for_the_next_play()
+        {
+            var (_, service, engine) = DisneyPlaybackEngineTests.Engine();
+            service.RememberRuntime(DisneyEntityFixtures.Episode1, 2037);
+            await engine.PlayAsync(DisneyPlaybackEngineTests.EpisodePlayUrl);
+            Assert.Equal(2037, engine.DurationSeconds);
+            await engine.StopAsync();
+
+            // a second play of an episode with no known length must not inherit the first one's
+            var (_, _, engine2) = DisneyPlaybackEngineTests.Engine();
+            await engine2.PlayAsync(DisneyPlaybackEngineTests.EpisodePlayUrl);
+            Assert.Equal(0, engine2.DurationSeconds);
         }
     }
 }

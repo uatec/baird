@@ -308,14 +308,9 @@ namespace Baird.Services
             return DisneySearchParser.Parse(status, body);
         }
 
-        /// <summary>What to play for an entity (from search): its play id, length and a HUD label. Null with the reason on failure.</summary>
-        public async Task<(DisneyPlayTarget? Target, string? Failure)> ResolvePlayTargetAsync(string entityId, CancellationToken ct)
-        {
-            var (status, body, failure) = await ApiGetAsync(DisneySearchParser.EntityApiUrl(entityId), ct);
-            if (failure != null) return (null, failure);
-            var target = DisneySearchParser.ParseEntityPlayTarget(status, body, out var parseFailure);
-            return (target, parseFailure);
-        }
+        /// <summary>GET the entity page of a title (a film or a series): the play target and the episode guide are both read from it.</summary>
+        public Task<(int Status, string? Body, string? Failure)> GetEntityPageAsync(string entityId, CancellationToken ct) =>
+            ApiGetAsync(DisneySearchParser.EntityApiUrl(entityId), ct);
 
         private static string? Str(JsonElement o, string n) => o.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
         private static bool Bool(JsonElement o, string n) => o.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.True;
