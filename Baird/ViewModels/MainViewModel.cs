@@ -155,6 +155,11 @@ namespace Baird.ViewModels
                 NetflixEngine = new NetflixPlaybackEngine(netflixSession,
                     () => new NetflixSpikeViewModel(netflixSession.Browser, credentials) { LogBrowserToJournal = false });
             }
+            if (disneyService != null && disneyService.Credentials != null)
+            {
+                // Disney+ titles play through the normal video player too, in the same shared browser behind Baird.
+                DisneyEngine = new DisneyPlaybackEngine(disneyService, () => new DisneySpikeViewModel(disneyService) { UseBairdHud = true });
+            }
 
             NetflixSpike = netflixSession != null
                 ? new NetflixSpikeViewModel(netflixSession.Browser, _netflixCredentials) { LogBrowserToJournal = false, KeepBrowserOpen = true }
@@ -618,9 +623,11 @@ namespace Baird.ViewModels
         }
 
         private readonly NetflixSession? _netflixSession;
+        private readonly DisneyService? _disneyService;
         /// <summary>Plays Netflix items for the video player (MainView hands it over); null when Netflix is not configured.</summary>
         public NetflixPlaybackEngine? NetflixEngine { get; }
-        private readonly DisneyService? _disneyService;
+        /// <summary>Plays Disney+ items for the video player (MainView hands it over); null when Disney+ is not configured.</summary>
+        public DisneyPlaybackEngine? DisneyEngine { get; }
         private readonly NetflixCredentials? _netflixCredentials;
 
         public void GoBack()

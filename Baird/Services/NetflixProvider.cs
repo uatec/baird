@@ -29,10 +29,10 @@ namespace Baird.Services
         public async Task<IEnumerable<MediaItemData>> SearchAsync(string query, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItemData>();
-            if (_session.IsPlaybackActive)
+            if (_session.Hub.ActivePlayback is { } playing)
             {
-                // The one Netflix browser is playing; searching in it would disturb the video. Not a failure.
-                Console.WriteLine("[NetflixProvider] Netflix is playing; no Netflix results until it stops.");
+                // The one shared browser is playing (Netflix or Disney+); searching in it would disturb the video. Not a failure.
+                Console.WriteLine($"[NetflixProvider] {playing} is playing; no Netflix results until it stops.");
                 return Enumerable.Empty<MediaItemData>();
             }
 

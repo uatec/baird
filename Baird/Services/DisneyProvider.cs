@@ -36,6 +36,12 @@ namespace Baird.Services
         public async Task<IEnumerable<MediaItemData>> SearchAsync(string query, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItemData>();
+            if (_service.Hub.ActivePlayback is { } playing)
+            {
+                // The one shared browser is playing (Disney+ or Netflix); searching in it would disturb the video. Not a failure.
+                Console.WriteLine($"[DisneyProvider] {playing} is playing; no Disney+ results until it stops.");
+                return Enumerable.Empty<MediaItemData>();
+            }
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(60));
