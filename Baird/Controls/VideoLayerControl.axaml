@@ -50,7 +50,7 @@
                 <!-- Loading Overlay -->
                 <Border Background="Black" IsVisible="{Binding #Player.IsLoading}">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
-                        <ProgressBar IsIndeterminate="True" Width="100" Height="10" />
+                        <ProgressBar IsIndeterminate="True" Width="100" Height="10" IsVisible="{Binding !#Player.IsShowingFailure}" />
                         <TextBlock Text="{Binding #Player.LoadingText}" Foreground="White" HorizontalAlignment="Center"
                             TextAlignment="Center" TextWrapping="Wrap" MaxWidth="900" />
                     </StackPanel>

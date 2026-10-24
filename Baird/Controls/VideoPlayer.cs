@@ -17,7 +17,6 @@ namespace Baird.Controls
         private IPlaybackEngine? _mpvEngine;    // mpv (or a test fake) as a playback engine
         private IPlaybackEngine? _engine;       // the engine playing now
         private NetflixPlaybackEngine? _netflixEngine;
-        private bool _showingFailure;           // the loading overlay shows why Netflix could not play
 
         private Avalonia.Threading.DispatcherTimer _hudTimer;
         private Avalonia.Threading.DispatcherTimer _loadTimeoutTimer;
@@ -103,13 +102,13 @@ namespace Baird.Controls
                 SubscribeEngine(value);
                 value.StatusChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    if (_engine == value && !_showingFailure && value.State == PlaybackState.Loading) LoadingText = value.StatusText;
+                    if (_engine == value && !IsShowingFailure && value.State == PlaybackState.Loading) LoadingText = value.StatusText;
                 });
                 value.Failed += (_, reason) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
                     if (_engine != value) return;
                     Console.WriteLine($"[VideoPlayer] Netflix could not play: {reason}");
-                    _showingFailure = true;
+                    IsShowingFailure = true;
                     LoadingText = $"{reason}\nPress Back to return.";
                     IsLoading = true;
                     IsShowingBrowser = false;
@@ -191,6 +190,17 @@ namespace Baird.Controls
             {
                 if (SetAndRaise(IsShowingBrowserProperty, ref _isShowingBrowser, value)) RequestNextFrameRendering();
             }
+        }
+
+        private bool _isShowingFailure;
+        public static readonly DirectProperty<VideoPlayer, bool> IsShowingFailureProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, bool>(nameof(IsShowingFailure), o => o._isShowingFailure);
+
+        /// <summary>The loading overlay shows why the video could not play (no spinner), until the next play or stop.</summary>
+        public bool IsShowingFailure
+        {
+            get => _isShowingFailure;
+            private set => SetAndRaise(IsShowingFailureProperty, ref _isShowingFailure, value);
         }
 
         private string _loadingText = DefaultLoadingText;
@@ -597,7 +607,7 @@ namespace Baird.Controls
             // notification when the value is unchanged, so this is cheap at 1 Hz.
             var state = engine.State;
             PlayerState = state.ToString();
-            IsLoading = _showingFailure || state == PlaybackState.Loading;
+            IsLoading = IsShowingFailure || state == PlaybackState.Loading;
 
             if (IsLive)
             {
@@ -819,6 +829,22 @@ namespace Baird.Controls
         /// <summary>Picks the engine for <paramref name="url"/> (Netflix watch pages: the Netflix browser; the rest: mpv).</summary>
         private void StartPlayback(string url, double? startSeconds)
         {
+            if (_netflixEngine == null && NetflixPlaybackEngine.Handles(url))
+            {
+                // A Netflix item (history, Continue Watching) on a Baird without Netflix: mpv can't play it.
+                Console.WriteLine("[VideoPlayer] Netflix item, but Netflix is not set up.");
+                if (_engine != null && _engine != _mpvEngine) _engine.Stop();
+                _mpvEngine?.Stop();
+                _engine = _mpvEngine;
+                _loadTimeoutTimer.Stop();
+                _pendingUrl = null;
+                IsShowingBrowser = false;
+                IsShowingFailure = true;
+                LoadingText = $"Netflix is not set up on this Baird: add {NetflixCredentials.UserKey} and {NetflixCredentials.PasswordKey} to ~/.baird/config.ini.\nPress Back to return.";
+                IsLoading = true;
+                return;
+            }
+
             var next = _netflixEngine != null && NetflixPlaybackEngine.Handles(url) ? _netflixEngine : _mpvEngine;
             if (_engine != null && _engine != next)
             {
@@ -827,7 +853,7 @@ namespace Baird.Controls
             }
             _engine = next;
             IsShowingBrowser = false;
-            _showingFailure = false;
+            IsShowingFailure = false;
             LoadingText = next != null && next == _netflixEngine ? "Starting Netflix…" : DefaultLoadingText;
 
             _pendingUrl = url;
@@ -908,7 +934,7 @@ namespace Baird.Controls
             SaveProgress();
             _engine?.Stop();
             IsShowingBrowser = false;
-            _showingFailure = false;
+            IsShowingFailure = false;
             IsLoading = false;
             IsPaused = true;
         }
