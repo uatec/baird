@@ -183,9 +183,29 @@ on `main` since `80b8407`: the main window turns transparent and the browser sho
 | Page style | `Baird/Resources/disney-page-style.js` | Hides Disney+'s own controls and the pointer. See the facts below. |
 | Autotest | `BAIRD_AUTOTEST=disney-core` | Search "Mandalorian", play the first series through Baird's player; keys from `pi_autotest.sh` (`KEYS=...`). |
 
-**Not done:** subtitles (`SetSubtitle` does nothing), Disney+'s prompts ("Skip intro", "Next episode"), the next episode after the
-end (Disney+ may start it on its own; the engine only knows the length of the episode it resolved), searching while something
-plays, history for a series before it has been resolved (`MediaItemData.Duration` is only known for films from search).
+**Seasons and episodes (children).** A series is a `Brand` item. `DisneyProvider.GetChildrenAsync` follows the Jellyfin and
+Netflix convention: `disney:{entityId}` gives the season folders (when there is more than one season) or the episodes,
+`disney:{entityId}|{season}` gives that season's episodes. Episode ids are `disney:ep:{playId}` (no `|`, which Baird's
+season and continuous-play code splits on). Each episode has its play URL, `S{n}:E{m}` as details and `Duration` from the API.
+The list comes from the entity page (`containers[type == "episodes"].seasons[].items[]`) and is reused for 10 minutes.
+
+**Episode length.** Disney's page does not know the length (`video.duration` is the buffered end). Every length an API page shows
+is kept by play id (`DisneyService.KnownRuntimeSeconds`): from the episode list, and from resolving a series (the page lists
+the other episodes too). The engine uses it for an episode played by its play URL. An episode with no known length plays with
+no length (the HUD shows nothing for it), never with another episode's. When Disney+ moves to another title by itself (autoplay,
+or "Next episode" pressed), the engine ends the title (`StreamEnded`) and Baird plays the next episode of its own list, so the
+length, position, history and title stay those of the episode on screen.
+
+**Prompts ("Skip intro", "Skip recap", "Next episode").** `IPromptingEngine` (`Baird/Playback`) is an optional engine interface:
+`PromptText`, `PromptChanged`, `ActivatePrompt()`. `VideoPlayer` shows it (`PromptText`; `VideoLayerControl` draws a pill with an
+"OK" mark above the HUD, not tied to the HUD timeout) and OK (`Enter`) answers it; the key does nothing with no prompt.
+`DisneyPlaybackEngine` reads the prompt in each poll (a visible button-like element, searched in every shadow root, whose label is
+one of: skip intro, skip recap, skip credits, skip opening, skip previously, next episode, watch credits) and clicks it on OK.
+The page style makes Disney+'s controls layer transparent (`opacity: 0`), not absent, so a prompt inside it stays findable.
+**Netflix can implement the same interface later** (the Netflix agent plans to).
+
+**Not done:** subtitles (`SetSubtitle` does nothing), searching while something plays, history for a series (it is a container
+now; history is per episode).
 
 **Facts measured on the Pi** (signed-in session, Widevine L3, 854 px):
 - **Player state:** use the `<video>` that has a source: `[...document.querySelectorAll('video')].find(v => v.readyState > 0 && v.currentSrc)`.

@@ -765,3 +765,128 @@ namespace Baird.Tests.Services
         }
     }
 }
+
+namespace Baird.Tests.Services
+{
+    using System;
+    using System.Collections.Generic;
+    using System.Threading.Tasks;
+    using Baird.Mpv;
+    using Baird.Services;
+    using Xunit;
+
+    public class DisneyPromptTests
+    {
+        [Theory]
+        [InlineData("SKIP INTRO", "Skip intro")]
+        [InlineData("Skip Recap", "Skip recap")]
+        [InlineData("  next episode ", "Next episode")]
+        public void A_label_shows_in_sentence_case(string label, string expected)
+        {
+            Assert.Equal(expected, DisneyPlayerControl.Normalize(label));
+        }
+
+        [Fact]
+        public async Task The_poll_carries_the_prompt_in_sentence_case_and_none_when_absent()
+        {
+            var b = new FakeDisneyBrowser { PollReply = () => FakeDisneyBrowser.Poll(5, prompt: "SKIP INTRO") };
+            Assert.Equal("Skip intro", (await DisneyPlayerControl.PollAsync(b))!.Prompt);
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(5);
+            Assert.Null((await DisneyPlayerControl.PollAsync(b))!.Prompt);
+        }
+
+        [Fact]
+        public void Only_known_questions_count_as_prompts_and_the_transport_buttons_do_not()
+        {
+            var script = DisneyPlayerControl.PollScript;
+            Assert.Contains("skip (intro|recap|credits|opening|previously)|next episode|watch credits", script);
+            Assert.DoesNotContain("Skip ahead", script); // the permanent 10-second buttons are not questions
+            Assert.Contains("e.shadowRoot", script);      // the player UI is in shadow DOM
+        }
+
+        [Fact]
+        public void The_page_style_makes_the_controls_transparent_not_absent_so_prompts_in_them_stay_clickable()
+        {
+            var style = CdpBrowserService.LoadDisneyPageStyleScript();
+            Assert.Contains("MAIN-APP-CONTROLS-OVERLAY", style);
+            Assert.Contains("'opacity', '0'", style);
+            Assert.DoesNotContain("'display', 'none'", style);
+        }
+
+        [Fact]
+        public async Task The_engine_reports_the_prompt_while_it_is_on_screen_and_clears_it_when_it_goes()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            var changes = new List<string?>();
+            engine.PromptChanged += (_, _) => changes.Add(engine.PromptText);
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            Assert.Null(engine.PromptText);
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "SKIP INTRO");
+            await engine.PollOnceAsync();
+            await engine.PollOnceAsync(); // unchanged: no second event
+            b.PollReply = () => FakeDisneyBrowser.Poll(40);
+            await engine.PollOnceAsync();
+
+            Assert.Equal(new string?[] { "Skip intro", null }, changes);
+        }
+
+        [Fact]
+        public async Task OK_answers_the_prompt_by_clicking_it_and_the_prompt_goes_at_once()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "SKIP INTRO");
+            await engine.PollOnceAsync();
+
+            Assert.True(engine.ActivatePrompt());
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Equal(1, b.PromptClicks);
+            Assert.Null(engine.PromptText);
+        }
+
+        [Fact]
+        public async Task Answering_when_there_is_no_prompt_does_nothing()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+
+            Assert.False(engine.ActivatePrompt());
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Equal(0, b.PromptClicks);
+        }
+
+        [Fact]
+        public async Task A_prompt_that_vanished_before_the_click_is_not_an_error()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "NEXT EPISODE");
+            await engine.PollOnceAsync();
+            b.PromptOnScreen = false;
+
+            Assert.True(engine.ActivatePrompt());
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Null(engine.PromptText);
+            Assert.Equal(PlaybackState.Playing, engine.State);
+        }
+
+        [Fact]
+        public async Task A_stop_clears_the_prompt()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "SKIP RECAP");
+            await engine.PollOnceAsync();
+            Assert.Equal("Skip recap", engine.PromptText);
+
+            await engine.StopAsync();
+
+            Assert.Null(engine.PromptText);
+        }
+    }
+}

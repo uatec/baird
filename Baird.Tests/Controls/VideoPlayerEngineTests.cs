@@ -238,5 +238,58 @@ namespace Baird.Tests.Controls
             Assert.Equal(PlaybackState.Idle, disney.State);
             Assert.NotEqual("Disney+", dService.Hub.ActivePlayback);
         }
+
+        [AvaloniaFact]
+        public async Task ADisneyPrompt_ShowsOnThePlayer_AndOKAnswersItAndItGoesWhenTheEngineStops()
+        {
+            var (b, _, disney) = DisneyPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(disney);
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+            Assert.Equal("", player.PromptText);
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "SKIP INTRO");
+            await disney.PollOnceAsync();
+            Assert.True(await WaitUntil(() => player.PromptText == "Skip intro"));
+
+            Press(player, Key.Enter);
+            await disney.WhenCommandsDoneAsync();
+            Assert.Equal(1, b.PromptClicks);
+            Assert.True(await WaitUntil(() => player.PromptText == ""));
+        }
+
+        [AvaloniaFact]
+        public async Task OK_WithNoPrompt_DoesNothing()
+        {
+            var (b, _, disney) = DisneyPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(disney);
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+
+            Press(player, Key.Enter);
+            await disney.WhenCommandsDoneAsync();
+
+            Assert.Equal(0, b.PromptClicks);
+            Assert.False(player.ActivatePrompt());
+        }
+
+        [AvaloniaFact]
+        public async Task ThePrompt_GoesWhenTheViewerSwitchesToAnotherSource()
+        {
+            var (b, _, disney) = DisneyPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(disney);
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "NEXT EPISODE");
+            await disney.PollOnceAsync();
+            Assert.True(await WaitUntil(() => player.PromptText == "Next episode"));
+
+            player.Source = "http://tvh/stream/1";
+
+            Assert.True(await WaitUntil(() => player.PromptText == ""));
+        }
     }
 }

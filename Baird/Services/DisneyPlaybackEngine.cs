@@ -15,7 +15,7 @@ namespace Baird.Services
     /// profile) and its real length, runs the proven playback flow (<see cref="DisneySpikeViewModel"/>), polls the video, and
     /// returns the browser to its idle page when playback stops. Disney+ resumes at its own saved place, so a start position is ignored.
     /// </summary>
-    public sealed class DisneyPlaybackEngine : IBrowserPlaybackEngine
+    public sealed class DisneyPlaybackEngine : IBrowserPlaybackEngine, IPromptingEngine
     {
         /// <summary>Polls in a row without a video before playback counts as ended (Disney+ left the player page).</summary>
         private const int MissingPollsForEnd = 3;
@@ -67,6 +67,40 @@ namespace Baird.Services
         public event EventHandler? StatusChanged;
         public event EventHandler<string>? Failed;
 
+        private string? _prompt;
+        /// <summary>The question Disney+ has put on the video ("Skip intro", "Next episode"), or null.</summary>
+        public string? PromptText => _prompt;
+        public event EventHandler? PromptChanged;
+
+        /// <summary>Answers the prompt on screen (the viewer pressed OK). False when there is none.</summary>
+        public bool ActivatePrompt()
+        {
+            if (_prompt == null || _state is PlaybackState.Idle or PlaybackState.Loading) return false;
+            var label = _prompt;
+            lock (_commandLock)
+            {
+                _commands = _commands.ContinueWith(async _ =>
+                {
+                    try
+                    {
+                        var clicked = await DisneyPlayerControl.ActivatePromptAsync(_service.PageDriver);
+                        Console.WriteLine($"[DisneyEngine] Prompt \"{label}\": {(clicked ? "clicked" : "not on screen any more")}.");
+                        SetPrompt(null); // the next poll shows what is there now
+                    }
+                    catch (Exception ex) { Console.WriteLine($"[DisneyEngine] Prompt \"{label}\" failed: {ex.Message}"); }
+                }, TaskScheduler.Default).Unwrap();
+            }
+            return true;
+        }
+
+        private void SetPrompt(string? prompt)
+        {
+            if (_prompt == prompt) return;
+            _prompt = prompt;
+            if (prompt != null) Console.WriteLine($"[DisneyEngine] Disney+ asks: \"{prompt}\".");
+            PromptChanged?.Invoke(this, EventArgs.Empty);
+        }
+
         public void Play(string url, double? startSeconds = null) => _ = PlayAsync(url); // Disney+ resumes at its own place
 
         public async Task PlayAsync(string url)
@@ -80,6 +114,7 @@ namespace Baird.Services
             _paused = false;
             _runtime = 0;
             _playId = null;
+            SetPrompt(null);
             Volatile.Write(ref _position, 0);
             Volatile.Write(ref _duration, 0);
             _state = PlaybackState.Loading;
@@ -158,6 +193,7 @@ namespace Baird.Services
             var generation = Interlocked.Increment(ref _generation);
             if (_state != PlaybackState.Idle) Console.WriteLine("[DisneyEngine] Stopping; the browser goes back to its idle page.");
             _state = PlaybackState.Idle;
+            SetPrompt(null);
             var previous = _stopping;
             return _stopping = StopAfterAsync(previous, generation);
         }
@@ -233,6 +269,7 @@ namespace Baird.Services
                 return;
             }
             if (double.IsFinite(status.CurrentTime)) Volatile.Write(ref _position, status.CurrentTime);
+            SetPrompt(status.Prompt);
             SetPaused(status.Paused);
         }
 
@@ -331,6 +368,7 @@ namespace Baird.Services
             if (generation != _generation) return; // a newer play or a stop came since
             _service.IsPlaybackActive = false;
             _state = PlaybackState.Idle;
+            SetPrompt(null);
             if (_failedRaised) return;
             _failedRaised = true;
             Console.WriteLine($"[DisneyEngine] Cannot play: {reason}");

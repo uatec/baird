@@ -150,6 +150,8 @@ namespace Baird.Tests.Services
         public Queue<int> FetchStatuses { get; } = new();
         public Func<JsonObject>? PollReply { get; set; }
         public List<string> ControlScripts { get; } = new();
+        public int PromptClicks { get; private set; }
+        public bool PromptOnScreen { get; set; } = true;
         public int CaptureCalls { get; private set; }
         public int FetchCalls { get; private set; }
         public int SearchStatus { get; set; } = 200;
@@ -162,13 +164,14 @@ namespace Baird.Tests.Services
         public Queue<string>? ProfileClickResults { get; set; }
         public bool EmailPresent { get; set; } = true;
 
-        public static JsonObject Poll(double t, bool paused = false, bool ended = false, bool found = true, string? url = null) => new()
+        public static JsonObject Poll(double t, bool paused = false, bool ended = false, bool found = true, string? url = null, string? prompt = null) => new()
         {
             ["found"] = found,
             ["currentTime"] = t,
             ["readyState"] = 4,
             ["paused"] = paused,
             ["ended"] = ended,
+            ["prompt"] = prompt,
             ["url"] = url ?? ("https://www.disneyplus.com/en-gb/play/" + DisneyEntityFixtures.Episode1),
             ["title"] = "Disney+"
         };
@@ -195,6 +198,11 @@ namespace Baird.Tests.Services
             if (script.Contains("ended: v.ended"))
             {
                 json = PollReply != null ? PollReply().ToJsonString() : "null";
+            }
+            else if (script.Contains("p.el.click()"))
+            {
+                PromptClicks++;
+                json = PromptOnScreen ? "\"clicked\"" : "null";
             }
             else if (script.Contains("action === 'SeekBy'"))
             {

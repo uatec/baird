@@ -125,6 +125,7 @@ namespace Baird.Controls
                 if (_engine != engine) return;
                 Console.WriteLine($"[VideoPlayer] {engine.Name} could not play: {reason}");
                 _showingFailure = true;
+                PromptText = "";
                 LoadingText = $"{reason}\nPress Back to return.";
                 IsLoading = true;
                 IsShowingBrowser = false;
@@ -136,11 +137,21 @@ namespace Baird.Controls
         /// <summary>Engine events come from background threads; only the engine playing now may change the player.</summary>
         private void SubscribeEngine(IPlaybackEngine engine)
         {
+            if (engine is IPromptingEngine prompting)
+            {
+                prompting.PromptChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_engine != engine) return;
+                    PromptText = prompting.PromptText ?? "";
+                });
+            }
+
             engine.StreamEnded += (sender, args) =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
                     if (_engine != engine) return;
+                    PromptText = "";
                     Console.WriteLine("[VideoPlayer] StreamEnded event received from the engine");
                     if (IsBrowserEngine(engine)) IsShowingBrowser = false;
 
@@ -189,6 +200,23 @@ namespace Baird.Controls
                 });
             };
         }
+
+        private string _promptText = "";
+        public static readonly DirectProperty<VideoPlayer, string> PromptTextProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, string>(nameof(PromptText), o => o._promptText);
+
+        /// <summary>
+        /// A question the playing service puts on the video ("Skip intro", "Next episode"), or "" when there is none. The
+        /// layer above draws it, and OK (Enter) answers it.
+        /// </summary>
+        public string PromptText
+        {
+            get => _promptText;
+            private set => SetAndRaise(PromptTextProperty, ref _promptText, value ?? "");
+        }
+
+        /// <summary>Answers the prompt on screen. False when there is none.</summary>
+        public bool ActivatePrompt() => _promptText.Length > 0 && _engine is IPromptingEngine prompting && prompting.ActivatePrompt();
 
         private bool _isShowingBrowser;
         public static readonly DirectProperty<VideoPlayer, bool> IsShowingBrowserProperty =
@@ -262,6 +290,16 @@ namespace Baird.Controls
             // Notify activity on any key press that is handled by us
             // But we'll do it inside the specific cases or generally if it's a valid key?
             // Let's do it generally for now if we handle it.
+
+            // OK answers the question a streaming service has put on the video ("Skip intro"); with none on screen it does nothing here.
+            if (e.Key == Avalonia.Input.Key.Enter && _promptText.Length > 0)
+            {
+                Console.WriteLine($"[VideoPlayer] OK pressed: answering the prompt \"{_promptText}\".");
+                ActivatePrompt();
+                UserActivity?.Invoke(this, EventArgs.Empty);
+                e.Handled = true;
+                return;
+            }
 
             // Numeric keys
             if (IsNumericKey(e.Key))
@@ -841,6 +879,7 @@ namespace Baird.Controls
             }
             _engine = next;
             IsShowingBrowser = false;
+            PromptText = "";
             _showingFailure = false;
             LoadingText = next is IBrowserPlaybackEngine browserEngine ? $"Starting {browserEngine.Name}…" : DefaultLoadingText;
 
@@ -922,6 +961,7 @@ namespace Baird.Controls
             SaveProgress();
             _engine?.Stop();
             IsShowingBrowser = false;
+            PromptText = "";
             _showingFailure = false;
             IsLoading = false;
             IsPaused = true;

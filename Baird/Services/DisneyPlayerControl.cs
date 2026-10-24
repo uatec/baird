@@ -19,11 +19,51 @@ namespace Baird.Services
         public const string FindVideo =
             "const v = [...document.querySelectorAll('video')].find(x => x.readyState > 0 && x.currentSrc) || document.querySelector('video');";
 
+        /// <summary>
+        /// JS that finds the question Disney+ has put on the video: a visible button-like element (in the page or in any shadow
+        /// root, which is where Disney+'s player UI lives) whose label is one of the known prompts. Returns { label, el } or null.
+        /// </summary>
+        public const string FindPrompt = @"const PROMPT = /^(skip (intro|recap|credits|opening|previously)|next episode|watch credits)$/i;
+            const findPrompt = () => {
+                let found = null;
+                const visit = (root) => {
+                    for (const e of root.querySelectorAll('*')) {
+                        if (!found && (e.tagName === 'BUTTON' || e.getAttribute('role') === 'button')) {
+                            const r = e.getBoundingClientRect();
+                            const label = (e.getAttribute('aria-label') || e.textContent || '').replace(/\s+/g, ' ').trim();
+                            if (r.width > 0 && r.height > 0 && PROMPT.test(label)) found = { label: label, el: e };
+                        }
+                        if (e.shadowRoot) visit(e.shadowRoot);
+                    }
+                };
+                visit(document);
+                return found;
+            };";
+
         public static string PollScript => @"(function() {
             " + FindVideo + @"
-            if (!v) return { found: false, currentTime: 0, readyState: 0, paused: true, ended: false, url: location.href, title: document.title };
-            return { found: true, currentTime: v.currentTime, readyState: v.readyState, paused: v.paused, ended: v.ended, url: location.href, title: document.title };
+            " + FindPrompt + @"
+            const p = findPrompt();
+            const prompt = p ? p.label : null;
+            if (!v) return { found: false, currentTime: 0, readyState: 0, paused: true, ended: false, prompt: prompt, url: location.href, title: document.title };
+            return { found: true, currentTime: v.currentTime, readyState: v.readyState, paused: v.paused, ended: v.ended, prompt: prompt, url: location.href, title: document.title };
         })()";
+
+        /// <summary>JS that clicks the prompt on screen. Returns "clicked", or null when there is none.</summary>
+        public static string ActivatePromptScript => @"(function() {
+            " + FindPrompt + @"
+            const p = findPrompt();
+            if (!p) return null;
+            p.el.click();
+            return 'clicked';
+        })()";
+
+        /// <summary>"SKIP INTRO" and "Skip Intro" both show as "Skip intro".</summary>
+        public static string Normalize(string label)
+        {
+            var t = label.Trim();
+            return t.Length == 0 ? t : char.ToUpperInvariant(t[0]) + t[1..].ToLowerInvariant();
+        }
 
         public static string ControlScript(NetflixPlayerAction action, double seconds, double runtimeSeconds)
         {
@@ -52,7 +92,15 @@ namespace Baird.Services
                 Duration: 0,
                 Url: r.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "",
                 Title: r.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
-                Ended: r.TryGetProperty("ended", out var e) && e.ValueKind == JsonValueKind.True);
+                Ended: r.TryGetProperty("ended", out var e) && e.ValueKind == JsonValueKind.True,
+                Prompt: r.TryGetProperty("prompt", out var pr) && pr.ValueKind == JsonValueKind.String && pr.GetString() is { Length: > 0 } label ? Normalize(label) : null);
+        }
+
+        /// <summary>Clicks the prompt on screen. True when there was one.</summary>
+        public static async Task<bool> ActivatePromptAsync(ICdpPageDriver page, CancellationToken ct = default)
+        {
+            var result = await page.EvaluateAsync(ActivatePromptScript, ct);
+            return result is { ValueKind: JsonValueKind.String };
         }
 
         /// <summary>Plays, pauses or seeks. Returns "video" when it was accepted, or null when the page has no player.</summary>
