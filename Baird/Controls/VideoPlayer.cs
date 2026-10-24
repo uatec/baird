@@ -930,8 +930,6 @@ namespace Baird.Controls
 
         // Video-quality feature flags, forwarded to the underlying mpv player. Driven live from the
         // Settings page (see MainView wiring) so each can be A/B tested on the device.
-        public void SetHighQualityScaling(bool enabled) => _mpv?.SetHighQualityScaling(enabled);
-        public void SetSharperDeinterlacing(bool enabled) => _mpv?.SetSharperDeinterlacing(enabled);
         public void SetRenderLogging(bool enabled) => _mpv?.SetRenderLogging(enabled);
 
         // A/V debug page
