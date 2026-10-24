@@ -97,6 +97,7 @@ namespace Baird.ViewModels
         {
             _dataService = dataService;
             _netflixSession = netflixSession;
+            _disneyService = disneyService;
             _netflixCredentials = NetflixCredentials.FromConfiguration(configuration);
             _epgService = epgService;
             _versionCheckService = new VersionCheckService();
@@ -419,6 +420,43 @@ namespace Baird.ViewModels
                 Step("netflix-search-3", NetflixSearchSpike.Succeeded, NetflixSearchSpike.Status);
                 await DisneySearchSpike.SearchAsync();
                 Step("disney-search-2", DisneySearchSpike.Succeeded, DisneySearchSpike.Status);
+
+                // The API token is reused: a search with a cached token needs no page visit and must be quick.
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                await DisneySearchSpike.SearchAsync();
+                Step("disney-search-cached-token", DisneySearchSpike.Succeeded && sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} ms");
+
+                // What to play: a film plays by its id, a series needs its entity page read to find the episode.
+                if (_disneyService != null)
+                {
+                    var series = DisneySearchSpike.Results.FirstOrDefault(r => r.Kind == "series");
+                    var film = DisneySearchSpike.Results.FirstOrDefault(r => r.Kind == "movie");
+                    DisneyPlayTarget? seriesTarget = null;
+                    if (series != null)
+                    {
+                        var (t, failure) = await _disneyService.ResolvePlayTargetAsync(series.EntityId, false, 0, CancellationToken.None);
+                        seriesTarget = t;
+                        Step("disney-resolve-series", t != null && t.PlayId != series.EntityId && t.RuntimeSeconds > 0,
+                            t != null ? $"{series.Title} -> {t.PlayId} \"{t.Label}\" {t.RuntimeSeconds:F0} s" : failure ?? "no target");
+                    }
+                    else Step("disney-resolve-series", false, "no series in the results");
+                    if (film != null)
+                    {
+                        var (t, failure) = await _disneyService.ResolvePlayTargetAsync(film.EntityId, true, film.RuntimeSeconds ?? 0, CancellationToken.None);
+                        Step("disney-resolve-film", t != null && t.RuntimeSeconds > 0,
+                            t != null ? $"{film.Title} -> {t.PlayId} {t.RuntimeSeconds:F0} s" : failure ?? "no target");
+                    }
+                    else Step("disney-resolve-film", false, "no film in the results");
+
+                    if (seriesTarget != null)
+                    {
+                        DisneySpike.TargetUrl = seriesTarget.PlayUrl;
+                        await OnUi(async () => await DisneySpike.LaunchPlaybackFlowAsync());
+                        Step("disney-play-series-episode", DisneySpike.State == DisneySpikeState.Playing, DisneySpike.StatusMessage);
+                        await Task.Delay(TimeSpan.FromSeconds(6));
+                        await OnUi(async () => { await DisneySpike.StopPlaybackAsync(); });
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -577,6 +615,7 @@ namespace Baird.ViewModels
         }
 
         private readonly NetflixSession? _netflixSession;
+        private readonly DisneyService? _disneyService;
         private readonly NetflixCredentials? _netflixCredentials;
 
         /// <summary>Netflix video is playing: the view must show this HUD over the browser (see MainView.ShowNetflixHud).</summary>

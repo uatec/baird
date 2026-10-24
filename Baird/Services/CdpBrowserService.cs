@@ -108,6 +108,8 @@ namespace Baird.Services
         private volatile Action<JsonElement>? _pageEventHandler;
         // Baird's own X window, so focus can go back to it when the browser closes.
         private string? _bairdWindowId;
+        /// <summary>True after <see cref="RevealWindowAsync"/> raised the window above Baird, until it is hidden again or the browser stops.</summary>
+        private bool _windowRevealed;
 
         /// <summary>Name of the page function (a CDP binding) the overlay calls to send a message to Baird.</summary>
         public const string PageSignalBinding = "bairdSignal";
@@ -199,6 +201,7 @@ namespace Baird.Services
         {
             LastError = null;
             await StopAsync();
+            _windowRevealed = false;
 
             _cdpPort = port;
             BrowserPath = browserPath;
@@ -828,6 +831,15 @@ namespace Baird.Services
         }
 
         /// <summary>The page style for Baird-drawn HUD mode (Resources/netflix-page-style.js), embedded in the app.</summary>
+        /// <summary>Hides Disney+'s own player controls (see disney-page-style.js).</summary>
+        public static string LoadDisneyPageStyleScript()
+        {
+            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.disney-page-style.js");
+            if (stream == null) return "console.log('[Baird] Disney+ page style not found.'); false";
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
         public static string LoadNetflixPageStyleScript()
         {
             using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.netflix-page-style.js");
@@ -839,6 +851,7 @@ namespace Baird.Services
         public async Task<bool> RevealWindowAsync(CancellationToken ct = default)
         {
             Log("[CDP] Revealing browser window: raising it above Baird (fullscreen)...");
+            _windowRevealed = true;
 
             // 1. Attempt CDP Browser.setWindowBounds
             if (_browserWs != null && _browserWs.State == WebSocketState.Open)
@@ -891,6 +904,9 @@ namespace Baird.Services
 
         public async Task HideWindowAsync(CancellationToken ct = default)
         {
+            // Baird-HUD mode never reveals the window: it is still the lowered kiosk window and must stay fullscreen.
+            if (!_windowRevealed) return;
+            _windowRevealed = false;
             Log("[CDP] Hiding the browser window: leaving fullscreen and putting Baird back on top...");
             try
             {

@@ -1,17 +1,28 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 
 namespace Baird.Services
 {
     /// <summary>One title from Disney+'s search API, for the signed-in account, profile and region.</summary>
-    public sealed record DisneySearchResult(string Title, string EntityId, string? ImageUrl, string? Kind = null, string? Rating = null, string? Year = null)
+    public sealed record DisneySearchResult(string Title, string EntityId, string? ImageUrl, string? Kind = null, string? Rating = null, string? Year = null,
+        double? RuntimeSeconds = null, string? Description = null)
     {
         /// <summary>Opens the title's page in the Disney+ web app.</summary>
         public string Url => DisneySearchParser.EntityUrl(EntityId);
         /// <summary>Plays it. For a movie the entity id is the playback id (observed: the page's PLAY button links to /play/{entityId}).</summary>
         public string PlayUrl => DisneySearchParser.PlayUrl(EntityId);
+    }
+
+    /// <summary>
+    /// What to play for an entity, from its page: the id for <c>/play/{id}</c> (for a series, the episode Disney+ would play
+    /// next for this profile), the real length in seconds when known (0 = unknown) and a label for the HUD.
+    /// </summary>
+    public sealed record DisneyPlayTarget(string PlayId, double RuntimeSeconds, string? Label)
+    {
+        public string PlayUrl => DisneySearchParser.PlayUrl(PlayId);
     }
 
     /// <summary>Outcome of one search call: results, or an HTTP / API error.</summary>
@@ -31,6 +42,7 @@ namespace Baird.Services
         public static string EntityUrl(string id) => $"https://www.disneyplus.com/{Locale}/browse/entity-{id}";
         public static string PlayUrl(string id) => $"https://www.disneyplus.com/{Locale}/play/{id}";
         public static string SearchApiUrl(string term) => $"{ApiBase}/search?query={Uri.EscapeDataString(term)}";
+        public static string EntityApiUrl(string entityId) => $"{ApiBase}/page/entity-{Uri.EscapeDataString(entityId)}?limit=15";
 
         /// <summary>
         /// Artwork URL for an image id. Format copied from the web app's own &lt;img&gt; tags (ripcut-delivery "compose").
@@ -73,11 +85,14 @@ namespace Baird.Services
                             if (string.IsNullOrWhiteSpace(title)) continue;
 
                             string? rating = null, year = null;
+                            double? runtime = null;
                             if (v.TryGetProperty("metastringParts", out var mp) && mp.ValueKind == JsonValueKind.Object)
                             {
                                 if (mp.TryGetProperty("ratingInfo", out var ri) && ri.TryGetProperty("rating", out var r)) rating = Str(r, "text");
                                 if (mp.TryGetProperty("releaseYearRange", out var ry)) year = Str(ry, "startYear");
+                                runtime = RuntimeSecondsOf(mp);
                             }
+                            string? description = v.TryGetProperty("description", out var desc) ? Str(desc, "brief") : null;
 
                             string? image = null;
                             if (v.TryGetProperty("artwork", out var art) && art.TryGetProperty("standard", out var std) &&
@@ -87,7 +102,7 @@ namespace Baird.Services
                                 if (!string.IsNullOrEmpty(imageId)) image = ImageUrl(imageId);
                             }
 
-                            results.Add(new DisneySearchResult(title.Trim(), id, image, KindOf(Str(item, "infoBlock")), rating, year));
+                            results.Add(new DisneySearchResult(title.Trim(), id, image, KindOf(Str(item, "infoBlock")), rating, year, runtime, description));
                         }
                     }
                 }
@@ -98,6 +113,87 @@ namespace Baird.Services
                 return new DisneySearchReply(none, status, "BAD_JSON: " + ex.Message);
             }
         }
+
+        /// <summary>
+        /// Parses GET /explore/v1.21/page/entity-{id}: data.page.actions[] has a <c>type: "playback"</c> action whose
+        /// <c>deeplinkId</c> is the play id (for a series, the episode Disney+ would play next, "CONTINUE", else episode 1).
+        /// The length is in <c>visuals.metastringParts.runtime.runtimeMs</c>: on the episode item
+        /// (<c>containers[type == "episodes"].seasons[].items[]</c>, matched by id) for a series, on the page for a film.
+        /// Returns null with the reason in <paramref name="failure"/> when the page has no playable action.
+        /// </summary>
+        public static DisneyPlayTarget? ParseEntityPlayTarget(int status, string? json, out string? failure)
+        {
+            failure = null;
+            if (status is < 200 or >= 300) { failure = $"HTTP {status}" + (string.IsNullOrWhiteSpace(json) ? "" : ": " + Trim(json)); return null; }
+            if (string.IsNullOrWhiteSpace(json)) { failure = "no reply from Disney+"; return null; }
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("data", out var data) || !data.TryGetProperty("page", out var page) || page.ValueKind != JsonValueKind.Object)
+                {
+                    failure = "the entity page has no data.page";
+                    return null;
+                }
+
+                string? playId = null;
+                if (page.TryGetProperty("actions", out var actions) && actions.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var a in actions.EnumerateArray())
+                    {
+                        if (Str(a, "type") == "playback" && Str(a, "deeplinkId") is { Length: > 0 } id) { playId = id; break; }
+                    }
+                }
+                if (playId == null) { failure = "the entity page has no playback action (not available to watch for this profile?)"; return null; }
+
+                double runtime = 0;
+                string? label = null;
+                var found = false;
+                if (page.TryGetProperty("containers", out var containers) && containers.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var c in containers.EnumerateArray())
+                    {
+                        if (Str(c, "type") != "episodes" || !c.TryGetProperty("seasons", out var seasons) || seasons.ValueKind != JsonValueKind.Array) continue;
+                        foreach (var season in seasons.EnumerateArray())
+                        {
+                            if (!season.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array) continue;
+                            foreach (var item in items.EnumerateArray())
+                            {
+                                if (Str(item, "id") != playId || !item.TryGetProperty("visuals", out var iv)) continue;
+                                if (iv.TryGetProperty("metastringParts", out var imp)) runtime = RuntimeSecondsOf(imp) ?? 0;
+                                var epTitle = Str(iv, "episodeTitle");
+                                var sNo = Str(iv, "seasonNumber");
+                                var eNo = Str(iv, "episodeNumber");
+                                var show = page.TryGetProperty("visuals", out var pv0) ? Str(pv0, "title") : null;
+                                label = string.Join(" ", new[] { show is { Length: > 0 } ? show + " —" : null,
+                                    sNo != null && eNo != null ? $"S{sNo}:E{eNo}" : null, epTitle }.Where(x => !string.IsNullOrWhiteSpace(x)));
+                                found = true;
+                                break;
+                            }
+                            if (found) break;
+                        }
+                        if (found) break;
+                    }
+                }
+                if (!found && page.TryGetProperty("visuals", out var pv))
+                {
+                    if (pv.TryGetProperty("metastringParts", out var pmp)) runtime = RuntimeSecondsOf(pmp) ?? 0;
+                    label = Str(pv, "title");
+                }
+                return new DisneyPlayTarget(playId, runtime, label);
+            }
+            catch (JsonException ex)
+            {
+                failure = "BAD_JSON: " + ex.Message;
+                return null;
+            }
+        }
+
+        /// <summary>visuals.metastringParts.runtime.runtimeMs as seconds, or null.</summary>
+        private static double? RuntimeSecondsOf(JsonElement metastringParts) =>
+            metastringParts.ValueKind == JsonValueKind.Object && metastringParts.TryGetProperty("runtime", out var rt) &&
+            rt.ValueKind == JsonValueKind.Object && rt.TryGetProperty("runtimeMs", out var ms) && ms.ValueKind == JsonValueKind.Number && ms.GetDouble() > 0
+                ? ms.GetDouble() / 1000.0
+                : null;
 
         /// <summary>"movie", "series" or null, read from the urn inside the base64url infoBlock.</summary>
         public static string? KindOf(string? infoBlock)
