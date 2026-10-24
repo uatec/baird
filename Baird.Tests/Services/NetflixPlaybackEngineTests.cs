@@ -178,5 +178,55 @@ namespace Baird.Tests.Services
 
             Assert.Equal(1, failed);
         }
+
+        [Fact]
+        public async Task PollThrows_RaisesFailedOnce_AndFreesTheSession()
+        {
+            double t = 0;
+            var broken = false;
+            var (_, session, engine) = Engine(() => broken ? throw new InvalidOperationException("socket closed") : Video(t += 0.4));
+            var failed = 0;
+            engine.Failed += (_, _) => failed++;
+            await engine.PlayAsync(WatchUrl);
+
+            broken = true;
+            for (var i = 0; i < 4; i++) await engine.PollOnceAsync();
+
+            Assert.Equal(1, failed);
+            Assert.Equal(PlaybackState.Idle, engine.State);
+            Assert.False(session.IsPlaybackActive);
+        }
+
+        [Fact]
+        public async Task StopThenPlayAtOnce_WithASlowReturnToIdle_TheNewPlayStaysPlaying()
+        {
+            var (svc, session, engine) = Engine();
+            await engine.PlayAsync(WatchUrl);
+            svc.IdleNavigateDelay = TimeSpan.FromMilliseconds(300);
+
+            engine.Stop();
+            await engine.PlayAsync(WatchUrl);
+            await Task.Delay(400); // the old stop has finished by now
+
+            Assert.Equal(PlaybackState.Playing, engine.State);
+            Assert.True(session.IsPlaybackActive);
+            Assert.Equal(WatchUrl, svc.LastNavigatedUrl);
+        }
+
+        [Fact]
+        public async Task PlayThrows_RaisesFailedWithTheReason_AndFreesTheSession()
+        {
+            var (svc, session, _) = Engine();
+            var engine = new NetflixPlaybackEngine(session, () => throw new InvalidOperationException("boom"));
+            var reasons = new List<string>();
+            engine.Failed += (_, r) => reasons.Add(r);
+
+            await engine.PlayAsync(WatchUrl);
+
+            Assert.Single(reasons);
+            Assert.Contains("boom", reasons[0]);
+            Assert.Equal(PlaybackState.Idle, engine.State);
+            Assert.False(session.IsPlaybackActive);
+        }
     }
 }

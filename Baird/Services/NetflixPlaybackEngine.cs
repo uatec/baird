@@ -19,6 +19,9 @@ namespace Baird.Services
         private const string WatchPrefix = "https://www.netflix.com/watch/";
         /// <summary>Polls in a row without a video before playback counts as ended (Netflix left the watch page).</summary>
         private const int MissingPollsForEnd = 3;
+        /// <summary>Failed polls in a row (no answer, an error, or no reply within <see cref="PollTimeout"/>) before giving up.</summary>
+        private const int BadPollsForFailure = 2;
+        private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(5);
 
         private readonly NetflixSession _session;
         private readonly Func<NetflixSpikeViewModel> _createFlow;
@@ -28,6 +31,8 @@ namespace Baird.Services
         private CancellationTokenSource? _pollCts;
         private int _generation;
         private int _missingPolls;
+        private int _badPolls;
+        private Task _stopping = Task.CompletedTask;
         private bool _failedRaised;
         private bool _paused;
         private double _position;
@@ -63,10 +68,12 @@ namespace Baird.Services
 
         public async Task PlayAsync(string url)
         {
-            if (_flow != null || _state != PlaybackState.Idle) await StopAsync();
+            if (_flow != null || _state != PlaybackState.Idle) _ = StopAsync();
+            var stopping = _stopping; // the browser must be back on its idle page before it opens the next title
             var generation = Interlocked.Increment(ref _generation);
             _failedRaised = false;
             _missingPolls = 0;
+            _badPolls = 0;
             _paused = false;
             Volatile.Write(ref _position, 0);
             Volatile.Write(ref _duration, 0);
@@ -75,44 +82,65 @@ namespace Baird.Services
             _session.IsPlaybackActive = true;
             Console.WriteLine($"[NetflixEngine] Playing {url}.");
 
-            string? failure;
-            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2)))
+            try
             {
-                try { failure = await _session.EnsureReadyAsync(cts.Token); }
-                catch (OperationCanceledException) { failure = "The Netflix browser did not get ready within 2 minutes."; }
+                await stopping;
+                if (generation != _generation) return;
+
+                string? failure;
+                using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2)))
+                {
+                    try { failure = await _session.EnsureReadyAsync(cts.Token); }
+                    catch (OperationCanceledException) { failure = "The Netflix browser did not get ready within 2 minutes."; }
+                }
+                if (generation != _generation) return;
+                if (failure != null)
+                {
+                    Fail(generation, failure);
+                    return;
+                }
+
+                var flow = _createFlow();
+                flow.UseBairdHud = true;
+                flow.KeepBrowserOpen = true;
+                flow.TargetUrl = url;
+                flow.PropertyChanged += OnFlowChanged;
+                flow.PlaybackConfirmed += OnPlaybackConfirmed;
+                _flow = flow;
+
+                await flow.LaunchPlaybackFlowAsync();
+                if (generation != _generation || _state != PlaybackState.Loading) return;
+
+                // The flow settled without the video playing: it says why.
+                var reason = flow.StatusMessage is { Length: > 0 } m ? m : "Netflix did not start the video.";
+                await ReleaseFlowAsync(generation);
+                Fail(generation, reason);
             }
-            if (generation != _generation) return;
-            if (failure != null)
+            catch (Exception ex)
             {
-                Fail(failure);
-                return;
+                if (generation != _generation) return;
+                Console.WriteLine($"[NetflixEngine] Playing failed: {ex}");
+                await ReleaseFlowAsync(generation);
+                Fail(generation, $"Netflix could not play: {ex.Message}");
             }
-
-            var flow = _createFlow();
-            flow.UseBairdHud = true;
-            flow.KeepBrowserOpen = true;
-            flow.TargetUrl = url;
-            flow.PropertyChanged += OnFlowChanged;
-            flow.PlaybackConfirmed += OnPlaybackConfirmed;
-            _flow = flow;
-
-            await flow.LaunchPlaybackFlowAsync();
-            if (generation != _generation || _state != PlaybackState.Loading) return;
-
-            // The flow settled without the video playing: it says why.
-            var reason = flow.StatusMessage is { Length: > 0 } m ? m : "Netflix did not start the video.";
-            await ReleaseFlowAsync();
-            Fail(reason);
         }
 
         public void Stop() => _ = StopAsync();
 
-        public async Task StopAsync()
+        /// <summary>Stops at once (Idle); the browser's return to its idle page completes with the task.</summary>
+        public Task StopAsync()
         {
-            Interlocked.Increment(ref _generation);
-            await ReleaseFlowAsync();
-            if (_state != PlaybackState.Idle) Console.WriteLine("[NetflixEngine] Stopped; the browser is back on its idle page.");
+            var generation = Interlocked.Increment(ref _generation);
+            if (_state != PlaybackState.Idle) Console.WriteLine("[NetflixEngine] Stopping; the browser goes back to its idle page.");
             _state = PlaybackState.Idle;
+            var previous = _stopping;
+            return _stopping = StopAfterAsync(previous, generation);
+        }
+
+        private async Task StopAfterAsync(Task previous, int generation)
+        {
+            await previous;
+            await ReleaseFlowAsync(generation);
         }
 
         public void Pause() => Command(NetflixPlayerAction.Pause, 0, () => SetPaused(true));
@@ -139,15 +167,27 @@ namespace Baird.Services
         {
             if (_state is PlaybackState.Idle or PlaybackState.Loading) return;
             var generation = _generation;
-            var status = await _session.Browser.PollVideoPlaybackAsync();
+            VideoPlaybackStatus? status;
+            try
+            {
+                using var timeout = new CancellationTokenSource(PollTimeout);
+                status = await _session.Browser.PollVideoPlaybackAsync(timeout.Token);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[NetflixEngine] Poll failed: {ex.Message}");
+                status = null;
+            }
             if (generation != _generation || _state == PlaybackState.Idle) return;
 
             if (status == null)
             {
+                if (++_badPolls < BadPollsForFailure) return;
+                Fail(generation, "No contact with the Netflix browser.");
                 await StopAsync();
-                Fail("No contact with the Netflix browser.");
                 return;
             }
+            _badPolls = 0;
             if (!status.Found)
             {
                 if (++_missingPolls < MissingPollsForEnd) return;
@@ -213,9 +253,13 @@ namespace Baird.Services
             {
                 _commands = _commands.ContinueWith(async _ =>
                 {
-                    var path = await _session.Browser.ControlNetflixPlayerAsync(action, seconds);
-                    Console.WriteLine($"[NetflixEngine] {action} {seconds:+0;-0;0} via {path ?? "nothing"}.");
-                    if (path != null) onAccepted();
+                    try
+                    {
+                        var path = await _session.Browser.ControlNetflixPlayerAsync(action, seconds);
+                        Console.WriteLine($"[NetflixEngine] {action} {seconds:+0;-0;0} via {path ?? "nothing"}.");
+                        if (path != null) onAccepted();
+                    }
+                    catch (Exception ex) { Console.WriteLine($"[NetflixEngine] {action} failed: {ex.Message}"); }
                 }, TaskScheduler.Default).Unwrap();
             }
         }
@@ -229,7 +273,8 @@ namespace Baird.Services
             PauseStateChanged?.Invoke(this, paused);
         }
 
-        private async Task ReleaseFlowAsync()
+        /// <summary>Detaches the flow at once, then returns the browser to its idle page; frees the session if still current.</summary>
+        private async Task ReleaseFlowAsync(int generation)
         {
             _pollCts?.Cancel();
             _pollCts = null;
@@ -243,11 +288,12 @@ namespace Baird.Services
                 catch (Exception ex) { Console.WriteLine($"[NetflixEngine] Stopping the flow failed: {ex.Message}"); }
                 flow.Dispose();
             }
-            _session.IsPlaybackActive = false;
+            if (generation == _generation) _session.IsPlaybackActive = false;
         }
 
-        private void Fail(string reason)
+        private void Fail(int generation, string reason)
         {
+            if (generation != _generation) return; // a newer play or a stop came since
             _session.IsPlaybackActive = false;
             _state = PlaybackState.Idle;
             if (_failedRaised) return;

@@ -90,7 +90,16 @@ namespace Baird.Tests.ViewModels
         public Task<string> ClearSiteDataAsync(string origin, CancellationToken ct = default) { WarmUpCalls++; LastClearedOrigin = origin; return Task.FromResult("mock cleared"); }
 
         public List<string> NavigatedUrls { get; } = new();
-        public Task<bool> NavigateAsync(string url, CancellationToken ct = default) { NavigateCalled = true; LastNavigatedUrl = url; NavigatedUrls.Add(url); return Task.FromResult(true); }
+        /// <summary>Delay before a navigation to Netflix's idle page completes (a slow return to idle).</summary>
+        public TimeSpan IdleNavigateDelay { get; set; }
+        public async Task<bool> NavigateAsync(string url, CancellationToken ct = default)
+        {
+            NavigateCalled = true;
+            if (url == NetflixSession.IdleUrl && IdleNavigateDelay > TimeSpan.Zero) await Task.Delay(IdleNavigateDelay);
+            LastNavigatedUrl = url;
+            NavigatedUrls.Add(url);
+            return true;
+        }
         public Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default) { SubmitCredentialsCalls++; return Task.FromResult(SubmitResult()); }
         public Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default) => Task.FromResult(LoginError);
 
