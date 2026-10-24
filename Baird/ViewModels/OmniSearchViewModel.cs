@@ -257,7 +257,7 @@ namespace Baird.ViewModels
             // Branch 1: Short numeric (<= 3 digits) -> Immediate
             textChanges
                 .Where(q => !string.IsNullOrEmpty(q) && q.Length <= 3 && q.Length > 0 && q.All(char.IsDigit))
-                .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
+                .Throttle(SearchTiming.Debounce, RxApp.MainThreadScheduler)
                 .Subscribe(async (q) =>
                 {
                     try
@@ -273,7 +273,7 @@ namespace Baird.ViewModels
             // Branch 2: Everything else -> Debounced
             textChanges
                 .Where(q => string.IsNullOrEmpty(q) || q.Length > 3 || !q.All(char.IsDigit))
-                .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
+                .Throttle(SearchTiming.Debounce, RxApp.MainThreadScheduler)
                 .Subscribe(async (q) =>
                 {
                     try

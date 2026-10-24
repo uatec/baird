@@ -146,7 +146,7 @@ namespace Baird.ViewModels
             // Reactive search: debounce user input
             var textChanges = this.WhenAnyValue(x => x.SearchText)
                 .Skip(1) // Skip initial value
-                .Throttle(TimeSpan.FromMilliseconds(400), RxApp.MainThreadScheduler);
+                .Throttle(SearchTiming.Debounce, RxApp.MainThreadScheduler);
 
             textChanges.Subscribe(async query =>
             {
