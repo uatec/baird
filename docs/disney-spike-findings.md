@@ -167,49 +167,42 @@ This is advice from the spikes, not a design. Check each point against the curre
 
 ## 4b. Integration into Baird's normal journey (2026-10-24)
 
-**Decision (user, 2026-10-24):** Disney+ playback waits for the new main-player engine. Netflix is moving to play in Baird's
-normal `VideoPlayer` behind an engine interface (`IPlaybackEngine`; spec on branch `charming-leopard`:
-`docs/superpowers/specs/2026-10-24-netflix-in-main-player-design.md`). That replaces the separate HUD window and the
-Netflix playback page. Disney+ gets a `DisneyPlaybackEngine` behind the same interface once it is on `main`. No interim HUD window.
+**Decision (user, 2026-10-24):** Disney+ plays through Baird's normal `VideoPlayer`, like Netflix now does (`IPlaybackEngine`,
+on `main` since `80b8407`: the main window turns transparent and the browser shows through). No separate HUD window or page.
 
-**Built now, engine-neutral and tested (not yet wired into the normal search or the player):**
+**Built (branch `disney-playback-engine`, based on `main`; unit-tested; on-device result below):**
 
 | Piece | Where | What it does |
 |---|---|---|
-| `DisneyProvider` | `Baird/Services/DisneyProvider.cs` | Disney+ as an `IMediaProvider` (source "Disney+", id `disney:{entityId}`). A failure throws, so the search screen marks the provider as failed. A film's `StreamUrl` and a series' `StreamUrl` are the entity page, because a series id is not a play id. Not registered in `MainView` yet: results that cannot play must not appear. |
-| Play target | `DisneySearchParser.ParseEntityPlayTarget`, `DisneySession.ResolvePlayTargetAsync`, `DisneyService.ResolvePlayTargetAsync` | From `GET /explore/v1.21/page/entity-{id}`: the play id (series: the episode Disney+ would play next), the real runtime from `runtimeMs`, and a HUD label such as "The Mandalorian — S1:E2 Chapter 2: The Child". A film whose page cannot be read plays by its entity id; a series never falls back to a wrong id. |
-| Token reuse | `DisneySession.ApiGetAsync` | The web app's API headers are captured once and reused from the idle page (the API allows the page's origin). On 401/403 or a failed request, one fresh capture and one retry, then a loud failure. A search with a cached token needs no page visit. |
-| Warm-up | `DisneyService.Start` | After a delay, opens or attaches to the browser, signs in and takes the token, then re-checks every minute if the browser process changed. Does nothing without credentials or while something plays. **Not called from `MainView` yet**, because nothing in normal search uses it. |
-| Page style | `Baird/Resources/disney-page-style.js`, `CdpBrowserService.LoadDisneyPageStyleScript` | Hides Disney+'s own player controls and the mouse pointer for a Baird-drawn HUD. See the facts below. |
-| `HideWindowAsync` only after a reveal | `CdpBrowserService` | **A bug I introduced and fixed:** `HideWindowAsync` removed fullscreen from the browser window. In Netflix's Baird-HUD mode the window is never revealed (it is the lowered kiosk window), so un-fullscreening it would break the next HUD playback. It now acts only after `RevealWindowAsync`. |
+| `IBrowserPlaybackEngine` | `Baird/Playback/IBrowserPlaybackEngine.cs` | What `VideoPlayer` needs from a streaming site's engine: name, `CanPlay(url)`, step text, failure. `NetflixPlaybackEngine` and `DisneyPlaybackEngine` implement it. `VideoPlayer` keeps a list (`AddBrowserEngine`) and picks the engine whose `CanPlay` accepts the URL; `NetflixEngine` still works. |
+| `DisneyPlaybackEngine` | `Baird/Services/DisneyPlaybackEngine.cs` | Reads the title's page to find what to play and its real length, runs the playback flow in engine mode (`DisneySpikeViewModel.UseBairdHud`: Disney's controls hidden, window not raised), polls the video, sends seek, pause and play, returns the tab to the idle page on stop. Same generation-counter design as the Netflix engine. Disney+ resumes at its own saved place, so a start position is ignored. |
+| `DisneyPlayerControl` | `Baird/Services/DisneyPlayerControl.cs` | Poll and control scripts on the playing `<video>` (see the facts below). The poll reports no duration. |
+| Switching Netflix and Disney+ | `BrowserHub.WaitForOtherPlaybackToEndAsync` | The viewer can pick the other service while one plays: `VideoPlayer` stops the old engine, whose stop finishes later (tab back on its idle page, then its playing flag clears). The new engine waits for that flag (up to 15 s) before it takes the tab. Both flows clear their playing flag last. |
+| `DisneyProvider` | `Baird/Services/DisneyProvider.cs` | Disney+ in normal search (source "Disney+", id `disney:{entityId}`). A film's stream URL is its entity page with `?baird=film`, a series' the plain entity page (a series id is not a play id). Returns no results, not a failure, while any shared-browser playback runs; the Netflix provider does the same while Disney+ plays. |
+| Warm-up | `DisneyService.Start`, called from `MainView` 30 s after start | Opens or attaches to the browser, signs in and takes the API token in the background. |
+| Page style | `Baird/Resources/disney-page-style.js` | Hides Disney+'s own controls and the pointer. See the facts below. |
+| Autotest | `BAIRD_AUTOTEST=disney-core` | Search "Mandalorian", play the first series through Baird's player; keys from `pi_autotest.sh` (`KEYS=...`). |
 
-**Verified on the Pi (autotest `shared-browser`, 2026-10-24):** a Disney+ search with a cached token took **277 ms** (3.2 to 4.2 s
-when the token must be captured). `ResolvePlayTargetAsync` for the series "The Mandalorian" returned episode `f6bc4f01-...`
-("The Mandalorian — S1:E2 Chapter 2: The Child", 2037 s: the next episode for this profile) and for the film 8062 s. The
-resolved episode played (`currentTime` advancing, 854 px). Netflix's own journey (`netflix-core`) still reaches PLAYING and
-returns its browser to the idle page, with no window un-fullscreen on that path. After Back, Baird's own main window comes back
-framed and not fullscreen: that is the Netflix HUD-window closing path (known XWayland caveat, being replaced), not Disney code.
+**Not done:** subtitles (`SetSubtitle` does nothing), Disney+'s prompts ("Skip intro", "Next episode"), the next episode after the
+end (Disney+ may start it on its own; the engine only knows the length of the episode it resolved), searching while something
+plays, history for a series before it has been resolved (`MediaItemData.Duration` is only known for films from search).
 
-**Facts measured on the Pi for the future `DisneyPlaybackEngine`** (all with the signed-in session, Widevine L3, 854 px):
+**Facts measured on the Pi** (signed-in session, Widevine L3, 854 px):
 - **Player state:** use the `<video>` that has a source: `[...document.querySelectorAll('video')].find(v => v.readyState > 0 && v.currentSrc)`.
   The first `<video>` stays empty.
 - **Controls work on the element directly.** `v.currentTime = v.currentTime + 30` seeked and playback went on; `v.currentTime - 20`
   went back; `v.pause()` held the position for 4 s; `v.play()` resumed. (Unlike Netflix, no player API is needed.)
 - **Length:** `video.duration` is the buffered end (`Infinity`, then growing), not the length. The real length is `runtimeMs` from
   the entity page (episode item for a series, page for a film). The player's own slider also has it while the controls
-  are shown (`aria-valuemax="2037"`, `aria-valuetext="1:47 of 33:56"`), but the controls are removed from the DOM when idle.
-- **Disney's player UI is shadow DOM:** `disney-web-player-ui` > `main-app-controls-overlay` (`.controls-container`,
-  `progress-bar`, buttons labelled "Skip back 10 seconds", "Pause", "Skip ahead 10 seconds", "PLAY NEXT", ...). Page CSS cannot
-  reach it. Setting `display: none !important` on the `MAIN-APP-CONTROLS-OVERLAY` host hides the controls and leaves only the
-  picture; the player re-creates the overlay when it wakes, so the style script repeats it every 150 ms.
-- **Subtitles are not in that overlay.** They show with no controls on screen (seen in the first playback screenshot).
-- The controls wake on mouse movement. A Baird-drawn HUD must not send mouse events to the page.
-
-**To do when the engine is on `main`:** a `DisneyPlaybackEngine` that resolves the play target (`DisneyService.ResolvePlayTargetAsync`),
-navigates the shared tab to `PlayUrl`, injects the page style, polls the playing `<video>` (position, paused; length from the
-runtime), sends seek and pause as above, and on stop calls `HideWindowAsync` and returns the tab to `DisneyService.IdleUrl`.
-Then register `DisneyProvider` in `MainView` (with `DisneyService.Start`), route `Source == "Disney+"` in `PlayItem`, and put
-history on `MediaItemData.Duration` (set from the search runtime; unknown for a series until resolved).
+  are shown (`aria-valuemax="2037"`), but the controls are removed from the DOM when idle.
+- **Disney's player UI is shadow DOM:** `disney-web-player-ui` > `main-app-controls-overlay`. Page CSS cannot reach it. Setting
+  `display: none !important` on the `MAIN-APP-CONTROLS-OVERLAY` host hides the controls and leaves only the picture; the
+  player re-creates the overlay when it wakes, so the style script repeats it every 150 ms.
+- **Subtitles are not in that overlay.** They show with no controls on screen.
+- The controls wake on mouse movement. Baird must not send mouse events to the page.
+- **Verified before the engine (autotest `shared-browser`, 2026-10-24):** a Disney+ search with a cached token took 277 ms (3 to 4 s
+  when the token must be captured); `ResolvePlayTargetAsync` for the series returned the next episode and its 2037 s runtime, and
+  for the film 8062 s; the resolved episode played.
 
 ## 5. Red herrings and decisions
 
