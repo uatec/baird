@@ -236,20 +236,69 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
-        public async Task A_page_that_lost_its_video_ends_playback_after_three_polls()
+        public async Task A_page_that_lost_its_video_off_the_player_page_ends_playback_after_three_polls()
         {
             var (b, _, engine) = Engine();
             var ended = 0;
             engine.StreamEnded += (_, _) => ended++;
             await engine.PlayAsync(SeriesUrl);
 
-            b.PollReply = () => FakeDisneyBrowser.Poll(0, found: false);
+            b.PollReply = () => FakeDisneyBrowser.Poll(0, found: false, url: "https://www.disneyplus.com/en-gb/home");
             await engine.PollOnceAsync();
             await engine.PollOnceAsync();
             Assert.Equal(0, ended);
             await engine.PollOnceAsync();
 
             Assert.Equal(1, ended);
+        }
+
+        [Fact]
+        public async Task A_video_that_drops_for_a_moment_on_the_player_page_does_not_end_playback()
+        {
+            var (b, _, engine) = Engine();
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(SeriesUrl);
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(0, found: false); // still on /play/{id}: Disney+ is switching titles
+            for (var i = 0; i < 10; i++) await engine.PollOnceAsync();
+
+            Assert.Equal(0, ended);
+            Assert.Equal(PlaybackState.Playing, engine.State);
+        }
+
+        [Fact]
+        public async Task A_quick_pause_then_resume_ends_playing_and_is_not_echoed_back_to_the_player()
+        {
+            var (b, _, engine) = Engine();
+            var echoes = new List<bool>();
+            engine.PauseStateChanged += (_, p) => echoes.Add(p);
+            await engine.PlayAsync(SeriesUrl);
+
+            engine.Pause();
+            Assert.Equal(PlaybackState.Paused, engine.State); // at once, before the browser answered
+            engine.Resume();
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Equal(PlaybackState.Playing, engine.State);
+            Assert.Empty(echoes);
+            Assert.Equal(2, b.ControlScripts.Count);
+            Assert.EndsWith("('Pause', 0, 2037)", b.ControlScripts[0]);
+            Assert.EndsWith("('Play', 0, 2037)", b.ControlScripts[1]);
+        }
+
+        [Fact]
+        public async Task A_poll_that_shows_the_video_paused_is_still_reported_to_the_player()
+        {
+            var (b, _, engine) = Engine();
+            var echoes = new List<bool>();
+            engine.PauseStateChanged += (_, p) => echoes.Add(p);
+            await engine.PlayAsync(SeriesUrl);
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(10, paused: true); // paused by something else
+            await engine.PollOnceAsync();
+
+            Assert.Equal(new[] { true }, echoes);
         }
 
         [Fact]

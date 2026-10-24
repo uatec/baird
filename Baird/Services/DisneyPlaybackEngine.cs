@@ -19,6 +19,8 @@ namespace Baird.Services
     {
         /// <summary>Polls in a row without a video before playback counts as ended (Disney+ left the player page).</summary>
         private const int MissingPollsForEnd = 3;
+        /// <summary>The same on the player page (about a minute): Disney+ switching titles can drop the video for a moment.</summary>
+        private const int MissingPollsOnPlayerPageForEnd = 120;
         /// <summary>Failed polls in a row (no answer, an error, or no reply within <see cref="PollTimeout"/>) before giving up.</summary>
         private const int BadPollsForFailure = 2;
         private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(5);
@@ -204,8 +206,17 @@ namespace Baird.Services
             await ReleaseFlowAsync(generation);
         }
 
-        public void Pause() => Command(NetflixPlayerAction.Pause, 0, () => SetPaused(true));
-        public void Resume() => Command(NetflixPlayerAction.Play, 0, () => SetPaused(false));
+        // The state changes at once, so a quick second press is not lost; the next poll corrects it if Disney+ refused. Not raised as
+        // an event: the player asked for it, and echoing it back made VideoPlayer's pause handler flip the state again.
+        public void Pause() => TogglePause(true);
+        public void Resume() => TogglePause(false);
+
+        private void TogglePause(bool pause)
+        {
+            if (_state is not (PlaybackState.Playing or PlaybackState.Paused)) return;
+            SetPaused(pause, raise: false);
+            Command(pause ? NetflixPlayerAction.Pause : NetflixPlayerAction.Play, 0, () => { });
+        }
 
         public void SeekRelative(double seconds) => Command(NetflixPlayerAction.SeekBy, seconds, () =>
         {
@@ -251,7 +262,8 @@ namespace Baird.Services
             _badPolls = 0;
             if (!status.Found || status.Ended)
             {
-                if (!status.Ended && ++_missingPolls < MissingPollsForEnd) return;
+                var limit = status.Url.Contains("/play/", StringComparison.Ordinal) ? MissingPollsOnPlayerPageForEnd : MissingPollsForEnd;
+                if (!status.Ended && ++_missingPolls < limit) return;
                 Console.WriteLine(status.Ended ? "[DisneyEngine] The video ended." : "[DisneyEngine] No video on the page any more: playback ended.");
                 await StopAsync();
                 StreamEnded?.Invoke(this, EventArgs.Empty);
@@ -336,13 +348,13 @@ namespace Baird.Services
             }
         }
 
-        private void SetPaused(bool paused)
+        private void SetPaused(bool paused, bool raise = true)
         {
             if (_state == PlaybackState.Idle) return;
             _state = paused ? PlaybackState.Paused : PlaybackState.Playing;
             if (paused == _paused) return;
             _paused = paused;
-            PauseStateChanged?.Invoke(this, paused);
+            if (raise) PauseStateChanged?.Invoke(this, paused);
         }
 
         /// <summary>Detaches the flow at once, then returns the browser to its idle page; frees the hub if still current.</summary>
