@@ -148,6 +148,10 @@ namespace Baird.Tests.Services
         public string? SearchBody { get; set; }
         public string? EntityBody { get; set; }
         public Queue<int> FetchStatuses { get; } = new();
+        public Func<JsonObject>? PollReply { get; set; }
+        public List<string> ControlScripts { get; } = new();
+        public int PromptClicks { get; private set; }
+        public bool PromptOnScreen { get; set; } = true;
         public int CaptureCalls { get; private set; }
         public int FetchCalls { get; private set; }
         public int SearchStatus { get; set; } = 200;
@@ -159,6 +163,18 @@ namespace Baird.Tests.Services
         public int ThrowOnStateReads { get; set; }
         public Queue<string>? ProfileClickResults { get; set; }
         public bool EmailPresent { get; set; } = true;
+
+        public static JsonObject Poll(double t, bool paused = false, bool ended = false, bool found = true, string? url = null, string? prompt = null) => new()
+        {
+            ["found"] = found,
+            ["currentTime"] = t,
+            ["readyState"] = 4,
+            ["paused"] = paused,
+            ["ended"] = ended,
+            ["prompt"] = prompt,
+            ["url"] = url ?? ("https://www.disneyplus.com/en-gb/play/" + DisneyEntityFixtures.Episode1),
+            ["title"] = "Disney+"
+        };
 
         public static JsonObject State(string url, bool login = false, bool picker = false, bool video = false, double t = 0, string text = "", bool nav = false) => new()
         {
@@ -179,7 +195,21 @@ namespace Baird.Tests.Services
         {
             Scripts.Add(script);
             string json;
-            if (script.Contains("hasProfilePicker")) { if (ThrowOnStateReads-- > 0) throw new InvalidOperationException("CDP Error: Inspected target navigated or closed"); if (States.Count > 0) LastState = States.Dequeue(); json = LastState.ToJsonString(); }
+            if (script.Contains("ended: v.ended"))
+            {
+                json = PollReply != null ? PollReply().ToJsonString() : "null";
+            }
+            else if (script.Contains("p.el.click()"))
+            {
+                PromptClicks++;
+                json = PromptOnScreen ? "\"clicked\"" : "null";
+            }
+            else if (script.Contains("action === 'SeekBy'"))
+            {
+                ControlScripts.Add(script);
+                json = "\"video\"";
+            }
+            else if (script.Contains("hasProfilePicker")) { if (ThrowOnStateReads-- > 0) throw new InvalidOperationException("CDP Error: Inspected target navigated or closed"); if (States.Count > 0) LastState = States.Dequeue(); json = LastState.ToJsonString(); }
             else if (script.Contains("return !!document.querySelector('input[type=email]');")) json = EmailPresent ? "true" : "false";
             else if (script.Contains("fetch("))
             {
@@ -725,6 +755,40 @@ namespace Baird.Tests.Services
             }
         }.ToJsonString();
 
+        public const string Episode3 = "ef62b353-bdc2-464a-b85c-5d5d7c14e8c1";
+
+        /// <summary>A series with two seasons: season 1 has two episodes (one without a runtime), season 2 has one.</summary>
+        public static string TwoSeasons() => new JsonObject
+        {
+            ["data"] = new JsonObject
+            {
+                ["page"] = new JsonObject
+                {
+                    ["visuals"] = new JsonObject { ["title"] = "The Mandalorian", ["metastringParts"] = Meta(null) },
+                    ["actions"] = new JsonArray(Playback(Episode1)),
+                    ["containers"] = new JsonArray(new JsonObject
+                    {
+                        ["type"] = "episodes",
+                        ["seasons"] = new JsonArray(
+                            new JsonObject
+                            {
+                                ["type"] = "season",
+                                ["visuals"] = new JsonObject { ["name"] = "Season 1" },
+                                ["items"] = new JsonArray(
+                                    Episode(Episode1, "Chapter 1: The Mandalorian", 1, 1, 2_037_000),
+                                    Episode(Episode2, "Chapter 2: The Child", 1, 2, null))
+                            },
+                            new JsonObject
+                            {
+                                ["type"] = "season",
+                                ["visuals"] = new JsonObject { ["name"] = "Season 2" },
+                                ["items"] = new JsonArray(Episode(Episode3, "Chapter 9: The Marshal", 2, 1, 2_700_000))
+                            })
+                    })
+                }
+            }
+        }.ToJsonString();
+
         public static string Film(string id, double runtimeMs = 8_062_084) => new JsonObject
         {
             ["data"] = new JsonObject
@@ -834,12 +898,13 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
-        public void A_series_item_links_the_entity_page_not_a_play_url_because_a_series_id_is_not_a_play_id()
+        public void A_series_is_a_container_item_without_a_stream_url_because_a_series_id_is_not_a_play_id()
         {
             var item = DisneyProvider.ToMediaItem(Series());
 
             Assert.Equal("Series · 2019 · 14+", item.Details);
-            Assert.Equal("https://www.disneyplus.com/en-gb/browse/entity-series-1", item.StreamUrl);
+            Assert.Equal(MediaType.Brand, item.Type); // a container: its seasons and episodes are its children
+            Assert.Equal("", item.StreamUrl);
             Assert.False(DisneyProvider.IsFilm(item));
             Assert.Equal(TimeSpan.Zero, item.Duration);
             Assert.Equal("", item.ImageUrl);

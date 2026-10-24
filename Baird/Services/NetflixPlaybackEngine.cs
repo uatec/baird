@@ -14,11 +14,16 @@ namespace Baird.Services
     /// It runs the proven playback flow (<see cref="NetflixSpikeViewModel"/>) on the browser that <see cref="NetflixSession"/>
     /// keeps open, polls the video, and returns the browser to its idle page when playback stops.
     /// </summary>
-    public sealed class NetflixPlaybackEngine : IPlaybackEngine
+    public sealed class NetflixPlaybackEngine : IBrowserPlaybackEngine
     {
         private const string WatchPrefix = "https://www.netflix.com/watch/";
-        /// <summary>Polls in a row without a video before playback counts as ended (Netflix left the watch page).</summary>
+        /// <summary>Polls in a row without a video, off the watch page, before playback counts as ended.</summary>
         private const int MissingPollsForEnd = 3;
+        /// <summary>
+        /// The same on the watch page (about a minute): Netflix moving to the next episode can drop the video for a moment
+        /// while staying on /watch/, which must not end playback.
+        /// </summary>
+        private const int MissingPollsOnWatchPageForEnd = 120;
         /// <summary>Failed polls in a row (no answer, an error, or no reply within <see cref="PollTimeout"/>) before giving up.</summary>
         private const int BadPollsForFailure = 2;
         private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(5);
@@ -46,6 +51,9 @@ namespace Baird.Services
         }
 
         public static bool Handles(string? url) => url != null && url.StartsWith(WatchPrefix, StringComparison.Ordinal);
+
+        public string Name => "Netflix";
+        public bool CanPlay(string? url) => Handles(url);
 
         public PlaybackState State => _state;
         public double TimePositionSeconds => Volatile.Read(ref _position);
@@ -79,11 +87,17 @@ namespace Baird.Services
             Volatile.Write(ref _duration, 0);
             _state = PlaybackState.Loading;
             SetStatus("Starting Netflix…");
-            _session.IsPlaybackActive = true;
             Console.WriteLine($"[NetflixEngine] Playing {url}.");
 
             try
             {
+                // Another service (Disney+) may still be stopping: its tab must be back on its idle page before Netflix takes it.
+                if (!await _session.Hub.WaitForOtherPlaybackToEndAsync("Netflix", TimeSpan.FromSeconds(15)))
+                {
+                    Fail(generation, $"{_session.Hub.ActivePlayback} is still playing.");
+                    return;
+                }
+                _session.IsPlaybackActive = true;
                 await stopping;
                 if (generation != _generation) return;
 
@@ -112,7 +126,9 @@ namespace Baird.Services
                 if (generation != _generation || _state != PlaybackState.Loading) return;
 
                 // The flow settled without the video playing: it says why.
-                var reason = flow.StatusMessage is { Length: > 0 } m ? m : "Netflix did not start the video.";
+                var reason = flow.IsMfaRequired
+                    ? "Netflix asked for a verification code. Open the Netflix Spike tab in the menu, start playback there and enter the code, then play this again."
+                    : flow.StatusMessage is { Length: > 0 } m ? m : "Netflix did not start the video.";
                 await ReleaseFlowAsync(generation);
                 Fail(generation, reason);
             }
@@ -143,8 +159,16 @@ namespace Baird.Services
             await ReleaseFlowAsync(generation);
         }
 
-        public void Pause() => Command(NetflixPlayerAction.Pause, 0, () => SetPaused(true));
-        public void Resume() => Command(NetflixPlayerAction.Play, 0, () => SetPaused(false));
+        // The state changes at once, so a quick second press is not lost; the next poll corrects it if Netflix refused.
+        public void Pause() => TogglePause(true);
+        public void Resume() => TogglePause(false);
+
+        private void TogglePause(bool pause)
+        {
+            if (_state is not (PlaybackState.Playing or PlaybackState.Paused)) return;
+            SetPaused(pause, raise: false); // the player asked for it: echoing it back would loop
+            Command(pause ? NetflixPlayerAction.Pause : NetflixPlayerAction.Play, 0, () => { });
+        }
 
         public void SeekRelative(double seconds) => Command(NetflixPlayerAction.SeekBy, seconds, () =>
         {
@@ -190,8 +214,9 @@ namespace Baird.Services
             _badPolls = 0;
             if (!status.Found)
             {
-                if (++_missingPolls < MissingPollsForEnd) return;
-                Console.WriteLine("[NetflixEngine] No video on the page any more: playback ended.");
+                var limit = Handles(status.Url) ? MissingPollsOnWatchPageForEnd : MissingPollsForEnd;
+                if (++_missingPolls < limit) return;
+                Console.WriteLine($"[NetflixEngine] No video on the page any more ({status.Url}): playback ended.");
                 await StopAsync();
                 StreamEnded?.Invoke(this, EventArgs.Empty);
                 return;
@@ -264,13 +289,13 @@ namespace Baird.Services
             }
         }
 
-        private void SetPaused(bool paused)
+        private void SetPaused(bool paused, bool raise = true)
         {
             if (_state == PlaybackState.Idle) return;
             _state = paused ? PlaybackState.Paused : PlaybackState.Playing;
             if (paused == _paused) return;
             _paused = paused;
-            PauseStateChanged?.Invoke(this, paused);
+            if (raise) PauseStateChanged?.Invoke(this, paused);
         }
 
         /// <summary>Detaches the flow at once, then returns the browser to its idle page; frees the session if still current.</summary>

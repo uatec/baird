@@ -36,9 +36,21 @@ namespace Baird.ViewModels
         private readonly ICdpBrowserService _browser;
         private readonly DisneySession _session;
         private readonly bool _shared;
+        private Action<string>? _logHandler;
+        private Action<string>? _signalHandler;
         private CancellationTokenSource? _activeCts;
 
         public event EventHandler? BackRequested;
+
+        /// <summary>The video plays and Baird's player has taken over (see <see cref="UseBairdHud"/>): raised once per play.</summary>
+        public event Action? PlaybackConfirmed;
+
+        /// <summary>
+        /// True (the engine's setting): Baird keeps focus and its own video player draws the HUD while the browser shows the
+        /// video behind the transparent main window. Disney+'s controls are hidden and the window is not raised.
+        /// False (the Disney spike tab): the browser is raised with focus and the injected HTML overlay is used.
+        /// </summary>
+        public bool UseBairdHud { get; set; }
 
         private string _targetUrl = DefaultTargetUrl;
         public string TargetUrl { get => _targetUrl; set => this.RaiseAndSetIfChanged(ref _targetUrl, value); }
@@ -138,16 +150,27 @@ namespace Baird.ViewModels
             _shared = shared;
             _browser = service.Browser;
             _session = service.Session;
-            _service.Log += shared ? AddScreenLog : AddLog; // shared: the service's lines reach the journal once, from where it was created
+            _logHandler = shared ? AddScreenLog : AddLog; // shared: the service's lines reach the journal once, from where it was created
+            _service.Log += _logHandler;
 
             // The overlay's Back/Escape key sends {"type":"exit"} through the CDP binding the browser service always adds.
             // Without this handler Back does nothing on Disney+ (the overlay returns early when the binding exists).
-            _browser.PageSignalReceived += payload => RxApp.MainThreadScheduler.Schedule(() => OnPageSignal(payload));
+            _signalHandler = payload => RxApp.MainThreadScheduler.Schedule(() => OnPageSignal(payload));
+            _browser.PageSignalReceived += _signalHandler;
 
             AddLog($"[Init] {CredentialsStatus}");
             LaunchCommand = ReactiveCommand.CreateFromTask(LaunchPlaybackFlowAsync);
             StopCommand = ReactiveCommand.CreateFromTask(StopPlaybackAsync);
             BackCommand = ReactiveCommand.Create(() => BackRequested?.Invoke(this, EventArgs.Empty));
+        }
+
+        /// <summary>Removes this flow's handlers from the shared browser and service (a new flow is created for each play).</summary>
+        public void Dispose()
+        {
+            if (_logHandler != null) _service.Log -= _logHandler;
+            if (_signalHandler != null) _browser.PageSignalReceived -= _signalHandler;
+            _logHandler = null;
+            _signalHandler = null;
         }
 
         private void AddScreenLog(string message)
@@ -252,6 +275,17 @@ namespace Baird.ViewModels
 
         private async Task RevealAsync(CancellationToken ct)
         {
+            if (UseBairdHud)
+            {
+                SetState(DisneySpikeState.Playing, "currentTime is advancing. Hiding Disney+'s controls for Baird's player...");
+                var styled = await _browser.InjectOverlayScriptAsync(CdpBrowserService.LoadDisneyPageStyleScript(), ct);
+                AddLog(styled ? "[Reveal] Disney+ page style applied." : "[Reveal] WARNING: the Disney+ page style was not applied; Disney+'s own controls may show.");
+                SetState(DisneySpikeState.Playing, $"Playback observed (currentTime advancing, {VideoInfo}); Baird's player has the controls.");
+                AddLog("[Reveal] Playback confirmed (Baird keeps focus).");
+                PlaybackConfirmed?.Invoke();
+                return;
+            }
+
             SetState(DisneySpikeState.Playing, "currentTime is advancing. Injecting the HUD and revealing the window...");
             await _browser.InjectOverlayScriptAsync(null, ct);
             await _browser.RevealWindowAsync(ct);
@@ -294,25 +328,32 @@ namespace Baird.ViewModels
         /// <summary>Ends this flow's use of the browser: back to the idle page if it stays open, else close it.</summary>
         private async Task ReleaseBrowserAsync()
         {
-            _service.IsPlaybackActive = false;
-            if (KeepBrowserOpen && _browser.IsRunning)
+            // The playing flag is cleared LAST: the other service waits for it, and must find the tab back on its idle page.
+            try
             {
-                try
+                if (KeepBrowserOpen && _browser.IsRunning)
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                    await _browser.HideWindowAsync(cts.Token); // the revealed window is above Baird: put Baird back on top
-                    if (await _browser.NavigateAsync(DisneyService.IdleUrl, cts.Token))
+                    try
                     {
-                        AddLog("[Control] Browser stays open, back on the idle page.");
-                        return;
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                        await _browser.HideWindowAsync(cts.Token); // a revealed window is above Baird: put Baird back on top
+                        if (await _browser.NavigateAsync(DisneyService.IdleUrl, cts.Token))
+                        {
+                            AddLog("[Control] Browser stays open, back on the idle page.");
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AddLog($"[Control] Could not return the browser to the idle page ({ex.Message}); closing it.");
                     }
                 }
-                catch (Exception ex)
-                {
-                    AddLog($"[Control] Could not return the browser to the idle page ({ex.Message}); closing it.");
-                }
+                await _browser.StopAsync();
             }
-            await _browser.StopAsync();
+            finally
+            {
+                _service.IsPlaybackActive = false;
+            }
         }
 
         private void Fail(string message)

@@ -1,6 +1,6 @@
 /**
- * Injected into the Netflix watch page when Baird draws the HUD itself (Baird's transparent window is on top and keeps
- * keyboard focus). The page only shows the video: this hides Netflix's own player UI and the mouse pointer.
+ * Injected into the Netflix watch page when Baird's player has the controls (Baird's transparent window is on top and
+ * keeps keyboard focus). The page only shows the video and its subtitles: this hides Netflix's own UI and the pointer.
  */
 (function() {
     const styleId = "baird-page-style";
@@ -24,6 +24,10 @@
             pointer-events: none !important;
         }
         * { cursor: none !important; }
+        /* Anything else Netflix draws (e.g. the report flag at the top right) stays hidden too: only the video and the
+           subtitles are visible. A visible child shows even inside a hidden parent. */
+        body * { visibility: hidden !important; }
+        video, .player-timedtext, .player-timedtext * { visibility: visible !important; }
     `;
     console.log("[Baird] Netflix page style applied.");
     return true;

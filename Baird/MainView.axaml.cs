@@ -93,9 +93,18 @@ namespace Baird
 
             // Disney+ uses the same browser, window and tab (netflixSession.Hub): one service at a time, each navigates the tab to
             // its own site when it takes over. It signs in on first use; it does not open the browser at start-up.
-            var disneyService = new DisneyService(netflixSession.Hub, DisneyCredentials.FromConfiguration(config),
+            var disneyCredentials = DisneyCredentials.FromConfiguration(config);
+            var disneyService = new DisneyService(netflixSession.Hub, disneyCredentials,
                 config["DISNEY_PROFILE"] is { Length: > 0 } dnProfile ? dnProfile : null);
             disneyService.Log += m => Console.WriteLine($"[DisneyService] {m}");
+            if (disneyCredentials != null)
+            {
+                _providers.Add(new DisneyProvider(disneyService));
+                // Open (or attach to) the browser, sign in and take the API token in the background, after Netflix's own start-up,
+                // so the first search or play does not wait for it.
+                disneyService.Start(TimeSpan.FromSeconds(30));
+            }
+            else Console.WriteLine("[MainView] Disney+ not in search: no DISNEY_USER/DISNEY_PASS in config.ini.");
 
             _cecService = new CecService();
             _historyService = new JsonHistoryService();
@@ -310,6 +319,7 @@ namespace Baird
                     {
                         // Netflix plays in the browser behind Baird: the window goes transparent while it shows.
                         player.NetflixEngine = _viewModel.NetflixEngine;
+                        player.AddBrowserEngine(_viewModel.DisneyEngine);
                         _visualTreeSubscriptions.Add(player.GetObservable(Controls.VideoPlayer.IsShowingBrowserProperty).Subscribe(showing =>
                         {
                             if (TopLevel.GetTopLevel(this) is not Window window) return;

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -101,10 +103,19 @@ namespace Baird.Services
                 if (failure != null) return (null, failure);
 
                 var needsCapture = !_session.HasApiToken;
-                var (target, resolveFailure) = await _session.ResolvePlayTargetAsync(entityId, ct);
+                var (status, body, apiFailure) = await _session.GetEntityPageAsync(entityId, ct);
                 if (needsCapture) await Browser.NavigateAsync(IdleUrl, CancellationToken.None);
+
+                DisneyPlayTarget? target = null;
+                string? resolveFailure = apiFailure;
+                if (apiFailure == null)
+                {
+                    target = DisneySearchParser.ParseEntityPlayTarget(status, body, out resolveFailure);
+                    RememberRuntimes(DisneySearchParser.ParseEpisodeGuide(status, body, out _)); // the next episodes' lengths are on the same page
+                }
                 if (target != null)
                 {
+                    RememberRuntime(target.PlayId, target.RuntimeSeconds);
                     Log?.Invoke($"Play target for {entityId}: {target.PlayId} ({target.Label ?? "no label"}, {target.RuntimeSeconds:F0} s).");
                     return (target.RuntimeSeconds > 0 || knownRuntimeSeconds <= 0 ? target : target with { RuntimeSeconds = knownRuntimeSeconds }, null);
                 }
@@ -114,6 +125,63 @@ namespace Baird.Services
                     return (new DisneyPlayTarget(entityId, knownRuntimeSeconds, null), null);
                 }
                 return (null, $"Could not find what to play: {resolveFailure}");
+            }
+            finally
+            {
+                _hub.Gate.Release();
+            }
+        }
+
+        // ---- Episode lengths -------------------------------------------------------------------------------------------------
+        // Disney's page does not know the length of the title it plays (video.duration is the buffered end), so every length Baird
+        // learns from an API page is kept by play id: the engine looks it up when it plays an episode by its play URL.
+        private readonly ConcurrentDictionary<string, double> _runtimes = new();
+        private readonly ConcurrentDictionary<string, (DateTime At, DisneyEpisodeGuide Guide)> _guides = new();
+
+        /// <summary>How long a series' episode list is reused before its page is read again.</summary>
+        public TimeSpan GuideLifetime { get; set; } = TimeSpan.FromMinutes(10);
+
+        /// <summary>The length in seconds of the episode or film with this play id, if an API page gave it; else 0.</summary>
+        public double KnownRuntimeSeconds(string playId) => _runtimes.TryGetValue(playId, out var r) ? r : 0;
+
+        private void RememberRuntimes(DisneyEpisodeGuide? guide)
+        {
+            if (guide == null) return;
+            foreach (var e in guide.AllEpisodes)
+                if (e.RuntimeSeconds > 0) _runtimes[e.Id] = e.RuntimeSeconds;
+        }
+
+        public void RememberRuntime(string playId, double seconds)
+        {
+            if (seconds > 0) _runtimes[playId] = seconds;
+        }
+
+        /// <summary>
+        /// The seasons and episodes of a series, with their lengths. Reused for <see cref="GuideLifetime"/>. Never throws for Disney+
+        /// problems: the failure says why.
+        /// </summary>
+        public async Task<(DisneyEpisodeGuide? Guide, string? Failure)> GetEpisodeGuideAsync(string entityId, CancellationToken ct)
+        {
+            if (_guides.TryGetValue(entityId, out var cached) && DateTime.UtcNow - cached.At < GuideLifetime) return (cached.Guide, null);
+            if (_hub.BlockedFor(Owner) is { } blocked) return (null, blocked);
+
+            await _hub.Gate.WaitAsync(ct);
+            try
+            {
+                var failure = await EnsureReadyCoreAsync(ct);
+                if (failure != null) return (null, failure);
+
+                var needsCapture = !_session.HasApiToken;
+                var (status, body, apiFailure) = await _session.GetEntityPageAsync(entityId, ct);
+                if (needsCapture) await Browser.NavigateAsync(IdleUrl, CancellationToken.None);
+                if (apiFailure != null) return (null, apiFailure);
+
+                var guide = DisneySearchParser.ParseEpisodeGuide(status, body, out var parseFailure);
+                if (guide == null) return (null, parseFailure);
+                RememberRuntimes(guide);
+                _guides[entityId] = (DateTime.UtcNow, guide);
+                Log?.Invoke($"Episode guide for {entityId}: {guide.Seasons.Count} season(s), {guide.AllEpisodes.Count()} episode(s).");
+                return (guide, null);
             }
             finally
             {

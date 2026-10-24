@@ -129,7 +129,7 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
-        public async Task VideoGone_ThreePolls_RaisesStreamEndedOnce()
+        public async Task LeftTheWatchPage_ThreePolls_RaisesStreamEndedOnce()
         {
             double t = 0;
             VideoPlaybackStatus? current = null;
@@ -138,13 +138,75 @@ namespace Baird.Tests.Services
             engine.StreamEnded += (_, _) => ended++;
             await engine.PlayAsync(WatchUrl);
 
-            current = NoVideo();
+            current = new VideoPlaybackStatus(false, 0, 0, false, 0, "https://www.netflix.com/browse", "Netflix");
             for (var i = 0; i < 5; i++) await engine.PollOnceAsync();
 
             Assert.Equal(1, ended);
             Assert.Equal(PlaybackState.Idle, engine.State);
             Assert.False(session.IsPlaybackActive);
             Assert.Equal(NetflixSession.IdleUrl, svc.LastNavigatedUrl);
+        }
+
+        [Fact]
+        public async Task NoVideoBriefly_OnTheWatchPage_KeepsPlaying()
+        {
+            // Netflix moving to the next episode can drop the <video> for a moment while staying on /watch/.
+            double t = 0;
+            VideoPlaybackStatus? current = null;
+            var (_, session, engine) = Engine(() => current ?? Video(t += 0.4));
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(WatchUrl);
+
+            current = NoVideo();
+            for (var i = 0; i < 10; i++) await engine.PollOnceAsync();
+
+            Assert.Equal(0, ended);
+            Assert.NotEqual(PlaybackState.Idle, engine.State);
+            Assert.True(session.IsPlaybackActive);
+        }
+
+        [Fact]
+        public async Task NoVideoForAMinute_OnTheWatchPage_Ends()
+        {
+            double t = 0;
+            VideoPlaybackStatus? current = null;
+            var (_, _, engine) = Engine(() => current ?? Video(t += 0.4));
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(WatchUrl);
+
+            current = NoVideo();
+            for (var i = 0; i < 125; i++) await engine.PollOnceAsync(); // 500 ms polls: over a minute
+
+            Assert.Equal(1, ended);
+        }
+
+        [Fact]
+        public async Task Pause_ChangesStateAtOnce()
+        {
+            var (_, _, engine) = Engine();
+            await engine.PlayAsync(WatchUrl);
+
+            engine.Pause();
+
+            Assert.Equal(PlaybackState.Paused, engine.State);
+            await engine.WhenCommandsDoneAsync();
+        }
+
+        [Fact]
+        public async Task VerificationStep_FailsWithAReasonTheViewerCanActOn()
+        {
+            var (svc, _, engine) = Engine();
+            svc.AuthStatusToReturn = new AuthPageStatus("https://www.netflix.com/verify", "Verify", false, true, false, 0);
+            var reasons = new List<string>();
+            engine.Failed += (_, r) => reasons.Add(r);
+
+            await engine.PlayAsync(WatchUrl);
+
+            Assert.Single(reasons);
+            Assert.Contains("Netflix Spike", reasons[0]);
+            Assert.DoesNotContain("best-effort", reasons[0]);
         }
 
         [Fact]

@@ -21,7 +21,9 @@ namespace Baird.Services
         bool Paused,
         double Duration,
         string Url,
-        string Title);
+        string Title,
+        bool Ended = false,
+        string? Prompt = null);
 
     public record AuthPageStatus(
         string Url,

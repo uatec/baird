@@ -16,6 +16,8 @@ namespace Baird.Services
     {
         public const string SourceName = "Disney+";
         public const string IdPrefix = "disney:";
+        /// <summary>Id prefix of an episode item ("disney:ep:{playId}"): no '|', so Baird's season and continuous-play code leaves it whole.</summary>
+        public const string EpisodeIdPrefix = IdPrefix + "ep:";
         public const string FilmLabel = "Film";
         public const string SeriesLabel = "Series";
 
@@ -36,6 +38,12 @@ namespace Baird.Services
         public async Task<IEnumerable<MediaItemData>> SearchAsync(string query, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItemData>();
+            if (_service.Hub.ActivePlayback is { } playing)
+            {
+                // The one shared browser is playing (Disney+ or Netflix); searching in it would disturb the video. Not a failure.
+                Console.WriteLine($"[DisneyProvider] {playing} is playing; no Disney+ results until it stops.");
+                return Enumerable.Empty<MediaItemData>();
+            }
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(60));
@@ -51,6 +59,7 @@ namespace Baird.Services
 
         public static MediaItemData ToMediaItem(DisneySearchResult r)
         {
+            var isSeries = r.Kind == "series";
             var kind = r.Kind switch { "series" => SeriesLabel, "movie" => FilmLabel, _ => r.Kind ?? "" };
             var details = string.Join(" · ", new[] { kind, r.Year, r.Rating }.Where(x => !string.IsNullOrWhiteSpace(x)));
             return new MediaItemData
@@ -60,19 +69,77 @@ namespace Baird.Services
                 Details = details,
                 ImageUrl = r.ImageUrl ?? "",
                 IsLive = false,
-                // The entity page, not a play URL: a series id is not a play id. The playback page resolves what to play.
-                StreamUrl = DisneySearchParser.EntityUrl(r.EntityId),
+                // A series is a container (its seasons and episodes are its children, see GetChildrenAsync); a film plays from its entity
+                // page, which the engine reads for the length (?baird=film lets it play the film by its id if the page cannot be read).
+                StreamUrl = isSeries ? "" : DisneySearchParser.EntityStreamUrl(r.EntityId, isFilm: r.Kind == "movie"),
                 Source = SourceName,
-                Type = MediaType.Video,
+                Type = isSeries ? MediaType.Brand : MediaType.Video,
                 Synopsis = r.Description ?? "",
                 Subtitle = "",
                 Duration = r.RuntimeSeconds is > 0 ? TimeSpan.FromSeconds(r.RuntimeSeconds.Value) : TimeSpan.Zero,
             };
         }
 
-        public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItemData>());
+        /// <summary>
+        /// The seasons and episodes of a series, the way Jellyfin does it: <c>disney:{entityId}</c> gives the season folders (or the
+        /// episodes when there is one season), <c>disney:{entityId}|{season}</c> gives that season's episodes. Answers only for
+        /// "disney:" ids that are not episodes; a Disney+ failure throws, which the data service logs and skips.
+        /// </summary>
+        public async Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
+        {
+            if (!id.StartsWith(IdPrefix, StringComparison.Ordinal) || id.StartsWith(EpisodeIdPrefix, StringComparison.Ordinal))
+                return Enumerable.Empty<MediaItemData>();
 
-        public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Task.FromResult(Enumerable.Empty<MediaItemData>());
+            var entityId = id[IdPrefix.Length..];
+            int? targetSeason = null;
+            var bar = entityId.IndexOf('|');
+            if (bar >= 0)
+            {
+                if (int.TryParse(entityId[(bar + 1)..], out var n)) targetSeason = n;
+                entityId = entityId[..bar];
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+            var (guide, failure) = await _service.GetEpisodeGuideAsync(entityId, timeout.Token);
+            if (guide == null) throw new InvalidOperationException($"Disney+ episodes failed: {failure}");
+
+            if (targetSeason == null && guide.Seasons.Count > 1)
+            {
+                return guide.Seasons.Select(season => new MediaItemData
+                {
+                    Id = $"{IdPrefix}{entityId}|{season.Number}",
+                    Name = season.Name,
+                    Details = season.Episodes.Count == 1 ? "1 Episode" : $"{season.Episodes.Count} Episodes",
+                    ImageUrl = season.Episodes.Select(e => e.ImageUrl).FirstOrDefault(i => i != null) ?? "",
+                    IsLive = false,
+                    StreamUrl = "",
+                    Source = SourceName,
+                    Type = MediaType.Brand,
+                    Synopsis = season.Name,
+                    Subtitle = season.Name,
+                }).ToList();
+            }
+
+            var seasons = targetSeason == null ? guide.Seasons : guide.Seasons.Where(s => s.Number == targetSeason);
+            return seasons.SelectMany(s => s.Episodes).Select(ToEpisodeItem).ToList();
+        }
+
+        public static MediaItemData ToEpisodeItem(DisneyEpisode e) => new()
+        {
+            Id = EpisodeIdPrefix + e.Id,
+            Name = e.Title,
+            Details = $"S{e.Season}:E{e.Number}",
+            ImageUrl = e.ImageUrl ?? "",
+            IsLive = false,
+            StreamUrl = e.PlayUrl, // played directly; the engine finds its length from the episode list that was read
+            Source = SourceName,
+            Type = MediaType.Video,
+            Synopsis = e.Description ?? "",
+            Subtitle = "",
+            Duration = e.RuntimeSeconds > 0 ? TimeSpan.FromSeconds(e.RuntimeSeconds) : TimeSpan.Zero,
+        };
+
+        public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItemData>());
 
         // No lookup by id without a search; history and Continue Watching use Baird's own item cache.
         public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult<MediaItemData?>(null);

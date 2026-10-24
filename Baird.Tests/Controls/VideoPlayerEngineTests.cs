@@ -139,5 +139,199 @@ namespace Baird.Tests.Controls
             Assert.Equal(new[] { (NetflixPlayerAction.SeekBy, 10.0), (NetflixPlayerAction.Pause, 0.0) }, svc.PlayerActions);
             Assert.Equal(1, menu);
         }
+
+        [AvaloniaFact]
+        public async Task DisneyUrl_UsesTheDisneyEngine_AndShowsTheBrowserOnceLoaded()
+        {
+            var (_, _, disney) = DisneyPlaybackEngineTests.Engine();
+            var mpv = new FakeMpv();
+            var player = new VideoPlayer(mpv);
+            player.AddBrowserEngine(disney);
+
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+            Assert.Empty(mpv.Played);
+            Assert.Equal(PlaybackState.Playing, disney.State);
+        }
+
+        [AvaloniaFact]
+        public async Task DisneyLoading_ShowsTheDisneySteps()
+        {
+            var (_, _, disney) = DisneyPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(disney);
+            var seen = new List<string>();
+            player.PropertyChanged += (_, e) => { if (e.Property == VideoPlayer.LoadingTextProperty) seen.Add(player.LoadingText); };
+
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+            Assert.Contains("Starting Disney+…", seen);
+            Assert.Contains("Loading the video…", seen);
+        }
+
+        [AvaloniaFact]
+        public async Task DisneyFailure_ShowsTheReasonInTheLoadingOverlay()
+        {
+            var (_, _, disney) = DisneyPlaybackEngineTests.Engine(playsVideo: false);
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(disney);
+
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+
+            Assert.True(await WaitUntil(() => player.LoadingText.EndsWith("Press Back to return.")));
+            Assert.False(player.IsShowingBrowser);
+            Assert.Contains("No video playback observed", player.LoadingText);
+        }
+
+        [AvaloniaFact]
+        public async Task EachBrowserEngine_PlaysOnlyItsOwnUrls_AndMpvTheRest()
+        {
+            var (_, _, netflix) = NetflixPlaybackEngineTests.Engine();
+            var (_, _, disney) = DisneyPlaybackEngineTests.Engine();
+            var mpv = new FakeMpv();
+            var player = new VideoPlayer(mpv) { NetflixEngine = netflix };
+            player.AddBrowserEngine(disney);
+
+            player.Source = "http://tvh/stream/1";
+            Assert.True(await WaitUntil(() => mpv.Played.Contains("http://tvh/stream/1")));
+            Assert.Equal(PlaybackState.Idle, netflix.State);
+            Assert.Equal(PlaybackState.Idle, disney.State);
+
+            player.Source = WatchUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+            Assert.Equal(PlaybackState.Playing, netflix.State);
+            Assert.Equal(PlaybackState.Idle, disney.State);
+        }
+
+        [AvaloniaFact]
+        public async Task SwitchingFromDisneyToMpv_StopsDisney_AndTheWindowIsOpaqueAgain()
+        {
+            var (_, service, disney) = DisneyPlaybackEngineTests.Engine();
+            var mpv = new FakeMpv();
+            var player = new VideoPlayer(mpv);
+            player.AddBrowserEngine(disney);
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+
+            player.Source = "http://tvh/stream/1";
+
+            Assert.True(await WaitUntil(() => mpv.Played.Contains("http://tvh/stream/1") && !player.IsShowingBrowser));
+            Assert.Equal(PlaybackState.Idle, disney.State);
+            Assert.True(await WaitUntil(() => service.Hub.ActivePlayback == null)); // the browser goes back to its idle page
+        }
+
+        [AvaloniaFact]
+        public async Task SwitchingFromDisneyToNetflix_WaitsForDisneyToGiveBackTheTab()
+        {
+            var (_, dService, disney) = DisneyPlaybackEngineTests.Engine();
+            var (_, _, netflix) = NetflixPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv()) { NetflixEngine = netflix };
+            player.AddBrowserEngine(disney);
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+
+            player.Source = WatchUrl;
+
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading && netflix.State == PlaybackState.Playing));
+            Assert.Equal(PlaybackState.Idle, disney.State);
+            Assert.NotEqual("Disney+", dService.Hub.ActivePlayback);
+        }
+
+        [AvaloniaFact]
+        public async Task ADisneyPrompt_ShowsOnThePlayer_AndOKAnswersItAndItGoesWhenTheEngineStops()
+        {
+            var (b, _, disney) = DisneyPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(disney);
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+            Assert.Equal("", player.PromptText);
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "SKIP INTRO");
+            await disney.PollOnceAsync();
+            Assert.True(await WaitUntil(() => player.PromptText == "Skip intro"));
+
+            Press(player, Key.Enter);
+            await disney.WhenCommandsDoneAsync();
+            Assert.Equal(1, b.PromptClicks);
+            Assert.True(await WaitUntil(() => player.PromptText == ""));
+        }
+
+        [AvaloniaFact]
+        public async Task OK_WithNoPrompt_DoesNothing()
+        {
+            var (b, _, disney) = DisneyPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(disney);
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+
+            Press(player, Key.Enter);
+            await disney.WhenCommandsDoneAsync();
+
+            Assert.Equal(0, b.PromptClicks);
+            Assert.False(player.ActivatePrompt());
+        }
+
+        [AvaloniaFact]
+        public async Task ThePrompt_GoesWhenTheViewerSwitchesToAnotherSource()
+        {
+            var (b, _, disney) = DisneyPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(disney);
+            player.Source = DisneyPlaybackEngineTests.SeriesUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "NEXT EPISODE");
+            await disney.PollOnceAsync();
+            Assert.True(await WaitUntil(() => player.PromptText == "Next episode"));
+
+            player.Source = "http://tvh/stream/1";
+
+            Assert.True(await WaitUntil(() => player.PromptText == ""));
+        }
+
+        [AvaloniaFact]
+        public async Task QuickSpaceSpace_OverNetflix_PausesThenResumes()
+        {
+            var (svc, _, engine) = NetflixPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv()) { NetflixEngine = engine };
+            player.Source = WatchUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+
+            Press(player, Key.Space);
+            Press(player, Key.Space);
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Equal(new[] { (NetflixPlayerAction.Pause, 0.0), (NetflixPlayerAction.Play, 0.0) }, svc.PlayerActions);
+        }
+
+        [AvaloniaFact]
+        public async Task NetflixFailure_HidesTheSpinner_UntilTheNextPlay()
+        {
+            var (_, _, engine) = NetflixPlaybackEngineTests.Engine(video: () => null);
+            var player = new VideoPlayer(new FakeMpv()) { NetflixEngine = engine };
+            player.Source = WatchUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingFailure));
+
+            player.Source = "http://tvh/stream/1";
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(player.IsShowingFailure);
+        }
+
+        [AvaloniaFact]
+        public async Task NetflixUrl_WithoutNetflix_SaysWhy_AndDoesNotUseMpv()
+        {
+            var mpv = new FakeMpv();
+            var player = new VideoPlayer(mpv);
+
+            player.Source = WatchUrl;
+
+            Assert.True(await WaitUntil(() => player.IsShowingFailure));
+            Assert.Contains("Netflix is not set up", player.LoadingText);
+            Assert.Empty(mpv.Played);
+        }
     }
 }
