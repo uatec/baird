@@ -3,7 +3,7 @@
 #   usage: pi_autotest.sh [netflix|netflix-search|netflix-core|disney|disney-search] [test|installed] [max-shots]
 #     netflix         -> the playback spike (BAIRD_AUTOTEST=netflix)
 #     netflix-search  -> the search spike   (BAIRD_AUTOTEST=netflix-search)
-#     netflix-core    -> the core journey: Search tab, play the first Netflix result, Baird HUD (BAIRD_AUTOTEST=netflix-core)
+#     netflix-core    -> the core journey: Search tab, play the first Netflix result in Baird's player (BAIRD_AUTOTEST=netflix-core)
 #     disney          -> the Disney+ playback spike (BAIRD_AUTOTEST=disney)
 #     disney-search   -> the Disney+ search spike    (BAIRD_AUTOTEST=disney-search)
 #     test            -> run the test build in ~/baird-test (copied there by deploy_test_build.sh)
@@ -57,5 +57,5 @@ for i in $(seq 1 "$MAX"); do
     break
   fi
 done
-journalctl -t baird-autotest --since "$START" --no-pager 2>/dev/null | grep -E "AutoTest|NetflixSpike|NetflixHud|NetflixSearch|NetflixSession|NetflixBrowser|NetflixPlayback|Netflix history|OmniSearch\] Provider|Navigation|DisneySpike|DisneySearch|YtDlpTempDir" | cut -c1-300 > $SH/autotest.log
+journalctl -t baird-autotest --since "$START" --no-pager 2>/dev/null | grep -E "AutoTest|NetflixSpike|NetflixEngine|NetflixSearch|NetflixSession|NetflixBrowser|NetflixProvider|VideoPlayer\] (Switching|Netflix|FileLoaded)|Showing the browser|OmniSearch\] Provider|Navigation|DisneySpike|DisneySearch|YtDlpTempDir" | cut -c1-300 > $SH/autotest.log
 echo "--- journal ---"; cat $SH/autotest.log

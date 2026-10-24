@@ -160,14 +160,6 @@ namespace Baird.ViewModels
                 : new NetflixSpikeViewModel(_netflixCredentials);
             if (configuration?["NETFLIX_TARGET_URL"] is { Length: > 0 } netflixTarget) NetflixSpike.TargetUrl = netflixTarget;
             NetflixSpike.BackRequested += (s, e) => GoBack();
-            NetflixSpike.HudRequested += hud =>
-            {
-                // Netflix has the screen and the sound: pause live TV, and put it back as it was afterwards.
-                var wasPaused = IsPaused;
-                IsPaused = true;
-                hud.Closed += () => Avalonia.Threading.Dispatcher.UIThread.Post(() => IsPaused = wasPaused);
-                NetflixHudRequested?.Invoke(hud);
-            };
 
             var nfProfileName = configuration?["NETFLIX_PROFILE"] is { Length: > 0 } nfProfile ? nfProfile : null;
             NetflixSearchSpike = netflixSession != null
@@ -378,7 +370,7 @@ namespace Baird.ViewModels
 
         /// <summary>
         /// BAIRD_AUTOTEST=netflix-core: the core journey. Search "One Piece" on the Search tab, play the first Netflix result,
-        /// and wait for Baird's HUD (or the playback page's error). Logs "[AutoTest] RESULT ...".
+        /// and wait until the video plays in Baird's player (or Netflix fails). Logs "[AutoTest] RESULT ...".
         /// </summary>
         private async Task RunNetflixCoreAutoTestAsync()
         {
@@ -386,8 +378,14 @@ namespace Baird.ViewModels
             {
                 // Wait past the Netflix browser's warm-up (it starts 10 s after Baird), to measure what a viewer gets.
                 await Task.Delay(TimeSpan.FromSeconds(45));
-                var hudShown = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-                NetflixHudRequested += hud => hudShown.TrySetResult(hud.Title);
+                if (NetflixEngine == null)
+                {
+                    Console.WriteLine("[AutoTest] RESULT core=FAILED reason=\"Netflix is not configured\"");
+                    return;
+                }
+                var outcome = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                NetflixEngine.FileLoaded += (_, _) => outcome.TrySetResult(null);
+                NetflixEngine.Failed += (_, reason) => outcome.TrySetResult(reason);
 
                 await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
                 {
@@ -419,11 +417,12 @@ namespace Baird.ViewModels
                 var playClock = System.Diagnostics.Stopwatch.StartNew();
                 await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => PlayItem(first));
 
-                var done = await Task.WhenAny(hudShown.Task, Task.Delay(TimeSpan.FromSeconds(120)));
-                var page = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => CurrentPage as NetflixPlaybackViewModel);
-                Console.WriteLine(done == hudShown.Task
-                    ? $"[AutoTest] RESULT core=PLAYING title=\"{hudShown.Task.Result}\" hud_after={playClock.Elapsed.TotalSeconds:F1}s"
-                    : $"[AutoTest] RESULT core=FAILED page=\"{page?.StatusText}\"");
+                var done = await Task.WhenAny(outcome.Task, Task.Delay(TimeSpan.FromSeconds(120)));
+                Console.WriteLine(done != outcome.Task
+                    ? "[AutoTest] RESULT core=FAILED reason=\"no video within 120 s\""
+                    : outcome.Task.Result is { } reason
+                        ? $"[AutoTest] RESULT core=FAILED reason=\"{reason}\""
+                        : $"[AutoTest] RESULT core=PLAYING title=\"{first.Name}\" play_after={playClock.Elapsed.TotalSeconds:F1}s");
             }
             catch (Exception ex)
             {
@@ -498,12 +497,6 @@ namespace Baird.ViewModels
             _currentShowId = null;
             _currentSeasonId = null;
 
-            if (NetflixProvider.IsNetflix(item.Source))
-            {
-                PlayNetflix(item);
-                return;
-            }
-
             if (!string.IsNullOrEmpty(item.StreamUrl))
             {
                 // Check for resume progress
@@ -529,40 +522,6 @@ namespace Baird.ViewModels
         /// <summary>Plays Netflix items for the video player (MainView hands it over); null when Netflix is not configured.</summary>
         public NetflixPlaybackEngine? NetflixEngine { get; }
         private readonly NetflixCredentials? _netflixCredentials;
-
-        /// <summary>Netflix video is playing: the view must show this HUD over the browser (see MainView.ShowNetflixHud).</summary>
-        public event Action<NetflixHudViewModel>? NetflixHudRequested;
-
-        /// <summary>
-        /// Netflix plays in the shared browser, not in mpv: push the Netflix playback page, which runs the flow and opens
-        /// Baird's HUD when the video plays. Live TV is paused meanwhile, because Netflix has the sound.
-        /// </summary>
-        private void PlayNetflix(MediaItemViewModel item)
-        {
-            if (_netflixSession == null)
-            {
-                Console.WriteLine($"[MainViewModel] Cannot play Netflix item {item.Id}: no Netflix session.");
-                return;
-            }
-
-            var flow = new NetflixSpikeViewModel(_netflixSession.Browser, _netflixCredentials) { LogBrowserToJournal = false };
-            var page = new NetflixPlaybackViewModel(item, flow, _netflixSession);
-            var wasPaused = IsPaused;
-            IsPaused = true;
-            page.HudRequested += hud => NetflixHudRequested?.Invoke(hud);
-            page.ProgressReported += (position, duration) =>
-            {
-                Console.WriteLine($"[MainViewModel] Netflix history: {item.Name} at {position} of {duration}");
-                _ = _dataService.UpsertHistoryAsync(item, position, duration);
-            };
-            page.Finished += () => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            {
-                IsPaused = wasPaused;
-                if (CurrentPage == page) PopViewModel();
-            });
-            PushViewModel(page);
-            _ = page.StartAsync();
-        }
 
         public void GoBack()
         {
@@ -615,7 +574,7 @@ namespace Baird.ViewModels
         {
             if (NavigationHistory.Count > 0)
             {
-                if (NavigationHistory.Pop() is NetflixPlaybackViewModel netflixPage) _ = netflixPage.CancelAsync();
+                NavigationHistory.Pop();
                 CurrentPage = NavigationHistory.Count > 0 ? NavigationHistory.Peek() : null;
                 Console.WriteLine($"[Navigation] Popping to {CurrentPage?.GetType().Name}");
             }

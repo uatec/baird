@@ -121,7 +121,6 @@ namespace Baird
             _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession);
 
             DataContext = _viewModel;
-            _viewModel.NetflixHudRequested += hud => Dispatcher.UIThread.Post(() => ShowNetflixHud(hud));
 
             this.AttachedToVisualTree += async (s, e) =>
             {
@@ -852,32 +851,6 @@ namespace Baird
         private void InitializeComponent()
         {
             Avalonia.Markup.Xaml.AvaloniaXamlLoader.Load(this);
-        }
-
-        /// <summary>
-        /// Hides Baird's main window so the Netflix browser below shows, and puts the transparent HUD window on top with focus.
-        /// When the HUD closes, the main window comes back.
-        /// </summary>
-        private void ShowNetflixHud(NetflixHudViewModel hud)
-        {
-            var main = TopLevel.GetTopLevel(this) as Window;
-            var mainState = main?.WindowState ?? WindowState.Normal;
-            var window = new Controls.NetflixHudWindow(hud);
-            window.Closed += (_, _) =>
-            {
-                Console.WriteLine("[NetflixHud] HUD closed: showing Baird's main window.");
-                if (main != null)
-                {
-                    main.Show();
-                    // Under XWayland, Hide/Show loses fullscreen, and setting the same state again does nothing.
-                    main.WindowState = WindowState.Normal;
-                    main.WindowState = mainState;
-                    main.Activate();
-                }
-            };
-            Console.WriteLine("[NetflixHud] Hiding Baird's main window and opening the HUD over the browser.");
-            main?.Hide();
-            window.Show();
         }
     }
 }
