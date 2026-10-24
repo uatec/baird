@@ -280,6 +280,11 @@ namespace Baird.ViewModels
         private void StartAutoTestIfRequested()
         {
             var autotest = Environment.GetEnvironmentVariable("BAIRD_AUTOTEST");
+            if (string.Equals(autotest, "disney-core", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Task.Run(RunDisneyCoreAutoTestAsync);
+                return;
+            }
             if (string.Equals(autotest, "netflix-core", StringComparison.OrdinalIgnoreCase))
             {
                 _ = Task.Run(RunNetflixCoreAutoTestAsync);
@@ -476,6 +481,72 @@ namespace Baird.ViewModels
         /// BAIRD_AUTOTEST=netflix-core: the core journey. Search "One Piece" on the Search tab, play the first Netflix result,
         /// and wait until the video plays in Baird's player (or Netflix fails). Logs "[AutoTest] RESULT ...".
         /// </summary>
+        /// <summary>
+        /// BAIRD_AUTOTEST=disney-core: the Disney+ core journey. Search "Mandalorian" on the Search tab, play the first Disney+
+        /// SERIES result (it needs its page read to find the episode) through Baird's normal player, then wait until the video
+        /// plays. Logs "[AutoTest] RESULT core=...". The keys after it come from pi_autotest.sh (KEYS=...). Does nothing unless set.
+        /// </summary>
+        private async Task RunDisneyCoreAutoTestAsync()
+        {
+            try
+            {
+                // Wait past the browser warm-ups (Netflix at 10 s, Disney+ at 30 s), to measure what a viewer gets.
+                await Task.Delay(TimeSpan.FromSeconds(75));
+                if (DisneyEngine == null)
+                {
+                    Console.WriteLine("[AutoTest] RESULT core=FAILED reason=\"Disney+ is not configured\"");
+                    return;
+                }
+                var outcome = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                DisneyEngine.FileLoaded += (_, _) => outcome.TrySetResult(null);
+                DisneyEngine.Failed += (_, reason) => outcome.TrySetResult(reason);
+
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var index = MainMenu.Tabs.ToList().FindIndex(t => t.Title == "Search");
+                    Console.WriteLine($"[AutoTest] Opening the Search tab (index {index}) and searching for Mandalorian.");
+                    OpenMainMenu(index >= 0 ? index : null);
+                    OmniSearch.SearchText = "Mandalorian";
+                });
+
+                var searchClock = System.Diagnostics.Stopwatch.StartNew();
+                MediaItemViewModel? pick = null;
+                for (var i = 0; i < 180 && pick == null; i++)
+                {
+                    await Task.Delay(500);
+                    pick = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        var disney = OmniSearch.SearchResults.Where(r => DisneyProvider.IsDisney(r.Source)).ToList();
+                        return disney.FirstOrDefault(r => r.Details.StartsWith(DisneyProvider.SeriesLabel, StringComparison.Ordinal)) ?? disney.FirstOrDefault();
+                    });
+                }
+                var counts = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    string.Join(", ", OmniSearch.SearchResults.GroupBy(r => r.Source).Select(g => $"{g.Key}={g.Count()}")));
+                Console.WriteLine($"[AutoTest] Search results by source: {counts} (first Disney+ result after {searchClock.Elapsed.TotalSeconds:F1} s)");
+                if (pick == null)
+                {
+                    Console.WriteLine("[AutoTest] RESULT core=FAILED reason=\"no Disney+ result in search within 90 s\"");
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(4)); // a screenshot of the results
+                Console.WriteLine($"[AutoTest] Playing the Disney+ result: {pick.Name} ({pick.Id}, {pick.Details}, {pick.StreamUrl}).");
+                var playClock = System.Diagnostics.Stopwatch.StartNew();
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => PlayItem(pick));
+
+                var done = await Task.WhenAny(outcome.Task, Task.Delay(TimeSpan.FromSeconds(120)));
+                Console.WriteLine(done != outcome.Task
+                    ? "[AutoTest] RESULT core=FAILED reason=\"no video within 120 s\""
+                    : outcome.Task.Result is { } reason
+                        ? $"[AutoTest] RESULT core=FAILED reason=\"{reason}\""
+                        : $"[AutoTest] RESULT core=PLAYING title=\"{pick.Name}\" play_after={playClock.Elapsed.TotalSeconds:F1}s duration={DisneyEngine.DurationSeconds:F0}s");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AutoTest] ERROR {ex}");
+            }
+        }
+
         private async Task RunNetflixCoreAutoTestAsync()
         {
             try

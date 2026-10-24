@@ -148,6 +148,8 @@ namespace Baird.Tests.Services
         public string? SearchBody { get; set; }
         public string? EntityBody { get; set; }
         public Queue<int> FetchStatuses { get; } = new();
+        public Func<JsonObject>? PollReply { get; set; }
+        public List<string> ControlScripts { get; } = new();
         public int CaptureCalls { get; private set; }
         public int FetchCalls { get; private set; }
         public int SearchStatus { get; set; } = 200;
@@ -159,6 +161,17 @@ namespace Baird.Tests.Services
         public int ThrowOnStateReads { get; set; }
         public Queue<string>? ProfileClickResults { get; set; }
         public bool EmailPresent { get; set; } = true;
+
+        public static JsonObject Poll(double t, bool paused = false, bool ended = false, bool found = true) => new()
+        {
+            ["found"] = found,
+            ["currentTime"] = t,
+            ["readyState"] = 4,
+            ["paused"] = paused,
+            ["ended"] = ended,
+            ["url"] = "https://www.disneyplus.com/en-gb/play/x",
+            ["title"] = "Disney+"
+        };
 
         public static JsonObject State(string url, bool login = false, bool picker = false, bool video = false, double t = 0, string text = "", bool nav = false) => new()
         {
@@ -179,7 +192,16 @@ namespace Baird.Tests.Services
         {
             Scripts.Add(script);
             string json;
-            if (script.Contains("hasProfilePicker")) { if (ThrowOnStateReads-- > 0) throw new InvalidOperationException("CDP Error: Inspected target navigated or closed"); if (States.Count > 0) LastState = States.Dequeue(); json = LastState.ToJsonString(); }
+            if (script.Contains("ended: v.ended"))
+            {
+                json = PollReply != null ? PollReply().ToJsonString() : "null";
+            }
+            else if (script.Contains("action === 'SeekBy'"))
+            {
+                ControlScripts.Add(script);
+                json = "\"video\"";
+            }
+            else if (script.Contains("hasProfilePicker")) { if (ThrowOnStateReads-- > 0) throw new InvalidOperationException("CDP Error: Inspected target navigated or closed"); if (States.Count > 0) LastState = States.Dequeue(); json = LastState.ToJsonString(); }
             else if (script.Contains("return !!document.querySelector('input[type=email]');")) json = EmailPresent ? "true" : "false";
             else if (script.Contains("fetch("))
             {
