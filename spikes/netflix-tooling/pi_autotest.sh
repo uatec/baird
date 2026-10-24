@@ -10,11 +10,12 @@
 #     installed       -> run the brew-installed build via its wrapper (/home/linuxbrew/.linuxbrew/bin/baird)
 #   KEYS="ENTER RIGHT ESC" (optional): after the RESULT line, press each key through uinput (pi_keys.py, sudo) and take
 #     two screenshots 0.5 s apart after each one (hud-NN-KEY-{a,b}.png), so motion and the HUD state can be checked.
+#   BAIRD_TEST_DIR=~/other-dir (optional): run the build in that directory instead of ~/baird-test (to share the Pi).
 # Output: ~/baird-test/shots/{shot-NNN,final-N}.png every 3 s, focus.log (which window had focus), autotest.log (journal lines).
 set -u
 TEST=${1:-netflix}; WHICH=${2:-test}; MAX=${3:-100}
 export XDG_RUNTIME_DIR=/run/user/$(id -u) WAYLAND_DISPLAY=wayland-0 DISPLAY=:0
-T=$HOME/baird-test; SH=$T/shots; mkdir -p $SH; rm -f $SH/*.png $SH/*.log
+T=${BAIRD_TEST_DIR:-$HOME/baird-test}; SH=$T/shots; mkdir -p $SH; rm -f $SH/*.png $SH/*.log
 restore() {
   systemctl --user stop baird-autotest.service 2>/dev/null; sleep 2
   pkill -f "class=baird-netflix" 2>/dev/null          # never leave a signed-in browser behind

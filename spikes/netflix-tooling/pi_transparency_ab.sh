@@ -6,6 +6,7 @@
 #   usage: pi_transparency_ab.sh [seconds-per-variant=120] [baseline]
 #     baseline: skip both checks above; instead compare live TV for the main-branch build in ~/baird-baseline and a test
 #     build in ~/baird-mine, with the Netflix browser on and off (NETFLIX_USER= turns Netflix off).
+#     compare: main (~/baird-baseline) vs ~/baird-final, alternating twice, Netflix browser on.
 # Output: ~/baird-test/transparency/*.png, results on stdout.
 set -u
 SECS=${1:-120}; MODE=${2:-}
@@ -51,6 +52,15 @@ measure() { # label
   n=$(wc -l <<<"$lines")
   echo "| $1 | drops dec/vo start $d0 end $d1 over $n samples | avg cpu ${cpu}% | motion $motion |"
 }
+
+if [ "$MODE" = compare ]; then # main (~/baird-baseline) vs this build (~/baird-final), alternating, Netflix browser on
+  echo "== Live TV main vs this build, alternating (${SECS}s each) =="
+  for round in 1 2; do
+    start_baird true $HOME/baird-baseline; measure "main, round $round"
+    start_baird true $HOME/baird-final; measure "this build, round $round"
+  done
+  exit 0
+fi
 
 if [ "$MODE" = baseline ]; then
   B=$HOME/baird-baseline
