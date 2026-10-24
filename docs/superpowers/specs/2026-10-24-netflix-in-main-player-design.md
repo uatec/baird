@@ -39,7 +39,7 @@ browser (over CDP, as now); the Netflix page never controls itself.
   but this change does not touch Disney code.
 - The spike tabs ("Netflix Spike", "Netflix Search"). They are not part of the core journey.
 - **Netflix search while Netflix plays** (user, 2026-10-24: accept for now). `NetflixSession.SearchAsync` refuses while
-  `IsPlaybackActive`. Search must show Netflix as busy, not as a failed provider; picking another Netflix title means
+  `IsPlaybackActive`. Search must not mark Netflix as failed: it returns no Netflix results (no busy label yet); picking another title means
   stopping the current one first. Searching in a second tab comes later.
 - **OK to pause** (user, 2026-10-24: leave out for now). OK (remapped to `Key.Enter`) does not pause mpv videos today
   although the hint bar says it does; Netflix behaves the same. Space / Play / Pause pause. Fixing OK for every video
