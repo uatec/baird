@@ -291,5 +291,47 @@ namespace Baird.Tests.Controls
 
             Assert.True(await WaitUntil(() => player.PromptText == ""));
         }
+
+        [AvaloniaFact]
+        public async Task QuickSpaceSpace_OverNetflix_PausesThenResumes()
+        {
+            var (svc, _, engine) = NetflixPlaybackEngineTests.Engine();
+            var player = new VideoPlayer(new FakeMpv()) { NetflixEngine = engine };
+            player.Source = WatchUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
+
+            Press(player, Key.Space);
+            Press(player, Key.Space);
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Equal(new[] { (NetflixPlayerAction.Pause, 0.0), (NetflixPlayerAction.Play, 0.0) }, svc.PlayerActions);
+        }
+
+        [AvaloniaFact]
+        public async Task NetflixFailure_HidesTheSpinner_UntilTheNextPlay()
+        {
+            var (_, _, engine) = NetflixPlaybackEngineTests.Engine(video: () => null);
+            var player = new VideoPlayer(new FakeMpv()) { NetflixEngine = engine };
+            player.Source = WatchUrl;
+            Assert.True(await WaitUntil(() => player.IsShowingFailure));
+
+            player.Source = "http://tvh/stream/1";
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(player.IsShowingFailure);
+        }
+
+        [AvaloniaFact]
+        public async Task NetflixUrl_WithoutNetflix_SaysWhy_AndDoesNotUseMpv()
+        {
+            var mpv = new FakeMpv();
+            var player = new VideoPlayer(mpv);
+
+            player.Source = WatchUrl;
+
+            Assert.True(await WaitUntil(() => player.IsShowingFailure));
+            Assert.Contains("Netflix is not set up", player.LoadingText);
+            Assert.Empty(mpv.Played);
+        }
     }
 }
