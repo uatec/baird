@@ -40,6 +40,8 @@ namespace Baird.ViewModels
         public event EventHandler? BackRequested;
         /// <summary>Playback started in Baird-HUD mode: the view must hide Baird's main window and show this HUD on top, with focus.</summary>
         public event Action<NetflixHudViewModel>? HudRequested;
+        /// <summary>The video plays (Baird HUD mode): Baird's player takes over from here (see NetflixPlaybackEngine).</summary>
+        public event Action? PlaybackConfirmed;
 
         /// <summary>
         /// True (default): Baird keeps focus and draws the HUD in its own transparent window over the browser.
@@ -745,6 +747,7 @@ namespace Baird.ViewModels
                 var styled = await _browserService.InjectOverlayScriptAsync(CdpBrowserService.LoadNetflixPageStyleScript(), ct);
                 AddLog(styled ? "[Reveal] Netflix page style applied." : "[Reveal] WARNING: the Netflix page style was not applied; Netflix's own UI may show.");
 
+                PlaybackConfirmed?.Invoke();
                 _hud = new NetflixHudViewModel(_browserService) { Title = HudTitle };
                 _hud.ExitRequested += () => _ = StopPlaybackAsync();
                 HudRequested?.Invoke(_hud);
