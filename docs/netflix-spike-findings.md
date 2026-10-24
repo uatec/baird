@@ -8,8 +8,8 @@ How these were found, and how to test, is in [spike-strategy.md](spike-strategy.
 | Thing | State | Evidence |
 |---|---|---|
 | Netflix playback in Baird on the Pi | **Works** (release 0.0.220) | Unattended test on the installed build: playback started, window revealed over Baird. Screenshots exist (not in repo). |
-| Baird HUD over Netflix (Baird keeps all input) | **Works** (test build, 2026-10-23) | Screenshots on the Pi: video shows through Baird's transparent window; real uinput keys OK/Right/Left/Back reached Baird and drove Netflix's player API. See §1 "Baird-drawn HUD". |
-| Netflix in the core journey (Search → play → HUD → Back) | **Works** (test build, 2026-10-23) | `BAIRD_AUTOTEST=netflix-core` on the Pi: 48 Netflix results beside BBC iPlayer and YouTube, first result played, HUD keys worked, Back wrote history and returned to the results. Netflix resumed at the saved place on the next run. See §1 "Core journey". |
+| Netflix in Baird's normal player (transparent main window, Baird keeps all input) | **Works** (test build, 2026-10-24) | `BAIRD_AUTOTEST=netflix-core` on the Pi: Netflix video under Baird's normal HUD; uinput keys Right/Left/Space/Down/Esc/PgUp drove Netflix's player API, opened the menu over the video, and switched to live TV. Focus never left Baird. See §1 "Netflix in the main player". |
+| Transparency-capable main window vs. live TV frames | **No cost** (2026-10-24) | Same channel, alternating main and this build, 90 s each: VO drops 3442/3344 vs 3422/3408, CPU 114–120% both. But main itself drops ~38 frames/s today (Netflix browser on or off), not the 0 measured on 2026-10-19: a separate regression to find. |
 | Netflix sign-in with configured credentials | **Works** | Signed in on the Pi from a signed-out profile; Netflix reported `CURRENT_MEMBER`. |
 | Netflix search via Netflix's internal API | **Works** (branch `spike/netflix-search`, not deployed) | 48 results for "One Piece" in ~360 ms. Self-heals a stale query id (tested by planting one). |
 | Lottie animations | Work on the Pi | User-confirmed on the TV. |
@@ -102,32 +102,35 @@ The shipped build is trimmed with reflection-based System.Text.Json **disabled**
 throws on the Pi. Use `JsonObject` or the source-generated `BairdJsonContext`. The test project now sets
 `JsonSerializerIsReflectionEnabledByDefault=false`, so this fails in CI.
 
-### Baird-drawn HUD (default since 2026-10-23; `BAIRD_NETFLIX_HUD=html` gives the old HTML overlay)
+### Netflix in the main player (since 2026-10-24)
 
-Baird never gives focus to Chromium. All remote keys go to Baird, and Baird sends commands to the page over CDP.
+Netflix plays through Baird's normal `VideoPlayer`, like any other video. Baird never gives focus to Chromium and never hides
+its main window. Design: `docs/superpowers/specs/2026-10-24-netflix-in-main-player-design.md`.
 
-- **Windows:** when playback is confirmed, Baird hides its main window, so Chromium (kiosk, fullscreen) shows. Then it
-  opens `NetflixHudWindow`: fullscreen, `Topmost`, transparent (`TransparencyLevelHint = Transparent`, same as the
-  Wayland overlay spike). Under XWayland on labwc it reported `transparency=Transparent` and kept focus all the time.
-- **Commands:** `ControlNetflixPlayerAsync` uses Netflix's player API
-  (`netflix.appContext.state.playerApp.getAPI().videoPlayer`, session id starting `watch`): `seek(ms)`, `play()`,
-  `pause()`. It returns `"api"`, `"video"` (fallback to the `<video>` element) or null, and the HUD shows an error for
-  null. On the Pi, every command used `"api"`. A direct `video.currentTime` change can cause Netflix error M7375 (reported
-  by other projects; not tried here).
-- **Status:** the HUD polls `PollVideoPlaybackAsync` every 500 ms. The bar repaints only when a value changes, and hides
-  after 5 s while playing (stays while paused).
-- **Page:** `Resources/netflix-page-style.js` hides Netflix's own UI and the pointer. The age-rating overlay at the start
-  is `.watch-video--advisories-container` (found by probing the live page over CDP).
-- **Exit:** Back (`Escape`, `BrowserBack`, `Back`) stops Chromium and closes the HUD. Then the main window comes back.
-  Under XWayland, `Hide()`/`Show()` loses fullscreen, and setting the same `WindowState` again does nothing; Baird sets
-  `Normal` and then the old state.
-- **Live TV** is paused while the HUD is open (`MainViewModel.IsPaused`), and restored after.
-- **Test:** `KEYS="ENTER ENTER RIGHT LEFT ESC" bash ~/baird-test/pi_autotest.sh netflix test`. `pi_keys.py` presses keys
-  through a uinput device, so they go through labwc like the real remote (xdotool skips the compositor). Motion checked
-  by comparing screenshot pairs 0.5 s apart: moving while playing, 0% change while paused.
-
-The page-signal channel (`Runtime.addBinding` `bairdSignal`, `Runtime.bindingCalled`) stays for the HTML overlay mode and
-for future page events (progress, ended). Tested in headless Chrome (`OverlayBackKey_SignalsBairdToExit`).
+- **Engines:** `VideoPlayer` plays through an `IPlaybackEngine`: mpv (`MpvPlayer`) for most sources, and
+  `NetflixPlaybackEngine` for Netflix watch URLs (`https://www.netflix.com/watch/...`). The HUD, keys, history and
+  Continue Watching are the same for both. mpv-only extras (Tab stats, audio delay, A/V Debug, subtitles) do nothing over
+  Netflix.
+- **Transparency:** the main window is created with `TransparencyLevelHint = Transparent` and a black background. While
+  Netflix plays, `VideoPlayer` clears its area to alpha 0 and raises `IsShowingBrowser`, and `MainView` makes the window
+  background transparent, so the browser behind Baird shows through. It turns on only when the video plays (the loading
+  overlay is opaque until then, so Chromium never flashes), and turns off on stop, failure, end, or another item.
+  `BAIRD_TRANSPARENT_WINDOW=false` drops the hint, but under XWayland on labwc the window still reports
+  `actual=Transparent`.
+- **Commands and status:** `ControlNetflixPlayerAsync` (Netflix's player API: `seek`, `play`, `pause`) and
+  `PollVideoPlaybackAsync` every 500 ms. Two failed polls in a row (no reply, error, or 5 s timeout) show "No contact with
+  the Netflix browser."; three polls without a video end playback (next episode / history as for any video).
+- **Loading and failures:** the normal loading overlay shows the step ("Starting Netflix…", "Signing in to Netflix…",
+  "Loading the video…"), or the reason and "Press Back to return."
+- **Switching:** another item stops Netflix (the browser goes back to its idle page) before mpv plays. Live TV is not
+  paused and restored any more; it's replaced like for any item.
+- **Search while Netflix plays:** Netflix gives no results (not shown as a failure). Searching in a second tab may come later.
+- **Measured on the Pi (2026-10-24, `netflix-core`, keys `RIGHT LEFT SPACE SPACE DOWN ESC PAGEUP`):** play to video
+  6.6 s from the idle browser; every command used `api`; screenshot pairs 0.5 s apart: moving while playing, 0% change
+  while paused; Down opened the menu (opaque, as over mpv), Esc returned to the moving video; PgUp switched to live TV and
+  the window went opaque again. The active window was Baird in every shot.
+- **Test:** `BAIRD_TEST_DIR=~/baird-final KEYS="RIGHT LEFT SPACE SPACE DOWN ESC PAGEUP" bash pi_autotest.sh netflix-core test`.
+  Live TV cost: `pi_transparency_ab.sh 90 compare` (main build in `~/baird-baseline`, this one in `~/baird-final`).
 
 ### Core journey (Netflix in Baird's normal search and playback)
 
@@ -142,17 +145,17 @@ for future page events (progress, ended). Tested in headless Chrome (`OverlayBac
   `robots.txt` idle page; before this change ~6 s (cold start and profile pick). Play to HUD: 6.6–6.9 s, reusing the open
   browser. After Back: 11 Chromium processes still open, 0–8 % CPU (mostly ~1 %) over 5 s windows on the idle page.
   Not measured: memory.
-- **Show and hide:** the browser never closes. It stays behind Baird; for playback Baird hides its main window (the
-  browser shows) and puts its HUD on top, and after Back shows the main window again.
+- **Show and hide:** the browser never closes. It stays behind Baird; for playback Baird's window goes transparent over it
+  (see "Netflix in the main player").
 - **Search:** `NetflixProvider` is a normal `IMediaProvider`, added only when NETFLIX_USER/NETFLIX_PASS are configured.
   Items: id `netflix:<titleId>`, source `Netflix`, type Video, stream URL `https://www.netflix.com/watch/<titleId>`. For
   a series, Netflix plays the episode it would play next for the profile, and resumes at its own saved place.
-- **Play:** `MainViewModel.PlayItem` sends `Netflix` items to `PlayNetflix`, not to mpv. It pushes
-  `NetflixPlaybackViewModel` (title, a simple step text, the reason for a problem), pauses live TV, and runs the proven
-  flow (`NetflixSpikeViewModel`, `KeepBrowserOpen = true`) on the shared browser: it navigates the open browser to the
-  watch URL, and at the end (Back, error, or Back on the page before the video starts) navigates it back to the idle page
-  instead of closing it. If the session is not ready, the page shows why and does not play.
-- **History:** when the HUD closes, the last position and duration go to `UpsertHistoryAsync`. `DataService` now also
+- **Play:** `MainViewModel.PlayItem` plays `Netflix` items like any other item; `VideoPlayer` hands the watch URL to
+  `NetflixPlaybackEngine`, which runs the proven flow (`NetflixSpikeViewModel`, `KeepBrowserOpen = true`) on the shared
+  browser: it navigates the open browser to the watch URL, and at the end (stop, another item, failure, end) navigates it
+  back to the idle page instead of closing it. If the session is not ready, the loading overlay shows why.
+  (Until 2026-10-24 this was a separate playback page and a separate HUD window.)
+- **History:** saved by `VideoPlayer` as for any video (on pause, item switch, end). `DataService` now also
   puts the item's data in the persistent cache, so Continue Watching finds Netflix items after a restart (Netflix has no
   lookup by id).
 - **"Who's watching?" click ignored:** on the Pi the first profile click came while the page was still loading
@@ -164,10 +167,14 @@ for future page events (progress, ended). Tested in headless Chrome (`OverlayBac
 
 - Netflix prompts ("Are you still watching?", "Skip intro", "Next episode") are hidden or not reachable: Chromium never
   has focus. Baird must find them over CDP and show its own buttons.
-- Not tested with the real remote by a person yet (only uinput keys). The remote's Back key must arrive as `Escape` or
-  `BrowserBack`, as it does in the rest of Baird.
-- A brief flash of Chromium can appear before it's lowered behind Baird.
-- Not measured: CPU/smoothness over a full episode with the HUD.
+- Not tested with the real remote by a person yet (only uinput keys).
+- OK does not pause (for any video: OK arrives as Enter, which `VideoPlayer` doesn't handle although the hint says
+  "OK / Space"). Space and Play/Pause do.
+- No Netflix search results while Netflix plays.
+- A small Netflix control (a flag icon, top right) still shows over the video; `netflix-page-style.js` should hide it.
+- A brief flash of Chromium can appear when the browser first opens (before it's lowered behind Baird).
+- Not measured: CPU/smoothness over a full episode; whether Netflix's next-episode autoplay briefly removes the `<video>`
+  (three empty polls, 1.5 s, end playback).
 
 ## 2. Netflix search (branch `spike/netflix-search`, not yet merged)
 
@@ -240,8 +247,8 @@ for future page events (progress, ended). Tested in headless Chrome (`OverlayBac
 | What | Where |
 |---|---|
 | Playback spike | `Baird/ViewModels/NetflixSpikeViewModel.cs`, `Baird/Controls/NetflixSpikeControl.*` |
-| Core journey | `Baird/Services/NetflixSession.cs`, `NetflixProvider.cs`, `Baird/ViewModels/NetflixPlaybackViewModel.cs`, `Baird/Controls/NetflixPlaybackControl.*`, `MainViewModel.PlayNetflix` |
-| Baird HUD over Netflix | `Baird/ViewModels/NetflixHudViewModel.cs`, `Baird/Controls/NetflixHudWindow.cs`, `MainView.ShowNetflixHud`, `Baird/Resources/netflix-page-style.js` |
+| Core journey | `Baird/Services/NetflixSession.cs`, `NetflixProvider.cs`, `NetflixPlaybackEngine.cs` |
+| Netflix in the main player | `Baird/Playback/IPlaybackEngine.cs`, `Baird/Controls/VideoPlayer.cs` (engine choice, `IsShowingBrowser`), `MainView` (window background), `Baird/App.axaml.cs` (transparency hint), `Baird/Resources/netflix-page-style.js` |
 | Browser control (CDP) | `Baird/Services/CdpBrowserService.cs` |
 | Widevine staging (never downgrades) | `Baird/Services/WidevineStager.cs` |
 | Sign-in detection | `Baird/Services/NetflixPageClassifier.cs`, `NetflixCredentials.cs` |

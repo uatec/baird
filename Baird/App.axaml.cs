@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Threading;
 using ReactiveUI;
 using Microsoft.Extensions.Configuration;
@@ -53,8 +54,21 @@ namespace Baird
                 desktop.MainWindow = new Window
                 {
                     Content = new MainView(Configuration),
-                    Title = "Baird"
+                    Title = "Baird",
+                    Background = Brushes.Black,
                 };
+
+                // Netflix plays in a browser behind Baird: the main window goes transparent where the video is. Under X11
+                // a window can only be transparent if it asked for it when it was created, so ask now. Opaque until then.
+                var transparentEnv = Configuration["BAIRD_TRANSPARENT_WINDOW"];
+                var transparent = !bool.TryParse(transparentEnv, out var t) || t;
+                if (transparent)
+                {
+                    desktop.MainWindow.TransparencyLevelHint = new[] { WindowTransparencyLevel.Transparent };
+                }
+                var mainWindow = desktop.MainWindow;
+                mainWindow.Opened += (_, _) =>
+                    Console.WriteLine($"[App] Main window transparency: requested={transparent} actual={mainWindow.ActualTransparencyLevel}");
 
                 // Add Global Focus Logging
                 // Use AddClassHandler to capture all events, but filter in the lambda to reduce noise.

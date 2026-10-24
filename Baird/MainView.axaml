@@ -55,9 +55,6 @@
                     <DataTemplate DataType="{x:Type vm:NetflixSearchSpikeViewModel}">
                         <c:NetflixSearchSpikeControl/>
                     </DataTemplate>
-                    <DataTemplate DataType="{x:Type vm:NetflixPlaybackViewModel}">
-                        <c:NetflixPlaybackControl/>
-                    </DataTemplate>
                     <DataTemplate DataType="{x:Type vm:NetflixSpikeViewModel}">
                         <c:NetflixSpikeControl/>
                     </DataTemplate>

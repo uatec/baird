@@ -90,7 +90,16 @@ namespace Baird.Tests.ViewModels
         public Task<string> ClearSiteDataAsync(string origin, CancellationToken ct = default) { WarmUpCalls++; LastClearedOrigin = origin; return Task.FromResult("mock cleared"); }
 
         public List<string> NavigatedUrls { get; } = new();
-        public Task<bool> NavigateAsync(string url, CancellationToken ct = default) { NavigateCalled = true; LastNavigatedUrl = url; NavigatedUrls.Add(url); return Task.FromResult(true); }
+        /// <summary>Delay before a navigation to Netflix's idle page completes (a slow return to idle).</summary>
+        public TimeSpan IdleNavigateDelay { get; set; }
+        public async Task<bool> NavigateAsync(string url, CancellationToken ct = default)
+        {
+            NavigateCalled = true;
+            if (url == NetflixSession.IdleUrl && IdleNavigateDelay > TimeSpan.Zero) await Task.Delay(IdleNavigateDelay);
+            LastNavigatedUrl = url;
+            NavigatedUrls.Add(url);
+            return true;
+        }
         public Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default) { SubmitCredentialsCalls++; return Task.FromResult(SubmitResult()); }
         public Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default) => Task.FromResult(LoginError);
 
@@ -254,41 +263,21 @@ namespace Baird.Tests.ViewModels
         }
 
         [Fact]
-        public async Task BairdHudMode_DoesNotRaiseBrowser_AndRequestsTheHud()
+        public async Task BairdHudMode_DoesNotRaiseBrowser_AndConfirmsPlayback()
         {
             double t = 0;
             var svc = new MockCdpBrowserService { AuthStatusToReturn = Auth("https://www.netflix.com/browse"), VideoSequence = () => Video(t += 0.4) };
             var vm = Vm(svc);
             vm.UseBairdHud = true;
-            NetflixHudViewModel? hud = null;
-            vm.HudRequested += h => hud = h;
+            var confirmed = 0;
+            vm.PlaybackConfirmed += () => confirmed++;
 
             await vm.LaunchPlaybackFlowAsync();
 
             Assert.Equal(NetflixSpikeState.Playing, vm.State);
             Assert.False(svc.RevealWindowCalled);
-            Assert.NotNull(hud);
+            Assert.Equal(1, confirmed);
             Assert.Contains("baird-page-style", svc.LastInjectedScript);
-        }
-
-        [Fact]
-        public async Task BairdHudMode_BackOnTheHud_StopsTheBrowserAndClosesTheHud()
-        {
-            double t = 0;
-            var svc = new MockCdpBrowserService { AuthStatusToReturn = Auth("https://www.netflix.com/browse"), VideoSequence = () => Video(t += 0.4) };
-            var vm = Vm(svc);
-            vm.UseBairdHud = true;
-            NetflixHudViewModel? hud = null;
-            vm.HudRequested += h => hud = h;
-            await vm.LaunchPlaybackFlowAsync();
-            var closed = false;
-            hud!.Closed += () => closed = true;
-
-            await hud.HandleKeyAsync(Avalonia.Input.Key.Escape);
-
-            Assert.True(svc.StopCalled);
-            Assert.True(closed);
-            Assert.Equal(NetflixSpikeState.Stopped, vm.State);
         }
 
         [Theory]

@@ -29,6 +29,21 @@ namespace Baird.Tests.Services
         };
 
         [Fact]
+        public async Task Search_WhilePlaying_ReturnsNoResultsWithoutThrowing()
+        {
+            var svc = new MockCdpBrowserService { SessionSequence = Member, GraphQlReply = _ => Reply() };
+            var session = Session(svc);
+            session.IsPlaybackActive = true;
+            var provider = new NetflixProvider(session);
+
+            var items = (await provider.SearchAsync("One Piece")).ToList();
+
+            Assert.Empty(items);
+            Assert.Empty(svc.GraphQlBodies);
+            Assert.False(svc.LaunchCalled);
+        }
+
+        [Fact]
         public async Task Search_MapsResultsToNetflixItemsThatPlayTheWatchUrl()
         {
             var svc = new MockCdpBrowserService { SessionSequence = Member, GraphQlReply = _ => Reply() };
@@ -64,20 +79,6 @@ namespace Baird.Tests.Services
             Assert.Equal(0, reads);
             Assert.False(svc.StopCalled);
             Assert.Equal(2, svc.GraphQlBodies.Count);
-        }
-
-        [Fact]
-        public async Task Search_WhileNetflixPlays_FailsWithoutTouchingTheBrowser()
-        {
-            var svc = new MockCdpBrowserService { SessionSequence = Member, GraphQlReply = _ => Reply() };
-            var session = Session(svc);
-            session.IsPlaybackActive = true;
-
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => new NetflixProvider(session).SearchAsync("x"));
-
-            Assert.Contains("playing", ex.Message);
-            Assert.False(svc.LaunchCalled);
-            Assert.Empty(svc.GraphQlBodies);
         }
 
         [Fact]

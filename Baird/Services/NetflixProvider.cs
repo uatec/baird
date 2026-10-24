@@ -9,7 +9,7 @@ namespace Baird.Services
 {
     /// <summary>
     /// Netflix in Baird's normal search. Results come from the signed-in session (<see cref="NetflixSession"/>), so only titles
-    /// this account can watch appear. Playing one goes to the Netflix playback page, not to mpv (see MainViewModel.PlayItem).
+    /// this account can watch appear. Playing one goes through Baird's normal player, which plays it in the Netflix browser (NetflixPlaybackEngine).
     /// </summary>
     public class NetflixProvider : IMediaProvider
     {
@@ -29,6 +29,12 @@ namespace Baird.Services
         public async Task<IEnumerable<MediaItemData>> SearchAsync(string query, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItemData>();
+            if (_session.IsPlaybackActive)
+            {
+                // The one Netflix browser is playing; searching in it would disturb the video. Not a failure.
+                Console.WriteLine("[NetflixProvider] Netflix is playing; no Netflix results until it stops.");
+                return Enumerable.Empty<MediaItemData>();
+            }
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(60));

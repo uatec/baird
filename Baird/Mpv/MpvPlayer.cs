@@ -19,7 +19,7 @@ namespace Baird.Mpv
     ///   - property reads are served from values cached by mpv_observe_property on the event thread;
     ///   - only mpv_render_* functions are called from the render thread.
     /// </summary>
-    public class MpvPlayer : IDisposable, IAvDiagnosticsSource
+    public class MpvPlayer : IDisposable, IAvDiagnosticsSource, Baird.Playback.IPlaybackEngine
     {
         // Observe-property reply ids
         private const ulong ObservePause = 1;
