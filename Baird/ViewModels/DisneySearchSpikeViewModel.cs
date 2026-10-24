@@ -19,10 +19,8 @@ namespace Baird.ViewModels
     {
         public const string DefaultSearchTerm = "Mandalorian";
 
-        private readonly ICdpBrowserService _browser;
-        private readonly DisneySession _session;
-        private readonly DisneyCredentials? _credentials;
-        private readonly string? _profileName;
+        private readonly DisneyService _service;
+        private readonly bool _shared;
 
         public event EventHandler? BackRequested;
 
@@ -42,12 +40,14 @@ namespace Baird.ViewModels
         private bool _succeeded;
         public bool Succeeded { get => _succeeded; private set => this.RaiseAndSetIfChanged(ref _succeeded, value); }
 
-        public string ProfileDir { get; set; } = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "baird", "browser-profile");
+        public string ProfileDir { get => _service.Hub.ProfileDir; set => _service.Hub.ProfileDir = value; }
 
         public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(120);
-        public TimeSpan SignInTimeout { get; set; } = TimeSpan.FromSeconds(60);
-        public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(500);
+        public TimeSpan SignInTimeout { get => _service.SignInTimeout; set => _service.SignInTimeout = value; }
+        public TimeSpan PollInterval { get => _service.PollInterval; set => _service.PollInterval = value; }
+
+        /// <summary>True for Baird's shared browser, which stays open after a search; false closes the browser (a Disney+-only browser).</summary>
+        public bool KeepBrowserOpen { get; set; }
 
         public ReactiveCommand<Unit, Unit> SearchCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
@@ -55,22 +55,35 @@ namespace Baird.ViewModels
         public DisneySearchSpikeViewModel(DisneyCredentials? credentials = null, string? profileName = null)
             : this(new CdpBrowserService(), credentials, profileName) { }
 
+        /// <summary>A Disney+-only browser (tests, no shared browser). It closes the browser after each search.</summary>
         public DisneySearchSpikeViewModel(ICdpBrowserService browser, DisneyCredentials? credentials = null, string? profileName = null)
+            : this(new DisneyService(new BrowserHub(browser) { Port = 9225 }, credentials, profileName), shared: false)
         {
-            _browser = browser;
-            _credentials = credentials;
-            _profileName = profileName;
-            if (_browser is CdpBrowserService cdp) cdp.LogMessage += AddLog;
-            _session = new DisneySession(browser, (browser as ICdpPageDriver) ?? throw new ArgumentException("browser must also implement ICdpPageDriver"), AddLog);
+            if (browser is CdpBrowserService cdp) cdp.LogMessage += AddLog;
+        }
+
+        /// <summary>Disney+ on Baird's shared browser. The service's log reaches the journal once, from where it was created.</summary>
+        public DisneySearchSpikeViewModel(DisneyService service) : this(service, shared: true) { KeepBrowserOpen = true; }
+
+        private DisneySearchSpikeViewModel(DisneyService service, bool shared)
+        {
+            _service = service;
+            _shared = shared;
+            _service.Log += shared ? AddScreenLog : AddLog; // shared: the service's lines reach the journal once, from where it was created
             SearchCommand = ReactiveCommand.CreateFromTask(SearchAsync, this.WhenAnyValue(x => x.CanSearch));
             BackCommand = ReactiveCommand.Create(() => BackRequested?.Invoke(this, EventArgs.Empty));
         }
 
-        public void AddLog(string message)
+        private void AddScreenLog(string message)
         {
             LogEntries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-            Console.WriteLine($"[DisneySearch] {message}"); // journal; never contains the password or the token
             if (LogEntries.Count > 200) LogEntries.RemoveAt(0);
+        }
+
+        public void AddLog(string message)
+        {
+            AddScreenLog(message);
+            Console.WriteLine($"[DisneySearch] {message}"); // journal; never contains the password or the token
         }
 
         public async Task SearchAsync()
@@ -85,29 +98,19 @@ namespace Baird.ViewModels
             try
             {
                 Status = $"Searching Disney+ for \"{term}\"...";
-                // Port 9225: the Netflix spikes use 9222 and 9223, the Disney playback spike 9224. The profile is shared, so never at the same time.
-                if (!await _browser.LaunchAsync(_browser.FindBrowserExecutable(), DisneySearchParser.SearchPageUrl, 9225, ProfileDir, false, ct))
+                var outcome = await _service.SearchAsync(term, ct);
+                if (!outcome.Ok)
                 {
-                    Status = $"FAILED: could not start the browser: {_browser.LastError ?? "unknown error"} (is another spike still running?)";
+                    var failure = outcome.Failure ?? "no reply";
+                    Status = failure.StartsWith("FAILED", StringComparison.Ordinal) ? failure : "FAILED: " + failure;
+                    AddLog(Status);
                     return;
                 }
 
-                var problem = await _session.EnsureSignedInAsync(_credentials, _profileName, SignInTimeout, PollInterval, ct);
-                if (problem != null) { Status = problem; AddLog(problem); return; }
-
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                var reply = await _session.SearchAsync(term, ct);
-                AddLog(reply.Ok ? $"API: {reply.Results.Count} results in {sw.ElapsedMilliseconds} ms (incl. token capture)" : $"API error: {reply.ErrorMessage}");
-                if (!reply.Ok)
-                {
-                    Status = $"FAILED: Disney+ search error: {reply.ErrorMessage}";
-                    return;
-                }
-
-                foreach (var r in reply.Results) Results.Add(r);
+                foreach (var r in outcome.Reply!.Results) Results.Add(r);
                 Succeeded = Results.Count > 0;
                 Status = Succeeded
-                    ? $"Found {Results.Count} titles for \"{term}\" in this account's Disney+ catalogue ({sw.ElapsedMilliseconds} ms)."
+                    ? $"Found {Results.Count} titles for \"{term}\" in this account's Disney+ catalogue ({outcome.ElapsedMs} ms)."
                     : $"No titles found for \"{term}\".";
                 AddLog(Status);
             }
@@ -123,7 +126,7 @@ namespace Baird.ViewModels
             }
             finally
             {
-                try { await _browser.StopAsync(); } catch { }
+                if (!KeepBrowserOpen) { try { await _service.Browser.StopAsync(); } catch { } }
                 IsBusy = false;
             }
         }

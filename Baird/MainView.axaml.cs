@@ -91,6 +91,12 @@ namespace Baird
             }
             else Console.WriteLine("[MainView] Netflix not in search: no NETFLIX_USER/NETFLIX_PASS in config.ini.");
 
+            // Disney+ uses the same browser, window and tab (netflixSession.Hub): one service at a time, each navigates the tab to
+            // its own site when it takes over. It signs in on first use; it does not open the browser at start-up.
+            var disneyService = new DisneyService(netflixSession.Hub, DisneyCredentials.FromConfiguration(config),
+                config["DISNEY_PROFILE"] is { Length: > 0 } dnProfile ? dnProfile : null);
+            disneyService.Log += m => Console.WriteLine($"[DisneyService] {m}");
+
             _cecService = new CecService();
             _historyService = new JsonHistoryService();
             var watchlistService = new JsonWatchlistService();
@@ -118,7 +124,7 @@ namespace Baird
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
 
-            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession);
+            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession, disneyService);
 
             DataContext = _viewModel;
 

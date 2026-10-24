@@ -28,20 +28,27 @@ namespace Baird.Services
         /// </summary>
         public const string IdleUrl = "https://www.netflix.com/robots.txt";
 
-        private readonly SemaphoreSlim _lock = new(1, 1);
+        private const string Owner = "Netflix";
+        private readonly BrowserHub _hub;
         private readonly string? _profileName;
         private int _memberConfirmedPid;
         private readonly CancellationTokenSource _lifetime = new();
 
-        public ICdpBrowserService Browser { get; }
+        public ICdpBrowserService Browser => _hub.Browser;
         public NetflixCredentials? Credentials { get; }
 
-        /// <summary>True while a playback flow owns the browser; search then answers with a failure instead of disturbing it.</summary>
-        public bool IsPlaybackActive { get; set; }
+        /// <summary>The shared browser (also used by Disney+).</summary>
+        public BrowserHub Hub => _hub;
 
-        public int Port { get; set; } = CdpPort;
-        public string ProfileDir { get; set; } = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "baird", "browser-profile");
+        /// <summary>True while a Netflix playback flow owns the browser; search then answers with a failure instead of disturbing it.</summary>
+        public bool IsPlaybackActive
+        {
+            get => _hub.ActivePlayback == Owner;
+            set { if (value) _hub.ActivePlayback = Owner; else if (_hub.ActivePlayback == Owner) _hub.ActivePlayback = null; }
+        }
+
+        public int Port { get => _hub.Port; set => _hub.Port = value; }
+        public string ProfileDir { get => _hub.ProfileDir; set => _hub.ProfileDir = value; }
         /// <summary>Where a refreshed copy of Netflix's search request is cached (next to the browser profile).</summary>
         public string QueryCachePath { get; set; } = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "baird", "netflix-search-query.json");
@@ -53,9 +60,10 @@ namespace Baird.Services
 
         public event Action<string>? Log;
 
-        public NetflixSession(ICdpBrowserService browser, NetflixCredentials? credentials, string? profileName = null)
+        /// <param name="hub">The shared browser. Omit it for a Netflix-only browser (spikes, tests).</param>
+        public NetflixSession(ICdpBrowserService browser, NetflixCredentials? credentials, string? profileName = null, BrowserHub? hub = null)
         {
-            Browser = browser;
+            _hub = hub ?? new BrowserHub(browser) { Port = CdpPort };
             Credentials = credentials;
             _profileName = profileName;
         }
@@ -66,8 +74,9 @@ namespace Baird.Services
         public async Task<NetflixSearchOutcome> SearchAsync(string term, CancellationToken ct)
         {
             if (IsPlaybackActive) return new(null, "Netflix is playing; search is paused until playback ends.", 0);
+            if (_hub.BlockedFor(Owner) is { } blocked) return new(null, $"{blocked} Search is paused.", 0);
 
-            await _lock.WaitAsync(ct);
+            await _hub.Gate.WaitAsync(ct);
             try
             {
                 var failure = await EnsureReadyCoreAsync(ct);
@@ -105,7 +114,7 @@ namespace Baird.Services
             }
             finally
             {
-                _lock.Release();
+                _hub.Gate.Release();
             }
         }
 
@@ -115,26 +124,39 @@ namespace Baird.Services
         /// </summary>
         public async Task<string?> EnsureReadyAsync(CancellationToken ct)
         {
-            await _lock.WaitAsync(ct);
+            await _hub.Gate.WaitAsync(ct);
             try { return await EnsureReadyCoreAsync(ct); }
-            finally { _lock.Release(); }
+            finally { _hub.Gate.Release(); }
         }
 
         private async Task<string?> EnsureReadyCoreAsync(CancellationToken ct)
         {
-            if (Browser.IsRunning && _memberConfirmedPid == Browser.ProcessId) return null;
+            if (_hub.BlockedFor(Owner) is { } blocked) return blocked;
+
+            if (Browser.IsRunning && _memberConfirmedPid == Browser.ProcessId)
+            {
+                if (_hub.PageOwner != Owner && !IsPlaybackActive)
+                {
+                    // Another service (Disney+) used the tab since: Netflix's search is a same-origin fetch, so be on netflix.com again.
+                    await Browser.NavigateAsync(IdleUrl, ct);
+                    AddLog("The tab was last used by another service; back on the Netflix idle page.");
+                }
+                _hub.PageOwner = Owner;
+                return null;
+            }
 
             var sw = Stopwatch.StartNew();
             if (!Browser.IsRunning)
             {
                 AddLog("Opening the Netflix browser (hidden behind Baird)...");
-                if (!await Browser.LaunchAsync(Browser.FindBrowserExecutable(), BrowseUrl, Port, ProfileDir, false, ct))
-                    return $"Could not start the browser: {Browser.LastError ?? "unknown error"}";
+                var launchFailure = await _hub.EnsureRunningAsync(BrowseUrl, ct);
+                if (launchFailure != null) return launchFailure;
             }
             else
             {
                 await Browser.NavigateAsync(BrowseUrl, ct); // opened by something else (e.g. a spike tab): check from the start
             }
+            _hub.PageOwner = Owner;
 
             // The search API also answers signed-out browsers, with the general country catalogue, which would not be
             // "filtered by this account": make sure this is a signed-in member on a chosen profile first.
@@ -160,7 +182,7 @@ namespace Baird.Services
                     await Task.Delay(delay, ct);
                     while (!ct.IsCancellationRequested)
                     {
-                        if (!IsPlaybackActive && (!Browser.IsRunning || _memberConfirmedPid != Browser.ProcessId))
+                        if (_hub.ActivePlayback == null && (!Browser.IsRunning || _memberConfirmedPid != Browser.ProcessId))
                         {
                             try
                             {

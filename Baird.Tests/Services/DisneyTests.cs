@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Baird.Models;
 using Baird.Services;
 using Baird.ViewModels;
 using Xunit;
@@ -145,6 +146,10 @@ namespace Baird.Tests.Services
         public Queue<JsonObject> States { get; } = new();
         public JsonObject LastState { get; set; } = new();
         public string? SearchBody { get; set; }
+        public string? EntityBody { get; set; }
+        public Queue<int> FetchStatuses { get; } = new();
+        public int CaptureCalls { get; private set; }
+        public int FetchCalls { get; private set; }
         public int SearchStatus { get; set; } = 200;
         public CapturedRequest? Captured { get; set; } = new("https://disney.api.edge.bamgrid.com/explore/v1.21/globalNav", "GET", null,
             new Dictionary<string, string> { ["authorization"] = "Bearer SECRET-TOKEN", ["x-bamsdk-platform"] = "javascript/linux/chrome" });
@@ -176,7 +181,13 @@ namespace Baird.Tests.Services
             string json;
             if (script.Contains("hasProfilePicker")) { if (ThrowOnStateReads-- > 0) throw new InvalidOperationException("CDP Error: Inspected target navigated or closed"); if (States.Count > 0) LastState = States.Dequeue(); json = LastState.ToJsonString(); }
             else if (script.Contains("return !!document.querySelector('input[type=email]');")) json = EmailPresent ? "true" : "false";
-            else if (script.Contains("fetch(")) json = JsonValue.Create(new JsonObject { ["status"] = SearchStatus, ["body"] = SearchBody }.ToJsonString())!.ToJsonString();
+            else if (script.Contains("fetch("))
+            {
+                FetchCalls++;
+                var status = FetchStatuses.Count > 0 ? FetchStatuses.Dequeue() : SearchStatus;
+                var body = script.Contains("/page/entity-") ? EntityBody : SearchBody;
+                json = JsonValue.Create(new JsonObject { ["status"] = status, ["body"] = body }.ToJsonString())!.ToJsonString();
+            }
             else if (script.Contains("profile-avatar")) { json = ProfileClickResults is { Count: > 0 } q ? q.Dequeue() : "\"Robert\""; if (json != "null") ProfileClicked = "Robert"; }
             else json = "true"; // WaitFor conditions and clicks
             return Task.FromResult<JsonElement?>(JsonDocument.Parse(json).RootElement.Clone());
@@ -185,7 +196,10 @@ namespace Baird.Tests.Services
         public Task<bool> TypeIntoAsync(string selector, string text, CancellationToken ct = default) { Typed.Add(selector); return Task.FromResult(true); }
         public Task PressEnterAsync(CancellationToken ct = default) => Task.CompletedTask;
         public Task<CapturedRequest?> NavigateAndCaptureAsync(string url, Func<CapturedRequest, bool> match, TimeSpan timeout, CancellationToken ct = default)
-            => Task.FromResult(Captured != null && match(Captured) ? Captured : null);
+        {
+            CaptureCalls++;
+            return Task.FromResult(Captured != null && match(Captured) ? Captured : null);
+        }
     }
 
     public class DisneySpikeViewModelTests
@@ -463,4 +477,600 @@ namespace Baird.Tests.Services
             Assert.Contains("DISNEY_USER", vm.Status);
         }
     }
+
+    /// <summary>One browser, one tab, two services: attach, hand the tab over, and never disturb a playing service.</summary>
+    public class SharedBrowserTests
+    {
+        private const string Home = "https://www.disneyplus.com/en-gb/home";
+        private const string Play = "https://www.disneyplus.com/en-gb/play/d830ec57-499e-498c-b6b3-2b85a18a5f51";
+
+        private static (FakeDisneyBrowser Browser, BrowserHub Hub, DisneyService Disney, NetflixSession Netflix) Setup()
+        {
+            var b = new FakeDisneyBrowser
+            {
+                LastState = FakeDisneyBrowser.State(Home, nav: true),
+                SessionSequence = () => new NetflixSessionState("https://www.netflix.com/browse", false, true, System.Array.Empty<string>())
+            };
+            var hub = new BrowserHub(b);
+            var disney = new DisneyService(hub, new DisneyCredentials("me@example.com", "pw"))
+            {
+                SignInTimeout = TimeSpan.FromSeconds(3),
+                PollInterval = TimeSpan.FromMilliseconds(10)
+            };
+            var netflix = new NetflixSession(b, new NetflixCredentials("me@example.com", "pw"), hub: hub)
+            {
+                PollInterval = TimeSpan.FromMilliseconds(10),
+                SettleDelay = TimeSpan.FromMilliseconds(10)
+            };
+            return (b, hub, disney, netflix);
+        }
+
+        [Fact]
+        public async Task Disney_attaches_to_a_browser_that_is_already_open_instead_of_starting_another()
+        {
+            var (b, hub, disney, _) = Setup();
+            b.IsRunning = true; // opened earlier (by the Netflix session)
+
+            var failure = await disney.EnsureReadyAsync(CancellationToken.None);
+
+            Assert.Null(failure);
+            Assert.False(b.LaunchCalled);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+            Assert.Equal("Disney+", hub.PageOwner);
+        }
+
+        [Fact]
+        public async Task Disney_starts_the_browser_on_the_shared_port_and_profile_when_nobody_has()
+        {
+            var (b, hub, disney, _) = Setup();
+            hub.Port = 9222;
+            var failure = await disney.EnsureReadyAsync(CancellationToken.None);
+            Assert.Null(failure);
+            Assert.True(b.LaunchCalled);
+        }
+
+        [Fact]
+        public async Task A_search_leaves_the_tab_on_the_idle_page_and_the_browser_open()
+        {
+            var (b, _, disney, _) = Setup();
+            b.SearchBody = DisneySearchParserTests.Reply(DisneySearchParserTests.Item("The Mandalorian", "id-1", "series"));
+
+            var outcome = await disney.SearchAsync("mandalorian", CancellationToken.None);
+
+            Assert.True(outcome.Ok);
+            Assert.Single(outcome.Reply!.Results);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+            Assert.False(b.StopCalled);
+        }
+
+        [Fact]
+        public async Task Netflix_takes_the_tab_back_after_Disney_used_it()
+        {
+            var (b, hub, disney, netflix) = Setup();
+
+            Assert.Null(await netflix.EnsureReadyAsync(CancellationToken.None));
+            Assert.Equal("Netflix", hub.PageOwner);
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None));
+            Assert.Equal("Disney+", hub.PageOwner);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+
+            Assert.Null(await netflix.EnsureReadyAsync(CancellationToken.None));
+
+            Assert.Equal("Netflix", hub.PageOwner);
+            Assert.Equal(NetflixSession.IdleUrl, b.LastNavigatedUrl); // Netflix's search is a same-origin fetch: it must be on netflix.com
+        }
+
+        [Fact]
+        public async Task Disney_takes_the_tab_back_after_Netflix_used_it()
+        {
+            var (b, hub, disney, netflix) = Setup();
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None));
+            Assert.Null(await netflix.EnsureReadyAsync(CancellationToken.None));
+            Assert.Equal("Netflix", hub.PageOwner);
+
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None));
+
+            Assert.Equal("Disney+", hub.PageOwner);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+        }
+
+        [Fact]
+        public async Task A_playing_Disney_blocks_Netflix_from_the_tab()
+        {
+            var (b, _, disney, netflix) = Setup();
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None));
+            disney.IsPlaybackActive = true;
+
+            var ready = await netflix.EnsureReadyAsync(CancellationToken.None);
+            var search = await netflix.SearchAsync("x", CancellationToken.None);
+
+            Assert.Contains("Disney+ is playing", ready);
+            Assert.Contains("Disney+ is playing", search.Failure);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl); // untouched
+        }
+
+        [Fact]
+        public async Task A_playing_Netflix_blocks_Disney_from_the_tab()
+        {
+            var (b, _, disney, netflix) = Setup();
+            Assert.Null(await netflix.EnsureReadyAsync(CancellationToken.None));
+            netflix.IsPlaybackActive = true;
+            var urlBefore = b.LastNavigatedUrl;
+
+            var ready = await disney.EnsureReadyAsync(CancellationToken.None);
+            var search = await disney.SearchAsync("x", CancellationToken.None);
+
+            Assert.Contains("Netflix is playing", ready);
+            Assert.Contains("Netflix is playing", search.Failure);
+            Assert.Equal(urlBefore, b.LastNavigatedUrl);
+        }
+
+        [Fact]
+        public async Task Beginning_playback_inside_EnsureReady_marks_it_only_on_success()
+        {
+            var (b, hub, disney, _) = Setup();
+            Assert.Null(await disney.EnsureReadyAsync(CancellationToken.None, beginPlayback: true));
+            Assert.Equal("Disney+", hub.ActivePlayback);
+            disney.IsPlaybackActive = false;
+
+            b.LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/identity/login/enter-email", login: true);
+            var other = new DisneyService(new BrowserHub(b), null) { SignInTimeout = TimeSpan.FromMilliseconds(300), PollInterval = TimeSpan.FromMilliseconds(10) };
+            Assert.NotNull(await other.EnsureReadyAsync(CancellationToken.None, beginPlayback: true));
+            Assert.Null(other.Hub.ActivePlayback);
+        }
+
+        [Fact]
+        public async Task The_playback_flag_of_one_service_never_clears_the_other()
+        {
+            var (_, hub, disney, netflix) = Setup();
+            disney.IsPlaybackActive = true;
+            netflix.IsPlaybackActive = false; // a stale "playback ended" from Netflix
+            Assert.Equal("Disney+", hub.ActivePlayback);
+            disney.IsPlaybackActive = false;
+            Assert.Null(hub.ActivePlayback);
+        }
+
+        [Fact]
+        public async Task Shared_Disney_playback_keeps_the_browser_open_and_returns_the_tab_to_the_idle_page()
+        {
+            var (b, hub, disney, _) = Setup();
+            b.States.Enqueue(FakeDisneyBrowser.State(Home, nav: true));
+            for (int t = 1; t <= 12; t++) b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: t));
+            var vm = new DisneySpikeViewModel(disney) { BufferingTimeout = TimeSpan.FromSeconds(2) };
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal("Disney+", hub.ActivePlayback);
+            Assert.True(vm.KeepBrowserOpen);
+
+            b.RaisePageSignal("{\"type\":\"exit\"}"); // remote Back
+
+            Assert.Equal(DisneySpikeState.Stopped, vm.State);
+            Assert.False(b.StopCalled);
+            Assert.True(b.HideWindowCalled); // the revealed window must go back behind Baird, or the TV keeps showing the browser
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+            Assert.Null(hub.ActivePlayback);
+            Assert.Contains("stays open", vm.StatusMessage);
+        }
+
+        [Fact]
+        public async Task A_failed_shared_playback_returns_the_tab_and_frees_the_browser()
+        {
+            var (b, hub, disney, _) = Setup();
+            b.LastState = FakeDisneyBrowser.State(Home, nav: true);
+            var vm = new DisneySpikeViewModel(disney) { BufferingTimeout = TimeSpan.FromMilliseconds(300) };
+
+            await vm.LaunchPlaybackFlowAsync();
+
+            Assert.Equal(DisneySpikeState.Failed, vm.State);
+            Assert.False(b.StopCalled);
+            Assert.Null(hub.ActivePlayback);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+        }
+    }
+
+    /// <summary>Shapes mirror GET /explore/v1.21/page/entity-{id} (observed Oct 2026), trimmed to the fields Baird reads.</summary>
+    internal static class DisneyEntityFixtures
+    {
+        public const string SeriesId = "422f6dcc-226f-44e7-98d4-22de69b31cf3";
+        public const string Episode1 = "8b4a1f96-9a29-45fd-b642-ab99ba2bc0ba";
+        public const string Episode2 = "f6bc4f01-2ae0-44f0-b2a8-29c0a8b18fb5";
+
+        private static JsonObject Meta(double? runtimeMs) => runtimeMs is { } ms
+            ? new JsonObject { ["runtime"] = new JsonObject { ["runtimeMs"] = ms } }
+            : new JsonObject();
+
+        private static JsonObject Playback(string deeplinkId, string text = "CONTINUE") =>
+            new() { ["type"] = "playback", ["deeplinkId"] = deeplinkId, ["visuals"] = new JsonObject { ["displayText"] = text } };
+
+        private static JsonObject Episode(string id, string title, int season, int number, double? runtimeMs) => new()
+        {
+            ["type"] = "view",
+            ["id"] = id,
+            ["visuals"] = new JsonObject
+            {
+                ["title"] = "The Mandalorian",
+                ["episodeTitle"] = title,
+                ["seasonNumber"] = season.ToString(),
+                ["episodeNumber"] = number.ToString(),
+                ["metastringParts"] = Meta(runtimeMs)
+            }
+        };
+
+        public static string Series(string playId = Episode1, bool withPlayback = true) => new JsonObject
+        {
+            ["data"] = new JsonObject
+            {
+                ["page"] = new JsonObject
+                {
+                    ["visuals"] = new JsonObject { ["title"] = "The Mandalorian", ["metastringParts"] = Meta(null) },
+                    ["actions"] = withPlayback
+                        ? new JsonArray(Playback(playId), Playback(playId, "RESTART"), new JsonObject { ["type"] = "trailer", ["deeplinkId"] = "trailer-id" })
+                        : new JsonArray(new JsonObject { ["type"] = "trailer", ["deeplinkId"] = "trailer-id" }),
+                    ["containers"] = new JsonArray(
+                        new JsonObject { ["type"] = "set", ["id"] = "suggested", ["items"] = new JsonArray() },
+                        new JsonObject
+                        {
+                            ["type"] = "episodes",
+                            ["seasons"] = new JsonArray(new JsonObject
+                            {
+                                ["type"] = "season",
+                                ["items"] = new JsonArray(
+                                    Episode(Episode1, "Chapter 1: The Mandalorian", 1, 1, 2_037_000),
+                                    Episode(Episode2, "Chapter 2: The Child", 1, 2, 1_860_000))
+                            })
+                        })
+                }
+            }
+        }.ToJsonString();
+
+        public static string Film(string id, double runtimeMs = 8_062_084) => new JsonObject
+        {
+            ["data"] = new JsonObject
+            {
+                ["page"] = new JsonObject
+                {
+                    ["visuals"] = new JsonObject { ["title"] = "Star Wars: The Mandalorian and Grogu", ["metastringParts"] = Meta(runtimeMs) },
+                    ["actions"] = new JsonArray(Playback(id)),
+                    ["containers"] = new JsonArray()
+                }
+            }
+        }.ToJsonString();
+    }
+
+    public class DisneyEntityParserTests
+    {
+        [Fact]
+        public void A_series_page_gives_the_next_episode_its_length_and_a_label()
+        {
+            var target = DisneySearchParser.ParseEntityPlayTarget(200, DisneyEntityFixtures.Series(DisneyEntityFixtures.Episode2), out var failure);
+
+            Assert.Null(failure);
+            Assert.Equal(DisneyEntityFixtures.Episode2, target!.PlayId);
+            Assert.Equal(1860, target.RuntimeSeconds);
+            Assert.Equal("The Mandalorian — S1:E2 Chapter 2: The Child", target.Label);
+            Assert.Equal("https://www.disneyplus.com/en-gb/play/" + DisneyEntityFixtures.Episode2, target.PlayUrl);
+        }
+
+        [Fact]
+        public void A_film_page_gives_its_play_id_and_the_length_from_the_page()
+        {
+            var target = DisneySearchParser.ParseEntityPlayTarget(200, DisneyEntityFixtures.Film("film-1"), out _);
+
+            Assert.Equal("film-1", target!.PlayId);
+            Assert.Equal(8062.084, target.RuntimeSeconds, 3);
+            Assert.Equal("Star Wars: The Mandalorian and Grogu", target.Label);
+        }
+
+        [Fact]
+        public void An_episode_without_a_runtime_has_an_unknown_length_not_the_series_one()
+        {
+            var json = DisneyEntityFixtures.Series().Replace("2037000", "0");
+            var target = DisneySearchParser.ParseEntityPlayTarget(200, json, out _);
+            Assert.Equal(0, target!.RuntimeSeconds);
+        }
+
+        [Fact]
+        public void A_page_without_a_playback_action_says_it_cannot_be_played()
+        {
+            var target = DisneySearchParser.ParseEntityPlayTarget(200, DisneyEntityFixtures.Series(withPlayback: false), out var failure);
+            Assert.Null(target);
+            Assert.Contains("no playback action", failure);
+        }
+
+        [Theory]
+        [InlineData(404, "{}", "HTTP 404")]
+        [InlineData(200, "", "no reply")]
+        [InlineData(200, "<html>", "BAD_JSON")]
+        [InlineData(200, "{\"data\":{}}", "no data.page")]
+        public void Errors_are_reported_with_the_reason(int status, string body, string expected)
+        {
+            var target = DisneySearchParser.ParseEntityPlayTarget(status, body, out var failure);
+            Assert.Null(target);
+            Assert.Contains(expected, failure);
+        }
+
+        [Fact]
+        public void Search_results_carry_the_runtime_and_description()
+        {
+            var item = new JsonObject
+            {
+                ["type"] = "view",
+                ["id"] = "x1",
+                ["visuals"] = new JsonObject
+                {
+                    ["title"] = "A Film",
+                    ["description"] = new JsonObject { ["brief"] = "Short text." },
+                    ["metastringParts"] = new JsonObject { ["runtime"] = new JsonObject { ["runtimeMs"] = 5_400_000 } }
+                }
+            }.ToJsonString();
+
+            var result = DisneySearchParser.Parse(200, DisneySearchParserTests.Reply(item)).Results.Single();
+
+            Assert.Equal(5400, result.RuntimeSeconds);
+            Assert.Equal("Short text.", result.Description);
+        }
+    }
+
+    public class DisneyProviderTests
+    {
+        private static DisneySearchResult Film() => new("Star Wars: The Mandalorian and Grogu", "film-1", "https://img/x", "movie", "12+", "2026", 8062, "A film.");
+        private static DisneySearchResult Series() => new("The Mandalorian", "series-1", null, "series", "14+", "2019");
+
+        [Fact]
+        public void A_film_becomes_a_video_item_that_names_the_kind_year_and_rating()
+        {
+            var item = DisneyProvider.ToMediaItem(Film());
+
+            Assert.Equal("disney:film-1", item.Id);
+            Assert.Equal("Disney+", item.Source);
+            Assert.Equal("Film · 2026 · 12+", item.Details);
+            Assert.Equal("A film.", item.Synopsis);
+            Assert.Equal(TimeSpan.FromSeconds(8062), item.Duration);
+            Assert.False(item.IsLive);
+            Assert.True(DisneyProvider.IsFilm(item));
+            Assert.Equal("film-1", DisneyProvider.EntityIdOf(item.Id));
+        }
+
+        [Fact]
+        public void A_series_item_links_the_entity_page_not_a_play_url_because_a_series_id_is_not_a_play_id()
+        {
+            var item = DisneyProvider.ToMediaItem(Series());
+
+            Assert.Equal("Series · 2019 · 14+", item.Details);
+            Assert.Equal("https://www.disneyplus.com/en-gb/browse/entity-series-1", item.StreamUrl);
+            Assert.False(DisneyProvider.IsFilm(item));
+            Assert.Equal(TimeSpan.Zero, item.Duration);
+            Assert.Equal("", item.ImageUrl);
+        }
+
+        [Fact]
+        public void IsDisney_matches_only_the_Disney_source()
+        {
+            Assert.True(DisneyProvider.IsDisney("Disney+"));
+            Assert.False(DisneyProvider.IsDisney("Netflix"));
+            Assert.False(DisneyProvider.IsDisney(null));
+        }
+
+        private static (FakeDisneyBrowser Browser, DisneyProvider Provider) Setup()
+        {
+            var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true) };
+            var service = new DisneyService(new BrowserHub(b), new DisneyCredentials("me@example.com", "pw"))
+            {
+                SignInTimeout = TimeSpan.FromSeconds(3),
+                PollInterval = TimeSpan.FromMilliseconds(10)
+            };
+            return (b, new DisneyProvider(service));
+        }
+
+        [Fact]
+        public async Task Search_returns_the_account_catalogue_as_items()
+        {
+            var (b, provider) = Setup();
+            b.SearchBody = DisneySearchParserTests.Reply(DisneySearchParserTests.Item("The Mandalorian", "series-1", "series"));
+
+            var items = (await provider.SearchAsync("mandalorian")).ToList();
+
+            Assert.Single(items);
+            Assert.Equal("The Mandalorian", items[0].Name);
+        }
+
+        [Fact]
+        public async Task A_blank_query_makes_no_request()
+        {
+            var (b, provider) = Setup();
+            Assert.Empty(await provider.SearchAsync("   "));
+            Assert.Equal(0, b.FetchCalls);
+        }
+
+        [Fact]
+        public async Task A_Disney_failure_is_loud_so_the_search_screen_marks_the_provider_failed()
+        {
+            var (b, provider) = Setup();
+            b.SearchStatus = 500;
+            b.SearchBody = "{}";
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.SearchAsync("x"));
+
+            Assert.Contains("Disney+ search failed", ex.Message);
+            Assert.Contains("500", ex.Message);
+        }
+    }
+
+    public class DisneyTokenAndResolveTests
+    {
+        private static (FakeDisneyBrowser Browser, DisneyService Service) Setup()
+        {
+            var b = new FakeDisneyBrowser
+            {
+                LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true),
+                SearchBody = DisneySearchParserTests.Reply(DisneySearchParserTests.Item("The Mandalorian", "series-1", "series")),
+                EntityBody = DisneyEntityFixtures.Series()
+            };
+            var service = new DisneyService(new BrowserHub(b), new DisneyCredentials("me@example.com", "pw"))
+            {
+                SignInTimeout = TimeSpan.FromSeconds(3),
+                PollInterval = TimeSpan.FromMilliseconds(10)
+            };
+            return (b, service);
+        }
+
+        [Fact]
+        public async Task The_token_is_captured_once_and_reused_by_later_calls()
+        {
+            var (b, service) = Setup();
+
+            await service.SearchAsync("a", CancellationToken.None);
+            await service.SearchAsync("b", CancellationToken.None);
+            await service.ResolvePlayTargetAsync("series-1", isFilm: false, 0, CancellationToken.None);
+
+            Assert.Equal(1, b.CaptureCalls);
+            Assert.Equal(3, b.FetchCalls);
+        }
+
+        [Fact]
+        public async Task A_rejected_token_is_replaced_once_and_the_call_retried()
+        {
+            var (b, service) = Setup();
+            await service.SearchAsync("a", CancellationToken.None); // token cached
+            b.FetchStatuses.Enqueue(401); // then Disney+ rejects it
+
+            var outcome = await service.SearchAsync("b", CancellationToken.None);
+
+            Assert.True(outcome.Ok);
+            Assert.Equal(2, b.CaptureCalls);
+        }
+
+        [Fact]
+        public async Task A_token_that_keeps_being_rejected_ends_in_a_loud_failure_after_one_retry()
+        {
+            var (b, service) = Setup();
+            b.SearchStatus = 403;
+
+            var outcome = await service.SearchAsync("a", CancellationToken.None);
+
+            Assert.False(outcome.Ok);
+            Assert.Contains("403", outcome.Failure);
+            Assert.Equal(2, b.CaptureCalls); // first token, then one fresh one: never a loop
+        }
+
+        [Fact]
+        public async Task A_cached_search_does_not_touch_the_page_again()
+        {
+            var (b, service) = Setup();
+            await service.SearchAsync("a", CancellationToken.None);
+            var urlAfterFirst = b.LastNavigatedUrl;
+            Assert.Equal(DisneyService.IdleUrl, urlAfterFirst);
+
+            var navigationsBefore = b.NavigatedUrls.Count;
+            await service.SearchAsync("b", CancellationToken.None);
+
+            Assert.Equal(navigationsBefore, b.NavigatedUrls.Count); // still on the idle page: no navigation was needed
+        }
+
+        [Fact]
+        public async Task Resolving_a_series_returns_the_episode_runtime_and_label_and_leaves_the_tab_idle()
+        {
+            var (b, service) = Setup();
+
+            var (target, failure) = await service.ResolvePlayTargetAsync("series-1", isFilm: false, 0, CancellationToken.None);
+
+            Assert.Null(failure);
+            Assert.Equal(DisneyEntityFixtures.Episode1, target!.PlayId);
+            Assert.Equal(2037, target.RuntimeSeconds);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+        }
+
+        [Fact]
+        public async Task A_film_whose_page_cannot_be_read_is_played_by_its_entity_id_with_the_known_runtime()
+        {
+            var (b, service) = Setup();
+            b.EntityBody = "{}";
+            b.FetchStatuses.Enqueue(500);
+
+            var (target, failure) = await service.ResolvePlayTargetAsync("film-1", isFilm: true, 8062, CancellationToken.None);
+
+            Assert.Null(failure);
+            Assert.Equal("film-1", target!.PlayId);
+            Assert.Equal(8062, target.RuntimeSeconds);
+        }
+
+        [Fact]
+        public async Task A_series_whose_page_cannot_be_read_is_a_loud_failure_never_a_wrong_play_id()
+        {
+            var (b, service) = Setup();
+            b.EntityBody = DisneyEntityFixtures.Series(withPlayback: false);
+
+            var (target, failure) = await service.ResolvePlayTargetAsync("series-1", isFilm: false, 0, CancellationToken.None);
+
+            Assert.Null(target);
+            Assert.Contains("Could not find what to play", failure);
+        }
+
+        [Fact]
+        public async Task The_runtime_known_from_search_fills_in_when_the_page_has_none()
+        {
+            var (b, service) = Setup();
+            b.EntityBody = DisneyEntityFixtures.Film("film-1", runtimeMs: 0);
+
+            var (target, _) = await service.ResolvePlayTargetAsync("film-1", isFilm: true, 7000, CancellationToken.None);
+
+            Assert.Equal(7000, target!.RuntimeSeconds);
+        }
+
+        [Fact]
+        public async Task Resolving_is_refused_while_Netflix_plays()
+        {
+            var (_, service) = Setup();
+            service.Hub.ActivePlayback = "Netflix";
+
+            var (target, failure) = await service.ResolvePlayTargetAsync("series-1", false, 0, CancellationToken.None);
+
+            Assert.Null(target);
+            Assert.Contains("Netflix is playing", failure);
+        }
+
+        [Fact]
+        public async Task Start_without_credentials_does_nothing()
+        {
+            var b = new FakeDisneyBrowser();
+            var service = new DisneyService(new BrowserHub(b), null);
+            service.Start(TimeSpan.Zero, TimeSpan.FromMilliseconds(10));
+            await Task.Delay(100);
+            Assert.False(b.LaunchCalled);
+            service.Stop();
+        }
+
+        [Fact]
+        public async Task Start_gets_Disney_ready_and_takes_the_token_in_the_background_then_leaves_the_tab_idle()
+        {
+            var (b, service) = Setup();
+            service.Start(TimeSpan.Zero, TimeSpan.FromMilliseconds(50));
+
+            for (int i = 0; i < 100 && !service.Session.HasApiToken; i++) await Task.Delay(50);
+            service.Stop();
+
+            Assert.True(service.Session.HasApiToken);
+            Assert.Equal(1, b.CaptureCalls);
+            Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
+
+            var outcome = await service.SearchAsync("a", CancellationToken.None); // the first search needs no capture
+            Assert.True(outcome.Ok);
+            Assert.Equal(1, b.CaptureCalls);
+        }
+
+        [Fact]
+        public async Task The_background_start_stays_away_while_something_plays()
+        {
+            var (b, service) = Setup();
+            service.Hub.ActivePlayback = "Netflix";
+            service.Start(TimeSpan.Zero, TimeSpan.FromMilliseconds(30));
+            await Task.Delay(200);
+            service.Stop();
+            Assert.False(b.LaunchCalled);
+            Assert.False(service.Session.HasApiToken);
+        }
+    }
 }
+

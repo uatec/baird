@@ -73,6 +73,8 @@ namespace Baird.Services
         Task<string?> ControlNetflixPlayerAsync(NetflixPlayerAction action, double seconds = 0, CancellationToken ct = default);
         Task<bool> InjectOverlayScriptAsync(string? script = null, CancellationToken ct = default);
         Task<bool> RevealWindowAsync(CancellationToken ct = default);
+        /// <summary>The opposite of <see cref="RevealWindowAsync"/> for a browser that stays open: leave fullscreen and put Baird back on top.</summary>
+        Task HideWindowAsync(CancellationToken ct = default);
         Task StopAsync();
 
         /// <summary>A message the overlay sent with <c>window.bairdSignal(text)</c>, e.g. <c>{"type":"exit"}</c>. Raised on a background thread.</summary>
@@ -106,6 +108,8 @@ namespace Baird.Services
         private volatile Action<JsonElement>? _pageEventHandler;
         // Baird's own X window, so focus can go back to it when the browser closes.
         private string? _bairdWindowId;
+        /// <summary>True after <see cref="RevealWindowAsync"/> raised the window above Baird, until it is hidden again or the browser stops.</summary>
+        private bool _windowRevealed;
 
         /// <summary>Name of the page function (a CDP binding) the overlay calls to send a message to Baird.</summary>
         public const string PageSignalBinding = "bairdSignal";
@@ -197,6 +201,7 @@ namespace Baird.Services
         {
             LastError = null;
             await StopAsync();
+            _windowRevealed = false;
 
             _cdpPort = port;
             BrowserPath = browserPath;
@@ -826,6 +831,15 @@ namespace Baird.Services
         }
 
         /// <summary>The page style for Baird-drawn HUD mode (Resources/netflix-page-style.js), embedded in the app.</summary>
+        /// <summary>Hides Disney+'s own player controls (see disney-page-style.js).</summary>
+        public static string LoadDisneyPageStyleScript()
+        {
+            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.disney-page-style.js");
+            if (stream == null) return "console.log('[Baird] Disney+ page style not found.'); false";
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
         public static string LoadNetflixPageStyleScript()
         {
             using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.netflix-page-style.js");
@@ -837,6 +851,7 @@ namespace Baird.Services
         public async Task<bool> RevealWindowAsync(CancellationToken ct = default)
         {
             Log("[CDP] Revealing browser window: raising it above Baird (fullscreen)...");
+            _windowRevealed = true;
 
             // 1. Attempt CDP Browser.setWindowBounds
             if (_browserWs != null && _browserWs.State == WebSocketState.Open)
@@ -885,6 +900,29 @@ namespace Baird.Services
             catch { }
 
             return true;
+        }
+
+        public async Task HideWindowAsync(CancellationToken ct = default)
+        {
+            // Baird-HUD mode never reveals the window: it is still the lowered kiosk window and must stay fullscreen.
+            if (!_windowRevealed) return;
+            _windowRevealed = false;
+            Log("[CDP] Hiding the browser window: leaving fullscreen and putting Baird back on top...");
+            try
+            {
+                await EvaluateInPageAsync("if (document.fullscreenElement && document.exitFullscreen) { document.exitFullscreen().catch(() => {}); }", ct);
+            }
+            catch { }
+            RunShellCommand("wmctrl", "-x -r baird-netflix -b remove,fullscreen");
+            if (!string.IsNullOrEmpty(_bairdWindowId))
+            {
+                RunShellCommand("xdotool", $"windowactivate {_bairdWindowId}");
+                Log("[CDP] Window stacking: Baird raised above the browser.");
+            }
+            else
+            {
+                Log("[CDP] Window stacking: Baird's window id is unknown, so the browser could not be put behind it.");
+            }
         }
 
         /// <summary>

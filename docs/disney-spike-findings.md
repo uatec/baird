@@ -10,8 +10,9 @@ Status as of 2026-10-23. Two spikes, built like the Netflix ones: playback and s
 | Disney+ sign-in with configured credentials | **Works** | Unattended test on the Pi: email, "Enter a password instead", password, "Who's watching?", home. |
 | Disney+ playback in Baird on the Pi | **Works** | Unattended test: `video.currentTime` advanced (20.12 s to 20.63 s), window revealed over Baird, screenshots show moving picture with the Baird HUD. 854 px wide (Widevine L3 gives standard definition). |
 | Disney+ search via Disney's internal API | **Works** | 6 results for "Mandalorian" in ~2.3 s (including browser sign-in check and token capture), with artwork, movie/series, rating and year. Screenshot shows the result grid on the TV. |
+| Netflix and Disney+ on one shared browser | **Works** | Autotest `shared-browser` on the Pi, 8 steps, passed twice: Netflix search, Disney+ search, Netflix search, Disney+ playback, Netflix search refused while Disney+ plays, Back, Netflix search, Disney+ search. |
 | Playing a search result | Movie: works by URL. Series: play URL found and proven | See §3 "Series and episodes". |
-| Remote-control exit from the player | Works (signal path) | The overlay's Back sends `{"type":"exit"}` through the `bairdSignal` CDP binding; `DisneySpikeViewModel` stops the browser. Checked on the Pi by calling `bairdSignal` over CDP, not by a physical key press. |
+| Remote-control exit from the player | **Works** | A physical ESC key (uinput on the Pi) sent `{"type":"exit"}`; Baird stopped playback, hid the browser window and showed its own screen again. |
 | HUD end time / remaining time | Shows `--:--` | Disney+ gives no real duration in the page; needs `runtimeMs` from the API (see §2). |
 | CPU / smoothness over a full title | Not measured | |
 
@@ -77,7 +78,9 @@ One sign-in attempt per run. The password is typed with CDP `Input.insertText` a
 - Playback is confirmed only when `currentTime` is above 0.1 s **and** increases between two polls. A failure ends in a
   red FAILED state with the last page URL and text, and in the journal.
 - **Back / exit:** since the Netflix integration merge, `baird-overlay.js` sends Back and Escape to Baird through a CDP binding
-  (`window.bairdSignal`) and returns, so a view model that does not listen leaves Back dead. `DisneySpikeViewModel` listens to
+  (`window.bairdSignal`) and returns, so a view model that does not listen leaves Back dead. Another trap: a browser that stays
+  open is never killed, so nothing gave focus back to Baird; the revealed window stayed on top and the TV showed `robots.txt`.
+  `ICdpBrowserService.HideWindowAsync` (leave fullscreen, activate Baird's window) now does that, for Disney+ and Netflix. `DisneySpikeViewModel` listens to
   `ICdpBrowserService.PageSignalReceived` and stops playback on `{"type":"exit"}`. Netflix now uses a Baird-drawn HUD
   (`NetflixHudWindow`) by default; Disney still uses the injected HTML overlay. Moving Disney to the Baird-drawn HUD needs a
   Disney version of `ControlNetflixPlayerAsync`.
@@ -143,12 +146,13 @@ This is advice from the spikes, not a design. Check each point against the curre
 **Suggested shape**
 - One browser and session service for all sites (Netflix, Disney+), owning the profile lock, the CDP port and the window. Today
   every spike starts and stops its own Chromium, which costs seconds on each search and makes the spikes exclusive.
-- **Conflict to plan for:** another session (branch `integrate-netflix-search-playback`, not merged when this was written) adds
-  `NetflixSession`, which keeps one Netflix Chromium open all the time on CDP port 9222 with the shared profile
-  `~/.config/baird/browser-profile`. Once that is deployed, a Disney spike that starts its own Chromium on that profile will
-  fail on the Chromium profile lock. Quick fix: give Disney its own profile directory (for example
-  `~/.config/baird/browser-profile-disney`; it needs a new Disney sign-in and registers another device). Better: one browser
-  owner for all streaming services, with one tab per service (CDP `Target.createTarget`). `NetflixSession` could become that owner.
+- **Done: one shared browser.** Netflix and Disney+ now share one Chromium, one window and one tab (`BrowserHub`,
+  `Baird/Services/BrowserHub.cs`). Each service has its own session class (`NetflixSession`, `DisneyService`) with its own
+  sign-in state. The hub only arbitrates: a gate (one service uses the tab at a time), `PageOwner` (a service that finds the
+  tab last used by the other navigates it to its own idle page first, because Netflix's search is a same-origin fetch), and
+  `ActivePlayback` (a playing service blocks the other). A profile lock can therefore no longer break either service.
+- **Not done:** Disney+ in Baird's normal search (`NetflixProvider` has no Disney twin), the Baird-drawn HUD for Disney+, and
+  a second background tab for searches during playback (search is simply refused while something plays).
 - Keep the browser alive between searches, hidden. Re-capture the Disney+ token when the API answers 401/403 (the parser already
   reports `NeedsNewToken`; no code retries yet). Netflix's search self-heals the same way with a captured request.
 - Send results into Baird's own search, with a "Disney+" source. The play URL is `/play/{entityId}` for a movie.
@@ -160,6 +164,52 @@ This is advice from the spikes, not a design. Check each point against the curre
 - This signs in as a real account from a non-standard browser. Each new profile registers a device. Keep one profile.
 - Widevine L3 limits the picture to 854 px wide. That is a platform limit, not a bug.
 - Terms of service of both services were not reviewed.
+
+## 4b. Integration into Baird's normal journey (2026-10-24)
+
+**Decision (user, 2026-10-24):** Disney+ playback waits for the new main-player engine. Netflix is moving to play in Baird's
+normal `VideoPlayer` behind an engine interface (`IPlaybackEngine`; spec on branch `charming-leopard`:
+`docs/superpowers/specs/2026-10-24-netflix-in-main-player-design.md`). That replaces the separate HUD window and the
+Netflix playback page. Disney+ gets a `DisneyPlaybackEngine` behind the same interface once it is on `main`. No interim HUD window.
+
+**Built now, engine-neutral and tested (not yet wired into the normal search or the player):**
+
+| Piece | Where | What it does |
+|---|---|---|
+| `DisneyProvider` | `Baird/Services/DisneyProvider.cs` | Disney+ as an `IMediaProvider` (source "Disney+", id `disney:{entityId}`). A failure throws, so the search screen marks the provider as failed. A film's `StreamUrl` and a series' `StreamUrl` are the entity page, because a series id is not a play id. Not registered in `MainView` yet: results that cannot play must not appear. |
+| Play target | `DisneySearchParser.ParseEntityPlayTarget`, `DisneySession.ResolvePlayTargetAsync`, `DisneyService.ResolvePlayTargetAsync` | From `GET /explore/v1.21/page/entity-{id}`: the play id (series: the episode Disney+ would play next), the real runtime from `runtimeMs`, and a HUD label such as "The Mandalorian — S1:E2 Chapter 2: The Child". A film whose page cannot be read plays by its entity id; a series never falls back to a wrong id. |
+| Token reuse | `DisneySession.ApiGetAsync` | The web app's API headers are captured once and reused from the idle page (the API allows the page's origin). On 401/403 or a failed request, one fresh capture and one retry, then a loud failure. A search with a cached token needs no page visit. |
+| Warm-up | `DisneyService.Start` | After a delay, opens or attaches to the browser, signs in and takes the token, then re-checks every minute if the browser process changed. Does nothing without credentials or while something plays. **Not called from `MainView` yet**, because nothing in normal search uses it. |
+| Page style | `Baird/Resources/disney-page-style.js`, `CdpBrowserService.LoadDisneyPageStyleScript` | Hides Disney+'s own player controls and the mouse pointer for a Baird-drawn HUD. See the facts below. |
+| `HideWindowAsync` only after a reveal | `CdpBrowserService` | **A bug I introduced and fixed:** `HideWindowAsync` removed fullscreen from the browser window. In Netflix's Baird-HUD mode the window is never revealed (it is the lowered kiosk window), so un-fullscreening it would break the next HUD playback. It now acts only after `RevealWindowAsync`. |
+
+**Verified on the Pi (autotest `shared-browser`, 2026-10-24):** a Disney+ search with a cached token took **277 ms** (3.2 to 4.2 s
+when the token must be captured). `ResolvePlayTargetAsync` for the series "The Mandalorian" returned episode `f6bc4f01-...`
+("The Mandalorian — S1:E2 Chapter 2: The Child", 2037 s: the next episode for this profile) and for the film 8062 s. The
+resolved episode played (`currentTime` advancing, 854 px). Netflix's own journey (`netflix-core`) still reaches PLAYING and
+returns its browser to the idle page, with no window un-fullscreen on that path. After Back, Baird's own main window comes back
+framed and not fullscreen: that is the Netflix HUD-window closing path (known XWayland caveat, being replaced), not Disney code.
+
+**Facts measured on the Pi for the future `DisneyPlaybackEngine`** (all with the signed-in session, Widevine L3, 854 px):
+- **Player state:** use the `<video>` that has a source: `[...document.querySelectorAll('video')].find(v => v.readyState > 0 && v.currentSrc)`.
+  The first `<video>` stays empty.
+- **Controls work on the element directly.** `v.currentTime = v.currentTime + 30` seeked and playback went on; `v.currentTime - 20`
+  went back; `v.pause()` held the position for 4 s; `v.play()` resumed. (Unlike Netflix, no player API is needed.)
+- **Length:** `video.duration` is the buffered end (`Infinity`, then growing), not the length. The real length is `runtimeMs` from
+  the entity page (episode item for a series, page for a film). The player's own slider also has it while the controls
+  are shown (`aria-valuemax="2037"`, `aria-valuetext="1:47 of 33:56"`), but the controls are removed from the DOM when idle.
+- **Disney's player UI is shadow DOM:** `disney-web-player-ui` > `main-app-controls-overlay` (`.controls-container`,
+  `progress-bar`, buttons labelled "Skip back 10 seconds", "Pause", "Skip ahead 10 seconds", "PLAY NEXT", ...). Page CSS cannot
+  reach it. Setting `display: none !important` on the `MAIN-APP-CONTROLS-OVERLAY` host hides the controls and leaves only the
+  picture; the player re-creates the overlay when it wakes, so the style script repeats it every 150 ms.
+- **Subtitles are not in that overlay.** They show with no controls on screen (seen in the first playback screenshot).
+- The controls wake on mouse movement. A Baird-drawn HUD must not send mouse events to the page.
+
+**To do when the engine is on `main`:** a `DisneyPlaybackEngine` that resolves the play target (`DisneyService.ResolvePlayTargetAsync`),
+navigates the shared tab to `PlayUrl`, injects the page style, polls the playing `<video>` (position, paused; length from the
+runtime), sends seek and pause as above, and on stop calls `HideWindowAsync` and returns the tab to `DisneyService.IdleUrl`.
+Then register `DisneyProvider` in `MainView` (with `DisneyService.Start`), route `Source == "Disney+"` in `PlayItem`, and put
+history on `MediaItemData.Duration` (set from the search runtime; unknown for a series until resolved).
 
 ## 5. Red herrings and decisions
 
@@ -177,6 +227,7 @@ This is advice from the spikes, not a design. Check each point against the curre
 
 | What | Where |
 |---|---|
+| Shared browser | `Baird/Services/BrowserHub.cs` (gate, page owner, active playback); `DisneyService.cs` is the Disney+ twin of `NetflixSession.cs` |
 | Playback spike | `Baird/ViewModels/DisneySpikeViewModel.cs`, `Baird/Controls/DisneySpikeControl.axaml` |
 | Search spike | `Baird/ViewModels/DisneySearchSpikeViewModel.cs`, `Baird/Controls/DisneySearchSpikeControl.axaml`, `Baird/Services/DisneySearch.cs` |
 | Sign-in, state reading, search call | `Baird/Services/DisneySession.cs` |

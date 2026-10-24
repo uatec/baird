@@ -227,33 +227,94 @@ namespace Baird.Services
             return r is { ValueKind: JsonValueKind.String } v ? v.GetString() : null;
         }
 
+        // The web app's API headers (bearer token included), captured once and reused. Never logged.
+        private JsonObject? _apiHeaders;
+
+        /// <summary>True when a token is cached, so the next API call needs no page visit.</summary>
+        public bool HasApiToken => _apiHeaders != null;
+
+        /// <summary>Takes the token now if none is cached (leaves the page on the search page). False when none could be captured.</summary>
+        public async Task<bool> EnsureApiTokenAsync(CancellationToken ct)
+        {
+            _apiHeaders ??= await CaptureApiHeadersAsync(ct);
+            return _apiHeaders != null;
+        }
+
+        /// <summary>Forget the cached token (a new sign-in, or Disney+ rejected it).</summary>
+        public void InvalidateApiToken() => _apiHeaders = null;
+
         /// <summary>
-        /// Searches the signed-in account's catalogue. The explore API needs a short-lived bearer token that the web app keeps in
-        /// memory, so open the app's own search page, read the token from the first explore request it sends, then call
-        /// GET /explore/v1.21/search from inside the page with those same headers. The token is never logged.
+        /// Opens the web app's own search page and reads the headers of the first explore API request it sends: the token the
+        /// web app keeps in memory (no cookie or storage entry holds it). Returns null when no such request was seen.
         /// </summary>
-        public async Task<DisneySearchReply> SearchAsync(string term, CancellationToken ct)
+        private async Task<JsonObject?> CaptureApiHeadersAsync(CancellationToken ct)
         {
             var captured = await _page.NavigateAndCaptureAsync(DisneySearchParser.SearchPageUrl,
                 r => r.Url.StartsWith(DisneySearchParser.ExplorePrefix, StringComparison.Ordinal) &&
                      r.Headers.ContainsKey("authorization"),
                 TimeSpan.FromSeconds(25), ct);
-            if (captured == null) return new DisneySearchReply(Array.Empty<DisneySearchResult>(), 0, "could not capture the Disney+ web app's API request (no explore call seen within 25 s).");
-            _log("[Search] Captured the web app's API headers (token not logged).");
-
+            if (captured == null) return null;
+            _log("[Api] Captured the web app's API headers (token not logged).");
             var headers = new JsonObject();
             foreach (var name in new[] { "authorization", "x-application-version", "x-bamsdk-client-id", "x-bamsdk-version", "x-bamsdk-platform", "x-dss-edge-accept", "accept" })
                 if (captured.Headers.TryGetValue(name, out var value)) headers[name] = value;
+            return headers;
+        }
 
-            var url = JsonSerializer.Serialize(DisneySearchParser.SearchApiUrl(term), BairdJsonContext.Default.String);
+        /// <summary>One GET from inside the page with the given headers; (0, null) when the request itself failed (CORS, network).</summary>
+        private async Task<(int Status, string? Body)> FetchAsync(string url, JsonObject headers, CancellationToken ct)
+        {
+            var urlLiteral = JsonSerializer.Serialize(url, BairdJsonContext.Default.String);
             var script = @"(async function() {
-                const r = await fetch(" + url + @", { headers: " + headers.ToJsonString() + @" });
-                return JSON.stringify({ status: r.status, body: await r.text() });
+                try {
+                    const r = await fetch(" + urlLiteral + @", { headers: " + headers.ToJsonString() + @" });
+                    return JSON.stringify({ status: r.status, body: await r.text() });
+                } catch (e) { return JSON.stringify({ status: 0, error: String(e) }); }
             })()";
             var reply = await _page.EvaluateAsync(script, ct);
-            if (reply is not { ValueKind: JsonValueKind.String } s) return new DisneySearchReply(Array.Empty<DisneySearchResult>(), 0, "the in-page search request did not return.");
+            if (reply is not { ValueKind: JsonValueKind.String } s) return (0, null);
             using var doc = JsonDocument.Parse(s.GetString()!);
-            return DisneySearchParser.Parse((int)Num(doc.RootElement, "status"), Str(doc.RootElement, "body"));
+            return ((int)Num(doc.RootElement, "status"), Str(doc.RootElement, "body"));
+        }
+
+        /// <summary>
+        /// GET <paramref name="url"/> on Disney's API from inside the signed-in page. Uses the cached token; with none, or when
+        /// Disney+ answers 401/403 or the request fails, captures a fresh one from the web app (at most once) and retries.
+        /// Returns the failure when no token could be captured.
+        /// </summary>
+        public async Task<(int Status, string? Body, string? Failure)> ApiGetAsync(string url, CancellationToken ct)
+        {
+            (int Status, string? Body) last = (0, null);
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                if (_apiHeaders == null)
+                {
+                    _apiHeaders = await CaptureApiHeadersAsync(ct);
+                    if (_apiHeaders == null) return (0, null, "could not capture the Disney+ web app's API request (no explore call seen within 25 s).");
+                }
+                last = await FetchAsync(url, _apiHeaders, ct);
+                if (last.Status != 0 && last.Status is not (401 or 403)) return (last.Status, last.Body, null);
+                _log($"[Api] Request answered {(last.Status == 0 ? "with no reply" : last.Status.ToString())}; capturing a fresh token" + (attempt == 0 ? " and retrying." : "."));
+                _apiHeaders = null;
+            }
+            return (last.Status, last.Body, null);
+        }
+
+        /// <summary>Searches the signed-in account's catalogue: GET /explore/v1.21/search from inside the page.</summary>
+        public async Task<DisneySearchReply> SearchAsync(string term, CancellationToken ct)
+        {
+            var (status, body, failure) = await ApiGetAsync(DisneySearchParser.SearchApiUrl(term), ct);
+            if (failure != null) return new DisneySearchReply(Array.Empty<DisneySearchResult>(), 0, failure);
+            return DisneySearchParser.Parse(status, body);
+        }
+
+        /// <summary>What to play for an entity (from search): its play id, length and a HUD label. Null with the reason on failure.</summary>
+        public async Task<(DisneyPlayTarget? Target, string? Failure)> ResolvePlayTargetAsync(string entityId, CancellationToken ct)
+        {
+            var (status, body, failure) = await ApiGetAsync(DisneySearchParser.EntityApiUrl(entityId), ct);
+            if (failure != null) return (null, failure);
+            var target = DisneySearchParser.ParseEntityPlayTarget(status, body, out var parseFailure);
+            return (target, parseFailure);
         }
 
         private static string? Str(JsonElement o, string n) => o.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;

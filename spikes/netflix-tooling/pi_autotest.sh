@@ -1,11 +1,12 @@
 #!/bin/bash
 # Runs ON THE PI. Unattended Baird test with screenshots; always restores baird.service.
-#   usage: pi_autotest.sh [netflix|netflix-search|netflix-core|disney|disney-search] [test|installed] [max-shots]
+#   usage: pi_autotest.sh [netflix|netflix-search|netflix-core|disney|disney-search|shared-browser] [test|installed] [max-shots]
 #     netflix         -> the playback spike (BAIRD_AUTOTEST=netflix)
 #     netflix-search  -> the search spike   (BAIRD_AUTOTEST=netflix-search)
 #     netflix-core    -> the core journey: Search tab, play the first Netflix result in Baird's player (BAIRD_AUTOTEST=netflix-core)
 #     disney          -> the Disney+ playback spike (BAIRD_AUTOTEST=disney)
 #     disney-search   -> the Disney+ search spike    (BAIRD_AUTOTEST=disney-search)
+#     shared-browser  -> Netflix and Disney+ take turns on the ONE shared browser (BAIRD_AUTOTEST=shared-browser)
 #     test            -> run the test build in ~/baird-test (copied there by deploy_test_build.sh)
 #     installed       -> run the brew-installed build via its wrapper (/home/linuxbrew/.linuxbrew/bin/baird)
 #   KEYS="ENTER RIGHT ESC" (optional): after the RESULT line, press each key through uinput (pi_keys.py, sudo) and take
@@ -31,6 +32,7 @@ else
 fi
 START=$(date +"%Y-%m-%d %H:%M:%S")
 systemctl --user stop baird.service; sleep 2
+pkill -f "class=baird-netflix" 2>/dev/null; sleep 1   # the installed Baird keeps its browser open in its own scope: it can outlive the service and would hold the profile lock
 systemctl --user reset-failed baird-autotest.service 2>/dev/null   # a leftover unit blocks systemd-run
 echo "baird.service stopped for the test; running $WHICH build with BAIRD_AUTOTEST=$TEST"
 systemd-run --user --unit=baird-autotest --collect --property=SyslogIdentifier=baird-autotest \
@@ -58,5 +60,5 @@ for i in $(seq 1 "$MAX"); do
     break
   fi
 done
-journalctl -t baird-autotest --since "$START" --no-pager 2>/dev/null | grep -E "AutoTest|NetflixSpike|NetflixEngine|NetflixSearch|NetflixSession|NetflixBrowser|NetflixProvider|VideoPlayer\] (Switching|Netflix|FileLoaded)|Showing the browser|OmniSearch\] Provider|Navigation|DisneySpike|DisneySearch|YtDlpTempDir" | cut -c1-300 > $SH/autotest.log
+journalctl -t baird-autotest --since "$START" --no-pager 2>/dev/null | grep -E "AutoTest|NetflixSpike|NetflixEngine|NetflixSearch|NetflixSession|NetflixBrowser|NetflixProvider|VideoPlayer\] (Switching|Netflix|FileLoaded)|Showing the browser|OmniSearch\] Provider|Navigation|DisneySpike|DisneySearch|DisneyService|YtDlpTempDir" | cut -c1-300 > $SH/autotest.log
 echo "--- journal ---"; cat $SH/autotest.log
