@@ -121,6 +121,8 @@ namespace Baird.ViewModels
             Epg = new EpgViewModel(dataService, epgService, () => AllChannels);
             CecDebug = new CecDebugViewModel(cecService);
             AvDebug = new AvDebugViewModel { CurrentTitle = () => ActiveItem?.Name };
+            // BAIRD_AVDEBUG_LOG=true: A/V samples in the journal from the start, for unattended A/B runs on the device.
+            if (string.Equals(configuration?["BAIRD_AVDEBUG_LOG"], "true", StringComparison.OrdinalIgnoreCase)) AvDebug.IsJournalLoggingEnabled = true;
 
             // Jellyseerr ViewModels
             Seerrch = new SeerrchViewModel(jellyseerrService);
