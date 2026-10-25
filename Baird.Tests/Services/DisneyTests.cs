@@ -742,7 +742,7 @@ namespace Baird.Tests.Services
         private static JsonObject Playback(string deeplinkId, string text = "CONTINUE") =>
             new() { ["type"] = "playback", ["deeplinkId"] = deeplinkId, ["visuals"] = new JsonObject { ["displayText"] = text } };
 
-        private static JsonObject Episode(string id, string title, int season, int number, double? runtimeMs) => new()
+        internal static JsonObject Episode(string id, string title, int season, int number, double? runtimeMs) => new()
         {
             ["type"] = "view",
             ["id"] = id,
@@ -886,6 +886,25 @@ namespace Baird.Tests.Services
 
     public class DisneyEntityParserTests
     {
+        [Fact]
+        public void An_episode_shows_its_own_thumbnail_and_not_the_tile_that_every_episode_shares()
+        {
+            var episode = DisneyEntityFixtures.Episode("e1", "Pilot", 1, 1, 1_434_000);
+            episode["visuals"]!["artwork"] = new JsonObject
+            {
+                ["standard"] = new JsonObject
+                {
+                    ["tile"] = new JsonObject { ["1.78"] = new JsonObject { ["imageId"] = "show-tile" } },
+                    ["thumbnail"] = new JsonObject { ["1.78"] = new JsonObject { ["imageId"] = "episode-still" } }
+                }
+            };
+            var reply = new JsonObject { ["data"] = new JsonObject { ["season"] = new JsonObject { ["items"] = new JsonArray(episode) } } }.ToJsonString();
+
+            var episodes = DisneySearchParser.ParseSeasonEpisodes(200, reply, out _, out _);
+
+            Assert.Contains("episode-still", episodes!.Single().ImageUrl);
+        }
+
         [Fact]
         public void A_series_page_gives_the_next_episode_its_length_and_a_label()
         {

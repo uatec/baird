@@ -351,10 +351,15 @@ namespace Baird.Services
                 int.TryParse(Str(v, "episodeNumber"), out var eNo);
                 double runtime = v.TryGetProperty("metastringParts", out var mp) ? RuntimeSecondsOf(mp) ?? 0 : 0;
                 string? description = v.TryGetProperty("description", out var d) ? Str(d, "brief") : null;
+                // "thumbnail" is the picture of the episode itself. "tile" is the same picture of the whole show on every episode.
                 string? image = null;
-                if (v.TryGetProperty("artwork", out var art) && art.TryGetProperty("standard", out var std) &&
-                    std.TryGetProperty("tile", out var tile) && tile.TryGetProperty("1.78", out var t178) && Str(t178, "imageId") is { Length: > 0 } imageId)
-                    image = ImageUrl(imageId);
+                if (v.TryGetProperty("artwork", out var art) && art.TryGetProperty("standard", out var std))
+                    foreach (var kind in new[] { "thumbnail", "tile" })
+                        if (std.TryGetProperty(kind, out var shape) && shape.TryGetProperty("1.78", out var t178) && Str(t178, "imageId") is { Length: > 0 } imageId)
+                        {
+                            image = ImageUrl(imageId);
+                            break;
+                        }
                 episodes.Add(new DisneyEpisode(id, epTitle, sNo > 0 ? sNo : seasonFallback, eNo > 0 ? eNo : episodes.Count + 1, runtime, description, image));
             }
             return episodes;
