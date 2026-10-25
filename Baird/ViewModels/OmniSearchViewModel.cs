@@ -403,7 +403,17 @@ namespace Baird.ViewModels
 
                     try
                     {
-                        var results = await provider.SearchAsync(query, token);
+                        // The list is shown when every provider has answered, so one that hangs must not hold it back for ever.
+                        using var providerCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        var searchTask = provider.SearchAsync(query, providerCts.Token);
+                        // Raced with a timer: a provider that ignores its cancellation token is still cut off.
+                        if (await Task.WhenAny(searchTask, Task.Delay(SearchTiming.ProviderTimeout, token)) != searchTask)
+                        {
+                            providerCts.Cancel();
+                            token.ThrowIfCancellationRequested();
+                            throw new OperationCanceledException();
+                        }
+                        var results = await searchTask;
                         if (token.IsCancellationRequested) return;
 
                         var items = results.Select(data => new MediaItemViewModel(data)).ToList();
@@ -431,8 +441,16 @@ namespace Baird.ViewModels
                     }
                     catch (OperationCanceledException)
                     {
-                        Console.WriteLine($"[OmniSearch] Provider '{provider.Name}' search cancelled for query '{query}'");
-                        // Don't mark as error if canceled
+                        if (token.IsCancellationRequested)
+                        {
+                            Console.WriteLine($"[OmniSearch] Provider '{provider.Name}' search cancelled for query '{query}'");
+                            // Don't mark as error if canceled
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[OmniSearch] Provider '{provider.Name}' did not answer within {SearchTiming.ProviderTimeout.TotalSeconds:0} s for query '{query}'");
+                            if (status != null) Dispatcher.UIThread.Post(() => status.SetError());
+                        }
                     }
                     catch (Exception ex)
                     {
