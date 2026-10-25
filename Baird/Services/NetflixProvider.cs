@@ -53,16 +53,16 @@ namespace Baird.Services
             var isShow = r.Kind == "Show";
             return new()
             {
-            Id = IdPrefix + r.TitleId,
-            Name = r.Title,
-            Details = r.Kind switch { "Show" => "Series", "Movie" => "Film", _ => r.Kind ?? "" },
-            ImageUrl = r.ImageUrl ?? "",
-            IsLive = false,
-            StreamUrl = isShow ? "" : WatchUrl(r.TitleId),
-            Source = SourceName,
-            Type = isShow ? MediaType.Brand : MediaType.Video,
-            Synopsis = "",
-            Subtitle = "",
+                Id = IdPrefix + r.TitleId,
+                Name = r.Title,
+                Details = r.Kind switch { "Show" => "Series", "Movie" => "Film", _ => r.Kind ?? "" },
+                ImageUrl = r.ImageUrl ?? "",
+                IsLive = false,
+                StreamUrl = isShow ? "" : WatchUrl(r.TitleId),
+                Source = SourceName,
+                Type = isShow ? MediaType.Brand : MediaType.Video,
+                Synopsis = "",
+                Subtitle = "",
             };
         }
 
