@@ -12,6 +12,8 @@
 #     installed       -> run the brew-installed build via its wrapper (/home/linuxbrew/.linuxbrew/bin/baird)
 #   KEYS="ENTER RIGHT ESC" (optional): after the RESULT line, press each key through uinput (pi_keys.py, sudo) and take
 #     two screenshots 0.5 s apart after each one (hud-NN-KEY-{a,b}.png), so motion and the HUD state can be checked.
+#   BAIRD_AUTOTEST_*=... (optional): passed to the test, e.g. BAIRD_AUTOTEST_DISNEY_QUERY=Simpsons BAIRD_AUTOTEST_DISNEY_SEASON=3
+#     BAIRD_AUTOTEST_DISNEY_EPISODE=5 BAIRD_AUTOTEST_WAIT_PROMPT=1 for disney-core.
 #   BAIRD_TEST_DIR=~/other-dir (optional): run the build in that directory instead of ~/baird-test (to share the Pi).
 # Output: ~/baird-test/shots/{shot-NNN,final-N}.png every 3 s, focus.log (which window had focus), autotest.log (journal lines).
 set -u
@@ -39,7 +41,7 @@ echo "baird.service stopped for the test; running $WHICH build with BAIRD_AUTOTE
 systemd-run --user --unit=baird-autotest --collect --property=SyslogIdentifier=baird-autotest \
   --setenv=DISPLAY=:0 --setenv=BAIRD_FULLSCREEN=True --setenv=XAUTHORITY=$HOME/.Xauthority \
   --setenv=WAYLAND_DISPLAY=wayland-0 --setenv=XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
-  $LIBENV --setenv=BAIRD_AUTOTEST=$TEST "$BIN" >/dev/null
+  $LIBENV --setenv=BAIRD_AUTOTEST=$TEST $(env | grep -E "^BAIRD_AUTOTEST_" | sed "s/^/--setenv=/") "$BIN" >/dev/null
 for i in $(seq 1 "$MAX"); do
   sleep 3
   grim $SH/shot-$(printf %03d $i).png 2>/dev/null

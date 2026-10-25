@@ -1197,3 +1197,146 @@ namespace Baird.Tests.Services
         }
     }
 }
+
+namespace Baird.Tests.Services
+{
+    using System;
+    using System.Linq;
+    using System.Threading.Tasks;
+    using Baird.Models;
+    using Baird.Services;
+    using Xunit;
+
+    public class DisneyLongSeriesTests
+    {
+        private static (FakeDisneyBrowser Browser, DisneyService Service, DisneyProvider Provider) Setup()
+        {
+            var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true), EntityBody = DisneyEntityFixtures.LazySeries() };
+            // Season 1 has 13 episodes read in two pages (10, then 3); season 2 has 3 in one.
+            b.SeasonBodies[DisneyEntityFixtures.LazySeason1] = offset => offset == 0
+                ? DisneyEntityFixtures.SeasonReply(1, 1, 10, hasMore: true, total: 13)
+                : DisneyEntityFixtures.SeasonReply(1, 11, 3, hasMore: false, total: 13);
+            b.SeasonBodies[DisneyEntityFixtures.LazySeason2] = _ => DisneyEntityFixtures.SeasonReply(2, 1, 3, hasMore: false, total: 3);
+            var service = new DisneyService(new BrowserHub(b), new DisneyCredentials("me@example.com", "pw"))
+            {
+                SignInTimeout = TimeSpan.FromSeconds(3),
+                PollInterval = TimeSpan.FromMilliseconds(5)
+            };
+            return (b, service, new DisneyProvider(service));
+        }
+
+        [Fact]
+        public void The_guide_lists_seasons_without_episodes_by_their_totals_and_leaves_out_Exclusives()
+        {
+            var guide = DisneySearchParser.ParseEpisodeGuide(200, DisneyEntityFixtures.LazySeries(), out var failure)!;
+
+            Assert.Null(failure);
+            Assert.Equal(new[] { 1, 2 }, guide.Seasons.Select(s => s.Number)); // sorted, and no "Exclusives"
+            Assert.All(guide.Seasons, s => { Assert.Empty(s.Episodes); Assert.False(s.IsComplete); });
+            Assert.Equal(new[] { 13, 3 }, guide.Seasons.Select(s => s.EpisodeCount));
+            Assert.Equal(DisneyEntityFixtures.LazySeason1, guide.Seasons[0].SeasonId);
+        }
+
+        [Fact]
+        public void A_season_reply_gives_its_episodes_and_whether_there_are_more()
+        {
+            var episodes = DisneySearchParser.ParseSeasonEpisodes(200, DisneyEntityFixtures.SeasonReply(2, 11, 4, hasMore: true, total: 22), out var more, out var failure)!;
+
+            Assert.Null(failure);
+            Assert.True(more);
+            Assert.Equal(new[] { 11, 12, 13, 14 }, episodes.Select(e => e.Number));
+            Assert.All(episodes, e => Assert.Equal(2, e.Season));
+            Assert.Equal(1434, episodes[0].RuntimeSeconds);
+        }
+
+        [Theory]
+        [InlineData(500, "{}", "HTTP 500")]
+        [InlineData(200, "", "no reply")]
+        [InlineData(200, "<html>", "BAD_JSON")]
+        [InlineData(200, "{\"data\":{}}", "no data.season")]
+        public void A_bad_season_reply_is_reported(int status, string body, string expected)
+        {
+            Assert.Null(DisneySearchParser.ParseSeasonEpisodes(status, body, out _, out var failure));
+            Assert.Contains(expected, failure);
+        }
+
+        [Fact]
+        public async Task The_season_folders_show_the_totals_and_read_no_season_yet()
+        {
+            var (b, _, provider) = Setup();
+
+            var folders = (await provider.GetChildrenAsync("disney:series-1")).ToList();
+
+            Assert.Equal(new[] { "Season 1", "Season 2" }, folders.Select(f => f.Name));
+            Assert.Equal(new[] { "13 Episodes", "3 Episodes" }, folders.Select(f => f.Details));
+            Assert.Equal(new[] { "disney:series-1|1", "disney:series-1|2" }, folders.Select(f => f.Id));
+            Assert.Empty(b.SeasonRequests);
+        }
+
+        [Fact]
+        public async Task Opening_a_season_reads_it_in_pages_until_there_are_no_more()
+        {
+            var (b, service, provider) = Setup();
+
+            var episodes = (await provider.GetChildrenAsync("disney:series-1|1")).ToList();
+
+            Assert.Equal(13, episodes.Count);
+            Assert.Equal(Enumerable.Range(1, 13).Select(n => $"S1:E{n}"), episodes.Select(e => e.Details));
+            Assert.Equal(new[] { $"{DisneyEntityFixtures.LazySeason1}@0", $"{DisneyEntityFixtures.LazySeason1}@10" }, b.SeasonRequests);
+            Assert.All(episodes, e => Assert.Equal(TimeSpan.FromSeconds(1434), e.Duration));
+            Assert.Equal(1434, service.KnownRuntimeSeconds("s1e13-id"));
+        }
+
+        [Fact]
+        public async Task A_season_is_read_once_and_reused()
+        {
+            var (b, _, provider) = Setup();
+            await provider.GetChildrenAsync("disney:series-1|2");
+            await provider.GetChildrenAsync("disney:series-1|2");
+            Assert.Single(b.SeasonRequests);
+        }
+
+        [Fact]
+        public async Task Each_season_is_read_only_when_it_is_opened()
+        {
+            var (b, _, provider) = Setup();
+            await provider.GetChildrenAsync("disney:series-1|2");
+            Assert.Equal(new[] { $"{DisneyEntityFixtures.LazySeason2}@0" }, b.SeasonRequests);
+        }
+
+        [Fact]
+        public async Task A_failing_season_throws_so_the_data_service_logs_it()
+        {
+            var (b, _, provider) = Setup();
+            b.SeasonBodies[DisneyEntityFixtures.LazySeason2] = _ => "{}"; // no data.season
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetChildrenAsync("disney:series-1|2"));
+            Assert.Contains("Season 2 failed", ex.Message);
+        }
+
+        [Fact]
+        public async Task A_reply_that_never_says_it_is_done_stops_after_ten_pages()
+        {
+            var (b, _, provider) = Setup();
+            var call = 0;
+            b.SeasonBodies[DisneyEntityFixtures.LazySeason2] = offset => DisneyEntityFixtures.SeasonReply(2, offset + 1, 1, hasMore: true, total: 3);
+            _ = call;
+
+            var episodes = (await provider.GetChildrenAsync("disney:series-1|2")).ToList();
+
+            Assert.Equal(10, b.SeasonRequests.Count);
+            Assert.Equal(10, episodes.Count);
+        }
+
+        [Fact]
+        public async Task A_series_whose_only_season_is_lazy_gives_its_episodes_directly()
+        {
+            var (b, _, provider) = Setup();
+            b.EntityBody = DisneyEntityFixtures.LazySeries().Replace("\"Season 2\"", "\"Exclusives\"");
+
+            var children = (await provider.GetChildrenAsync("disney:series-1")).ToList();
+
+            Assert.Equal(13, children.Count);
+            Assert.All(children, c => Assert.Equal(MediaType.Video, c.Type));
+        }
+    }
+}

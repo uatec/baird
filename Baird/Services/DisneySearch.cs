@@ -31,7 +31,18 @@ namespace Baird.Services
         public string PlayUrl => DisneySearchParser.PlayUrl(Id);
     }
 
-    public sealed record DisneySeason(int Number, string Name, IReadOnlyList<DisneyEpisode> Episodes);
+    /// <summary>
+    /// A season. A short series has its episodes in the entity page; for a long one (The Simpsons) the page lists only the season,
+    /// with <see cref="TotalCount"/> and no episodes, and each season is read on its own (<see cref="DisneySearchParser.SeasonApiUrl"/>).
+    /// </summary>
+    public sealed record DisneySeason(int Number, string Name, IReadOnlyList<DisneyEpisode> Episodes, string? SeasonId = null, int TotalCount = 0)
+    {
+        /// <summary>True when the episodes the page showed are all of them.</summary>
+        public bool IsComplete => SeasonId == null || Episodes.Count >= TotalCount;
+
+        /// <summary>The number to show: the season's own count of episodes, or what the page listed.</summary>
+        public int EpisodeCount => Math.Max(TotalCount, Episodes.Count);
+    }
 
     /// <summary>The seasons and episodes of a series, from its entity page.</summary>
     public sealed record DisneyEpisodeGuide(string SeriesTitle, IReadOnlyList<DisneySeason> Seasons)
@@ -92,6 +103,10 @@ namespace Baird.Services
         }
         public static string SearchApiUrl(string term) => $"{ApiBase}/search?query={Uri.EscapeDataString(term)}";
         public static string EntityApiUrl(string entityId) => $"{ApiBase}/page/entity-{Uri.EscapeDataString(entityId)}?limit=15";
+
+        /// <summary>One season's episodes (measured: <c>limit=100</c> returns up to 100 at once; <c>offset</c> pages).</summary>
+        public static string SeasonApiUrl(string seasonId, int offset = 0) =>
+            $"{ApiBase}/season/{Uri.EscapeDataString(seasonId)}?limit=100" + (offset > 0 ? $"&offset={offset}" : "");
 
         /// <summary>
         /// Artwork URL for an image id. Format copied from the web app's own &lt;img&gt; tags (ripcut-delivery "compose").
@@ -267,38 +282,82 @@ namespace Baird.Services
                         foreach (var season in seasonList.EnumerateArray())
                         {
                             ordinal++;
-                            var episodes = new List<DisneyEpisode>();
-                            if (season.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
-                            {
-                                foreach (var item in items.EnumerateArray())
-                                {
-                                    var id = Str(item, "id");
-                                    if (string.IsNullOrEmpty(id) || !item.TryGetProperty("visuals", out var v) || v.ValueKind != JsonValueKind.Object) continue;
-                                    var epTitle = Str(v, "episodeTitle") ?? Str(v, "title") ?? "Episode";
-                                    int.TryParse(Str(v, "seasonNumber"), out var sNo);
-                                    int.TryParse(Str(v, "episodeNumber"), out var eNo);
-                                    double runtime = v.TryGetProperty("metastringParts", out var mp) ? RuntimeSecondsOf(mp) ?? 0 : 0;
-                                    string? description = v.TryGetProperty("description", out var d) ? Str(d, "brief") : null;
-                                    string? image = null;
-                                    if (v.TryGetProperty("artwork", out var art) && art.TryGetProperty("standard", out var std) &&
-                                        std.TryGetProperty("tile", out var tile) && tile.TryGetProperty("1.78", out var t178) && Str(t178, "imageId") is { Length: > 0 } imageId)
-                                        image = ImageUrl(imageId);
-                                    episodes.Add(new DisneyEpisode(id, epTitle, sNo > 0 ? sNo : ordinal, eNo > 0 ? eNo : episodes.Count + 1, runtime, description, image));
-                                }
-                            }
-                            var number = episodes.Count > 0 ? episodes[0].Season : ordinal;
-                            var name = season.TryGetProperty("visuals", out var sv) ? Str(sv, "name") ?? $"Season {number}" : $"Season {number}";
-                            if (episodes.Count > 0) seasons.Add(new DisneySeason(number, name, episodes));
+                            var name = season.TryGetProperty("visuals", out var sv) ? Str(sv, "name") : null;
+                            var episodes = season.TryGetProperty("items", out var items) ? ParseEpisodeItems(items, ordinal) : new List<DisneyEpisode>();
+                            int total = season.TryGetProperty("pagination", out var pg) && pg.TryGetProperty("totalCount", out var tc) && tc.ValueKind == JsonValueKind.Number ? tc.GetInt32() : 0;
+                            var seasonId = Str(season, "id");
+
+                            // The number comes from the name ("Season 2"): Baird's continuous play steps to the next season with number + 1.
+                            // A folder that is not a numbered season (Disney+'s "Exclusives": clips and extras) is left out.
+                            int number;
+                            var m = name == null ? null : System.Text.RegularExpressions.Regex.Match(name, @"^\s*Season\s+(\d+)\s*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            if (m is { Success: true }) number = int.Parse(m.Groups[1].Value);
+                            else if (name == null && episodes.Count > 0) number = episodes[0].Season;
+                            else continue;
+
+                            if (episodes.Count == 0 && !(seasonId != null && total > 0)) continue;
+                            seasons.Add(new DisneySeason(number, name ?? $"Season {number}", episodes, seasonId, total));
                         }
                     }
                 }
-                return new DisneyEpisodeGuide(title, seasons);
+                return new DisneyEpisodeGuide(title, seasons.OrderBy(x => x.Number).ToList());
             }
             catch (JsonException ex)
             {
                 failure = "BAD_JSON: " + ex.Message;
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Parses a season's own reply (<c>GET season/{id}</c>): <c>data.season.items[]</c> in the same shape as on the entity page, and
+        /// <c>pagination.hasMore</c> / <c>totalCount</c>.
+        /// </summary>
+        public static IReadOnlyList<DisneyEpisode>? ParseSeasonEpisodes(int status, string? json, out bool hasMore, out string? failure)
+        {
+            hasMore = false;
+            failure = null;
+            if (status is < 200 or >= 300) { failure = $"HTTP {status}" + (string.IsNullOrWhiteSpace(json) ? "" : ": " + Trim(json)); return null; }
+            if (string.IsNullOrWhiteSpace(json)) { failure = "no reply from Disney+"; return null; }
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("data", out var data) || !data.TryGetProperty("season", out var season) || season.ValueKind != JsonValueKind.Object)
+                {
+                    failure = "the season reply has no data.season";
+                    return null;
+                }
+                hasMore = season.TryGetProperty("pagination", out var pg) && pg.TryGetProperty("hasMore", out var hm) && hm.ValueKind == JsonValueKind.True;
+                return season.TryGetProperty("items", out var items) ? ParseEpisodeItems(items, 1) : new List<DisneyEpisode>();
+            }
+            catch (JsonException ex)
+            {
+                failure = "BAD_JSON: " + ex.Message;
+                return null;
+            }
+        }
+
+        /// <summary>Episodes from an <c>items[]</c> array: id, episodeTitle, seasonNumber, episodeNumber, runtime, description, artwork.</summary>
+        private static List<DisneyEpisode> ParseEpisodeItems(JsonElement items, int seasonFallback)
+        {
+            var episodes = new List<DisneyEpisode>();
+            if (items.ValueKind != JsonValueKind.Array) return episodes;
+            foreach (var item in items.EnumerateArray())
+            {
+                var id = Str(item, "id");
+                if (string.IsNullOrEmpty(id) || !item.TryGetProperty("visuals", out var v) || v.ValueKind != JsonValueKind.Object) continue;
+                var epTitle = Str(v, "episodeTitle") ?? Str(v, "title") ?? "Episode";
+                int.TryParse(Str(v, "seasonNumber"), out var sNo);
+                int.TryParse(Str(v, "episodeNumber"), out var eNo);
+                double runtime = v.TryGetProperty("metastringParts", out var mp) ? RuntimeSecondsOf(mp) ?? 0 : 0;
+                string? description = v.TryGetProperty("description", out var d) ? Str(d, "brief") : null;
+                string? image = null;
+                if (v.TryGetProperty("artwork", out var art) && art.TryGetProperty("standard", out var std) &&
+                    std.TryGetProperty("tile", out var tile) && tile.TryGetProperty("1.78", out var t178) && Str(t178, "imageId") is { Length: > 0 } imageId)
+                    image = ImageUrl(imageId);
+                episodes.Add(new DisneyEpisode(id, epTitle, sNo > 0 ? sNo : seasonFallback, eNo > 0 ? eNo : episodes.Count + 1, runtime, description, image));
+            }
+            return episodes;
         }
 
         /// <summary>visuals.metastringParts.runtime.runtimeMs as seconds, or null.</summary>

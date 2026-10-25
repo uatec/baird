@@ -150,6 +150,9 @@ namespace Baird.Tests.Services
         public Queue<int> FetchStatuses { get; } = new();
         public Func<JsonObject>? PollReply { get; set; }
         public List<string> ControlScripts { get; } = new();
+        /// <summary>Season replies: season id -> (offset -> body). Used for GET season/{id}?limit=100&offset=N.</summary>
+        public Dictionary<string, Func<int, string>> SeasonBodies { get; } = new();
+        public List<string> SeasonRequests { get; } = new();
         public int PromptClicks { get; private set; }
         public int EndCardCloses { get; private set; }
         public int MouseMoves { get; private set; }
@@ -230,7 +233,16 @@ namespace Baird.Tests.Services
             {
                 FetchCalls++;
                 var status = FetchStatuses.Count > 0 ? FetchStatuses.Dequeue() : SearchStatus;
-                var body = script.Contains("/page/entity-") ? EntityBody : SearchBody;
+                string? body;
+                var seasonKey = SeasonBodies.Keys.FirstOrDefault(k => script.Contains("/season/" + k));
+                if (seasonKey != null)
+                {
+                    var offsetMatch = System.Text.RegularExpressions.Regex.Match(script, @"offset=(\d+)");
+                    var offset = offsetMatch.Success ? int.Parse(offsetMatch.Groups[1].Value) : 0;
+                    SeasonRequests.Add($"{seasonKey}@{offset}");
+                    body = SeasonBodies[seasonKey](offset);
+                }
+                else body = script.Contains("/page/entity-") ? EntityBody : SearchBody;
                 json = JsonValue.Create(new JsonObject { ["status"] = status, ["body"] = body }.ToJsonString())!.ToJsonString();
             }
             else if (script.Contains("profile-avatar")) { json = ProfileClickResults is { Count: > 0 } q ? q.Dequeue() : "\"Robert\""; if (json != "null") ProfileClicked = "Robert"; }
@@ -804,6 +816,59 @@ namespace Baird.Tests.Services
                 }
             }
         }.ToJsonString();
+
+        public const string LazySeason1 = "season-1-id";
+        public const string LazySeason2 = "season-2-id";
+        public const string LazyExclusives = "exclusives-id";
+
+        private static JsonObject LazySeasonEntry(string id, string name, int total) => new()
+        {
+            ["type"] = "season",
+            ["id"] = id,
+            ["visuals"] = new JsonObject { ["name"] = name },
+            ["pagination"] = new JsonObject { ["hasMore"] = true, ["currentOffset"] = 0, ["totalCount"] = total }
+        };
+
+        /// <summary>Shaped like The Simpsons' entity page: the seasons are listed with a total and NO episodes; "Exclusives" is not a season.</summary>
+        public static string LazySeries() => new JsonObject
+        {
+            ["data"] = new JsonObject
+            {
+                ["page"] = new JsonObject
+                {
+                    ["visuals"] = new JsonObject { ["title"] = "The Simpsons", ["metastringParts"] = Meta(null) },
+                    ["actions"] = new JsonArray(Playback("s1e1-id")),
+                    ["containers"] = new JsonArray(new JsonObject
+                    {
+                        ["type"] = "episodes",
+                        ["seasons"] = new JsonArray(
+                            LazySeasonEntry(LazyExclusives, "Exclusives", 6),
+                            LazySeasonEntry(LazySeason2, "Season 2", 3),
+                            LazySeasonEntry(LazySeason1, "Season 1", 13))
+                    })
+                }
+            }
+        }.ToJsonString();
+
+        /// <summary>A season's own reply: <paramref name="count"/> episodes numbered from <paramref name="first"/>.</summary>
+        public static string SeasonReply(int season, int first, int count, bool hasMore, int total)
+        {
+            var items = new JsonArray();
+            for (var i = 0; i < count; i++)
+                items.Add(Episode($"s{season}e{first + i}-id", $"Episode {first + i}", season, first + i, 1_434_000));
+            return new JsonObject
+            {
+                ["data"] = new JsonObject
+                {
+                    ["season"] = new JsonObject
+                    {
+                        ["type"] = "season",
+                        ["items"] = items,
+                        ["pagination"] = new JsonObject { ["hasMore"] = hasMore, ["currentOffset"] = first - 1, ["totalCount"] = total }
+                    }
+                }
+            }.ToJsonString();
+        }
 
         public static string Film(string id, double runtimeMs = 8_062_084) => new JsonObject
         {
