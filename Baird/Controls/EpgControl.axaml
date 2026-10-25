@@ -84,6 +84,7 @@
             </StackPanel>
 
             <Button Grid.Column="2" 
+                    Name="WatchButton"
                     Classes="WatchButton"
                     Content="{Binding PlayButtonText}"
                     Command="{Binding PlayChannelCommand}"

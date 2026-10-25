@@ -96,6 +96,19 @@ namespace Baird.Tests.Controls
         }
 
         [AvaloniaFact]
+        public async Task Pressing_Enter_on_a_focused_keyboard_key_types_that_letter()
+        {
+            var f = await Open();
+            Key(f, "A").Focus();
+            await Settle(100);
+
+            Press(f, Avalonia.Input.Key.Enter);
+            await Settle(100);
+
+            Assert.Equal("a", f.Vm.SearchText);
+        }
+
+        [AvaloniaFact]
         public async Task The_search_text_is_not_an_editable_text_box()
         {
             var f = await Open();

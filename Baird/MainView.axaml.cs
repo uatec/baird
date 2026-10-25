@@ -187,9 +187,16 @@ namespace Baird
                     if (!_mouseEnabled)
                     {
                         // Remote-only: hide the pointer and swallow every mouse event before it reaches a control.
+                        // The remote's OK button arrives as the left mouse button, so that one is turned into Enter.
                         topLevel.Cursor = new Cursor(StandardCursorType.None);
-                        SwallowPointerEvents(topLevel, InputElement.PointerPressedEvent, InputElement.PointerReleasedEvent,
-                            InputElement.PointerMovedEvent, InputElement.PointerWheelChangedEvent);
+                        SwallowPointerEvents(topLevel, InputElement.PointerMovedEvent, InputElement.PointerWheelChangedEvent);
+                        topLevel.AddHandler(InputElement.PointerPressedEvent, OnGlobalPointerPressed, RoutingStrategies.Tunnel);
+                        topLevel.AddHandler(InputElement.PointerReleasedEvent, OnGlobalPointerReleased, RoutingStrategies.Tunnel);
+                        _visualTreeSubscriptions.Add(Disposable.Create(() =>
+                        {
+                            topLevel.RemoveHandler(InputElement.PointerPressedEvent, OnGlobalPointerPressed);
+                            topLevel.RemoveHandler(InputElement.PointerReleasedEvent, OnGlobalPointerReleased);
+                        }));
                     }
 
                     // Existing InputCoordinator (Bubbling)
@@ -773,6 +780,27 @@ namespace Baird
                 _visualTreeSubscriptions.Add(Disposable.Create(() =>
                     topLevel.RemoveHandler(routedEvent, (EventHandler<RoutedEventArgs>)SwallowPointerEvent)));
             }
+        }
+
+        private void OnGlobalPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            e.Handled = true;
+            if (e.GetCurrentPoint(null).Properties.PointerUpdateKind == PointerUpdateKind.LeftButtonPressed)
+                RaiseEnterOnFocus(InputElement.KeyDownEvent);
+        }
+
+        private void OnGlobalPointerReleased(object? sender, PointerReleasedEventArgs e)
+        {
+            e.Handled = true;
+            if (e.InitialPressMouseButton == MouseButton.Left)
+                RaiseEnterOnFocus(InputElement.KeyUpEvent);
+        }
+
+        private void RaiseEnterOnFocus(RoutedEvent<KeyEventArgs> keyEvent)
+        {
+            var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
+            var target = topLevel?.FocusManager?.GetFocusedElement() as Interactive ?? topLevel;
+            target?.RaiseEvent(new KeyEventArgs { RoutedEvent = keyEvent, Key = Key.Enter, Source = target });
         }
 
         private static void SwallowPointerEvent(object? sender, RoutedEventArgs e) => e.Handled = true;
