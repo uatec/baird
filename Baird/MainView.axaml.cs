@@ -355,7 +355,7 @@ namespace Baird
 
                         EventHandler onHistoryRequested = (sender, args) =>
                         {
-                            Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.OpenMainMenu());
+                            Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.GoToHistory());
                         };
                         player.HistoryRequested += onHistoryRequested;
                         _visualTreeSubscriptions.Add(Disposable.Create(() => player.HistoryRequested -= onHistoryRequested));
@@ -836,11 +836,11 @@ namespace Baird
                 return;
             }
 
-            // HomePage key — close all menus and return to video player
+            // HomePage key — close the guide and open the History tab
             if (e.Key == Key.BrowserHome)
             {
                 _viewModel.IsEpgActive = false;
-                _viewModel.GoHome();
+                _viewModel.GoToHistory();
                 e.Handled = true;
                 return;
             }

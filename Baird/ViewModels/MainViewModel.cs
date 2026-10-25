@@ -867,6 +867,14 @@ namespace Baird.ViewModels
             PushViewModel(new ShowingVideoPlayerViewModel());
         }
 
+        /// <summary>Home: the History tab on top of the video player, so Back from the menu returns to the video.</summary>
+        public void GoToHistory()
+        {
+            var index = MainMenu.Tabs.ToList().FindIndex(t => t.Title == "History");
+            GoHome();
+            OpenMainMenu(index >= 0 ? index : null);
+        }
+
         public Stack<ReactiveObject> NavigationHistory { get; } = new();
 
         private ReactiveObject? _currentPage;

@@ -203,7 +203,7 @@ namespace Baird.Tests.Controls
 
             Press(player, Key.Right);
             Press(player, Key.Space);
-            Press(player, Key.Down);
+            Press(player, Key.BrowserHome);
             await engine.WhenCommandsDoneAsync();
 
             Assert.Equal(new[] { (NetflixPlayerAction.SeekBy, 10.0), (NetflixPlayerAction.Pause, 0.0) }, svc.PlayerActions);
