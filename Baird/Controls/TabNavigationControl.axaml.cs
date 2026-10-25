@@ -213,12 +213,6 @@ namespace Baird.Controls
             SetSiblingsFocusable(false);
         }
 
-        private void OnTabBarPointerEntered(object? sender, Avalonia.Input.PointerEventArgs e)
-        {
-            // If mouse enters the tab bar, allow clicking any tab
-            SetSiblingsFocusable(true);
-        }
-
         private void SetSiblingsFocusable(bool allowAll)
         {
             if (DataContext is not TabNavigationViewModel vm) return;

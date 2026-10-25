@@ -59,6 +59,8 @@ namespace Baird
         // while pressing the voice button, then set VOICE_COMMAND_KEY to the logged integer.
         private Key _voiceCommandKey = Key.None;
 
+        private readonly bool _mouseEnabled;
+
         public MainView()
         {
             // Designer support
@@ -68,6 +70,9 @@ namespace Baird
         public MainView(IConfiguration config)
         {
             InitializeComponent();
+
+            // The mouse is off by default (Baird is driven by the remote); BAIRD_MOUSE=true brings it back for desktop development.
+            _mouseEnabled = bool.TryParse(config["BAIRD_MOUSE"], out var mouse) && mouse;
 
             var tvh = new TvHeadendService(config);
             _providers.Add(tvh);
@@ -179,13 +184,13 @@ namespace Baird
                     _visualTreeSubscriptions.Add(Disposable.Create(() =>
                         topLevel.RemoveHandler(InputElement.KeyUpEvent, OnGlobalKeyUp)));
 
-                    topLevel.AddHandler(InputElement.PointerPressedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
-                    _visualTreeSubscriptions.Add(Disposable.Create(() =>
-                        topLevel.RemoveHandler(InputElement.PointerPressedEvent, OnGlobalPointerActivity)));
-
-                    topLevel.AddHandler(InputElement.PointerMovedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
-                    _visualTreeSubscriptions.Add(Disposable.Create(() =>
-                        topLevel.RemoveHandler(InputElement.PointerMovedEvent, OnGlobalPointerActivity)));
+                    if (!_mouseEnabled)
+                    {
+                        // Remote-only: hide the pointer and swallow every mouse event before it reaches a control.
+                        topLevel.Cursor = new Cursor(StandardCursorType.None);
+                        SwallowPointerEvents(topLevel, InputElement.PointerPressedEvent, InputElement.PointerReleasedEvent,
+                            InputElement.PointerMovedEvent, InputElement.PointerWheelChangedEvent);
+                    }
 
                     // Existing InputCoordinator (Bubbling)
                     topLevel.KeyDown += InputCoordinator;
@@ -760,42 +765,17 @@ namespace Baird
             }
         }
 
-        private void OnGlobalPointerActivity(object? sender, PointerEventArgs e)
+        private void SwallowPointerEvents(Avalonia.Controls.TopLevel topLevel, params RoutedEvent[] events)
         {
-            if (_inputsBlocked)
+            foreach (var routedEvent in events)
             {
-                Console.WriteLine("[MainView] Inputs blocked. Pointer activity requesting TV power + active source.");
-                RequestInputRegain();
-                e.Handled = true;
-                return;
-            }
-
-            ResetIdleTimer(); // Activity resets timer
-            AssertCecPresence();
-
-            if (_viewModel.Screensaver.IsActive)
-            {
-                Console.WriteLine("[MainView] Screensaver active. Pointer activity. Waking up.");
-                _viewModel.Screensaver.Deactivate();
-
-                // Restore playback if we paused it for screensaver
-                if (_wasPausedForScreensaver)
-                {
-                    Console.WriteLine("[MainView] Resuming video playback after screensaver (pointer).");
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                        var player = videoLayer?.GetPlayer();
-                        if (player != null)
-                        {
-                            player.Resume();
-                        }
-                    });
-                    _wasPausedForScreensaver = false;
-                }
-                e.Handled = true;
+                topLevel.AddHandler(routedEvent, (EventHandler<RoutedEventArgs>)SwallowPointerEvent, RoutingStrategies.Tunnel);
+                _visualTreeSubscriptions.Add(Disposable.Create(() =>
+                    topLevel.RemoveHandler(routedEvent, (EventHandler<RoutedEventArgs>)SwallowPointerEvent)));
             }
         }
+
+        private static void SwallowPointerEvent(object? sender, RoutedEventArgs e) => e.Handled = true;
 
         private void InputCoordinator(object? sender, KeyEventArgs e)
         {
