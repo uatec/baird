@@ -74,6 +74,11 @@ namespace Baird
             // The mouse is off by default (Baird is driven by the remote); BAIRD_MOUSE=true brings it back for desktop development.
             _mouseEnabled = bool.TryParse(config["BAIRD_MOUSE"], out var mouse) && mouse;
 
+            // Hover states come from hit-testing, which runs before any handler can swallow the event, so a pointer that is
+            // hidden but still moving would flicker the buttons it passes over. Nothing under the window is hit-testable;
+            // the window itself still gets the clicks (see OnGlobalPointerPressed).
+            if (!_mouseEnabled) IsHitTestVisible = false;
+
             var tvh = new TvHeadendService(config);
             _providers.Add(tvh);
             _epgService = tvh;
