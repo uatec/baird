@@ -233,12 +233,16 @@ namespace Baird.Tests.Services
         public int Enters { get; private set; }
         public List<string> ControlScripts { get; } = new();
         public bool StyleApplied { get; private set; }
+        /// <summary>Called with every script that is not a state read (e.g. to react to the Play button being pressed).</summary>
+        public Action<string>? OnScript { get; set; }
 
         public static JsonObject State(string url, bool? auth = null, bool signInPrompt = false, bool email = false, bool password = false,
             bool video = false, double t = 0, double duration = 0, bool paused = false, bool ended = false, bool otherVideo = false, string text = "",
-            bool cancelled = false) => new()
+            bool cancelled = false, double advertTime = 0, bool playButton = false) => new()
             {
                 ["cancelled"] = cancelled,
+                ["advertTime"] = advertTime,
+                ["playButton"] = playButton,
                 ["url"] = url,
                 ["authenticated"] = auth,
                 ["signInPrompt"] = signInPrompt,
@@ -261,6 +265,7 @@ namespace Baird.Tests.Services
                 json = (States.Count > 0 ? States.Dequeue() : LastState).ToJsonString();
             }
             else if (script.Contains("__bairdChannel4Style")) { StyleApplied = true; json = "true"; }
+            else if (script.Contains("b.click(); return 'clicked'")) { OnScript?.Invoke(script); json = "\"clicked\""; }
             else { ControlScripts.Add(script); json = "\"video\""; }
             return Task.FromResult<JsonElement?>(JsonDocument.Parse(json).RootElement.Clone());
         }
@@ -430,6 +435,47 @@ namespace Baird.Tests.Services
 
             Assert.Null(engine.FailureAction);
             Assert.Equal("There is nothing to do.", await engine.RunFailureActionAsync());
+        }
+
+        [Fact]
+        public async Task Adverts_before_the_programme_count_as_playing()
+        {
+            // Measured on the Pi: the programme waits paused at 0 while adverts play in the other video element, for minutes.
+            var (b, _, engine) = Engine();
+            b.States.Enqueue(FakeChannel4Browser.State(Episode, auth: true, video: true, t: 0, duration: 2089.9, paused: true, otherVideo: true, advertTime: 0.3));
+            b.LastState = FakeChannel4Browser.State(Episode, auth: true, video: true, t: 0, duration: 2089.9, paused: true, otherVideo: true, advertTime: 2.3);
+            var loaded = 0;
+            engine.FileLoaded += (_, _) => loaded++;
+
+            await engine.PlayAsync(Episode);
+            await engine.PollOnceAsync();
+
+            Assert.Equal(1, loaded);
+            Assert.True(engine.IsAdvertPlaying);
+            Assert.Equal(PlaybackState.Playing, engine.State); // not "paused": the advert plays
+            Assert.Equal(0, engine.TimePositionSeconds);
+            Assert.Equal(2089.9, engine.DurationSeconds);
+        }
+
+        [Fact]
+        public async Task A_page_waiting_on_its_Play_button_gets_it_pressed()
+        {
+            var (b, _, engine) = Engine();
+            engine.StartTimeout = TimeSpan.FromSeconds(10);
+            var presses = 0;
+            b.OnScript = s =>
+            {
+                if (!s.Contains("button.text-button.play")) return;
+                presses++;
+                b.States.Enqueue(FakeChannel4Browser.State(Episode, auth: true, video: true, t: 0, duration: 1395, otherVideo: true, advertTime: 0.4));
+                b.LastState = FakeChannel4Browser.State(Episode, auth: true, video: true, t: 0, duration: 1395, otherVideo: true, advertTime: 1.4);
+            };
+            b.LastState = FakeChannel4Browser.State(Episode, auth: true, video: false, playButton: true, text: "Play");
+
+            await engine.PlayAsync(Episode);
+
+            Assert.Equal(1, presses);
+            Assert.Equal(PlaybackState.Playing, engine.State);
         }
 
         [Fact]

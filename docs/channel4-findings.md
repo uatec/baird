@@ -78,6 +78,17 @@ read the session. When the session expires, playing says "Channel 4 is not signe
 | Page style | `Baird/Resources/channel4-page-style.js` | Hides everything on the page but the playing `<video>`, which fills the window; hides the pointer. |
 | Autotest | `BAIRD_AUTOTEST=channel4-core` | Search (`BAIRD_AUTOTEST_C4_QUERY`, default "Derry Girls"), open the first series, play its first episode, then log position, length and advert every 10 s for a minute. |
 
+## Measured on the Pi, signed in (2026-10-25)
+
+- **The page does not always start the video.** Back from the sign-in, the on-demand page showed its **Play** button
+  (`button.text-button.play`) and no video until it was pressed; a script `click()` works on it. The engine presses it (up to 3
+  times, 5 s apart) when the page shows it with nothing playing.
+- **Two `<video>` elements.** The programme is a `blob:` video whose `duration` is the programme's real length (2089.9 s for a
+  "35 mins" Countdown). Adverts play in the OTHER element (15 s and 30 s clips from Channel 4's advert CDN) while the programme waits
+  paused at 0; the page says "Advert: Programme starts in 01:06". Pre-roll adverts can take well over 90 s, which first made Baird give
+  up ("No video played within 90 s") while the adverts played: now an advert playing counts as the video playing.
+- Baird does not skip adverts.
+
 ## Not measured (needs the Pi signed in)
 
 Everything about the player was written from standard `<video>` behaviour, not from Channel 4's page:
