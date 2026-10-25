@@ -62,6 +62,23 @@ namespace Baird.Tests.ViewModels
         }
 
         [Fact]
+        public async Task Typed_digits_list_only_the_channels_whose_number_starts_with_them()
+        {
+            var (vm, _, _) = CreateTestContext();
+            await vm.RefreshAsync();
+            Assert.Equal(2, vm.Channels.Count);
+
+            vm.AppendChannelDigit("2");
+
+            Assert.Equal("2", Assert.Single(vm.Channels).Channel.ChannelNumber);
+            Assert.True(vm.HasChannelNumberFilter);
+
+            Assert.True(vm.BackspaceChannelDigit());
+            Assert.Equal(2, vm.Channels.Count);
+            Assert.False(vm.BackspaceChannelDigit());
+        }
+
+        [Fact]
         public async Task RefreshAsync_PopulatesChannelsAndSchedules()
         {
             var (vm, mockEpg, _) = CreateTestContext();

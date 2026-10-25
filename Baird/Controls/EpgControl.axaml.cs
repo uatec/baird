@@ -39,6 +39,22 @@ namespace Baird.Controls
 
             if (e.Handled) return;
 
+            if (DataContext is EpgViewModel filterVm)
+            {
+                // Remote number keys filter the channels by number; Backspace takes the last digit off.
+                if (TryGetDigit(e.Key) is { } digit)
+                {
+                    filterVm.AppendChannelDigit(digit);
+                    e.Handled = true;
+                    return;
+                }
+                if (e.Key == Key.Back && filterVm.BackspaceChannelDigit())
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
+
             if (e.Key == Key.Enter)
             {
                 if (DataContext is EpgViewModel vm && vm.SelectedChannel != null)
@@ -47,6 +63,13 @@ namespace Baird.Controls
                     e.Handled = true;
                 }
             }
+        }
+
+        private static string? TryGetDigit(Key key)
+        {
+            if (key >= Key.D0 && key <= Key.D9) return ((int)key - (int)Key.D0).ToString();
+            if (key >= Key.NumPad0 && key <= Key.NumPad9) return ((int)key - (int)Key.NumPad0).ToString();
+            return null;
         }
     }
 }

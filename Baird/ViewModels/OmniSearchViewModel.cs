@@ -254,25 +254,8 @@ namespace Baird.ViewModels
             this.WhenAnyValue(x => x.IsSearching).Subscribe(_ => this.RaisePropertyChanged(nameof(ShowSpinner)));
             SearchResults.CollectionChanged += (s, e) => this.RaisePropertyChanged(nameof(ShowSpinner));
 
-            // Branch 1: Short numeric (<= 3 digits) -> Immediate
+            // Debounced: a search runs once the query has stopped changing
             textChanges
-                .Where(q => !string.IsNullOrEmpty(q) && q.Length <= 3 && q.Length > 0 && q.All(char.IsDigit))
-                .Throttle(SearchTiming.Debounce, RxApp.MainThreadScheduler)
-                .Subscribe(async (q) =>
-                {
-                    try
-                    {
-                        await PerformSearch(q);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[OmniSearchViewModel] Unhandled error in search subscription: {ex}");
-                    }
-                });
-
-            // Branch 2: Everything else -> Debounced
-            textChanges
-                .Where(q => string.IsNullOrEmpty(q) || q.Length > 3 || !q.All(char.IsDigit))
                 .Throttle(SearchTiming.Debounce, RxApp.MainThreadScheduler)
                 .Subscribe(async (q) =>
                 {
@@ -334,58 +317,6 @@ namespace Baird.ViewModels
             foreach (var status in ProviderStatuses)
             {
                 status.SetLoading();
-            }
-
-            // For short numeric queries (1-3 digits), do in-memory channel search
-            bool isShortNumericQuery = !string.IsNullOrEmpty(query) && query.Length <= 3 && query.All(char.IsDigit);
-
-            if (isShortNumericQuery)
-            {
-                // In-memory channel number search
-                var allChannels = _getAllChannels();
-                var matchingChannels = allChannels
-                    .Where(c => c.ChannelNumber != null &&
-                               (c.ChannelNumber == query || c.ChannelNumber.StartsWith(query)))
-                    .OrderBy(c => c.ChannelNumber?.Length)
-                    .ThenBy(c => c.ChannelNumber)
-                    .ToList();
-
-                _allResults = matchingChannels;
-                SearchResults.AddRange(matchingChannels);
-
-                // Update pips: show result count on TvHeadend pip, idle the rest
-                var tvhStatus = ProviderStatuses.FirstOrDefault(p => p.Name == "TvHeadend");
-                foreach (var status in ProviderStatuses)
-                {
-                    if (status == tvhStatus)
-                    {
-                        if (matchingChannels.Any())
-                            status.SetSuccess(matchingChannels.Count);
-                        else
-                            status.SetEmpty();
-                    }
-                    else
-                    {
-                        status.SetIdle();
-                    }
-                }
-
-                IsSearching = false;
-
-                // Start timer only if we found matching channels
-                if (matchingChannels.Any())
-                {
-                    StartAutoActivationTimer();
-                }
-
-                // Clean up cancellation token
-                newCts.Dispose();
-                if (_searchCts == newCts)
-                {
-                    _searchCts = null;
-                }
-
-                return; // Skip provider search
             }
 
             var sorter = new SearchResultSorter { ProviderOrder = _dataService.Providers.Select(p => p.Name).ToList() };
@@ -500,23 +431,6 @@ namespace Baird.ViewModels
                     _searchCts = null;
                 }
             }
-        }
-
-        private void StartAutoActivationTimer()
-        {
-            StopAutoActivationTimer();
-
-            IsAutoActivationPending = true;
-            AutoActivationProgress = 0;
-            _timerStartTime = DateTime.Now;
-
-            _autoActivationTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(50) // Update every 50ms for smooth progress
-            };
-
-            _autoActivationTimer.Tick += OnAutoActivationTimerTick;
-            _autoActivationTimer.Start();
         }
 
         private void StopAutoActivationTimer()
