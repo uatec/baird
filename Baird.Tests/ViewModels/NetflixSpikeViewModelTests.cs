@@ -92,13 +92,15 @@ namespace Baird.Tests.ViewModels
         public List<string> NavigatedUrls { get; } = new();
         /// <summary>Delay before a navigation to Netflix's idle page completes (a slow return to idle).</summary>
         public TimeSpan IdleNavigateDelay { get; set; }
+        /// <summary>False: the browser does not answer a navigation (it returns false, as the real service does after a timeout).</summary>
+        public bool NavigateResult { get; set; } = true;
         public async Task<bool> NavigateAsync(string url, CancellationToken ct = default)
         {
             NavigateCalled = true;
             if (url == NetflixSession.IdleUrl && IdleNavigateDelay > TimeSpan.Zero) await Task.Delay(IdleNavigateDelay);
             LastNavigatedUrl = url;
             NavigatedUrls.Add(url);
-            return true;
+            return NavigateResult;
         }
         public Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default) { SubmitCredentialsCalls++; return Task.FromResult(SubmitResult()); }
         public Task<string?> GetLoginErrorTextAsync(CancellationToken ct = default) => Task.FromResult(LoginError);

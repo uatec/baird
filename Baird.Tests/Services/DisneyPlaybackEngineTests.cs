@@ -1340,3 +1340,76 @@ namespace Baird.Tests.Services
         }
     }
 }
+
+namespace Baird.Tests.Services
+{
+    using System;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using Baird.Services;
+    using Xunit;
+
+    public class DisneyStartupRobustnessTests
+    {
+        private static (FakeDisneyBrowser Browser, DisneyService Service) Setup()
+        {
+            var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true) };
+            var service = new DisneyService(new BrowserHub(b), new DisneyCredentials("me@example.com", "pw"))
+            {
+                SignInTimeout = TimeSpan.FromSeconds(3),
+                PollInterval = TimeSpan.FromMilliseconds(5)
+            };
+            return (b, service);
+        }
+
+        [Fact]
+        public async Task A_browser_that_cannot_open_the_page_is_a_failure_not_a_wait_in_the_dark()
+        {
+            var (b, service) = Setup();
+            b.IsRunning = true;        // opened earlier (by the Netflix session)
+            b.NavigateResult = false;  // but it does not answer
+
+            var failure = await service.EnsureReadyAsync(CancellationToken.None);
+
+            Assert.Contains("did not answer", failure);
+        }
+
+        [Fact]
+        public async Task A_failed_start_frees_the_shared_gate_so_the_other_service_is_not_blocked()
+        {
+            var (b, service) = Setup();
+            b.IsRunning = true;
+            b.NavigateResult = false;
+            await service.EnsureReadyAsync(CancellationToken.None);
+
+            // the gate is free again: Netflix's session (or Disney+ itself) gets it at once
+            var acquired = await service.Hub.Gate.WaitAsync(TimeSpan.FromMilliseconds(500));
+
+            Assert.True(acquired);
+            service.Hub.Gate.Release();
+        }
+
+        [Fact]
+        public async Task The_background_warm_up_tries_again_after_a_failure()
+        {
+            var (b, service) = Setup();
+            b.IsRunning = true;
+            b.NavigateResult = false;
+            service.Start(TimeSpan.Zero, TimeSpan.FromMilliseconds(40));
+            await Task.Delay(150);
+            Assert.False(service.Session.HasApiToken);
+
+            b.NavigateResult = true; // the browser recovers
+            for (int i = 0; i < 100 && !service.Session.HasApiToken; i++) await Task.Delay(50);
+            service.Stop();
+
+            Assert.True(service.Session.HasApiToken);
+        }
+
+        [Fact]
+        public void A_CDP_command_has_a_time_limit_so_that_one_hung_call_cannot_hold_everything_for_minutes()
+        {
+            Assert.InRange(CdpBrowserService.CommandTimeout.TotalSeconds, 10, 120);
+        }
+    }
+}

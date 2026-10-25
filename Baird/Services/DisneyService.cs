@@ -256,13 +256,13 @@ namespace Baird.Services
                             try
                             {
                                 using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                                attempt.CancelAfter(TimeSpan.FromMinutes(3));
+                                attempt.CancelAfter(TimeSpan.FromSeconds(90)); // the warm-up holds the shared gate: it must not hold it for minutes
                                 var failure = await PrepareAsync(attempt.Token);
                                 if (failure != null) Log?.Invoke($"Disney+ not ready: {failure}");
                             }
                             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                             {
-                                Log?.Invoke("Disney+ not ready: gave up after 3 min; trying again later.");
+                                Log?.Invoke("Disney+ not ready: gave up after 90 s; trying again later.");
                             }
                         }
                         await Task.Delay(every, ct);
@@ -339,7 +339,8 @@ namespace Baird.Services
             else
             {
                 Log?.Invoke("Using the browser that is already open.");
-                await Browser.NavigateAsync(DisneySearchParser.SearchPageUrl, ct);
+                if (!await Browser.NavigateAsync(DisneySearchParser.SearchPageUrl, ct))
+                    return "Could not open Disney+ in the browser: it did not answer. Trying again later.";
             }
             _hub.PageOwner = Owner;
 

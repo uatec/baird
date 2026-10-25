@@ -1144,6 +1144,13 @@ namespace Baird.Services
             return await SendCommandAsync(_browserWs!, _pendingBrowserRequests, id, method, @params, ct);
         }
 
+        /// <summary>
+        /// How long one CDP command may take to answer. Measured on the Pi: a Page.navigate to Disney+'s page never answered for
+        /// 3 minutes while it held the shared gate, so Netflix's search waited behind it too. A hung command now fails with a
+        /// TimeoutException that says which command, and callers (which already catch exceptions) carry on or report it.
+        /// </summary>
+        public static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(45);
+
         private static async Task<JsonElement> SendCommandAsync(
             ClientWebSocket ws,
             ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> pending,
@@ -1155,11 +1162,13 @@ namespace Baird.Services
             var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
             pending[id] = tcs;
 
-            using var reg = ct.Register(() =>
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(CommandTimeout);
+            using var reg = timeout.Token.Register(() =>
             {
                 if (pending.TryRemove(id, out var p))
                 {
-                    p.TrySetCanceled(ct);
+                    p.TrySetCanceled(timeout.Token);
                 }
             });
 
@@ -1172,9 +1181,16 @@ namespace Baird.Services
             }.ToJsonString();
 
             var bytes = Encoding.UTF8.GetBytes(payload);
-            await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
-
-            return await tcs.Task;
+            try
+            {
+                await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, timeout.Token);
+                return await tcs.Task;
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                pending.TryRemove(id, out _);
+                throw new TimeoutException($"The browser did not answer CDP {method} within {CommandTimeout.TotalSeconds:F0} s.");
+            }
         }
 
         private static async Task ReceiveLoopAsync(
