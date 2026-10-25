@@ -169,7 +169,7 @@ namespace Baird.Tests.Controls
         public async Task Up_from_the_top_row_goes_to_the_suggestions_and_Down_comes_back_to_the_keyboard()
         {
             var f = await Open("doctor who");
-            var q = Key(f, "Q");
+            var q = Key(f, "1");
             q.Focus();
 
             Press(f, Avalonia.Input.Key.Up);
@@ -180,6 +180,17 @@ namespace Baird.Tests.Controls
             Press(f, Avalonia.Input.Key.Down);
             await Settle(100);
             Assert.True(q.IsFocused);
+        }
+
+        [AvaloniaFact]
+        public async Task The_on_screen_keyboard_has_a_key_for_every_digit()
+        {
+            var f = await Open();
+
+            foreach (var digit in "1234567890")
+                Key(f, digit.ToString()).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal("1234567890", f.Vm.SearchText);
         }
 
         [AvaloniaFact]

@@ -390,6 +390,10 @@ namespace Baird.ViewModels
 
             var sorter = new SearchResultSorter { ProviderOrder = _dataService.Providers.Select(p => p.Name).ToList() };
 
+            // Providers answer after different delays. Their results are kept here and shown once, in the final order, so
+            // the list never rearranges under the viewer. The provider pips show which ones are still working.
+            var collected = new List<MediaItemViewModel>();
+
             try
             {
                 // Create tasks for each provider
@@ -415,10 +419,7 @@ namespace Baird.ViewModels
                         // sort/row-update step sees every provider's results.
                         await Dispatcher.UIThread.InvokeAsync(() =>
                         {
-                            if (unifiedItems.Any())
-                            {
-                                SearchResults.AddRange(unifiedItems);
-                            }
+                            collected.AddRange(unifiedItems);
                             if (status != null)
                             {
                                 if (count > 0)
@@ -447,10 +448,9 @@ namespace Baird.ViewModels
                 if (token.IsCancellationRequested) return;
 
                 // Final sort after all results are in
-                if (SearchResults.Any())
+                if (collected.Count > 0)
                 {
-                    var allItems = SearchResults.ToList();
-                    var sorted = sorter.Sort(allItems, query);
+                    var sorted = sorter.Sort(collected, query);
                     _allResults = sorted;
 
                     // Populate SearchResults with initial batch

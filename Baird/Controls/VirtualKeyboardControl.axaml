@@ -48,47 +48,58 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="*,*,*,*" ColumnDefinitions="*,*,*,*,*,*,*,*,*,*,*" Margin="10" XYFocus.NavigationModes="Enabled">
+    <Grid RowDefinitions="*,*,*,*,*" ColumnDefinitions="*,*,*,*,*,*,*,*,*,*,*" Margin="10" XYFocus.NavigationModes="Enabled">
         
-        <!-- Row 0: QWERTY + Backspace -->
-        <Button Grid.Row="0" Grid.Column="0" Content="Q" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="1" Content="W" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="2" Content="E" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="3" Content="R" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="4" Content="T" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="5" Content="Y" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="6" Content="U" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="7" Content="I" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="8" Content="O" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="9" Content="P" Click="OnKeyClick"/>
-        <Button Grid.Row="0" Grid.Column="10" Content="⌫" Classes="special" Click="OnBackspaceClick"/>
+        <!-- Row 0: digits -->
+        <Button Grid.Row="0" Grid.Column="0" Content="1" Click="OnKeyClick"/>
+        <Button Grid.Row="0" Grid.Column="1" Content="2" Click="OnKeyClick"/>
+        <Button Grid.Row="0" Grid.Column="2" Content="3" Click="OnKeyClick"/>
+        <Button Grid.Row="0" Grid.Column="3" Content="4" Click="OnKeyClick"/>
+        <Button Grid.Row="0" Grid.Column="4" Content="5" Click="OnKeyClick"/>
+        <Button Grid.Row="0" Grid.Column="5" Content="6" Click="OnKeyClick"/>
+        <Button Grid.Row="0" Grid.Column="6" Content="7" Click="OnKeyClick"/>
+        <Button Grid.Row="0" Grid.Column="7" Content="8" Click="OnKeyClick"/>
+        <Button Grid.Row="0" Grid.Column="8" Content="9" Click="OnKeyClick"/>
+        <Button Grid.Row="0" Grid.Column="9" Content="0" Click="OnKeyClick"/>
 
-        <!-- Row 1: ASDF + Enter -->
-        <!-- Skipping col 0 for alignment -->
-        <Button Grid.Row="1" Grid.Column="1" Content="A" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="2" Content="S" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="3" Content="D" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="4" Content="F" Name="KeyF" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="5" Content="G" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="6" Content="H" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="7" Content="J" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="8" Content="K" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="9" Content="L" Click="OnKeyClick"/>
-        <Button Grid.Row="1" Grid.Column="10" Content="ENTER" Classes="special" Click="OnEnterClick" FontSize="12"/>
+        <!-- Row 1: QWERTY + Backspace -->
+        <Button Grid.Row="1" Grid.Column="0" Content="Q" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="1" Content="W" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="2" Content="E" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="3" Content="R" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="4" Content="T" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="5" Content="Y" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="6" Content="U" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="7" Content="I" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="8" Content="O" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="9" Content="P" Click="OnKeyClick"/>
+        <Button Grid.Row="1" Grid.Column="10" Content="⌫" Classes="special" Click="OnBackspaceClick"/>
 
-        <!-- Row 2: ZXCV -->
+        <!-- Row 2: ASDF + Enter -->
         <!-- Skipping col 0 for alignment -->
-        <Button Grid.Row="2" Grid.Column="1" Content="Z" Click="OnKeyClick"/>
-        <Button Grid.Row="2" Grid.Column="2" Content="X" Click="OnKeyClick"/>
-        <Button Grid.Row="2" Grid.Column="3" Content="C" Click="OnKeyClick"/>
-        <Button Grid.Row="2" Grid.Column="4" Content="V" Click="OnKeyClick"/>
-        <Button Grid.Row="2" Grid.Column="5" Content="B" Click="OnKeyClick"/>
-        <Button Grid.Row="2" Grid.Column="6" Content="N" Click="OnKeyClick"/>
-        <Button Grid.Row="2" Grid.Column="7" Content="M" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="1" Content="A" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="2" Content="S" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="3" Content="D" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="4" Content="F" Name="KeyF" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="5" Content="G" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="6" Content="H" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="7" Content="J" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="8" Content="K" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="9" Content="L" Click="OnKeyClick"/>
+        <Button Grid.Row="2" Grid.Column="10" Content="ENTER" Classes="special" Click="OnEnterClick" FontSize="12"/>
+
+        <!-- Row 3: ZXCV -->
+        <!-- Skipping col 0 for alignment -->
+        <Button Grid.Row="3" Grid.Column="1" Content="Z" Click="OnKeyClick"/>
+        <Button Grid.Row="3" Grid.Column="2" Content="X" Click="OnKeyClick"/>
+        <Button Grid.Row="3" Grid.Column="3" Content="C" Click="OnKeyClick"/>
+        <Button Grid.Row="3" Grid.Column="4" Content="V" Click="OnKeyClick"/>
+        <Button Grid.Row="3" Grid.Column="5" Content="B" Click="OnKeyClick"/>
+        <Button Grid.Row="3" Grid.Column="6" Content="N" Click="OnKeyClick"/>
+        <Button Grid.Row="3" Grid.Column="7" Content="M" Click="OnKeyClick"/>
         
-        <!-- Row 3: Num/Sym + Space -->
-        <Button Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Content="?123" Classes="special" Margin="2,2,10,2" IsEnabled="False" Opacity="0.5"/>
-        <Button Grid.Row="3" Grid.Column="2" Grid.ColumnSpan="9" Content="SPACE" Click="OnSpaceClick" />
+        <!-- Row 4: Space -->
+        <Button Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="11" Content="SPACE" Click="OnSpaceClick" />
 
     </Grid>
 </UserControl>
