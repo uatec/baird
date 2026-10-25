@@ -220,7 +220,7 @@ namespace Baird.Tests.Controls
             }
             finally
             {
-                SearchTiming.ProviderTimeout = TimeSpan.FromSeconds(15);
+                SearchTiming.ProviderTimeout = TimeSpan.FromSeconds(10);
             }
         }
 

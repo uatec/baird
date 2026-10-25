@@ -18,6 +18,6 @@ namespace Baird.ViewModels
         public static TimeSpan Debounce { get; set; } = TimeSpan.FromMilliseconds(2000);
 
         /// <summary>How long one provider may take. The list is shown when all have answered or this has passed; a provider that did not answer shows an error dot.</summary>
-        public static TimeSpan ProviderTimeout { get; set; } = TimeSpan.FromSeconds(15);
+        public static TimeSpan ProviderTimeout { get; set; } = TimeSpan.FromSeconds(10);
     }
 }
