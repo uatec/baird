@@ -53,8 +53,6 @@ namespace Baird.Mpv
 
         // Video-quality feature flags (toggled live from the Settings page).
         private bool _isLive;                 // last source type, so deinterlace can be re-applied on toggle
-        private bool _highQualityScaling;     // spline36 scaler vs bilinear
-        private bool _sharperDeinterlacing;   // 50 fps (field-rate) deinterlacing vs default 25 fps
         private bool _logRenderDimensions;    // log the FBO size handed to mpv each time it changes
         private int _lastLoggedW = -1;
         private int _lastLoggedH = -1;
@@ -141,6 +139,11 @@ namespace Baird.Mpv
             // the same CPU (measured on-device; see spikes/wayland-overlay/RESULTS.md). Set before
             // the options below so they still override the profile where they overlap.
             SetOption("profile", "fast");
+            // Bilinear scaling: spline36 ("high-quality scaling") dropped ~10% of frames on the Pi 5 (2026-10-19). It was a
+            // Settings toggle until 2026-10-25, when it was found switched back on and dropping frames; now it's fixed.
+            SetOption("scale", "bilinear");
+            SetOption("cscale", "bilinear");
+            SetOption("dscale", "bilinear");
 
             // Maintain aspect ratio (will center with black bars if needed)
             SetOption("keepaspect", "yes");
@@ -594,9 +597,9 @@ namespace Baird.Mpv
         /// Live uses bwdif at frame rate (25 fps) by default. Measured inside Baird on the Pi 5:
         /// field-rate output (50 fps, mpv's default) dropped ~26% of frames in the embedded
         /// renderer, while bwdif at 25 fps dropped none and used the least CPU of the options
-        /// tried. The "50 fps deinterlacing" flag (SharperDeinterlacing) opts back into field rate
-        /// for smoother motion once rendering can keep up. deint=interlaced leaves progressive
-        /// frames untouched.
+        /// tried. (Field rate was a Settings toggle until 2026-10-25, removed after it was found
+        /// switched back on and dropping ~37 frames/s.) deint=interlaced leaves progressive frames
+        /// untouched.
         /// </summary>
         private void ApplyDeinterlace()
         {
@@ -604,43 +607,13 @@ namespace Baird.Mpv
             {
                 // bwdif is an explicit vf; disable the built-in deinterlace toggle to avoid stacking.
                 SetUnlessOverridden("deinterlace", "no");
-                SetUnlessOverridden("vf", _sharperDeinterlacing
-                    ? "bwdif=mode=send_field:deint=interlaced"
-                    : "bwdif=mode=send_frame:deint=interlaced");
+                SetUnlessOverridden("vf", "bwdif=mode=send_frame:deint=interlaced");
             }
             else
             {
                 SetUnlessOverridden("vf", "");
                 SetUnlessOverridden("deinterlace", "no");
             }
-        }
-
-        /// <summary>Lead 1: switch between bilinear and the higher-quality spline36 scaler
-        /// (sharper upscale of the 1440x1080 anamorphic broadcast to 1920x1080).</summary>
-        public void SetHighQualityScaling(bool enabled)
-        {
-            _highQualityScaling = enabled;
-            if (enabled)
-            {
-                SetUnlessOverridden("scale", "spline36");
-                SetUnlessOverridden("cscale", "spline36");
-                SetUnlessOverridden("dscale", "mitchell");
-            }
-            else
-            {
-                SetUnlessOverridden("scale", "bilinear");
-                SetUnlessOverridden("cscale", "bilinear");
-                SetUnlessOverridden("dscale", "bilinear");
-            }
-            Console.WriteLine($"[MpvPlayer] High-quality scaling: {(enabled ? "spline36" : "bilinear")}");
-        }
-
-        /// <summary>Deinterlace live TV to 50 fps (field rate) instead of the default 25 fps.</summary>
-        public void SetSharperDeinterlacing(bool enabled)
-        {
-            _sharperDeinterlacing = enabled;
-            ApplyDeinterlace();
-            Console.WriteLine($"[MpvPlayer] Live deinterlacing: bwdif at {(enabled ? "50 fps (field rate)" : "25 fps (frame rate)")}");
         }
 
         /// <summary>Lead 2: log the FBO dimensions mpv renders into (to confirm display-native size).</summary>

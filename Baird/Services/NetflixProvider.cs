@@ -47,24 +47,53 @@ namespace Baird.Services
             return outcome.Reply!.Results.Select(ToMediaItem).ToList();
         }
 
-        public static MediaItemData ToMediaItem(NetflixSearchResult r) => new()
+        public static MediaItemData ToMediaItem(NetflixSearchResult r)
         {
+            // A series is a container: it opens the programme page (GetChildrenAsync) instead of playing straight away.
+            var isShow = r.Kind == "Show";
+            return new()
+            {
             Id = IdPrefix + r.TitleId,
             Name = r.Title,
             Details = r.Kind switch { "Show" => "Series", "Movie" => "Film", _ => r.Kind ?? "" },
             ImageUrl = r.ImageUrl ?? "",
             IsLive = false,
-            // A series id plays the episode Netflix would play next for this profile.
-            StreamUrl = WatchUrl(r.TitleId),
+            StreamUrl = isShow ? "" : WatchUrl(r.TitleId),
             Source = SourceName,
-            Type = MediaType.Video,
+            Type = isShow ? MediaType.Brand : MediaType.Video,
             Synopsis = "",
             Subtitle = "",
-        };
+            };
+        }
 
         public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItemData>());
 
-        public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Task.FromResult(Enumerable.Empty<MediaItemData>());
+        /// <summary>
+        /// Interim: the series page has one entry, "Play next episode", which plays the episode Netflix would play next for this
+        /// profile (its own resume point). Season and episode lists need Netflix's title-page request, not captured yet.
+        /// </summary>
+        public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
+        {
+            if (!id.StartsWith(IdPrefix, StringComparison.Ordinal) || id.Contains('|')) return Task.FromResult(Enumerable.Empty<MediaItemData>());
+            var titleId = id[IdPrefix.Length..];
+            IEnumerable<MediaItemData> items = new[]
+            {
+                new MediaItemData
+                {
+                    Id = id + "|next",
+                    Name = "Play next episode",
+                    Details = "Continues where Netflix left off for this profile",
+                    ImageUrl = "",
+                    IsLive = false,
+                    StreamUrl = WatchUrl(titleId),
+                    Source = SourceName,
+                    Type = MediaType.Video,
+                    Synopsis = "",
+                    Subtitle = "",
+                },
+            };
+            return Task.FromResult(items);
+        }
 
         // No lookup by id without a search; history and Continue Watching use Baird's own item cache.
         public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult<MediaItemData?>(null);

@@ -55,8 +55,6 @@ namespace Baird.Controls
             {
                 switch (tag)
                 {
-                    case "hq": viewModel.HighQualityScaling = !viewModel.HighQualityScaling; return true;
-                    case "deint": viewModel.SharperDeinterlacing = !viewModel.SharperDeinterlacing; return true;
                     case "log": viewModel.LogRenderDimensions = !viewModel.LogRenderDimensions; return true;
                 }
             }

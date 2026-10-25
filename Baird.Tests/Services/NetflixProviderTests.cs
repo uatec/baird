@@ -44,7 +44,7 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
-        public async Task Search_MapsResultsToNetflixItemsThatPlayTheWatchUrl()
+        public async Task Search_MapsFilmsToPlayableItemsAndSeriesToContainers()
         {
             var svc = new MockCdpBrowserService { SessionSequence = Member, GraphQlReply = _ => Reply() };
             var provider = new NetflixProvider(Session(svc));
@@ -55,11 +55,28 @@ namespace Baird.Tests.Services
             Assert.Equal("netflix:80107103", items[0].Id);
             Assert.Equal("One Piece", items[0].Name);
             Assert.Equal("Series", items[0].Details);
-            Assert.Equal("https://www.netflix.com/watch/80107103", items[0].StreamUrl);
             Assert.Equal("Netflix", items[0].Source);
-            Assert.Equal(MediaType.Video, items[0].Type);
+            Assert.Equal(MediaType.Brand, items[0].Type);
+            Assert.Equal("", items[0].StreamUrl);
             Assert.Equal("Film", items[1].Details);
+            Assert.Equal(MediaType.Video, items[1].Type);
+            Assert.StartsWith("https://www.netflix.com/watch/", items[1].StreamUrl);
             Assert.Equal("", items[1].ImageUrl);
+        }
+
+        [Fact]
+        public async Task SeriesPage_OffersPlayNextEpisodeWithTheWatchUrl()
+        {
+            var provider = new NetflixProvider(Session(new MockCdpBrowserService()));
+
+            var children = (await provider.GetChildrenAsync("netflix:80107103")).ToList();
+
+            var next = Assert.Single(children);
+            Assert.Equal("https://www.netflix.com/watch/80107103", next.StreamUrl);
+            Assert.Equal(MediaType.Video, next.Type);
+            Assert.Equal("Netflix", next.Source);
+            Assert.Empty(await provider.GetChildrenAsync("netflix:80107103|next"));
+            Assert.Empty(await provider.GetChildrenAsync("jellyfin-id"));
         }
 
         [Fact]

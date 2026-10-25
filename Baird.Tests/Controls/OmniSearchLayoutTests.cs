@@ -60,6 +60,7 @@ namespace Baird.Tests.Controls
                 new IMediaProvider[] { new Mocks.MockMediaProvider("P", items) },
                 new MockHistoryService(), new MockWatchlistService(),
                 new MediaItemCache(), new MockMediaDataCache());
+            SearchTiming.Debounce = TimeSpan.FromMilliseconds(300);
             var vm = new OmniSearchViewModel(dataService, new StubSearchHistory(suggestions), () => new List<MediaItemViewModel>());
 
             var control = new OmniSearchControl { DataContext = vm };

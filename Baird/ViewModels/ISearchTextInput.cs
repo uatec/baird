@@ -8,4 +8,13 @@ namespace Baird.ViewModels
         void AppendText(string text);
         void Backspace();
     }
+
+    /// <summary>
+    /// How long the query must sit unchanged before a search runs. Remote-control key presses are slow,
+    /// so this is deliberately long; tests shorten it.
+    /// </summary>
+    public static class SearchTiming
+    {
+        public static TimeSpan Debounce { get; set; } = TimeSpan.FromMilliseconds(1000);
+    }
 }

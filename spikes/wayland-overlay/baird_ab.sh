@@ -35,7 +35,6 @@ if [[ -n "$TEST_BIN" ]]; then
     install -m 755 "$TEST_BIN" "$CACHE_BIN"
 fi
 
-set_setting() { sed -i -E "s/^$1=.*/$1=$2/" "$CFG"; }
 set_mpv_section() { # replace the [Mpv] section with the given KEY=VALUE lines (none = remove)
     awk 'BEGIN{skip=0} /^\[/{skip=($0=="[Mpv]")} !skip' "$CFG" >"$CFG.tmp" && mv "$CFG.tmp" "$CFG"
     if [[ $# -gt 0 ]]; then
@@ -46,10 +45,13 @@ set_mpv_section() { # replace the [Mpv] section with the given KEY=VALUE lines (
 key() { xdotool key --delay 150 "$@"; sleep 0.4; }
 
 run_variant() { # label hq sharper [mpv KEY=VALUE...]
+    # hq / sharper used to be Baird settings (removed 2026-10-25); they are now passed to mpv through [Mpv] only, which
+    # restore() puts back, so an interrupted run can't leave them switched on.
     local label="$1"
-    set_setting HighQualityScaling "$2"
-    set_setting SharperDeinterlacing "$3"
-    set_mpv_section "${@:4}"
+    local opts=()
+    [[ "$2" == true ]] && opts+=("scale=spline36" "cscale=spline36" "dscale=mitchell")
+    [[ "$3" == true ]] && opts+=("deinterlace=no" "vf=bwdif=mode=send_field:deint=interlaced")
+    set_mpv_section "${opts[@]}" "${@:4}"
     local since
     since="$(date '+%Y-%m-%d %H:%M:%S')"
     systemctl --user restart baird.service
