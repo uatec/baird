@@ -23,7 +23,9 @@ namespace Baird.Services
         string Url,
         string Title,
         bool Ended = false,
-        string? Prompt = null);
+        string? Prompt = null,
+        double? TitleSeconds = null,
+        double? TitleLengthSeconds = null);
 
     public record AuthPageStatus(
         string Url,
@@ -99,6 +101,8 @@ namespace Baird.Services
         /// <summary>Focuses the element matching <paramref name="selector"/> and types <paramref name="text"/> with real input events. The text is never logged.</summary>
         Task<bool> TypeIntoAsync(string selector, string text, CancellationToken ct = default);
         Task PressEnterAsync(CancellationToken ct = default);
+        /// <summary>Moves the page's pointer to (x, y): a streaming site's player UI wakes on pointer movement. Nothing is clicked.</summary>
+        Task MoveMouseAsync(int x, int y, CancellationToken ct = default);
         /// <summary>Navigates to <paramref name="url"/> and returns the first request for which <paramref name="match"/> is true (or null after the timeout).</summary>
         Task<CapturedRequest?> NavigateAndCaptureAsync(string url, Func<CapturedRequest, bool> match, TimeSpan timeout, CancellationToken ct = default);
     }
@@ -1038,6 +1042,11 @@ namespace Baird.Services
             if (focused is not { ValueKind: JsonValueKind.True }) return false;
             await SendPageCommandAsync("Input.insertText", new JsonObject { ["text"] = text }, ct);
             return true;
+        }
+
+        public async Task MoveMouseAsync(int x, int y, CancellationToken ct = default)
+        {
+            await SendPageCommandAsync("Input.dispatchMouseEvent", new JsonObject { ["type"] = "mouseMoved", ["x"] = x, ["y"] = y }, ct);
         }
 
         public async Task PressEnterAsync(CancellationToken ct = default)

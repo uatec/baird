@@ -151,6 +151,9 @@ namespace Baird.Tests.Services
         public Func<JsonObject>? PollReply { get; set; }
         public List<string> ControlScripts { get; } = new();
         public int PromptClicks { get; private set; }
+        public int EndCardCloses { get; private set; }
+        public int MouseMoves { get; private set; }
+        public List<string> SkipScripts { get; } = new();
         public bool PromptOnScreen { get; set; } = true;
         public int CaptureCalls { get; private set; }
         public int FetchCalls { get; private set; }
@@ -164,7 +167,7 @@ namespace Baird.Tests.Services
         public Queue<string>? ProfileClickResults { get; set; }
         public bool EmailPresent { get; set; } = true;
 
-        public static JsonObject Poll(double t, bool paused = false, bool ended = false, bool found = true, string? url = null, string? prompt = null) => new()
+        public static JsonObject Poll(double t, bool paused = false, bool ended = false, bool found = true, string? url = null, string? prompt = null, double? titleSeconds = null, double? titleLength = null) => new()
         {
             ["found"] = found,
             ["currentTime"] = t,
@@ -172,6 +175,8 @@ namespace Baird.Tests.Services
             ["paused"] = paused,
             ["ended"] = ended,
             ["prompt"] = prompt,
+            ["titleSeconds"] = titleSeconds,
+            ["titleLength"] = titleLength,
             ["url"] = url ?? ("https://www.disneyplus.com/en-gb/play/" + DisneyEntityFixtures.Episode1),
             ["title"] = "Disney+"
         };
@@ -199,12 +204,22 @@ namespace Baird.Tests.Services
             {
                 json = PollReply != null ? PollReply().ToJsonString() : "null";
             }
-            else if (script.Contains("p.el.click()"))
+            else if (script.Contains("found.click()") && script.Contains("END-CARD-OVERLAY"))
+            {
+                EndCardCloses++;
+                json = "\"clicked\"";
+            }
+            else if (script.Contains("found.click()"))
             {
                 PromptClicks++;
                 json = PromptOnScreen ? "\"clicked\"" : "null";
             }
-            else if (script.Contains("action === 'SeekBy'"))
+            else if (script.Contains("let button = null"))
+            {
+                SkipScripts.Add(script);
+                json = "\"buttons\"";
+            }
+            else if (script.Contains("action === 'Pause'"))
             {
                 ControlScripts.Add(script);
                 json = "\"video\"";
@@ -225,6 +240,7 @@ namespace Baird.Tests.Services
 
         public Task<bool> TypeIntoAsync(string selector, string text, CancellationToken ct = default) { Typed.Add(selector); return Task.FromResult(true); }
         public Task PressEnterAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task MoveMouseAsync(int x, int y, CancellationToken ct = default) { MouseMoves++; return Task.CompletedTask; }
         public Task<CapturedRequest?> NavigateAndCaptureAsync(string url, Func<CapturedRequest, bool> match, TimeSpan timeout, CancellationToken ct = default)
         {
             CaptureCalls++;
