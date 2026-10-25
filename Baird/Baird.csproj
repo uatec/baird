@@ -36,6 +36,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources/baird-overlay.js" />
     <EmbeddedResource Include="Resources/disney-page-style.js" />
+    <EmbeddedResource Include="Resources/channel4-page-style.js" />
     <EmbeddedResource Include="Resources/netflix-page-style.js" />
     <EmbeddedResource Include="Resources/netflix-search-query.json" />
     <AvaloniaResource Include="Assets/**" />

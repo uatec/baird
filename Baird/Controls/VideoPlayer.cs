@@ -125,10 +125,50 @@ namespace Baird.Controls
                 Console.WriteLine($"[VideoPlayer] {engine.Name} could not play: {reason}");
                 IsShowingFailure = true;
                 PromptText = "";
-                LoadingText = $"{reason}\nPress Back to return.";
+                LoadingText = FailureText(engine, reason);
                 IsLoading = true;
                 IsShowingBrowser = false;
             });
+        }
+
+        /// <summary>The failure screen's text: the reason, then what OK does (if the engine offers something) and Back.</summary>
+        private static string FailureText(IPlaybackEngine engine, string reason) =>
+            engine is IFailureActionEngine { FailureAction: { } action }
+                ? $"{reason}\nPress OK to {action}, or Back to return."
+                : $"{reason}\nPress Back to return.";
+
+        private bool _runningFailureAction;
+
+        /// <summary>
+        /// OK on a failure screen that offers something ("sign in to Channel 4"): runs it, then plays the title again, or shows why not.
+        /// Nothing happens if the viewer has moved on to something else meanwhile.
+        /// </summary>
+        public async Task<bool> RunFailureActionAsync()
+        {
+            if (!IsShowingFailure || _runningFailureAction || _engine is not IFailureActionEngine engine || engine.FailureAction is not { } action) return false;
+            var url = _pendingUrl;
+            var startSeconds = _pendingStartSeconds;
+            if (url == null) return false;
+
+            Console.WriteLine($"[VideoPlayer] OK on the failure screen: {action}.");
+            _runningFailureAction = true;
+            IsShowingFailure = false;
+            LoadingText = $"Opening {engine.Name}'s page to {action}…";
+            string? outcome;
+            try { outcome = await engine.RunFailureActionAsync(); }
+            catch (Exception ex) { outcome = ex.Message; }
+            finally { _runningFailureAction = false; }
+
+            if (_engine != engine || _pendingUrl != url) return true; // the viewer moved on
+            if (outcome == null)
+            {
+                StartPlayback(url, startSeconds);
+                return true;
+            }
+            IsShowingFailure = true;
+            LoadingText = FailureText(engine, outcome);
+            IsLoading = true;
+            return true;
         }
 
         private bool IsBrowserEngine(IPlaybackEngine? engine) => engine is IBrowserPlaybackEngine b && _browserEngines.Contains(b);
@@ -282,6 +322,14 @@ namespace Baird.Controls
         /// <summary>M key while watching: flag "that felt off" on the A/V debug page/journal.</summary>
         public event EventHandler? DiagnosticsMarkRequested;
 
+        private bool _okReleasedSinceFailureAction = true;
+
+        protected override void OnKeyUp(Avalonia.Input.KeyEventArgs e)
+        {
+            base.OnKeyUp(e);
+            if (e.Key == Avalonia.Input.Key.Enter) _okReleasedSinceFailureAction = true;
+        }
+
         protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
         {
             base.OnKeyDown(e);
@@ -300,6 +348,25 @@ namespace Baird.Controls
             // Notify activity on any key press that is handled by us
             // But we'll do it inside the specific cases or generally if it's a valid key?
             // Let's do it generally for now if we handle it.
+
+            // OK on a failure screen that offers something ("Press OK to sign in to Channel 4").
+            if (e.Key == Avalonia.Input.Key.Enter && IsShowingFailure && _engine is IFailureActionEngine { FailureAction: not null })
+            {
+                // The action raises the service's page above Baird, so the release of the OK that started it can reach that window
+                // instead, and the display server then repeats the "held" key to Baird when it is back on top (seen once on the Pi:
+                // a second sign-in page with no second press). So OK counts again only after Baird has seen it released.
+                if (!_okReleasedSinceFailureAction)
+                {
+                    Console.WriteLine("[VideoPlayer] OK ignored on the failure screen: its last press was not released here.");
+                    e.Handled = true;
+                    return;
+                }
+                _okReleasedSinceFailureAction = false;
+                _ = RunFailureActionAsync();
+                UserActivity?.Invoke(this, EventArgs.Empty);
+                e.Handled = true;
+                return;
+            }
 
             // OK answers the question a streaming service has put on the video ("Skip intro"); with none on screen it does nothing here.
             if (e.Key == Avalonia.Input.Key.Enter && _promptText.Length > 0)

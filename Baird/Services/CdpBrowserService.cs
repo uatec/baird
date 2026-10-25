@@ -846,6 +846,14 @@ namespace Baird.Services
             return reader.ReadToEnd();
         }
 
+        public static string LoadChannel4PageStyleScript()
+        {
+            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.channel4-page-style.js");
+            if (stream == null) return "console.log('[Baird] Channel 4 page style not found.'); false";
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
         public static string LoadNetflixPageStyleScript()
         {
             using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.netflix-page-style.js");

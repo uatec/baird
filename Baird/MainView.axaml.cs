@@ -111,6 +111,12 @@ namespace Baird
             }
             else Console.WriteLine("[MainView] Disney+ not in search: no DISNEY_USER/DISNEY_PASS in config.ini.");
 
+            // Channel 4's search and episode lists are public (plain HTTP), so it is always in search. Playing needs the shared browser
+            // signed in, by the viewer (Channel 4 refuses automated sign-ins): the player offers "Press OK to sign in" when it is not.
+            var channel4Service = new Channel4Service(netflixSession.Hub, new Channel4Catalogue());
+            channel4Service.Log += m => Console.WriteLine($"[Channel4Service] {m}");
+            _providers.Add(new Channel4Provider(channel4Service.Catalogue));
+
             _cecService = new CecService();
             _historyService = new JsonHistoryService();
             var watchlistService = new JsonWatchlistService();
@@ -138,7 +144,7 @@ namespace Baird
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
 
-            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession, disneyService);
+            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession, disneyService, channel4Service);
 
             DataContext = _viewModel;
 
@@ -328,6 +334,7 @@ namespace Baird
                         // Netflix plays in the browser behind Baird: the window goes transparent while it shows.
                         player.NetflixEngine = _viewModel.NetflixEngine;
                         player.AddBrowserEngine(_viewModel.DisneyEngine);
+                        player.AddBrowserEngine(_viewModel.Channel4Engine);
                         _visualTreeSubscriptions.Add(player.GetObservable(Controls.VideoPlayer.IsShowingBrowserProperty).Subscribe(showing =>
                         {
                             if (TopLevel.GetTopLevel(this) is not Window window) return;

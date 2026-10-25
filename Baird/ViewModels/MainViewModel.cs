@@ -93,7 +93,7 @@ namespace Baird.ViewModels
 
         public ScreensaverViewModel Screensaver { get; }
 
-        public MainViewModel(IConfiguration configuration, IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService, IJellyseerrService jellyseerrService, IEpgService epgService, NetflixSession? netflixSession = null, DisneyService? disneyService = null)
+        public MainViewModel(IConfiguration configuration, IDataService dataService, ISearchHistoryService searchHistoryService, ScreensaverService screensaverService, ICecService cecService, IJellyseerrService jellyseerrService, IEpgService epgService, NetflixSession? netflixSession = null, DisneyService? disneyService = null, Channel4Service? channel4Service = null)
         {
             _dataService = dataService;
             _netflixSession = netflixSession;
@@ -159,6 +159,11 @@ namespace Baird.ViewModels
             {
                 // Disney+ titles play through the normal video player too, in the same shared browser behind Baird.
                 DisneyEngine = new DisneyPlaybackEngine(disneyService, () => new DisneySpikeViewModel(disneyService) { UseBairdHud = true });
+            }
+            if (channel4Service != null)
+            {
+                // Channel 4 programmes play through the normal video player too, in the same shared browser behind Baird.
+                Channel4Engine = new Channel4PlaybackEngine(channel4Service);
             }
 
             NetflixSpike = netflixSession != null
@@ -283,6 +288,11 @@ namespace Baird.ViewModels
             if (string.Equals(autotest, "disney-core", StringComparison.OrdinalIgnoreCase))
             {
                 _ = Task.Run(RunDisneyCoreAutoTestAsync);
+                return;
+            }
+            if (string.Equals(autotest, "channel4-core", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Task.Run(RunChannel4CoreAutoTestAsync);
                 return;
             }
             if (string.Equals(autotest, "netflix-core", StringComparison.OrdinalIgnoreCase))
@@ -589,6 +599,101 @@ namespace Baird.ViewModels
         }
 
         /// <summary>
+        /// BAIRD_AUTOTEST=channel4-core: the Channel 4 core journey, as a viewer does it. Search for BAIRD_AUTOTEST_C4_QUERY (default
+        /// "Derry Girls") on the Search tab, open the first Channel 4 series, its newest series folder (or BAIRD_AUTOTEST_C4_SERIES), play
+        /// its first episode through Baird's normal player and wait until a video plays (Baird's browser must have been signed in with
+        /// channel4_signin.sh). Then samples the
+        /// player every 10 s for a minute (position, length, advert), since Channel 4's player has not been measured on the Pi yet.
+        /// Logs "[AutoTest] RESULT core=...". Does nothing unless set.
+        /// </summary>
+        private async Task RunChannel4CoreAutoTestAsync()
+        {
+            static string? Env(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } v ? v : null;
+            try
+            {
+                var query = Env("BAIRD_AUTOTEST_C4_QUERY") ?? "Derry Girls";
+                var seriesName = Env("BAIRD_AUTOTEST_C4_SERIES") is { } sn ? $"Series {sn}" : null;
+
+                await Task.Delay(TimeSpan.FromSeconds(45)); // past the Netflix and Disney+ warm-ups, which take the shared browser
+                var engine = Channel4Engine;
+                if (engine == null)
+                {
+                    Console.WriteLine("[AutoTest] RESULT core=FAILED reason=\"Channel 4 is not set up\"");
+                    return;
+                }
+                var outcome = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                engine.FileLoaded += (_, _) => outcome.TrySetResult(null);
+                engine.Failed += (_, reason) => outcome.TrySetResult(reason);
+
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var index = MainMenu.Tabs.ToList().FindIndex(t => t.Title == "Search");
+                    Console.WriteLine($"[AutoTest] Opening the Search tab (index {index}) and searching for {query}.");
+                    OpenMainMenu(index >= 0 ? index : null);
+                    OmniSearch.SearchText = query;
+                });
+
+                MediaItemViewModel? programme = null;
+                for (var i = 0; i < 120 && programme == null; i++)
+                {
+                    await Task.Delay(500);
+                    programme = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                        OmniSearch.SearchResults.FirstOrDefault(r => Channel4Provider.IsChannel4(r.Source) && r.Type == MediaType.Brand));
+                }
+                if (programme == null)
+                {
+                    Console.WriteLine("[AutoTest] RESULT core=FAILED reason=\"no Channel 4 series in search within 60 s\"");
+                    return;
+                }
+
+                var children = (await _dataService.GetChildrenAsync(programme.Id)).ToList();
+                var folders = children.Where(c => c.Type == MediaType.Brand).ToList();
+                Console.WriteLine($"[AutoTest] {programme.Name}: {children.Count} children ({folders.Count} series folders): " +
+                                  string.Join(" | ", children.Take(4).Select(c => $"{c.Name} [{c.Details}]")));
+                var episodes = children.Where(c => c.Type != MediaType.Brand).ToList();
+                if (folders.Count > 0)
+                {
+                    var folder = (seriesName != null ? folders.FirstOrDefault(f => f.Name == seriesName) : null) ?? folders[0];
+                    episodes = (await _dataService.GetChildrenAsync(folder.Id)).Where(c => c.Type != MediaType.Brand).ToList();
+                    Console.WriteLine($"[AutoTest] {folder.Name}: {episodes.Count} episodes");
+                }
+                var episode = episodes.FirstOrDefault();
+                if (episode == null)
+                {
+                    Console.WriteLine("[AutoTest] RESULT core=FAILED reason=\"no episode to play\"");
+                    return;
+                }
+
+                Console.WriteLine($"[AutoTest] Playing the Channel 4 episode: {programme.Name} - {episode.Name} ({episode.Details}, length {episode.Duration.TotalSeconds:F0} s, {episode.StreamUrl}).");
+                var playClock = System.Diagnostics.Stopwatch.StartNew();
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => PlayItem(episode));
+
+                var done = await Task.WhenAny(outcome.Task, Task.Delay(TimeSpan.FromSeconds(150)));
+                if (done != outcome.Task)
+                {
+                    Console.WriteLine("[AutoTest] RESULT core=FAILED reason=\"no video within 150 s\"");
+                    return;
+                }
+                if (outcome.Task.Result is { } reason)
+                {
+                    Console.WriteLine($"[AutoTest] RESULT core=FAILED reason=\"{reason}\"");
+                    return;
+                }
+                var playedAfter = playClock.Elapsed.TotalSeconds;
+                for (var i = 0; i < 6; i++)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(10));
+                    Console.WriteLine($"[AutoTest] Channel 4 player: {engine.State}, position {engine.TimePositionSeconds:F1} s of {engine.DurationSeconds:F0} s, advert {engine.IsAdvertPlaying}.");
+                }
+                Console.WriteLine($"[AutoTest] RESULT core=PLAYING title=\"{programme.Name} - {episode.Name}\" play_after={playedAfter:F1}s duration={engine.DurationSeconds:F0}s position={engine.TimePositionSeconds:F0}s");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AutoTest] ERROR {ex}");
+            }
+        }
+
+        /// <summary>
         /// BAIRD_AUTOTEST=netflix-core: the core journey. Search "One Piece" on the Search tab, play the first Netflix result,
         /// and wait until the video plays in Baird's player (or Netflix fails). Logs "[AutoTest] RESULT ...".
         /// </summary>
@@ -744,6 +849,8 @@ namespace Baird.ViewModels
         public NetflixPlaybackEngine? NetflixEngine { get; }
         /// <summary>Plays Disney+ items for the video player (MainView hands it over); null when Disney+ is not configured.</summary>
         public DisneyPlaybackEngine? DisneyEngine { get; }
+        /// <summary>Plays Channel 4 items for the video player (MainView hands it over); null when Channel 4 is not configured.</summary>
+        public Channel4PlaybackEngine? Channel4Engine { get; }
         private readonly NetflixCredentials? _netflixCredentials;
 
         public void GoBack()
