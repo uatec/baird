@@ -388,7 +388,7 @@ namespace Baird.ViewModels
                 return; // Skip provider search
             }
 
-            var sorter = new SearchResultSorter();
+            var sorter = new SearchResultSorter { ProviderOrder = _dataService.Providers.Select(p => p.Name).ToList() };
 
             try
             {
