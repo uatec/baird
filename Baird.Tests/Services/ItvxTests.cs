@@ -193,6 +193,13 @@ namespace Baird.Tests.Services
         [InlineData("soon", 0)]
         public void An_iso_duration_is_read_in_seconds(string? iso, double seconds) => Assert.Equal(seconds, ItvxCatalogue.ParseIsoDuration(iso));
 
+        [Fact]
+        public async Task No_matches_is_an_empty_list_not_a_failure()
+        {
+            var http = new FakeItvxHttp { SearchStatus = System.Net.HttpStatusCode.NoContent };
+            Assert.Empty(await http.Catalogue().SearchAsync("pluto", CancellationToken.None));
+        }
+
         [Theory]
         [InlineData("")]
         [InlineData("not json")]

@@ -62,6 +62,9 @@ namespace Baird.NewUi
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
+            // Netflix searches in the one shared browser: while another service plays there, say so instead of silently missing it.
+            _ctx.SearchNote = () => services.Netflix?.Hub.ActivePlayback is { } busy && busy != "Netflix"
+                ? $"Netflix search is paused while {busy} plays — stop it to search Netflix." : null;
             // An episode started from Home (not its show page): find its show, so the end card can offer the next one.
             _ctx.FindFollowing = async card =>
             {

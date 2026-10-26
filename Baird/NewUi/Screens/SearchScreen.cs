@@ -168,7 +168,7 @@ namespace Baird.NewUi.Screens
             var nothing = !_searching && _query.Trim().Length > 0 && _rows.Count == 0 && _shownQuery == _query.Trim();
             _empty.IsVisible = nothing;
             if (nothing) _empty.Text = $"Nothing called “{_query.Trim()}” yet. Try fewer letters, or a channel number.";
-            _status.Text = _searching ? Waiting() : "Digits and DEL on the remote type too. ▸ from the keyboard reaches the results.";
+            _status.Text = _searching ? Waiting() : _query.Length > 0 && _ctx.SearchNote() is { } note ? note : "Digits and DEL on the remote type too. ▸ from the keyboard reaches the results.";
         }
 
         /// <summary>While results are still arriving: which library sources haven't answered yet.</summary>

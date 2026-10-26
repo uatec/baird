@@ -142,6 +142,8 @@ namespace Baird.Services
         {
             using var response = await _http.GetAsync(SearchUrl(term), ct);
             if (!response.IsSuccessStatusCode) throw new HttpRequestException($"ITVX search answered HTTP {(int)response.StatusCode}.");
+            // No matches: ITVX answers 204 with no body.
+            if (response.StatusCode == System.Net.HttpStatusCode.NoContent) return Array.Empty<ItvxSearchResult>();
             var body = await response.Content.ReadAsStringAsync(ct);
             return ParseSearch(body) ?? throw new InvalidOperationException("ITVX search sent something that is not search results.");
         }
