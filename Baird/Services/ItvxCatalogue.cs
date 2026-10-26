@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -25,6 +26,22 @@ namespace Baird.Services
         public string WatchUrl => ItvxCatalogue.WatchUrl(Slug, Id);
     }
 
+    /// <summary>One episode (or the film or special) on a programme page.</summary>
+    /// <param name="Id">The episode's id in its page URL (<c>encodedEpisodeId.letterA</c>, e.g. "1a7314a0001").</param>
+    /// <param name="Series">ITVX's series key: a number ("1") or a word ("others" for a film or special).</param>
+    public sealed record ItvxEpisode(string Id, string Ccid, string Slug, string ProgrammeCcid, string Series, int Number, string Title,
+        string? Description, string? ImageUrl, double RuntimeSeconds)
+    {
+        public string PlayUrl => ItvxCatalogue.WatchUrl(Slug, ProgrammeCcid, Id);
+
+        /// <summary>"S1:E2", or "" when the series is not a number.</summary>
+        public string Label => int.TryParse(Series, out var n) ? $"S{n}:E{Number}" : "";
+    }
+
+    /// <summary>A programme page: its series (in ITVX's order, with their labels) and the free episodes that can be watched now.</summary>
+    public sealed record ItvxProgramme(string Slug, string Ccid, string Title, IReadOnlyList<(string Key, string Label)> Series,
+        IReadOnlyList<ItvxEpisode> Episodes);
+
     /// <summary>
     /// ITVX's catalogue over plain HTTP (no sign-in, no browser), for search:
     /// <c>GET https://textsearch.prd.oasvc.itv.com/search?...&amp;query=TERM</c>, the API the ITVX website uses. Reply:
@@ -32,8 +49,12 @@ namespace Baird.Services
     /// <c>data</c>: the id (<c>programmeCCId</c>, <c>specialCCId</c>, <c>filmCCId</c>), the title (<c>programmeTitle</c>, ...),
     /// <c>synopsis</c>, an image template (<c>imageHref</c>, for a programme <c>latestAvailableEpisode.imageHref</c>) and <c>tier</c>
     /// (<c>FREE</c>, or <c>PAID</c> for ITVX Premium). Shapes observed on 2026-10-26.
-    /// <para>Programme pages (the episode lists) are NOT read here: www.itv.com answers only real browsers, so they are read in the
-    /// shared browser.</para>
+    /// <para>Programme pages (the episode lists) are NOT fetched here: www.itv.com answers only real browsers, so
+    /// <see cref="ItvxService"/> fetches them in the shared browser. <see cref="ParseProgramme"/> reads what it returns: the page's
+    /// Next.js data (<c>__NEXT_DATA__ → props.pageProps</c>), <c>{programme, seriesList}</c>. <c>seriesList[]</c> has every series
+    /// (<c>seriesNumber</c>, a string, "others" on a film's page; <c>seriesLabel</c>) with all its <c>titles[]</c>: <c>ccid</c>,
+    /// <c>episode</c>, <c>episodeTitle</c>, <c>description</c>, <c>notFormattedDuration</c> ("PT1H29M"), <c>image</c> (a template),
+    /// <c>premium</c>, <c>tier</c> and <c>encodedEpisodeId.letterA</c> (the id in the episode's URL). Measured on the Pi, 2026-10-26.</para>
     /// </summary>
     public sealed class ItvxCatalogue
     {
@@ -60,6 +81,19 @@ namespace Baird.Services
 
         public static string WatchUrl(string slug, string programmeId, string? episodeId = null) =>
             episodeId == null ? $"{SiteUrl}/watch/{slug}/{programmeId}" : $"{SiteUrl}/watch/{slug}/{programmeId}/{episodeId}";
+
+        /// <summary>Reads a watch URL: its slug, the programme (or film, special) id and the episode id (null for the programme's own page).</summary>
+        public static bool TryParseWatchUrl(string? url, out string slug, out string id, out string? episodeId)
+        {
+            slug = id = "";
+            episodeId = null;
+            if (!IsItvxUrl(url)) return false;
+            var m = WatchPage.Match(url!);
+            slug = m.Groups["slug"].Value.ToLowerInvariant();
+            id = m.Groups["id"].Value;
+            episodeId = m.Groups["ep"].Success ? m.Groups["ep"].Value : null;
+            return true;
+        }
 
         private static readonly Regex WatchPage = new(@"^https?://(www\.)?itv\.com/watch/(?<slug>[a-z0-9-]+)/(?<id>[a-z0-9]+)(/(?<ep>[a-z0-9]+))?/?(\?.*)?$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -134,6 +168,67 @@ namespace Baird.Services
                 return list;
             }
             catch (JsonException) { return null; }
+        }
+
+        // ---- Programme pages --------------------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// A programme from its page data (<c>{programme, seriesList}</c>), or null with the reason. ITVX Premium episodes are left out, and
+        /// so is a series with nothing else.
+        /// </summary>
+        public static ItvxProgramme? ParseProgramme(string? json, out string? failure)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                failure = "the page sent no programme data.";
+                return null;
+            }
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (Obj(root, "programme") is not { } programme || !root.TryGetProperty("seriesList", out var seriesList) || seriesList.ValueKind != JsonValueKind.Array)
+                {
+                    failure = "the page data has no programme (programme, seriesList).";
+                    return null;
+                }
+                var title = Str(programme, "title") ?? "";
+                var ccid = Str(programme, "ccid") ?? "";
+                var slug = Str(programme, "titleSlug") is { Length: > 0 } ts ? ts : Slug(title);
+                var series = new List<(string, string)>();
+                var episodes = new List<ItvxEpisode>();
+                foreach (var s in seriesList.EnumerateArray())
+                {
+                    var key = Str(s, "seriesNumber") ?? (s.TryGetProperty("seriesNumber", out var sn) && sn.ValueKind == JsonValueKind.Number ? sn.GetRawText() : null);
+                    if (key == null || !s.TryGetProperty("titles", out var titles) || titles.ValueKind != JsonValueKind.Array) continue;
+                    var before = episodes.Count;
+                    foreach (var t in titles.EnumerateArray())
+                    {
+                        if (t.ValueKind != JsonValueKind.Object || IsPremium(t)) continue;
+                        var id = Obj(t, "encodedEpisodeId") is { } enc ? Str(enc, "letterA") : null;
+                        if (string.IsNullOrEmpty(id)) continue;
+                        episodes.Add(new ItvxEpisode(id, Str(t, "ccid") ?? id, slug, ccid, key, Int(t, "episode"),
+                            Str(t, "episodeTitle") is { Length: > 0 } et ? et : title, Str(t, "description"), ImageUrl(Str(t, "image")),
+                            ParseIsoDuration(Str(t, "notFormattedDuration"))));
+                    }
+                    if (episodes.Count > before) series.Add((key, Str(s, "seriesLabel") is { Length: > 0 } label ? label : $"Series {key}"));
+                }
+                failure = null;
+                return new ItvxProgramme(slug, ccid, title, series, episodes);
+            }
+            catch (JsonException ex)
+            {
+                failure = $"the page data could not be read ({ex.Message}).";
+                return null;
+            }
+        }
+
+        private static bool IsPremium(JsonElement t)
+        {
+            if (t.TryGetProperty("premium", out var p) && p.ValueKind == JsonValueKind.True) return true;
+            if (!t.TryGetProperty("tier", out var tier)) return false;
+            if (tier.ValueKind == JsonValueKind.String) return tier.GetString()!.Contains("PAID", StringComparison.OrdinalIgnoreCase);
+            return tier.ValueKind == JsonValueKind.Array && tier.EnumerateArray().Any(x => x.ValueKind == JsonValueKind.String && x.GetString()!.Contains("PAID", StringComparison.OrdinalIgnoreCase));
         }
 
         private static ItvxSearchResult? ParseResult(string? entityType, JsonElement d)

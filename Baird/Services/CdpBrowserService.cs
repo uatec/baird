@@ -854,6 +854,14 @@ namespace Baird.Services
             return reader.ReadToEnd();
         }
 
+        public static string LoadItvxPageStyleScript()
+        {
+            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.itvx-page-style.js");
+            if (stream == null) return "console.log('[Baird] ITVX page style not found.'); false";
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
         public static string LoadNetflixPageStyleScript()
         {
             using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.netflix-page-style.js");
