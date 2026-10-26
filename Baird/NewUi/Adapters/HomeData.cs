@@ -53,15 +53,7 @@ namespace Baird.NewUi.Adapters
         /// <summary>Live channels in channel-number order, each with what's on now (when the guide answers in time).</summary>
         public async Task<IReadOnlyList<HomeCard>> OnNowAsync(DateTimeOffset now)
         {
-            IEnumerable<MediaItemViewModel> listing;
-            try { listing = await _data.GetListingAsync().ConfigureAwait(false); }
-            catch (Exception ex) { Console.WriteLine($"[HomeData] Listing failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
-
-            var channels = listing.Where(i => i.IsLive && !string.IsNullOrEmpty(i.ChannelNumber) && i.ChannelNumber != "0" && !string.IsNullOrEmpty(i.StreamUrl))
-                .OrderBy(i => int.TryParse(i.ChannelNumber, out var n) ? n : int.MaxValue)
-                .Select(i => new Channel(i.Id, i.ChannelNumber!, i.Name, string.IsNullOrEmpty(i.ImageUrl) ? null : i.ImageUrl, i.StreamUrl!))
-                .ToList();
-
+            var channels = await ChannelsAsync().ConfigureAwait(false);
             var programmes = await Task.WhenAll(channels.Select(c => CurrentProgrammeAsync(c.Id))).ConfigureAwait(false);
             return channels.Select((c, k) =>
             {
@@ -69,6 +61,19 @@ namespace Baird.NewUi.Adapters
                 return new HomeCard(CardKind.Channel, c.Id, $"{c.Number}  {c.Name}", p?.Title, c.LogoUrl, p?.ProgressAt(now), "live",
                     "TV", PlayVia.Mpv, c.StreamUrl, Channel: c, Programme: p, Synopsis: p?.Synopsis);
             }).ToList();
+        }
+
+        /// <summary>Live channels that have a number (not 0) and a stream, in channel-number order (On now and the guide).</summary>
+        public async Task<IReadOnlyList<Channel>> ChannelsAsync()
+        {
+            IEnumerable<MediaItemViewModel> listing;
+            try { listing = await _data.GetListingAsync().ConfigureAwait(false); }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Listing failed: {ex.Message}"); return Array.Empty<Channel>(); }
+
+            return listing.Where(i => i.IsLive && !string.IsNullOrEmpty(i.ChannelNumber) && i.ChannelNumber != "0" && !string.IsNullOrEmpty(i.StreamUrl))
+                .OrderBy(i => int.TryParse(i.ChannelNumber, out var n) ? n : int.MaxValue)
+                .Select(i => new Channel(i.Id, i.ChannelNumber!, i.Name, string.IsNullOrEmpty(i.ImageUrl) ? null : i.ImageUrl, i.StreamUrl!))
+                .ToList();
         }
 
         public async Task<Programme?> CurrentProgrammeAsync(string channelId)

@@ -25,7 +25,7 @@ namespace Baird.Services
         private readonly TimeSpan _cacheTimeout = TimeSpan.FromSeconds(60);
 
         // EPG schedule cache: channelId -> (programs, cache expiry)
-        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (IReadOnlyList<EpgProgram> Programs, DateTime Expiry)> _scheduleCache = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (IReadOnlyList<EpgProgram> Programs, DateTime Expiry, int Limit)> _scheduleCache = new();
 
         public TvHeadendService(Microsoft.Extensions.Configuration.IConfiguration config)
         {
@@ -193,8 +193,10 @@ namespace Baird.Services
 
         public async Task<IReadOnlyList<EpgProgram>> GetChannelScheduleAsync(string channelId, int limit = 20)
         {
-            if (_scheduleCache.TryGetValue(channelId, out var cached) && DateTime.UtcNow < cached.Expiry)
-                return cached.Programs;
+            // Reuse a cached schedule only if it was fetched with at least this limit (a 5-programme lookup for "what's
+            // on now" mustn't truncate a guide's day-long request).
+            if (_scheduleCache.TryGetValue(channelId, out var cached) && DateTime.UtcNow < cached.Expiry && cached.Limit >= limit)
+                return cached.Programs.Count <= limit ? cached.Programs : cached.Programs.Take(limit).ToList();
 
             try
             {
@@ -215,13 +217,13 @@ namespace Baird.Services
                     ? new[] { DateTimeOffset.FromUnixTimeSeconds(currentEvent.StopUnix).UtcDateTime, DateTime.UtcNow.AddSeconds(120) }.Min()
                     : DateTime.UtcNow.AddSeconds(60);
 
-                _scheduleCache[channelId] = (list, cacheExpiry);
+                _scheduleCache[channelId] = (list, cacheExpiry, limit);
                 return list;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[TvHeadendService] EPG fetch failed for {channelId}: {ex.Message}");
-                _scheduleCache[channelId] = (Array.Empty<EpgProgram>(), DateTime.UtcNow.AddSeconds(30));
+                _scheduleCache[channelId] = (Array.Empty<EpgProgram>(), DateTime.UtcNow.AddSeconds(30), int.MaxValue); // back off whatever the limit
                 return Array.Empty<EpgProgram>();
             }
         }

@@ -5,8 +5,11 @@ namespace Baird.NewUi.Model
     /// <summary>Plain records the new UI works with. The legacy service types never appear above the adapters.</summary>
     public sealed record Channel(string Id, string Number, string Name, string? LogoUrl, string StreamUrl);
 
-    public sealed record Programme(string Id, string ChannelId, string Title, string? Subtitle, string? Synopsis, DateTimeOffset Start, DateTimeOffset End)
+    /// <summary>A broadcast. <paramref name="NoInfo"/> marks a stretch the guide has nothing for (shown honestly, still watchable).</summary>
+    public sealed record Programme(string Id, string ChannelId, string Title, string? Subtitle, string? Synopsis, DateTimeOffset Start, DateTimeOffset End, bool NoInfo = false)
     {
+        public bool IsOnAt(DateTimeOffset t) => Start <= t && t < End;
+
         public double ProgressAt(DateTimeOffset now) =>
             End <= Start ? 0 : Math.Clamp((now - Start).TotalSeconds / (End - Start).TotalSeconds, 0, 1);
     }
