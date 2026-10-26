@@ -45,6 +45,12 @@ namespace Baird.Services
 
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(500);
         public TimeSpan SignInTimeout { get; set; } = TimeSpan.FromSeconds(45);
+        /// <summary>
+        /// How long the emailed-code page may stay after "Use password instead" is pressed before it is pressed again. Measured on the Pi:
+        /// a press 2 s after the page appeared did nothing (the page was not ready yet).
+        /// </summary>
+        public TimeSpan UsePasswordRetry { get; set; } = TimeSpan.FromSeconds(3);
+        private const int MaxUsePasswordPresses = 5;
         /// <summary>How long a programme page is reused before it is read again.</summary>
         public TimeSpan ProgrammeLifetime { get; set; } = TimeSpan.FromMinutes(10);
 
@@ -153,7 +159,9 @@ namespace Baird.Services
             if (!await Browser.NavigateAsync(SignInUrl, ct)) return "The browser did not open ITVX's sign-in page.";
 
             var sw = Stopwatch.StartNew();
-            bool emailSent = false, passwordSent = false, usePassword = false;
+            bool emailSent = false, passwordSent = false;
+            var usePasswordPresses = 0;
+            var lastUsePassword = TimeSpan.Zero;
             ItvxPageState? last = null;
             while (sw.Elapsed < SignInTimeout)
             {
@@ -175,12 +183,15 @@ namespace Baird.Services
                     Log?.Invoke("Password entered.");
                     continue;
                 }
-                // ITVX emails a sign-in code by default; the link under it asks for the password instead.
-                if (state.Url.Contains("/email-pair", StringComparison.Ordinal) && !usePassword)
+                // ITVX emails a sign-in code by default; the link under it asks for the password instead. Pressed again while the page
+                // stays, since a press before the page is ready does nothing.
+                if (state.Url.Contains("/email-pair", StringComparison.Ordinal) && usePasswordPresses < MaxUsePasswordPresses
+                    && (usePasswordPresses == 0 || sw.Elapsed - lastUsePassword > UsePasswordRetry))
                 {
-                    usePassword = true;
-                    await PageDriver.EvaluateAsync(ItvxPlayerControl.UsePasswordScript, ct);
-                    Log?.Invoke("Asked for the password instead of an emailed code.");
+                    usePasswordPresses++;
+                    lastUsePassword = sw.Elapsed;
+                    var pressed = await PageDriver.EvaluateAsync(ItvxPlayerControl.UsePasswordScript, ct);
+                    Log?.Invoke($"Asked for the password instead of an emailed code (press {usePasswordPresses}, {(pressed is { ValueKind: JsonValueKind.String } ? "clicked" : "link not there")}).");
                     continue;
                 }
                 if (state.EmailField && !emailSent && !state.PasswordField)

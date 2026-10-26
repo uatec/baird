@@ -348,6 +348,7 @@ namespace Baird.Tests.Services
             {
                 PollInterval = TimeSpan.FromMilliseconds(2),
                 SignInTimeout = TimeSpan.FromSeconds(1),
+                UsePasswordRetry = TimeSpan.FromMilliseconds(20),
             };
             var engine = new ItvxPlaybackEngine(service)
             {
@@ -448,6 +449,22 @@ namespace Baird.Tests.Services
             Assert.Equal(new[] { "play", "button:continue", "use-password", "button:sign in", "play" }, b.Actions);
             Assert.Equal(new[] { Episode, signIn, Episode }, b.NavigatedUrls);
             Assert.Equal("ITVX", service.Hub.ActivePlayback);
+        }
+
+        [Fact]
+        public async Task Use_password_instead_is_pressed_again_while_the_emailed_code_page_stays()
+        {
+            var (b, service, _) = Engine();
+            var pair = FakeItvxBrowser.State("https://www.itv.com/watch/user/email-pair", signInPage: true);
+            for (var i = 0; i < 30; i++) b.States.Enqueue(pair); // the first press came too early
+            b.States.Enqueue(FakeItvxBrowser.State(ItvxService.SignInUrl + "?step=password", signInPage: true, password: true));
+            b.LastState = FakeItvxBrowser.State("https://www.itv.com/watch", signedIn: true);
+
+            Assert.Null(await service.SignInAsync(CancellationToken.None));
+
+            var presses = b.Actions.Count(a => a == "use-password");
+            Assert.InRange(presses, 2, 5);
+            Assert.Contains(("input[type=password]", "s3cret-pass"), b.Typed);
         }
 
         [Fact]
