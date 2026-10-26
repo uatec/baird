@@ -32,7 +32,11 @@ namespace Baird.Services
             { 0x04, "Image View On" },
             { 0x0D, "Text View On" },
             { 0x32, "Set Menu Language" },
+            { 0x1A, "Give Deck Status" },
+            { 0x1B, "Deck Status" },
             { 0x36, "Standby" },
+            { 0x41, "Play" },
+            { 0x42, "Deck Control" },
             { 0x44, "User Control Pressed" },
             { 0x45, "User Control Released" },
             { 0x46, "Give OSD Name" },
@@ -212,6 +216,38 @@ namespace Baird.Services
 
             var destination = frame[0] & 0xF;
             userControl = new CecUserControlEventArgs
+            {
+                Source = frame[0] >> 4,
+                Destination = destination,
+                ForThisDevice = destination == ourAddress,
+                Code = code,
+            };
+            return true;
+        }
+
+        /// <summary>
+        /// Reads Play (0x41) and Deck Control (0x42), which some TVs send for their remote's transport keys instead of
+        /// User Control, as the equivalent User Control press (Play, Pause, Stop, Rewind, Fast Forward, skip).
+        /// </summary>
+        public static bool TryParseDeckKey(byte[] frame, int ourAddress, out CecUserControlEventArgs key)
+        {
+            key = new CecUserControlEventArgs();
+            if (frame.Length < 3) return false;
+            byte? code = (frame[1], frame[2]) switch
+            {
+                (0x41, 0x24) => 0x44,                 // Play forward → Play
+                (0x41, 0x25) => 0x46,                 // Play still → Pause
+                (0x41, >= 0x05 and <= 0x07) => 0x49,  // Fast forward
+                (0x41, >= 0x09 and <= 0x0B) => 0x48,  // Fast reverse → Rewind
+                (0x42, 0x01) => 0x4B,                 // Skip forward → Forward
+                (0x42, 0x02) => 0x4C,                 // Skip reverse → Backward
+                (0x42, 0x03) => 0x45,                 // Stop
+                _ => null,
+            };
+            if (code == null) return false;
+
+            var destination = frame[0] & 0xF;
+            key = new CecUserControlEventArgs
             {
                 Source = frame[0] >> 4,
                 Destination = destination,

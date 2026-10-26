@@ -191,12 +191,35 @@ namespace Baird.Services
             if (!incoming)
             {
                 _logicalAddress = frame[0] >> 4;
+                return;
             }
-            else if (CecParser.TryParseUserControl(frame, _logicalAddress, out var userControl))
+
+            var forBaird = (frame[0] & 0xF) == _logicalAddress;
+            if (forBaird && frame[1] is not (0x44 or 0x45 or 0x8F))
+            {
+                // Everything else addressed to Baird (bar keys, logged by CecRemoteControl, and the TV's routine power
+                // polls), so a remote key the TV sends some other way still shows up.
+                Console.WriteLine($"[CecService] Frame for Baird: {CecParser.ParseLine(line)}");
+            }
+
+            if (CecParser.TryParseUserControl(frame, _logicalAddress, out var userControl))
             {
                 UserControlReceived?.Invoke(this, userControl);
             }
-            else if (frame[1] is 0x89 or 0x8A or 0x8B or 0x8D or 0xA0)
+            else if (CecParser.TryParseDeckKey(frame, _logicalAddress, out var deckKey))
+            {
+                // The TV's play/pause/stop keys can arrive as Play / Deck Control rather than User Control: a press
+                // with no release of its own.
+                UserControlReceived?.Invoke(this, deckKey);
+                UserControlReceived?.Invoke(this, new CecUserControlEventArgs
+                {
+                    Source = deckKey.Source,
+                    Destination = deckKey.Destination,
+                    ForThisDevice = deckKey.ForThisDevice,
+                    Code = null,
+                });
+            }
+            else if (!forBaird && frame[1] is 0x89 or 0x8A or 0x8B or 0x8D or 0xA0)
             {
                 // Some TVs pass remote keys as vendor commands rather than User Control, and some only pass keys
                 // once the device answers Menu Request. Logged so a TV whose keys don't arrive can be diagnosed.

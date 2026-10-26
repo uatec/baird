@@ -42,8 +42,10 @@ namespace Baird.Services
             { 0x28, Key.D8 },
             { 0x29, Key.D9 },
             { 0x2B, Key.Enter },
-            { 0x30, Key.PageUp },             // Channel Up
-            { 0x31, Key.PageDown },           // Channel Down
+            // Swapped on purpose: Baird's PageUp is the next channel in its list, which the owner found ran the wrong way
+            // for the Panasonic's Channel Up (2026-10-26).
+            { 0x30, Key.PageDown },           // Channel Up
+            { 0x31, Key.PageUp },             // Channel Down
             { 0x44, Key.Play },
             { 0x45, Key.MediaStop },
             { 0x46, Key.Pause },
