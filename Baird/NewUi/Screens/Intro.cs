@@ -52,6 +52,16 @@ namespace Baird.NewUi.Screens
         public void Play(Action done)
         {
             _done = done;
+            // Start once the window has actually drawn (the Pi is busy at start-up): the clock must not run while
+            // nothing is on screen, or the disc is missed.
+            if (TopLevel.GetTopLevel(this) is { } top)
+                top.RequestAnimationFrame(_ => top.RequestAnimationFrame(_ => Begin()));
+            else Begin();
+        }
+
+        private void Begin()
+        {
+            if (_finishing) return;
             try { _disc.Start(); }
             catch (Exception ex) { Console.WriteLine($"[Intro] The animation couldn't play: {ex.Message}"); }
             _timer = DispatcherTimer.RunOnce(Finish, Duration);

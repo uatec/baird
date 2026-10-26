@@ -132,7 +132,7 @@ namespace Baird.NewUi.Screens
         public InfoBar(NewUiContext ctx)
         {
             _ctx = ctx;
-            _root.Children.Add(new Border { Height = 560, VerticalAlignment = VerticalAlignment.Bottom, Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#BF000000"), 0), new GradientStop(Colors.Transparent, 1) } } });
+            _root.Children.Add(new Border { Height = 560, VerticalAlignment = VerticalAlignment.Bottom, Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#BF000000"), 0), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1) } } });
             _root.Children.Add(new Border { Background = T.Glass, CornerRadius = new CornerRadius(T.RPanel), Padding = new Thickness(44, 34, 44, 30), Margin = new Thickness(64, 0, 64, 48), VerticalAlignment = VerticalAlignment.Bottom, Child = _bar });
             _tick.Tick += (_, _) => Draw();
             _tick.Start();

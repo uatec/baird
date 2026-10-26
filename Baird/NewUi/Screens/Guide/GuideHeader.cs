@@ -135,7 +135,7 @@ namespace Baird.NewUi.Screens
                     GradientOrigin = new RelativePoint(0.7, 0.3, RelativeUnit.Relative),
                     RadiusX = new RelativeScalar(0.7, RelativeUnit.Relative),
                     RadiusY = new RelativeScalar(0.8, RelativeUnit.Relative),
-                    GradientStops = { new GradientStop(HsvColor.FromAhsv(1, hue, 0.6, 0.45).ToRgb(), 0), new GradientStop(Colors.Transparent, 0.7) },
+                    GradientStops = { new GradientStop(HsvColor.FromAhsv(1, hue, 0.6, 0.45).ToRgb(), 0), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.7) },
                 },
             };
             Crossfade(_ambient, amb, 0, T.Slow);

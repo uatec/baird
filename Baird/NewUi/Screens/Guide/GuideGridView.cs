@@ -77,7 +77,7 @@ namespace Baird.NewUi.Screens
             {
                 Height = 90,
                 VerticalAlignment = VerticalAlignment.Bottom,
-                Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Colors.Transparent, 1) } },
+                Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1) } },
             });
         }
 

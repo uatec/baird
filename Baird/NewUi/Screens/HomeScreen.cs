@@ -57,13 +57,13 @@ namespace Baird.NewUi.Screens
             _ctx = ctx;
             _scrim = new Border
             {
-                Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F2000000"), 0), new GradientStop(Color.Parse("#B8000000"), 0.38), new GradientStop(Color.Parse("#33000000"), 0.7), new GradientStop(Colors.Transparent, 0.85) } },
+                Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F2000000"), 0), new GradientStop(Color.Parse("#B8000000"), 0.38), new GradientStop(Color.Parse("#33000000"), 0.7), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.85) } },
             };
             var bottom = new Border
             {
-                Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#EB000000"), 0), new GradientStop(Color.Parse("#59000000"), 0.42), new GradientStop(Colors.Transparent, 0.62) } },
+                Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#EB000000"), 0), new GradientStop(Color.Parse("#59000000"), 0.42), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.62) } },
             };
-            var top = new Border { Height = 300, VerticalAlignment = VerticalAlignment.Top, Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#D0000000"), 0), new GradientStop(Colors.Transparent, 1) } } };
+            var top = new Border { Height = 300, VerticalAlignment = VerticalAlignment.Top, Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#D0000000"), 0), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1) } } };
             _root.Children.Add(_heroArt);
             _root.Children.Add(_scrim);
             _root.Children.Add(bottom);
@@ -166,7 +166,7 @@ namespace Baird.NewUi.Screens
             // Crossfade the backdrop: the new one fades in over the old, which is removed once it's covered.
             foreach (var old in _heroArt.Children.ToList()) { Motion.Animate(old, T.Slow); old.Opacity = 0; DispatcherTimer.RunOnce(() => _heroArt.Children.Remove(old), T.Slow + TimeSpan.FromMilliseconds(50)); }
             if (_overVideo || string.IsNullOrEmpty(image)) return;
-            var img = new Image { Stretch = Stretch.UniformToFill, Opacity = 0, OpacityMask = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.4), new GradientStop(Colors.Transparent, 0.92) } } };
+            var img = new Image { Stretch = Stretch.UniformToFill, Opacity = 0, OpacityMask = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.92) } } };
             Motion.Animate(img, T.Slow);
             img.PropertyChanged += (_, e) => { if (e.Property == Image.SourceProperty && img.Source != null) img.Opacity = 1; };
             AsyncImageLoader.ImageLoader.SetSource(img, image);

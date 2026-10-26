@@ -53,7 +53,7 @@ namespace Baird.NewUi.Screens
                 {
                     StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
                     EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-                    GradientStops = { new GradientStop(Color.Parse("#F2000000"), 0), new GradientStop(Color.Parse("#B3000000"), 0.7), new GradientStop(Colors.Transparent, 1) },
+                    GradientStops = { new GradientStop(Color.Parse("#F2000000"), 0), new GradientStop(Color.Parse("#B3000000"), 0.7), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1) },
                 },
             });
             var panel = new StackPanel { Width = 600, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(T.SafeX, 64, 0, 0), Spacing = 22 };

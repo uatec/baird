@@ -51,7 +51,7 @@ namespace Baird.NewUi.Controls
             }
             if (data.Kind == CardKind.Channel)
             {
-                layers.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0.45, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#C0000000"), 0), new GradientStop(Colors.Transparent, 1) } } });
+                layers.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0.45, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#C0000000"), 0), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1) } } });
                 layers.Children.Add(new TextBlock { Text = data.Label, FontSize = 22, FontWeight = FontWeight.SemiBold, Foreground = T.Text, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(16, 0, 16, 30) });
             }
             if (data.Badge == "live") layers.Children.Add(Pill("● Live", T.Live, T.Text, HorizontalAlignment.Left));
