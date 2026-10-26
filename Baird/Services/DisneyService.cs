@@ -189,6 +189,50 @@ namespace Baird.Services
             }
         }
 
+        private readonly ConcurrentDictionary<string, (DateTime At, IReadOnlyList<DisneyEpisode> Episodes)> _seasonEpisodes = new();
+
+        /// <summary>
+        /// The episodes of a season. For a short series the entity page already listed them; for a long one (The Simpsons: 13, 22 and 23
+        /// episodes in the first seasons) the page lists only the season, so the season is read on its own, up to 100 episodes at a
+        /// time. Reused for <see cref="GuideLifetime"/>. Never throws for Disney+ problems: the failure says why.
+        /// </summary>
+        public async Task<(IReadOnlyList<DisneyEpisode>? Episodes, string? Failure)> GetSeasonEpisodesAsync(DisneySeason season, CancellationToken ct)
+        {
+            if (season.IsComplete || season.SeasonId == null) return (season.Episodes, null);
+            if (_seasonEpisodes.TryGetValue(season.SeasonId, out var cached) && DateTime.UtcNow - cached.At < GuideLifetime) return (cached.Episodes, null);
+            if (_hub.BlockedFor(Owner) is { } blocked) return (null, blocked);
+
+            await _hub.Gate.WaitAsync(ct);
+            try
+            {
+                var failure = await EnsureReadyCoreAsync(ct);
+                if (failure != null) return (null, failure);
+
+                var needsCapture = !_session.HasApiToken;
+                var all = new List<DisneyEpisode>();
+                const int maxPages = 10; // 1000 episodes: more than any series; a guard against a reply that never says it is done
+                for (var page = 0; page < maxPages; page++)
+                {
+                    var (status, body, apiFailure) = await _session.ApiGetAsync(DisneySearchParser.SeasonApiUrl(season.SeasonId, all.Count), ct);
+                    if (apiFailure != null) return (null, apiFailure);
+                    var episodes = DisneySearchParser.ParseSeasonEpisodes(status, body, out var hasMore, out var parseFailure);
+                    if (episodes == null) return (null, parseFailure);
+                    all.AddRange(episodes.Where(e => all.All(x => x.Id != e.Id)));
+                    if (!hasMore || episodes.Count == 0) break;
+                }
+                if (needsCapture) await Browser.NavigateAsync(IdleUrl, CancellationToken.None);
+
+                foreach (var e in all) RememberRuntime(e.Id, e.RuntimeSeconds);
+                _seasonEpisodes[season.SeasonId] = (DateTime.UtcNow, all);
+                Log?.Invoke($"{season.Name}: {all.Count} episode(s) read from the season page.");
+                return (all, null);
+            }
+            finally
+            {
+                _hub.Gate.Release();
+            }
+        }
+
         /// <summary>
         /// Gets Disney+ ready in the background after <paramref name="delay"/> (after Netflix's own start-up, which takes the tab
         /// first): opens or attaches to the browser, signs in, and takes the API token, so the first search or play does not
@@ -212,13 +256,13 @@ namespace Baird.Services
                             try
                             {
                                 using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                                attempt.CancelAfter(TimeSpan.FromMinutes(3));
+                                attempt.CancelAfter(TimeSpan.FromSeconds(90)); // the warm-up holds the shared gate: it must not hold it for minutes
                                 var failure = await PrepareAsync(attempt.Token);
                                 if (failure != null) Log?.Invoke($"Disney+ not ready: {failure}");
                             }
                             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                             {
-                                Log?.Invoke("Disney+ not ready: gave up after 3 min; trying again later.");
+                                Log?.Invoke("Disney+ not ready: gave up after 90 s; trying again later.");
                             }
                         }
                         await Task.Delay(every, ct);
@@ -295,7 +339,8 @@ namespace Baird.Services
             else
             {
                 Log?.Invoke("Using the browser that is already open.");
-                await Browser.NavigateAsync(DisneySearchParser.SearchPageUrl, ct);
+                if (!await Browser.NavigateAsync(DisneySearchParser.SearchPageUrl, ct))
+                    return "Could not open Disney+ in the browser: it did not answer. Trying again later.";
             }
             _hub.PageOwner = Owner;
 

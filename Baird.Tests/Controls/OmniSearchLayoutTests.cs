@@ -96,6 +96,19 @@ namespace Baird.Tests.Controls
         }
 
         [AvaloniaFact]
+        public async Task Pressing_Enter_on_a_focused_keyboard_key_types_that_letter()
+        {
+            var f = await Open();
+            Key(f, "A").Focus();
+            await Settle(100);
+
+            Press(f, Avalonia.Input.Key.Enter);
+            await Settle(100);
+
+            Assert.Equal("a", f.Vm.SearchText);
+        }
+
+        [AvaloniaFact]
         public async Task The_search_text_is_not_an_editable_text_box()
         {
             var f = await Open();
@@ -169,7 +182,7 @@ namespace Baird.Tests.Controls
         public async Task Up_from_the_top_row_goes_to_the_suggestions_and_Down_comes_back_to_the_keyboard()
         {
             var f = await Open("doctor who");
-            var q = Key(f, "Q");
+            var q = Key(f, "1");
             q.Focus();
 
             Press(f, Avalonia.Input.Key.Up);
@@ -180,6 +193,59 @@ namespace Baird.Tests.Controls
             Press(f, Avalonia.Input.Key.Down);
             await Settle(100);
             Assert.True(q.IsFocused);
+        }
+
+        private class HangingProvider : IMediaProvider
+        {
+            public string Name => "Hang";
+            public Task InitializeAsync() => Task.CompletedTask;
+            public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult(Enumerable.Empty<MediaItemData>());
+            public Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default) =>
+                new TaskCompletionSource<IEnumerable<MediaItemData>>().Task; // never answers and ignores the token
+            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Task.FromResult(Enumerable.Empty<MediaItemData>());
+            public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult<MediaItemData?>(null);
+        }
+
+        [AvaloniaFact]
+        public async Task A_provider_that_never_answers_does_not_hold_the_list_back()
+        {
+            var fast = new Mocks.MockMediaProvider("P", new[]
+            {
+                new MediaItemData { Id = "a", Name = "Alpha", Details = "", ImageUrl = "", IsLive = false, Source = "P", Type = MediaType.Video, Synopsis = "", Subtitle = "" }
+            });
+            var dataService = new DataService(new IMediaProvider[] { fast, new HangingProvider() },
+                new MockHistoryService(), new MockWatchlistService(), new MediaItemCache(), new MockMediaDataCache());
+            SearchTiming.Debounce = TimeSpan.FromMilliseconds(50);
+            SearchTiming.ProviderTimeout = TimeSpan.FromMilliseconds(300);
+            try
+            {
+                var vm = new OmniSearchViewModel(dataService, new StubSearchHistory(), () => new List<MediaItemViewModel>());
+                vm.SearchText = "alpha";
+
+                await Settle(150);
+                Assert.Empty(vm.SearchResults); // the hanging provider has not answered yet: nothing is shown
+                Assert.True(vm.ShowSpinner);
+
+                await Settle(900);
+                Assert.Single(vm.SearchResults);
+                Assert.False(vm.ShowSpinner);
+                Assert.True(vm.ProviderStatuses.First(p => p.Name == "Hang").IsError);
+            }
+            finally
+            {
+                SearchTiming.ProviderTimeout = TimeSpan.FromSeconds(10);
+            }
+        }
+
+        [AvaloniaFact]
+        public async Task The_on_screen_keyboard_has_a_key_for_every_digit()
+        {
+            var f = await Open();
+
+            foreach (var digit in "1234567890")
+                Key(f, digit.ToString()).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal("1234567890", f.Vm.SearchText);
         }
 
         [AvaloniaFact]

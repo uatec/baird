@@ -6,7 +6,8 @@
 import fcntl, os, struct, sys, time
 
 KEYS = {"ESC": 1, "BACKSPACE": 14, "ENTER": 28, "SPACE": 57, "UP": 103, "LEFT": 105, "RIGHT": 106, "DOWN": 108, "F9": 67, "PAGEUP": 104,
-        "BACK": 158, "PLAYPAUSE": 164}
+        "BACK": 158, "PLAYPAUSE": 164,
+        "OK": 352, "SELECT": 353, "KPENTER": 96}  # the TV remote's OK: KEY_OK (352) and KEY_SELECT (353); Baird remaps Key.Select to Enter
 EV_SYN, EV_KEY, SYN_REPORT = 0, 1, 0
 UI_SET_EVBIT, UI_SET_KEYBIT, UI_DEV_CREATE, UI_DEV_DESTROY = 0x40045564, 0x40045565, 0x5501, 0x5502
 

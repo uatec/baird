@@ -12,7 +12,7 @@ namespace Baird.Services
     /// Plays Disney+ titles for Baird's normal video player: the twin of <see cref="NetflixPlaybackEngine"/>. The video plays in
     /// the shared browser behind Baird's (transparent) window; Baird keeps the keys and this engine turns them into commands to
     /// Disney+'s player over CDP. It reads the title's page to find what to play (for a series, the next episode for this
-    /// profile) and its real length, runs the proven playback flow (<see cref="DisneySpikeViewModel"/>), polls the video, and
+    /// profile) and its real length, runs the proven playback flow (<see cref="DisneyPlaybackFlow"/>), polls the video, and
     /// returns the browser to its idle page when playback stops. Disney+ resumes at its own saved place, so a start position is ignored.
     /// </summary>
     public sealed class DisneyPlaybackEngine : IBrowserPlaybackEngine, IPromptingEngine
@@ -26,10 +26,10 @@ namespace Baird.Services
         private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(5);
 
         private readonly DisneyService _service;
-        private readonly Func<DisneySpikeViewModel> _createFlow;
+        private readonly Func<DisneyPlaybackFlow> _createFlow;
         private readonly object _commandLock = new();
         private Task _commands = Task.CompletedTask;
-        private DisneySpikeViewModel? _flow;
+        private DisneyPlaybackFlow? _flow;
         private CancellationTokenSource? _pollCts;
         private int _generation;
         private int _missingPolls;
@@ -41,9 +41,11 @@ namespace Baird.Services
         private double _duration;
         private double _runtime;
         private string? _playId; // the title being played; the page leaving it means this title is over
+        private bool _endCardDismissed; // Disney+'s end card is closed once per title, so that Baird (not Disney+) plays what comes next
+        private DateTime _lastPositionAt = DateTime.UtcNow;
         private volatile PlaybackState _state = PlaybackState.Idle;
 
-        public DisneyPlaybackEngine(DisneyService service, Func<DisneySpikeViewModel> createFlow)
+        public DisneyPlaybackEngine(DisneyService service, Func<DisneyPlaybackFlow> createFlow)
         {
             _service = service;
             _createFlow = createFlow;
@@ -74,18 +76,27 @@ namespace Baird.Services
         public string? PromptText => _prompt;
         public event EventHandler? PromptChanged;
 
-        /// <summary>Answers the prompt on screen (the viewer pressed OK). False when there is none.</summary>
+        /// <summary>
+        /// Answers the prompt on screen (the viewer pressed OK). "Skip intro" and its kind click Disney+'s button. "Next episode" ends
+        /// this title at once, so that Baird plays the next episode of its own list. False when there is no prompt.
+        /// </summary>
         public bool ActivatePrompt()
         {
             if (_prompt == null || _state is PlaybackState.Idle or PlaybackState.Loading) return false;
             var label = _prompt;
+            if (label == DisneyPlayerControl.NextEpisodeLabel)
+            {
+                Console.WriteLine("[DisneyEngine] Prompt \"Next episode\": ending this title; Baird plays the next one.");
+                _ = EndTitleAsync();
+                return true;
+            }
             lock (_commandLock)
             {
                 _commands = _commands.ContinueWith(async _ =>
                 {
                     try
                     {
-                        var clicked = await DisneyPlayerControl.ActivatePromptAsync(_service.PageDriver);
+                        var clicked = await DisneyPlayerControl.ActivateSkipAsync(_service.PageDriver);
                         Console.WriteLine($"[DisneyEngine] Prompt \"{label}\": {(clicked ? "clicked" : "not on screen any more")}.");
                         SetPrompt(null); // the next poll shows what is there now
                     }
@@ -93,6 +104,12 @@ namespace Baird.Services
                 }, TaskScheduler.Default).Unwrap();
             }
             return true;
+        }
+
+        private async Task EndTitleAsync()
+        {
+            await StopAsync();
+            StreamEnded?.Invoke(this, EventArgs.Empty);
         }
 
         private void SetPrompt(string? prompt)
@@ -116,6 +133,7 @@ namespace Baird.Services
             _paused = false;
             _runtime = 0;
             _playId = null;
+            _endCardDismissed = false;
             SetPrompt(null);
             Volatile.Write(ref _position, 0);
             Volatile.Write(ref _duration, 0);
@@ -218,12 +236,15 @@ namespace Baird.Services
             Command(pause ? NetflixPlayerAction.Pause : NetflixPlayerAction.Play, 0, () => { });
         }
 
-        public void SeekRelative(double seconds) => Command(NetflixPlayerAction.SeekBy, seconds, () =>
+        public void SeekRelative(double seconds)
         {
-            // Show the new position at once; the next poll corrects it.
+            if (_state is PlaybackState.Idle or PlaybackState.Loading) return;
+            // The shown position moves at once; Disney+'s skip buttons seek in 10 s steps and the next poll corrects it.
             var max = DurationSeconds > 0 ? DurationSeconds : double.MaxValue;
             Volatile.Write(ref _position, Math.Clamp(TimePositionSeconds + seconds, 0, max));
-        });
+            _lastPositionAt = DateTime.UtcNow;
+            Command(NetflixPlayerAction.SeekBy, seconds, () => { });
+        }
 
         public void Seek(double seconds) => SeekRelative(seconds - TimePositionSeconds);
 
@@ -280,8 +301,30 @@ namespace Baird.Services
                 StreamEnded?.Invoke(this, EventArgs.Empty);
                 return;
             }
-            if (double.IsFinite(status.CurrentTime)) Volatile.Write(ref _position, status.CurrentTime);
+            // The position in the TITLE comes from Disney+'s controls (the element's time restarts at every seek and resume). While the
+            // controls are not in the page the position keeps counting from the last reading, unless the video is paused.
+            var now = DateTime.UtcNow;
+            if (status.TitleSeconds is { } titleSeconds && double.IsFinite(titleSeconds))
+                Volatile.Write(ref _position, titleSeconds);
+            else if (!status.Paused)
+                Volatile.Write(ref _position, TimePositionSeconds + (now - _lastPositionAt).TotalSeconds);
+            _lastPositionAt = now;
+
+            // The length of the title that is on screen: exact from the controls, whatever the page started with (resume, autoplay).
+            if (status.TitleLengthSeconds is { } length && double.IsFinite(length) && length > 0 && Math.Abs(length - DurationSeconds) > 1)
+            {
+                Volatile.Write(ref _duration, length);
+                if (_playId != null) _service.RememberRuntime(_playId, length);
+                DurationChanged?.Invoke(this, length);
+            }
+
             SetPrompt(status.Prompt);
+            if (status.Prompt == DisneyPlayerControl.NextEpisodeLabel && !_endCardDismissed)
+            {
+                // Disney+ would start the next episode itself when its countdown ends; Baird plays what comes next, so close the card.
+                _endCardDismissed = true;
+                Command(NetflixPlayerAction.Play, 0, () => { }, dismissEndCard: true);
+            }
             SetPaused(status.Paused);
         }
 
@@ -302,12 +345,12 @@ namespace Baird.Services
 
         private void OnFlowChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName != nameof(DisneySpikeViewModel.State) || sender is not DisneySpikeViewModel flow) return;
+            if (e.PropertyName != nameof(DisneyPlaybackFlow.State) || sender is not DisneyPlaybackFlow flow) return;
             var text = flow.State switch
             {
-                DisneySpikeState.SigningIn => "Starting Disney+…",
-                DisneySpikeState.Launching => "Opening the title…",
-                DisneySpikeState.BufferingVideo => "Loading the video…",
+                DisneyPlaybackFlowState.SigningIn => "Starting Disney+…",
+                DisneyPlaybackFlowState.Launching => "Opening the title…",
+                DisneyPlaybackFlowState.BufferingVideo => "Loading the video…",
                 _ => null,
             };
             if (text != null) SetStatus(text);
@@ -330,7 +373,7 @@ namespace Baird.Services
             });
         }
 
-        private void Command(NetflixPlayerAction action, double seconds, Action onAccepted)
+        private void Command(NetflixPlayerAction action, double seconds, Action onAccepted, bool dismissEndCard = false)
         {
             if (_state is PlaybackState.Idle or PlaybackState.Loading) return;
             lock (_commandLock)
@@ -339,7 +382,13 @@ namespace Baird.Services
                 {
                     try
                     {
-                        var path = await DisneyPlayerControl.ControlAsync(_service.PageDriver, action, seconds, _runtime);
+                        if (dismissEndCard)
+                        {
+                            var closed = await DisneyPlayerControl.DismissEndCardAsync(_service.PageDriver);
+                            Console.WriteLine($"[DisneyEngine] Disney+'s end card: {(closed ? "closed, so Baird plays the next episode" : "not there any more")}.");
+                            return;
+                        }
+                        var path = await DisneyPlayerControl.ControlAsync(_service.PageDriver, action, seconds);
                         Console.WriteLine($"[DisneyEngine] {action} {seconds:+0;-0;0} via {path ?? "nothing"}.");
                         if (path != null) onAccepted();
                     }

@@ -17,7 +17,8 @@ namespace Baird.Services
     /// Session state read from a Netflix app page. The search API also answers signed-out browsers (with the general
     /// country catalogue), so results are only "filtered by this account" once IsMember is true and no profile is pending.
     /// </summary>
-    public sealed record NetflixSessionState(string Url, bool SignedOut, bool IsMember, IReadOnlyList<string> Profiles);
+    /// <param name="BackPressed">Only from <see cref="ICdpBrowserService.WatchNetflixSignInAsync"/>: the viewer pressed Back on the page.</param>
+    public sealed record NetflixSessionState(string Url, bool SignedOut, bool IsMember, IReadOnlyList<string> Profiles, bool BackPressed = false);
 
     /// <summary>Outcome of one SearchPageQueryResults call: results, or a GraphQL error code.</summary>
     public sealed record NetflixSearchReply(IReadOnlyList<NetflixSearchResult> Results, bool HasNextPage, string? ErrorCode, string? ErrorMessage)

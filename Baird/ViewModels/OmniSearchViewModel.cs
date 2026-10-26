@@ -254,25 +254,8 @@ namespace Baird.ViewModels
             this.WhenAnyValue(x => x.IsSearching).Subscribe(_ => this.RaisePropertyChanged(nameof(ShowSpinner)));
             SearchResults.CollectionChanged += (s, e) => this.RaisePropertyChanged(nameof(ShowSpinner));
 
-            // Branch 1: Short numeric (<= 3 digits) -> Immediate
+            // Debounced: a search runs once the query has stopped changing
             textChanges
-                .Where(q => !string.IsNullOrEmpty(q) && q.Length <= 3 && q.Length > 0 && q.All(char.IsDigit))
-                .Throttle(SearchTiming.Debounce, RxApp.MainThreadScheduler)
-                .Subscribe(async (q) =>
-                {
-                    try
-                    {
-                        await PerformSearch(q);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[OmniSearchViewModel] Unhandled error in search subscription: {ex}");
-                    }
-                });
-
-            // Branch 2: Everything else -> Debounced
-            textChanges
-                .Where(q => string.IsNullOrEmpty(q) || q.Length > 3 || !q.All(char.IsDigit))
                 .Throttle(SearchTiming.Debounce, RxApp.MainThreadScheduler)
                 .Subscribe(async (q) =>
                 {
@@ -336,59 +319,11 @@ namespace Baird.ViewModels
                 status.SetLoading();
             }
 
-            // For short numeric queries (1-3 digits), do in-memory channel search
-            bool isShortNumericQuery = !string.IsNullOrEmpty(query) && query.Length <= 3 && query.All(char.IsDigit);
+            var sorter = new SearchResultSorter { ProviderOrder = _dataService.Providers.Select(p => p.Name).ToList() };
 
-            if (isShortNumericQuery)
-            {
-                // In-memory channel number search
-                var allChannels = _getAllChannels();
-                var matchingChannels = allChannels
-                    .Where(c => c.ChannelNumber != null &&
-                               (c.ChannelNumber == query || c.ChannelNumber.StartsWith(query)))
-                    .OrderBy(c => c.ChannelNumber?.Length)
-                    .ThenBy(c => c.ChannelNumber)
-                    .ToList();
-
-                _allResults = matchingChannels;
-                SearchResults.AddRange(matchingChannels);
-
-                // Update pips: show result count on TvHeadend pip, idle the rest
-                var tvhStatus = ProviderStatuses.FirstOrDefault(p => p.Name == "TvHeadend");
-                foreach (var status in ProviderStatuses)
-                {
-                    if (status == tvhStatus)
-                    {
-                        if (matchingChannels.Any())
-                            status.SetSuccess(matchingChannels.Count);
-                        else
-                            status.SetEmpty();
-                    }
-                    else
-                    {
-                        status.SetIdle();
-                    }
-                }
-
-                IsSearching = false;
-
-                // Start timer only if we found matching channels
-                if (matchingChannels.Any())
-                {
-                    StartAutoActivationTimer();
-                }
-
-                // Clean up cancellation token
-                newCts.Dispose();
-                if (_searchCts == newCts)
-                {
-                    _searchCts = null;
-                }
-
-                return; // Skip provider search
-            }
-
-            var sorter = new SearchResultSorter();
+            // Providers answer after different delays. Their results are kept here and shown once, in the final order, so
+            // the list never rearranges under the viewer. The provider pips show which ones are still working.
+            var collected = new List<MediaItemViewModel>();
 
             try
             {
@@ -399,7 +334,17 @@ namespace Baird.ViewModels
 
                     try
                     {
-                        var results = await provider.SearchAsync(query, token);
+                        // The list is shown when every provider has answered, so one that hangs must not hold it back for ever.
+                        using var providerCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        var searchTask = provider.SearchAsync(query, providerCts.Token);
+                        // Raced with a timer: a provider that ignores its cancellation token is still cut off.
+                        if (await Task.WhenAny(searchTask, Task.Delay(SearchTiming.ProviderTimeout, token)) != searchTask)
+                        {
+                            providerCts.Cancel();
+                            token.ThrowIfCancellationRequested();
+                            throw new OperationCanceledException();
+                        }
+                        var results = await searchTask;
                         if (token.IsCancellationRequested) return;
 
                         var items = results.Select(data => new MediaItemViewModel(data)).ToList();
@@ -415,10 +360,7 @@ namespace Baird.ViewModels
                         // sort/row-update step sees every provider's results.
                         await Dispatcher.UIThread.InvokeAsync(() =>
                         {
-                            if (unifiedItems.Any())
-                            {
-                                SearchResults.AddRange(unifiedItems);
-                            }
+                            collected.AddRange(unifiedItems);
                             if (status != null)
                             {
                                 if (count > 0)
@@ -430,8 +372,16 @@ namespace Baird.ViewModels
                     }
                     catch (OperationCanceledException)
                     {
-                        Console.WriteLine($"[OmniSearch] Provider '{provider.Name}' search cancelled for query '{query}'");
-                        // Don't mark as error if canceled
+                        if (token.IsCancellationRequested)
+                        {
+                            Console.WriteLine($"[OmniSearch] Provider '{provider.Name}' search cancelled for query '{query}'");
+                            // Don't mark as error if canceled
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[OmniSearch] Provider '{provider.Name}' did not answer within {SearchTiming.ProviderTimeout.TotalSeconds:0} s for query '{query}'");
+                            if (status != null) Dispatcher.UIThread.Post(() => status.SetError());
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -447,10 +397,9 @@ namespace Baird.ViewModels
                 if (token.IsCancellationRequested) return;
 
                 // Final sort after all results are in
-                if (SearchResults.Any())
+                if (collected.Count > 0)
                 {
-                    var allItems = SearchResults.ToList();
-                    var sorted = sorter.Sort(allItems, query);
+                    var sorted = sorter.Sort(collected, query);
                     _allResults = sorted;
 
                     // Populate SearchResults with initial batch
@@ -482,23 +431,6 @@ namespace Baird.ViewModels
                     _searchCts = null;
                 }
             }
-        }
-
-        private void StartAutoActivationTimer()
-        {
-            StopAutoActivationTimer();
-
-            IsAutoActivationPending = true;
-            AutoActivationProgress = 0;
-            _timerStartTime = DateTime.Now;
-
-            _autoActivationTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(50) // Update every 50ms for smooth progress
-            };
-
-            _autoActivationTimer.Tick += OnAutoActivationTimerTick;
-            _autoActivationTimer.Start();
         }
 
         private void StopAutoActivationTimer()

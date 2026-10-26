@@ -210,14 +210,27 @@ now; history is per episode).
 **Facts measured on the Pi** (signed-in session, Widevine L3, 854 px):
 - **Player state:** use the `<video>` that has a source: `[...document.querySelectorAll('video')].find(v => v.readyState > 0 && v.currentSrc)`.
   The first `<video>` stays empty.
-- **Controls work on the element directly.** `v.currentTime = v.currentTime + 30` seeked and playback went on; `v.currentTime - 20`
-  went back; `v.pause()` held the position for 4 s; `v.play()` resumed. (Unlike Netflix, no player API is needed.)
-- **Length:** `video.duration` is the buffered end (`Infinity`, then growing), not the length. The real length is `runtimeMs` from
-  the entity page (episode item for a series, page for a film). The player's own slider also has it while the controls
-  are shown (`aria-valuemax="2037"`), but the controls are removed from the DOM when idle.
+- **`video.currentTime` is NOT the position in the title.** Disney+ restarts its video session at every seek and at resume, so the
+  element's time restarts near 23 s and sits at an arbitrary offset from the title position (137 s, 301 s and 317 s were seen
+  on one episode). The real position is on the controls' timeline: the length is the slider's `aria-valuemax` (exact for the
+  title on screen, 2444 s for a 40:44 episode) and the live "time remaining" text counts down in seconds, so
+  position = length - remaining. (`aria-valuenow` is not live.) The controls are in the page only while awake, so Baird moves the
+  pointer before each poll (they are transparent, so nothing shows).
+- **A native seek can stall for good.** Disney+ keeps only about 10 to 20 s of video around the playhead (`buffered` was `[43,61]`
+  at 52 s). `video.currentTime = x` forward worked, but a seek to just before the buffered range (57.5 s with `[58,77]`)
+  left the player at `readyState 1` for good. Disney's own "Skip back/ahead 10 seconds" buttons seek exactly in title time
+  (311 → 325 → 340 → 334 → 329), so the engine clicks those. `video.pause()` and `play()` are safe. The arrow keys sent by
+  CDP did not seek reliably.
+- **Length:** `video.duration` is the buffered end (`Infinity`, then growing), not the length. The exact length is the slider's
+  `aria-valuemax` while the controls are awake; `runtimeMs` from the entity page is the same number (2037 s) and is used until the
+  controls are read.
 - **Disney's player UI is shadow DOM:** `disney-web-player-ui` > `main-app-controls-overlay`. Page CSS cannot reach it. Setting
   `display: none !important` on the `MAIN-APP-CONTROLS-OVERLAY` host hides the controls and leaves only the picture; the
   player re-creates the overlay when it wakes, so the style script repeats it every 150 ms.
+- **Prompts (measured on The Simpsons S2E1):** "SKIP INTRO" is a `<button>` in `skip-overlay > skip-button`, outside the controls
+  layer, on screen at title position 12 s; `click()` jumped to 72 s and the button went. The Mandalorian episodes showed none in
+  their first 85 s. The end card is `end-card-overlay` ("UP NEXT IN 5", the next episode "S2:E3 Treehouse of Horror", 24m, a
+  "Close" button) about 35 s before the end; Disney+ starts the next episode when the countdown ends.
 - **Subtitles are not in that overlay.** They show with no controls on screen.
 - The controls wake on mouse movement. Baird must not send mouse events to the page.
 - **Verified before the engine (autotest `shared-browser`, 2026-10-24):** a Disney+ search with a cached token took 277 ms (3 to 4 s

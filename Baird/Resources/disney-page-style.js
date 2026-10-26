@@ -11,9 +11,12 @@
     if (window.__bairdDisneyStyle) return true;
     window.__bairdDisneyStyle = true;
 
+    // The controls layer, the "Skip intro" button and the end card ("Up next"): Baird draws its own prompts.
+    const HIDDEN = new Set(['MAIN-APP-CONTROLS-OVERLAY', 'SKIP-OVERLAY', 'END-CARD-OVERLAY']);
+
     const hideControls = (root) => {
         root.querySelectorAll('*').forEach((e) => {
-            if (e.tagName === 'MAIN-APP-CONTROLS-OVERLAY') e.style.setProperty('opacity', '0', 'important');
+            if (HIDDEN.has(e.tagName)) e.style.setProperty('opacity', '0', 'important');
             if (e.shadowRoot) hideControls(e.shadowRoot);
         });
     };

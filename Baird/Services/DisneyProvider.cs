@@ -109,7 +109,7 @@ namespace Baird.Services
                 {
                     Id = $"{IdPrefix}{entityId}|{season.Number}",
                     Name = season.Name,
-                    Details = season.Episodes.Count == 1 ? "1 Episode" : $"{season.Episodes.Count} Episodes",
+                    Details = season.EpisodeCount == 1 ? "1 Episode" : $"{season.EpisodeCount} Episodes",
                     ImageUrl = season.Episodes.Select(e => e.ImageUrl).FirstOrDefault(i => i != null) ?? "",
                     IsLive = false,
                     StreamUrl = "",
@@ -120,8 +120,16 @@ namespace Baird.Services
                 }).ToList();
             }
 
-            var seasons = targetSeason == null ? guide.Seasons : guide.Seasons.Where(s => s.Number == targetSeason);
-            return seasons.SelectMany(s => s.Episodes).Select(ToEpisodeItem).ToList();
+            var wanted = targetSeason == null ? guide.Seasons : guide.Seasons.Where(s => s.Number == targetSeason).ToList();
+            var items = new List<MediaItemData>();
+            foreach (var season in wanted)
+            {
+                // A long series lists no episodes on its page: the season is read on its own.
+                var (episodes, seasonFailure) = await _service.GetSeasonEpisodesAsync(season, timeout.Token);
+                if (episodes == null) throw new InvalidOperationException($"Disney+ {season.Name} failed: {seasonFailure}");
+                items.AddRange(episodes.Select(ToEpisodeItem));
+            }
+            return items;
         }
 
         public static MediaItemData ToEpisodeItem(DisneyEpisode e) => new()

@@ -38,7 +38,7 @@ namespace Baird.Tests.Services
                 SignInTimeout = TimeSpan.FromSeconds(3),
                 PollInterval = TimeSpan.FromMilliseconds(5)
             };
-            var engine = new DisneyPlaybackEngine(service, () => new DisneySpikeViewModel(service)
+            var engine = new DisneyPlaybackEngine(service, () => new DisneyPlaybackFlow(service)
             {
                 UseBairdHud = true,
                 BufferingTimeout = TimeSpan.FromMilliseconds(400)
@@ -119,7 +119,7 @@ namespace Baird.Tests.Services
             engine.PauseStateChanged += (_, p) => paused = p;
             await engine.PlayAsync(SeriesUrl);
 
-            b.PollReply = () => FakeDisneyBrowser.Poll(754, paused: true);
+            b.PollReply = () => FakeDisneyBrowser.Poll(23, paused: true, titleSeconds: 754);
             await engine.PollOnceAsync();
 
             Assert.Equal(754, engine.TimePositionSeconds);
@@ -128,7 +128,7 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
-        public async Task Seek_and_pause_become_commands_on_the_video_with_the_runtime_as_the_seek_limit()
+        public async Task Seek_clicks_Disneys_own_skip_button_and_pause_acts_on_the_video()
         {
             var (b, _, engine) = Engine();
             await engine.PlayAsync(SeriesUrl);
@@ -137,10 +137,42 @@ namespace Baird.Tests.Services
             engine.Pause();
             await engine.WhenCommandsDoneAsync();
 
-            Assert.Equal(2, b.ControlScripts.Count);
-            Assert.EndsWith("('SeekBy', 10, 2037)", b.ControlScripts[0]);
-            Assert.EndsWith("('Pause', 0, 2037)", b.ControlScripts[1]);
+            Assert.Single(b.SkipScripts);
+            Assert.Contains("'Skip ahead 10 seconds', 1)", b.SkipScripts[0]);
+            Assert.Single(b.ControlScripts);
+            Assert.EndsWith("('Pause')", b.ControlScripts[0]);
             Assert.Equal(PlaybackState.Paused, engine.State);
+        }
+
+        [Theory]
+        [InlineData(10, true, 1)]
+        [InlineData(-10, false, 1)]
+        [InlineData(30, true, 3)]
+        [InlineData(-25, false, 3)]
+        [InlineData(2, true, 1)]
+        [InlineData(5000, true, 30)]
+        public async Task A_seek_is_a_number_of_ten_second_skip_clicks_in_the_right_direction(double seconds, bool forward, int clicks)
+        {
+            var (b, _, engine) = Engine();
+            await engine.PlayAsync(SeriesUrl);
+
+            engine.SeekRelative(seconds);
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Contains($"'{(forward ? "Skip ahead 10 seconds" : "Skip back 10 seconds")}', {clicks})", b.SkipScripts.Single());
+        }
+
+        [Fact]
+        public async Task A_seek_wakes_the_controls_first_because_the_skip_buttons_are_only_in_the_page_then()
+        {
+            var (b, _, engine) = Engine();
+            await engine.PlayAsync(SeriesUrl);
+            var before = b.MouseMoves;
+
+            engine.SeekRelative(10);
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.True(b.MouseMoves > before);
         }
 
         [Fact]
@@ -193,7 +225,7 @@ namespace Baird.Tests.Services
         {
             var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/identity/login/enter-email", login: true) };
             var service = new DisneyService(new BrowserHub(b), null) { SignInTimeout = TimeSpan.FromSeconds(1), PollInterval = TimeSpan.FromMilliseconds(5) };
-            var engine = new DisneyPlaybackEngine(service, () => new DisneySpikeViewModel(service) { UseBairdHud = true });
+            var engine = new DisneyPlaybackEngine(service, () => new DisneyPlaybackFlow(service) { UseBairdHud = true });
             string? reason = null;
             engine.Failed += (_, r) => reason = r;
 
@@ -283,8 +315,8 @@ namespace Baird.Tests.Services
             Assert.Equal(PlaybackState.Playing, engine.State);
             Assert.Empty(echoes);
             Assert.Equal(2, b.ControlScripts.Count);
-            Assert.EndsWith("('Pause', 0, 2037)", b.ControlScripts[0]);
-            Assert.EndsWith("('Play', 0, 2037)", b.ControlScripts[1]);
+            Assert.EndsWith("('Pause')", b.ControlScripts[0]);
+            Assert.EndsWith("('Play')", b.ControlScripts[1]);
         }
 
         [Fact]
@@ -341,28 +373,79 @@ namespace Baird.Tests.Services
         public void The_video_chosen_is_the_one_with_a_source_because_the_first_video_element_stays_empty()
         {
             Assert.Contains("x.readyState > 0 && x.currentSrc", DisneyPlayerControl.PollScript);
-            Assert.Contains("x.readyState > 0 && x.currentSrc", DisneyPlayerControl.ControlScript(NetflixPlayerAction.Play, 0, 0));
+            Assert.Contains("x.readyState > 0 && x.currentSrc", DisneyPlayerControl.ControlScript(NetflixPlayerAction.Play));
         }
 
         [Fact]
-        public void A_seek_is_limited_to_the_runtime_when_it_is_known_else_unbounded()
+        public void The_title_position_comes_from_the_controls_not_from_the_element_time()
         {
-            Assert.EndsWith("('SeekBy', 30, 2037.5)", DisneyPlayerControl.ControlScript(NetflixPlayerAction.SeekBy, 30, 2037.5));
-            Assert.EndsWith("('SeekBy', -10, Infinity)", DisneyPlayerControl.ControlScript(NetflixPlayerAction.SeekBy, -10, 0));
+            var script = DisneyPlayerControl.PollScript;
+            Assert.Contains("aria-valuemax", script);          // the exact length of the title
+            Assert.Contains("time-remaining", script);         // the live countdown
+            Assert.Contains("length - remaining", script);     // position = length - remaining
         }
 
         [Fact]
-        public async Task Poll_reads_position_pause_and_end_and_reports_no_duration()
+        public void Seeking_never_sets_the_elements_currentTime_because_a_native_seek_can_stall_the_player()
         {
-            var b = new FakeDisneyBrowser { PollReply = () => FakeDisneyBrowser.Poll(94.4, paused: true, ended: false) };
+            Assert.DoesNotContain("currentTime =", DisneyPlayerControl.SkipScript(true, 3));
+            Assert.DoesNotContain("currentTime =", DisneyPlayerControl.ControlScript(NetflixPlayerAction.SeekBy));
+        }
+
+        [Theory]
+        [InlineData(10, 1)]
+        [InlineData(-10, 1)]
+        [InlineData(14, 1)]
+        [InlineData(16, 2)]
+        [InlineData(-60, 6)]
+        [InlineData(0, 1)]
+        [InlineData(100000, 30)]
+        public void Skip_clicks_are_ten_second_steps_at_least_one_at_most_thirty(double seconds, int expected)
+        {
+            Assert.Equal(expected, DisneyPlayerControl.SkipClicks(seconds));
+        }
+
+        [Fact]
+        public void The_skip_script_clicks_the_button_with_Disneys_own_label_and_waits_between_clicks()
+        {
+            var forward = DisneyPlayerControl.SkipScript(true, 2);
+            var back = DisneyPlayerControl.SkipScript(false, 2);
+            Assert.Contains("'Skip ahead 10 seconds', 2)", forward);
+            Assert.Contains("'Skip back 10 seconds', 2)", back);
+            Assert.Contains("setTimeout(r, 300)", forward);
+        }
+
+        [Fact]
+        public async Task Poll_reads_pause_end_and_the_title_position_and_length()
+        {
+            var b = new FakeDisneyBrowser { PollReply = () => FakeDisneyBrowser.Poll(23.4, paused: true, titleSeconds: 311, titleLength: 2444) };
 
             var status = await DisneyPlayerControl.PollAsync(b);
 
             Assert.True(status!.Found);
-            Assert.Equal(94.4, status.CurrentTime);
+            Assert.Equal(23.4, status.CurrentTime);   // the element's time: not the title's
+            Assert.Equal(311, status.TitleSeconds);
+            Assert.Equal(2444, status.TitleLengthSeconds);
             Assert.True(status.Paused);
             Assert.False(status.Ended);
-            Assert.Equal(0, status.Duration); // video.duration is the buffered end, not the length
+        }
+
+        [Fact]
+        public async Task Poll_moves_the_pointer_first_so_the_controls_are_in_the_page()
+        {
+            var b = new FakeDisneyBrowser { PollReply = () => FakeDisneyBrowser.Poll(1) };
+            await DisneyPlayerControl.PollAsync(b);
+            await DisneyPlayerControl.PollAsync(b);
+            Assert.Equal(2, b.MouseMoves);
+        }
+
+        [Fact]
+        public async Task Without_the_controls_the_title_position_and_length_are_unknown_not_zero()
+        {
+            var b = new FakeDisneyBrowser { PollReply = () => FakeDisneyBrowser.Poll(5) };
+            var status = await DisneyPlayerControl.PollAsync(b);
+            Assert.Null(status!.TitleSeconds);
+            Assert.Null(status.TitleLengthSeconds);
         }
 
         [Fact]
@@ -373,10 +456,11 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
-        public async Task Control_returns_the_accepted_path_or_null()
+        public async Task Control_returns_the_accepted_path_for_pause_and_for_a_seek()
         {
             var b = new FakeDisneyBrowser();
-            Assert.Equal("video", await DisneyPlayerControl.ControlAsync(b, NetflixPlayerAction.Pause, 0, 0));
+            Assert.Equal("video", await DisneyPlayerControl.ControlAsync(b, NetflixPlayerAction.Pause, 0));
+            Assert.Equal("buttons", await DisneyPlayerControl.ControlAsync(b, NetflixPlayerAction.SeekBy, 10));
         }
     }
 
@@ -469,13 +553,13 @@ namespace Baird.Tests.Services
         public async Task In_engine_mode_the_page_style_is_injected_the_window_is_not_raised_and_Baird_is_told()
         {
             var (b, service) = Setup();
-            var vm = new DisneySpikeViewModel(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
+            var vm = new DisneyPlaybackFlow(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
             var confirmed = 0;
             vm.PlaybackConfirmed += () => confirmed++;
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
             Assert.Equal(1, confirmed);
             Assert.True(b.InjectOverlayCalled);
             Assert.False(b.RevealWindowCalled);
@@ -485,13 +569,13 @@ namespace Baird.Tests.Services
         public async Task In_the_spike_tab_mode_the_window_is_raised_and_Baird_is_not_told()
         {
             var (b, service) = Setup();
-            var vm = new DisneySpikeViewModel(service) { UseBairdHud = false, BufferingTimeout = TimeSpan.FromSeconds(2) };
+            var vm = new DisneyPlaybackFlow(service) { UseBairdHud = false, BufferingTimeout = TimeSpan.FromSeconds(2) };
             var confirmed = 0;
             vm.PlaybackConfirmed += () => confirmed++;
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
             Assert.Equal(0, confirmed);
             Assert.True(b.RevealWindowCalled);
         }
@@ -500,7 +584,7 @@ namespace Baird.Tests.Services
         public async Task The_playing_flag_is_cleared_only_after_the_tab_is_back_on_the_idle_page()
         {
             var (b, service) = Setup();
-            var vm = new DisneySpikeViewModel(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
+            var vm = new DisneyPlaybackFlow(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
             await vm.LaunchPlaybackFlowAsync();
             Assert.Equal("Disney+", service.Hub.ActivePlayback);
 
@@ -514,15 +598,15 @@ namespace Baird.Tests.Services
         public async Task A_disposed_flow_no_longer_reacts_to_the_browser_or_the_service()
         {
             var (b, service) = Setup();
-            var vm = new DisneySpikeViewModel(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
+            var vm = new DisneyPlaybackFlow(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
             await vm.LaunchPlaybackFlowAsync();
             var logLines = vm.LogEntries.Count;
             vm.Dispose();
 
             b.RaisePageSignal("{\"type\":\"exit\"}"); // the next flow's Back must not stop this old one
 
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
-            Assert.False(b.NavigatedUrls.Contains(DisneyService.IdleUrl) && vm.State == DisneySpikeState.Stopped);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
+            Assert.False(b.NavigatedUrls.Contains(DisneyService.IdleUrl) && vm.State == DisneyPlaybackFlowState.Stopped);
             Assert.Equal(logLines, vm.LogEntries.Count);
         }
     }
@@ -849,9 +933,10 @@ namespace Baird.Tests.Services
         public void Only_known_questions_count_as_prompts_and_the_transport_buttons_do_not()
         {
             var script = DisneyPlayerControl.PollScript;
-            Assert.Contains("skip (intro|recap|credits|opening|previously)|next episode|watch credits", script);
+            Assert.Contains("^skip (intro|recap|credits|opening|previously)$", script);
             Assert.DoesNotContain("Skip ahead", script); // the permanent 10-second buttons are not questions
             Assert.Contains("e.shadowRoot", script);      // the player UI is in shadow DOM
+            Assert.Contains("END-CARD-OVERLAY", script);  // the end card is the "next episode" prompt
         }
 
         [Fact]
@@ -913,7 +998,7 @@ namespace Baird.Tests.Services
         {
             var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
             await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
-            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "NEXT EPISODE");
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, prompt: "SKIP RECAP");
             await engine.PollOnceAsync();
             b.PromptOnScreen = false;
 
@@ -936,6 +1021,395 @@ namespace Baird.Tests.Services
             await engine.StopAsync();
 
             Assert.Null(engine.PromptText);
+        }
+    }
+}
+
+namespace Baird.Tests.Services
+{
+    using System;
+    using System.Collections.Generic;
+    using System.Threading.Tasks;
+    using Baird.Mpv;
+    using Baird.Services;
+    using Xunit;
+
+    public class DisneyTitleTimelineTests
+    {
+        [Fact]
+        public async Task The_position_is_the_titles_position_from_the_controls_not_the_elements_time()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+
+            // measured on the Pi: the element read 23 s while the title was at 311 s
+            b.PollReply = () => FakeDisneyBrowser.Poll(23.4, titleSeconds: 311, titleLength: 2444);
+            await engine.PollOnceAsync();
+
+            Assert.Equal(311, engine.TimePositionSeconds);
+        }
+
+        [Fact]
+        public async Task The_length_from_the_controls_is_exact_replaces_the_API_length_and_is_remembered_for_that_title()
+        {
+            var (b, service, engine) = DisneyPlaybackEngineTests.Engine();
+            double? announced = null;
+            engine.DurationChanged += (_, d) => announced = d;
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            Assert.Equal(2037, engine.DurationSeconds); // from the API at first
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(5, titleSeconds: 10, titleLength: 2444);
+            await engine.PollOnceAsync();
+
+            Assert.Equal(2444, engine.DurationSeconds);
+            Assert.Equal(2444, announced);
+            Assert.Equal(2444, service.KnownRuntimeSeconds(DisneyEntityFixtures.Episode1));
+        }
+
+        [Fact]
+        public async Task A_length_that_has_not_changed_is_not_announced_again()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            var announcements = 0;
+            await engine.PlayAsync(DisneyPlaybackEngineTests.EpisodePlayUrl);
+            engine.DurationChanged += (_, _) => announcements++;
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(5, titleSeconds: 10, titleLength: 2444);
+            await engine.PollOnceAsync();
+            await engine.PollOnceAsync();
+            await engine.PollOnceAsync();
+
+            Assert.Equal(1, announcements);
+        }
+
+        [Fact]
+        public async Task While_the_controls_are_not_in_the_page_the_position_keeps_counting_but_not_when_paused()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(5, titleSeconds: 100, titleLength: 2444);
+            await engine.PollOnceAsync();
+            Assert.Equal(100, engine.TimePositionSeconds);
+
+            await Task.Delay(300);
+            b.PollReply = () => FakeDisneyBrowser.Poll(6); // no controls, so no title position
+            await engine.PollOnceAsync();
+            Assert.InRange(engine.TimePositionSeconds, 100.2, 101.5);
+
+            var heldAt = engine.TimePositionSeconds;
+            await Task.Delay(200);
+            b.PollReply = () => FakeDisneyBrowser.Poll(6, paused: true);
+            await engine.PollOnceAsync();
+            Assert.Equal(heldAt, engine.TimePositionSeconds, 1); // paused: the position holds
+        }
+
+        [Fact]
+        public async Task A_seek_moves_the_shown_position_at_once_and_the_next_poll_corrects_it()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(5, titleSeconds: 100, titleLength: 2444);
+            await engine.PollOnceAsync();
+
+            engine.SeekRelative(-10);
+            Assert.Equal(90, engine.TimePositionSeconds);
+            await engine.WhenCommandsDoneAsync();
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(23, titleSeconds: 93, titleLength: 2444);
+            await engine.PollOnceAsync();
+            Assert.Equal(93, engine.TimePositionSeconds);
+        }
+
+        [Fact]
+        public async Task Disneys_end_card_is_the_Next_episode_prompt_and_is_closed_once_so_Baird_plays_what_comes_next()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(1400, prompt: "Next episode", titleSeconds: 1400, titleLength: 1435);
+
+            await engine.PollOnceAsync();
+            await engine.PollOnceAsync();
+            await engine.PollOnceAsync();
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Equal("Next episode", engine.PromptText);
+            Assert.Equal(1, b.EndCardCloses); // once per title, not once per poll
+        }
+
+        [Fact]
+        public async Task The_end_card_is_closed_again_for_the_next_title()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(1400, prompt: "Next episode");
+            await engine.PollOnceAsync();
+            await engine.WhenCommandsDoneAsync();
+            Assert.Equal(1, b.EndCardCloses);
+            await engine.StopAsync();
+
+            b.States.Clear();
+            b.States.Enqueue(FakeDisneyBrowser.State(DisneyPlaybackEngineTests.EpisodePlayUrl, video: true, t: 1));
+            for (int t = 2; t <= 30; t++) b.States.Enqueue(FakeDisneyBrowser.State(DisneyPlaybackEngineTests.EpisodePlayUrl, video: true, t: t));
+            await engine.PlayAsync(DisneyPlaybackEngineTests.EpisodePlayUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(1400, prompt: "Next episode");
+            await engine.PollOnceAsync();
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Equal(2, b.EndCardCloses);
+        }
+
+        [Fact]
+        public async Task Answering_Next_episode_ends_the_title_at_once_so_Baird_plays_the_next_one()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(1400, prompt: "Next episode");
+            await engine.PollOnceAsync();
+
+            Assert.True(engine.ActivatePrompt());
+            await Task.Delay(100);
+
+            Assert.Equal(1, ended);
+            Assert.Equal(PlaybackState.Idle, engine.State);
+            Assert.Equal(0, b.PromptClicks); // nothing was clicked on Disney+'s page
+            Assert.Null(engine.PromptText);
+        }
+
+        [Fact]
+        public async Task Answering_Skip_intro_clicks_the_button_and_nothing_else_happens()
+        {
+            var (b, _, engine) = DisneyPlaybackEngineTests.Engine();
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(DisneyPlaybackEngineTests.SeriesUrl);
+            b.PollReply = () => FakeDisneyBrowser.Poll(25, prompt: "SKIP INTRO", titleSeconds: 12, titleLength: 1435);
+            await engine.PollOnceAsync();
+
+            Assert.True(engine.ActivatePrompt());
+            await engine.WhenCommandsDoneAsync();
+
+            Assert.Equal(1, b.PromptClicks);
+            Assert.Equal(0, ended);
+            Assert.Equal(0, b.EndCardCloses);
+            Assert.Equal(PlaybackState.Playing, engine.State);
+        }
+    }
+}
+
+namespace Baird.Tests.Services
+{
+    using System;
+    using System.Linq;
+    using System.Threading.Tasks;
+    using Baird.Models;
+    using Baird.Services;
+    using Xunit;
+
+    public class DisneyLongSeriesTests
+    {
+        private static (FakeDisneyBrowser Browser, DisneyService Service, DisneyProvider Provider) Setup()
+        {
+            var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true), EntityBody = DisneyEntityFixtures.LazySeries() };
+            // Season 1 has 13 episodes read in two pages (10, then 3); season 2 has 3 in one.
+            b.SeasonBodies[DisneyEntityFixtures.LazySeason1] = offset => offset == 0
+                ? DisneyEntityFixtures.SeasonReply(1, 1, 10, hasMore: true, total: 13)
+                : DisneyEntityFixtures.SeasonReply(1, 11, 3, hasMore: false, total: 13);
+            b.SeasonBodies[DisneyEntityFixtures.LazySeason2] = _ => DisneyEntityFixtures.SeasonReply(2, 1, 3, hasMore: false, total: 3);
+            var service = new DisneyService(new BrowserHub(b), new DisneyCredentials("me@example.com", "pw"))
+            {
+                SignInTimeout = TimeSpan.FromSeconds(3),
+                PollInterval = TimeSpan.FromMilliseconds(5)
+            };
+            return (b, service, new DisneyProvider(service));
+        }
+
+        [Fact]
+        public void The_guide_lists_seasons_without_episodes_by_their_totals_and_leaves_out_Exclusives()
+        {
+            var guide = DisneySearchParser.ParseEpisodeGuide(200, DisneyEntityFixtures.LazySeries(), out var failure)!;
+
+            Assert.Null(failure);
+            Assert.Equal(new[] { 1, 2 }, guide.Seasons.Select(s => s.Number)); // sorted, and no "Exclusives"
+            Assert.All(guide.Seasons, s => { Assert.Empty(s.Episodes); Assert.False(s.IsComplete); });
+            Assert.Equal(new[] { 13, 3 }, guide.Seasons.Select(s => s.EpisodeCount));
+            Assert.Equal(DisneyEntityFixtures.LazySeason1, guide.Seasons[0].SeasonId);
+        }
+
+        [Fact]
+        public void A_season_reply_gives_its_episodes_and_whether_there_are_more()
+        {
+            var episodes = DisneySearchParser.ParseSeasonEpisodes(200, DisneyEntityFixtures.SeasonReply(2, 11, 4, hasMore: true, total: 22), out var more, out var failure)!;
+
+            Assert.Null(failure);
+            Assert.True(more);
+            Assert.Equal(new[] { 11, 12, 13, 14 }, episodes.Select(e => e.Number));
+            Assert.All(episodes, e => Assert.Equal(2, e.Season));
+            Assert.Equal(1434, episodes[0].RuntimeSeconds);
+        }
+
+        [Theory]
+        [InlineData(500, "{}", "HTTP 500")]
+        [InlineData(200, "", "no reply")]
+        [InlineData(200, "<html>", "BAD_JSON")]
+        [InlineData(200, "{\"data\":{}}", "no data.season")]
+        public void A_bad_season_reply_is_reported(int status, string body, string expected)
+        {
+            Assert.Null(DisneySearchParser.ParseSeasonEpisodes(status, body, out _, out var failure));
+            Assert.Contains(expected, failure);
+        }
+
+        [Fact]
+        public async Task The_season_folders_show_the_totals_and_read_no_season_yet()
+        {
+            var (b, _, provider) = Setup();
+
+            var folders = (await provider.GetChildrenAsync("disney:series-1")).ToList();
+
+            Assert.Equal(new[] { "Season 1", "Season 2" }, folders.Select(f => f.Name));
+            Assert.Equal(new[] { "13 Episodes", "3 Episodes" }, folders.Select(f => f.Details));
+            Assert.Equal(new[] { "disney:series-1|1", "disney:series-1|2" }, folders.Select(f => f.Id));
+            Assert.Empty(b.SeasonRequests);
+        }
+
+        [Fact]
+        public async Task Opening_a_season_reads_it_in_pages_until_there_are_no_more()
+        {
+            var (b, service, provider) = Setup();
+
+            var episodes = (await provider.GetChildrenAsync("disney:series-1|1")).ToList();
+
+            Assert.Equal(13, episodes.Count);
+            Assert.Equal(Enumerable.Range(1, 13).Select(n => $"S1:E{n}"), episodes.Select(e => e.Details));
+            Assert.Equal(new[] { $"{DisneyEntityFixtures.LazySeason1}@0", $"{DisneyEntityFixtures.LazySeason1}@10" }, b.SeasonRequests);
+            Assert.All(episodes, e => Assert.Equal(TimeSpan.FromSeconds(1434), e.Duration));
+            Assert.Equal(1434, service.KnownRuntimeSeconds("s1e13-id"));
+        }
+
+        [Fact]
+        public async Task A_season_is_read_once_and_reused()
+        {
+            var (b, _, provider) = Setup();
+            await provider.GetChildrenAsync("disney:series-1|2");
+            await provider.GetChildrenAsync("disney:series-1|2");
+            Assert.Single(b.SeasonRequests);
+        }
+
+        [Fact]
+        public async Task Each_season_is_read_only_when_it_is_opened()
+        {
+            var (b, _, provider) = Setup();
+            await provider.GetChildrenAsync("disney:series-1|2");
+            Assert.Equal(new[] { $"{DisneyEntityFixtures.LazySeason2}@0" }, b.SeasonRequests);
+        }
+
+        [Fact]
+        public async Task A_failing_season_throws_so_the_data_service_logs_it()
+        {
+            var (b, _, provider) = Setup();
+            b.SeasonBodies[DisneyEntityFixtures.LazySeason2] = _ => "{}"; // no data.season
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetChildrenAsync("disney:series-1|2"));
+            Assert.Contains("Season 2 failed", ex.Message);
+        }
+
+        [Fact]
+        public async Task A_reply_that_never_says_it_is_done_stops_after_ten_pages()
+        {
+            var (b, _, provider) = Setup();
+            var call = 0;
+            b.SeasonBodies[DisneyEntityFixtures.LazySeason2] = offset => DisneyEntityFixtures.SeasonReply(2, offset + 1, 1, hasMore: true, total: 3);
+            _ = call;
+
+            var episodes = (await provider.GetChildrenAsync("disney:series-1|2")).ToList();
+
+            Assert.Equal(10, b.SeasonRequests.Count);
+            Assert.Equal(10, episodes.Count);
+        }
+
+        [Fact]
+        public async Task A_series_whose_only_season_is_lazy_gives_its_episodes_directly()
+        {
+            var (b, _, provider) = Setup();
+            b.EntityBody = DisneyEntityFixtures.LazySeries().Replace("\"Season 2\"", "\"Exclusives\"");
+
+            var children = (await provider.GetChildrenAsync("disney:series-1")).ToList();
+
+            Assert.Equal(13, children.Count);
+            Assert.All(children, c => Assert.Equal(MediaType.Video, c.Type));
+        }
+    }
+}
+
+namespace Baird.Tests.Services
+{
+    using System;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using Baird.Services;
+    using Xunit;
+
+    public class DisneyStartupRobustnessTests
+    {
+        private static (FakeDisneyBrowser Browser, DisneyService Service) Setup()
+        {
+            var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true) };
+            var service = new DisneyService(new BrowserHub(b), new DisneyCredentials("me@example.com", "pw"))
+            {
+                SignInTimeout = TimeSpan.FromSeconds(3),
+                PollInterval = TimeSpan.FromMilliseconds(5)
+            };
+            return (b, service);
+        }
+
+        [Fact]
+        public async Task A_browser_that_cannot_open_the_page_is_a_failure_not_a_wait_in_the_dark()
+        {
+            var (b, service) = Setup();
+            b.IsRunning = true;        // opened earlier (by the Netflix session)
+            b.NavigateResult = false;  // but it does not answer
+
+            var failure = await service.EnsureReadyAsync(CancellationToken.None);
+
+            Assert.Contains("did not answer", failure);
+        }
+
+        [Fact]
+        public async Task A_failed_start_frees_the_shared_gate_so_the_other_service_is_not_blocked()
+        {
+            var (b, service) = Setup();
+            b.IsRunning = true;
+            b.NavigateResult = false;
+            await service.EnsureReadyAsync(CancellationToken.None);
+
+            // the gate is free again: Netflix's session (or Disney+ itself) gets it at once
+            var acquired = await service.Hub.Gate.WaitAsync(TimeSpan.FromMilliseconds(500));
+
+            Assert.True(acquired);
+            service.Hub.Gate.Release();
+        }
+
+        [Fact]
+        public async Task The_background_warm_up_tries_again_after_a_failure()
+        {
+            var (b, service) = Setup();
+            b.IsRunning = true;
+            b.NavigateResult = false;
+            service.Start(TimeSpan.Zero, TimeSpan.FromMilliseconds(40));
+            await Task.Delay(150);
+            Assert.False(service.Session.HasApiToken);
+
+            b.NavigateResult = true; // the browser recovers
+            for (int i = 0; i < 100 && !service.Session.HasApiToken; i++) await Task.Delay(50);
+            service.Stop();
+
+            Assert.True(service.Session.HasApiToken);
+        }
+
+        [Fact]
+        public void A_CDP_command_has_a_time_limit_so_that_one_hung_call_cannot_hold_everything_for_minutes()
+        {
+            Assert.InRange(CdpBrowserService.CommandTimeout.TotalSeconds, 10, 120);
         }
     }
 }

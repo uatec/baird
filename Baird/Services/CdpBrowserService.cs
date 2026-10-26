@@ -23,7 +23,9 @@ namespace Baird.Services
         string Url,
         string Title,
         bool Ended = false,
-        string? Prompt = null);
+        string? Prompt = null,
+        double? TitleSeconds = null,
+        double? TitleLengthSeconds = null);
 
     public record AuthPageStatus(
         string Url,
@@ -65,6 +67,11 @@ namespace Baird.Services
         Task<string> ClearSiteDataAsync(string origin, CancellationToken ct = default);
         Task<bool> NavigateAsync(string url, CancellationToken ct = default);
         Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default);
+        /// <summary>
+        /// <see cref="ReadNetflixSessionStateAsync"/> while the viewer signs in by hand on the raised page, plus whether they pressed
+        /// Back (Escape) to give up.
+        /// </summary>
+        Task<NetflixSessionState?> WatchNetflixSignInAsync(CancellationToken ct = default);
         Task<string?> PostNetflixGraphQlAsync(string requestBody, CancellationToken ct = default);
         Task<string?> CaptureNetflixSearchRequestAsync(string searchTerm, CancellationToken ct = default);
         Task<string?> SelectNetflixProfileAsync(string? preferredName, CancellationToken ct = default);
@@ -99,6 +106,8 @@ namespace Baird.Services
         /// <summary>Focuses the element matching <paramref name="selector"/> and types <paramref name="text"/> with real input events. The text is never logged.</summary>
         Task<bool> TypeIntoAsync(string selector, string text, CancellationToken ct = default);
         Task PressEnterAsync(CancellationToken ct = default);
+        /// <summary>Moves the page's pointer to (x, y): a streaming site's player UI wakes on pointer movement. Nothing is clicked.</summary>
+        Task MoveMouseAsync(int x, int y, CancellationToken ct = default);
         /// <summary>Navigates to <paramref name="url"/> and returns the first request for which <paramref name="match"/> is true (or null after the timeout).</summary>
         Task<CapturedRequest?> NavigateAndCaptureAsync(string url, Func<CapturedRequest, bool> match, TimeSpan timeout, CancellationToken ct = default);
     }
@@ -442,9 +451,7 @@ namespace Baird.Services
         /// <summary>
         /// Reads the Netflix session from an app page (e.g. /browse): signed out, member, and the "Who's watching?" picker.
         /// </summary>
-        public async Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default)
-        {
-            const string script = @"(function() {
+        private const string NetflixSessionStateScript = @"(function() {
                 let ms = null;
                 try { ms = window.netflix.reactContext.models.userInfo.data.membershipStatus || null; } catch (e) { }
                 const signedOut = ms === 'ANONYMOUS' || !!document.querySelector('input[name=""password""]') || !!document.querySelector('[data-uia=""header-signin-link""]');
@@ -452,7 +459,31 @@ namespace Baird.Services
                 return { url: location.href, signedOut: signedOut, member: ms === 'CURRENT_MEMBER', profiles: profiles };
             })()";
 
+        public async Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default) =>
+            ParseNetflixSessionState(await EvaluateInPageAsync(NetflixSessionStateScript, ct));
+
+        public async Task<NetflixSessionState?> WatchNetflixSignInAsync(CancellationToken ct = default)
+        {
+            // The key listener is put back on every read, since the sign-in pages navigate.
+            const string script = @"(function() {
+                if (!window.__bairdNetflixBack) {
+                    window.__bairdNetflixBack = true;
+                    window.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape' || e.key === 'BrowserBack' || e.key === 'GoBack') { e.preventDefault(); window.__bairdNetflixCancelled = true; }
+                    }, true);
+                }
+                const state = " + NetflixSessionStateScript + @";
+                state.cancelled = !!window.__bairdNetflixCancelled;
+                return state;
+            })()";
             var r = await EvaluateInPageAsync(script, ct);
+            return ParseNetflixSessionState(r) is { } state
+                ? state with { BackPressed = r!.Value.TryGetProperty("cancelled", out var c) && c.ValueKind == JsonValueKind.True }
+                : null;
+        }
+
+        private static NetflixSessionState? ParseNetflixSessionState(JsonElement? r)
+        {
             if (r is not { ValueKind: JsonValueKind.Object } o) return null;
             var profiles = new List<string>();
             if (o.TryGetProperty("profiles", out var pa) && pa.ValueKind == JsonValueKind.Array)
@@ -842,6 +873,14 @@ namespace Baird.Services
             return reader.ReadToEnd();
         }
 
+        public static string LoadChannel4PageStyleScript()
+        {
+            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.channel4-page-style.js");
+            if (stream == null) return "console.log('[Baird] Channel 4 page style not found.'); false";
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
         public static string LoadNetflixPageStyleScript()
         {
             using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Baird.Resources.netflix-page-style.js");
@@ -1040,6 +1079,11 @@ namespace Baird.Services
             return true;
         }
 
+        public async Task MoveMouseAsync(int x, int y, CancellationToken ct = default)
+        {
+            await SendPageCommandAsync("Input.dispatchMouseEvent", new JsonObject { ["type"] = "mouseMoved", ["x"] = x, ["y"] = y }, ct);
+        }
+
         public async Task PressEnterAsync(CancellationToken ct = default)
         {
             foreach (var type in new[] { "keyDown", "keyUp" })
@@ -1135,6 +1179,13 @@ namespace Baird.Services
             return await SendCommandAsync(_browserWs!, _pendingBrowserRequests, id, method, @params, ct);
         }
 
+        /// <summary>
+        /// How long one CDP command may take to answer. Measured on the Pi: a Page.navigate to Disney+'s page never answered for
+        /// 3 minutes while it held the shared gate, so Netflix's search waited behind it too. A hung command now fails with a
+        /// TimeoutException that says which command, and callers (which already catch exceptions) carry on or report it.
+        /// </summary>
+        public static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(45);
+
         private static async Task<JsonElement> SendCommandAsync(
             ClientWebSocket ws,
             ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> pending,
@@ -1146,11 +1197,13 @@ namespace Baird.Services
             var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
             pending[id] = tcs;
 
-            using var reg = ct.Register(() =>
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(CommandTimeout);
+            using var reg = timeout.Token.Register(() =>
             {
                 if (pending.TryRemove(id, out var p))
                 {
-                    p.TrySetCanceled(ct);
+                    p.TrySetCanceled(timeout.Token);
                 }
             });
 
@@ -1163,9 +1216,16 @@ namespace Baird.Services
             }.ToJsonString();
 
             var bytes = Encoding.UTF8.GetBytes(payload);
-            await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
-
-            return await tcs.Task;
+            try
+            {
+                await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, timeout.Token);
+                return await tcs.Task;
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                pending.TryRemove(id, out _);
+                throw new TimeoutException($"The browser did not answer CDP {method} within {CommandTimeout.TotalSeconds:F0} s.");
+            }
         }
 
         private static async Task ReceiveLoopAsync(

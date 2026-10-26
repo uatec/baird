@@ -164,6 +164,31 @@ namespace Baird.ViewModels
             }
         }
 
+        private string _channelNumberFilter = "";
+        /// <summary>Digits typed on the remote: the guide lists only the live channels whose number starts with them.</summary>
+        public string ChannelNumberFilter
+        {
+            get => _channelNumberFilter;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _channelNumberFilter, value);
+                this.RaisePropertyChanged(nameof(HasChannelNumberFilter));
+                ApplyFilter();
+            }
+        }
+
+        public bool HasChannelNumberFilter => _channelNumberFilter.Length > 0;
+
+        public void AppendChannelDigit(string digit) => ChannelNumberFilter += digit;
+
+        /// <summary>Removes the last typed digit; false when there was none (the key then keeps its other meaning).</summary>
+        public bool BackspaceChannelDigit()
+        {
+            if (_channelNumberFilter.Length == 0) return false;
+            ChannelNumberFilter = _channelNumberFilter[..^1];
+            return true;
+        }
+
         private ChannelScheduleViewModel? _selectedChannel;
         public ChannelScheduleViewModel? SelectedChannel
         {
@@ -258,6 +283,7 @@ namespace Baird.ViewModels
 
             BackCommand = ReactiveCommand.Create(() =>
             {
+                ChannelNumberFilter = "";
                 BackRequested?.Invoke(this, EventArgs.Empty);
             });
 
@@ -274,6 +300,8 @@ namespace Baird.ViewModels
 
             var filtered = _allFeeds.Where(feed =>
             {
+                if (ChannelNumberFilter.Length > 0 &&
+                    !(feed.IsLive && (feed.Channel.ChannelNumber ?? "").StartsWith(ChannelNumberFilter, StringComparison.Ordinal))) return false;
                 if (SelectedFilter == "Live TV") return feed.IsLive;
                 if (SelectedFilter == "Streaming") return !feed.IsLive;
                 return true;

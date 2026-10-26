@@ -10,11 +10,14 @@ namespace Baird.ViewModels
     }
 
     /// <summary>
-    /// How long the query must sit unchanged before a search runs. Remote-control key presses are slow,
-    /// so this is deliberately long; tests shorten it.
+    /// How long the query must sit unchanged before a search runs. Remote-control key presses are slow (often
+    /// more than a second apart), so this is deliberately long; tests shorten it.
     /// </summary>
     public static class SearchTiming
     {
-        public static TimeSpan Debounce { get; set; } = TimeSpan.FromMilliseconds(1000);
+        public static TimeSpan Debounce { get; set; } = TimeSpan.FromMilliseconds(2000);
+
+        /// <summary>How long one provider may take. The list is shown when all have answered or this has passed; a provider that did not answer shows an error dot.</summary>
+        public static TimeSpan ProviderTimeout { get; set; } = TimeSpan.FromSeconds(10);
     }
 }

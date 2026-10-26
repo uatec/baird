@@ -59,6 +59,8 @@ namespace Baird
         // while pressing the voice button, then set VOICE_COMMAND_KEY to the logged integer.
         private Key _voiceCommandKey = Key.None;
 
+        private readonly bool _mouseEnabled;
+
         public MainView()
         {
             // Designer support
@@ -68,6 +70,9 @@ namespace Baird
         public MainView(IConfiguration config)
         {
             InitializeComponent();
+
+            // The mouse is off by default (Baird is driven by the remote); BAIRD_MOUSE=true brings it back for desktop development.
+            _mouseEnabled = bool.TryParse(config["BAIRD_MOUSE"], out var mouse) && mouse;
 
             var tvh = new TvHeadendService(config);
             _providers.Add(tvh);
@@ -106,6 +111,12 @@ namespace Baird
             }
             else Console.WriteLine("[MainView] Disney+ not in search: no DISNEY_USER/DISNEY_PASS in config.ini.");
 
+            // Channel 4's search and episode lists are public (plain HTTP), so it is always in search. Playing needs the shared browser
+            // signed in, by the viewer (Channel 4 refuses automated sign-ins): the player offers "Press OK to sign in" when it is not.
+            var channel4Service = new Channel4Service(netflixSession.Hub, new Channel4Catalogue());
+            channel4Service.Log += m => Console.WriteLine($"[Channel4Service] {m}");
+            _providers.Add(new Channel4Provider(channel4Service.Catalogue));
+
             _cecService = new CecService();
             _historyService = new JsonHistoryService();
             var watchlistService = new JsonWatchlistService();
@@ -133,7 +144,7 @@ namespace Baird
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
 
-            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession, disneyService);
+            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession, disneyService, channel4Service);
 
             DataContext = _viewModel;
 
@@ -179,13 +190,20 @@ namespace Baird
                     _visualTreeSubscriptions.Add(Disposable.Create(() =>
                         topLevel.RemoveHandler(InputElement.KeyUpEvent, OnGlobalKeyUp)));
 
-                    topLevel.AddHandler(InputElement.PointerPressedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
-                    _visualTreeSubscriptions.Add(Disposable.Create(() =>
-                        topLevel.RemoveHandler(InputElement.PointerPressedEvent, OnGlobalPointerActivity)));
-
-                    topLevel.AddHandler(InputElement.PointerMovedEvent, OnGlobalPointerActivity, RoutingStrategies.Tunnel);
-                    _visualTreeSubscriptions.Add(Disposable.Create(() =>
-                        topLevel.RemoveHandler(InputElement.PointerMovedEvent, OnGlobalPointerActivity)));
+                    if (!_mouseEnabled)
+                    {
+                        // Remote-only: hide the pointer and swallow every mouse event before it reaches a control.
+                        // The remote's OK button arrives as the left mouse button, so that one is turned into Enter.
+                        topLevel.Cursor = new Cursor(StandardCursorType.None);
+                        SwallowPointerEvents(topLevel, InputElement.PointerMovedEvent, InputElement.PointerWheelChangedEvent);
+                        topLevel.AddHandler(InputElement.PointerPressedEvent, OnGlobalPointerPressed, RoutingStrategies.Tunnel);
+                        topLevel.AddHandler(InputElement.PointerReleasedEvent, OnGlobalPointerReleased, RoutingStrategies.Tunnel);
+                        _visualTreeSubscriptions.Add(Disposable.Create(() =>
+                        {
+                            topLevel.RemoveHandler(InputElement.PointerPressedEvent, OnGlobalPointerPressed);
+                            topLevel.RemoveHandler(InputElement.PointerReleasedEvent, OnGlobalPointerReleased);
+                        }));
+                    }
 
                     // Existing InputCoordinator (Bubbling)
                     topLevel.KeyDown += InputCoordinator;
@@ -278,8 +296,8 @@ namespace Baird
                     vLayer.DataService = _dataService;
                 }
 
-                // Apply the video-quality feature flags and re-apply live whenever they are toggled
-                // on the Settings page, so each can be A/B tested on the device without a restart.
+                // Apply the render-logging diagnostic flag and re-apply it live whenever it is toggled
+                // on the Settings page.
                 if (vLayer != null && _viewModel?.Settings != null)
                 {
                     var settings = _viewModel.Settings;
@@ -287,14 +305,10 @@ namespace Baird
                     {
                         var player = vLayer.GetPlayer();
                         if (player == null) return;
-                        player.SetHighQualityScaling(settings.HighQualityScaling);
-                        player.SetSharperDeinterlacing(settings.SharperDeinterlacing);
                         player.SetRenderLogging(settings.LogRenderDimensions);
                     }
 
                     ApplyVideoSettings();
-                    _visualTreeSubscriptions.Add(settings.ObservableForProperty(x => x.HighQualityScaling).Subscribe(_ => ApplyVideoSettings()));
-                    _visualTreeSubscriptions.Add(settings.ObservableForProperty(x => x.SharperDeinterlacing).Subscribe(_ => ApplyVideoSettings()));
                     _visualTreeSubscriptions.Add(settings.ObservableForProperty(x => x.LogRenderDimensions).Subscribe(_ => ApplyVideoSettings()));
                 }
 
@@ -320,6 +334,7 @@ namespace Baird
                         // Netflix plays in the browser behind Baird: the window goes transparent while it shows.
                         player.NetflixEngine = _viewModel.NetflixEngine;
                         player.AddBrowserEngine(_viewModel.DisneyEngine);
+                        player.AddBrowserEngine(_viewModel.Channel4Engine);
                         _visualTreeSubscriptions.Add(player.GetObservable(Controls.VideoPlayer.IsShowingBrowserProperty).Subscribe(showing =>
                         {
                             if (TopLevel.GetTopLevel(this) is not Window window) return;
@@ -764,42 +779,38 @@ namespace Baird
             }
         }
 
-        private void OnGlobalPointerActivity(object? sender, PointerEventArgs e)
+        private void SwallowPointerEvents(Avalonia.Controls.TopLevel topLevel, params RoutedEvent[] events)
         {
-            if (_inputsBlocked)
+            foreach (var routedEvent in events)
             {
-                Console.WriteLine("[MainView] Inputs blocked. Pointer activity requesting TV power + active source.");
-                RequestInputRegain();
-                e.Handled = true;
-                return;
-            }
-
-            ResetIdleTimer(); // Activity resets timer
-            AssertCecPresence();
-
-            if (_viewModel.Screensaver.IsActive)
-            {
-                Console.WriteLine("[MainView] Screensaver active. Pointer activity. Waking up.");
-                _viewModel.Screensaver.Deactivate();
-
-                // Restore playback if we paused it for screensaver
-                if (_wasPausedForScreensaver)
-                {
-                    Console.WriteLine("[MainView] Resuming video playback after screensaver (pointer).");
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        var videoLayer = this.FindControl<Baird.Controls.VideoLayerControl>("VideoLayer");
-                        var player = videoLayer?.GetPlayer();
-                        if (player != null)
-                        {
-                            player.Resume();
-                        }
-                    });
-                    _wasPausedForScreensaver = false;
-                }
-                e.Handled = true;
+                topLevel.AddHandler(routedEvent, (EventHandler<RoutedEventArgs>)SwallowPointerEvent, RoutingStrategies.Tunnel);
+                _visualTreeSubscriptions.Add(Disposable.Create(() =>
+                    topLevel.RemoveHandler(routedEvent, (EventHandler<RoutedEventArgs>)SwallowPointerEvent)));
             }
         }
+
+        private void OnGlobalPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            e.Handled = true;
+            if (e.GetCurrentPoint(null).Properties.PointerUpdateKind == PointerUpdateKind.LeftButtonPressed)
+                RaiseEnterOnFocus(InputElement.KeyDownEvent);
+        }
+
+        private void OnGlobalPointerReleased(object? sender, PointerReleasedEventArgs e)
+        {
+            e.Handled = true;
+            if (e.InitialPressMouseButton == MouseButton.Left)
+                RaiseEnterOnFocus(InputElement.KeyUpEvent);
+        }
+
+        private void RaiseEnterOnFocus(RoutedEvent<KeyEventArgs> keyEvent)
+        {
+            var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
+            var target = topLevel?.FocusManager?.GetFocusedElement() as Interactive ?? topLevel;
+            target?.RaiseEvent(new KeyEventArgs { RoutedEvent = keyEvent, Key = Key.Enter, Source = target });
+        }
+
+        private static void SwallowPointerEvent(object? sender, RoutedEventArgs e) => e.Handled = true;
 
         private void InputCoordinator(object? sender, KeyEventArgs e)
         {

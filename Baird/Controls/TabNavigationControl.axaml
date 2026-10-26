@@ -68,7 +68,7 @@
         <!-- Tab Bar -->
         <Border Grid.Row="0" Background="#16181F" BorderBrush="#252A36" BorderThickness="0,0,0,1" ClipToBounds="True" Height="68" Padding="0,4">
             <!-- Enabled XYFocus for directional navigation (useful for remote/keyboard) -->
-             <Canvas Name="CarouselContainer" Background="Transparent" PointerEntered="OnTabBarPointerEntered">
+             <Canvas Name="CarouselContainer" Background="Transparent">
                 <ItemsControl Name="TabBar" 
                               ItemsSource="{Binding Tabs}" 
                               KeyboardNavigation.TabNavigation="Once"
@@ -128,18 +128,6 @@
                 </DataTemplate>
                 <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
                     <controls:SettingsControl/>
-                </DataTemplate>
-                <DataTemplate DataType="{x:Type vm:NetflixSearchSpikeViewModel}">
-                    <controls:NetflixSearchSpikeControl/>
-                </DataTemplate>
-                <DataTemplate DataType="{x:Type vm:NetflixSpikeViewModel}">
-                    <controls:NetflixSpikeControl/>
-                </DataTemplate>
-                <DataTemplate DataType="{x:Type vm:DisneySearchSpikeViewModel}">
-                    <controls:DisneySearchSpikeControl/>
-                </DataTemplate>
-                <DataTemplate DataType="{x:Type vm:DisneySpikeViewModel}">
-                    <controls:DisneySpikeControl/>
                 </DataTemplate>
                 <DataTemplate DataType="{x:Type vm:LottieSpikeViewModel}">
                     <controls:LottieSpikeControl/>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
@@ -53,6 +54,75 @@ namespace Baird.Tests.Controls
             player.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key });
 
         [AvaloniaFact]
+        public async Task Channel4_not_signed_in_offers_OK_to_sign_in_and_plays_once_the_viewer_has()
+        {
+            var (b, _, engine) = Channel4PlaybackEngineTests.Engine();
+            const string episode = Channel4PlaybackEngineTests.Episode;
+            b.States.Enqueue(FakeChannel4Browser.State(episode, auth: false, signInPrompt: true));
+            b.LastState = FakeChannel4Browser.State("https://www.channel4.com/sign-in-or-register?redirectUrl=x", email: true);
+            var mpv = new FakeMpv();
+            var player = new VideoPlayer(mpv);
+            player.AddBrowserEngine(engine);
+
+            player.Source = episode;
+            Assert.True(await WaitUntil(() => player.IsShowingFailure));
+            Assert.Contains("Press OK to sign in to Channel 4, or Back to return.", player.LoadingText);
+
+            // The viewer signs in on Channel 4's page; then the page plays.
+            b.States.Enqueue(FakeChannel4Browser.State("https://www.channel4.com/programmes/derry-girls", auth: true));
+            Channel4PlaybackEngineTests.Plays(b, episode);
+            Press(player, Key.Enter);
+
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading, 5000), player.LoadingText);
+            Assert.True(b.RevealWindowCalled);
+            Assert.Empty(mpv.Played);
+        }
+
+        [AvaloniaFact]
+        public async Task After_a_cancelled_sign_in_OK_counts_again_only_once_its_release_was_seen()
+        {
+            var (b, _, engine) = Channel4PlaybackEngineTests.Engine();
+            const string episode = Channel4PlaybackEngineTests.Episode;
+            b.States.Enqueue(FakeChannel4Browser.State(episode, auth: false, signInPrompt: true));
+            b.LastState = FakeChannel4Browser.State("https://www.channel4.com/sign-in-or-register?redirectUrl=x", email: true, cancelled: true);
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(engine);
+            int SignInPages() => b.NavigatedUrls.Count(u => u.StartsWith(Channel4Service.SignInUrl, StringComparison.Ordinal));
+
+            player.Source = episode;
+            Assert.True(await WaitUntil(() => player.IsShowingFailure));
+            Press(player, Key.Enter); // its release goes to Channel 4's page, not to Baird
+            Assert.True(await WaitUntil(() => SignInPages() == 1 && player.IsShowingFailure && player.LoadingText.Contains("cancelled"), 5000));
+
+            Press(player, Key.Enter); // the display server repeating the "held" key
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(100);
+            Assert.Equal(1, SignInPages());
+
+            player.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.Enter });
+            Press(player, Key.Enter); // a real new press
+            Assert.True(await WaitUntil(() => SignInPages() == 2, 5000));
+        }
+
+        [AvaloniaFact]
+        public async Task OK_on_a_failure_that_offers_nothing_does_nothing()
+        {
+            var (b, _, engine) = Channel4PlaybackEngineTests.Engine();
+            b.LastState = FakeChannel4Browser.State(Channel4PlaybackEngineTests.Episode, auth: true, video: true, t: 0, text: "Something went wrong");
+            var player = new VideoPlayer(new FakeMpv());
+            player.AddBrowserEngine(engine);
+
+            player.Source = Channel4PlaybackEngineTests.Episode;
+            Assert.True(await WaitUntil(() => player.IsShowingFailure, 5000));
+            Press(player, Key.Enter);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(player.IsShowingFailure);
+            Assert.EndsWith("Press Back to return.", player.LoadingText);
+            Assert.False(b.RevealWindowCalled);
+        }
+
+        [AvaloniaFact]
         public async Task NetflixUrl_UsesNetflixEngine_AndShowsBrowserOnceLoaded()
         {
             var (_, _, engine) = NetflixPlaybackEngineTests.Engine();
@@ -77,6 +147,39 @@ namespace Baird.Tests.Controls
 
             Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading));
             Assert.Contains(seen, t => Array.IndexOf(StepTexts, t) >= 0);
+        }
+
+        [AvaloniaFact]
+        public async Task NetflixVerificationCode_IsTypedWithTheNumberKeys_AndOKSendsIt()
+        {
+            var (svc, _, engine) = NetflixPlaybackEngineTests.Engine();
+            svc.AuthStatusToReturn = new AuthPageStatus("https://www.netflix.com/verify", "Verify", false, true, false, 0);
+            var player = new VideoPlayer(new FakeMpv()) { NetflixEngine = engine };
+            var searches = new List<string>();
+            player.SearchRequested += (_, d) => searches.Add(d);
+
+            player.Source = WatchUrl;
+            Assert.True(await WaitUntil(() => player.IsEnteringCode), player.LoadingText);
+            Assert.Contains("verification code", player.LoadingText);
+            Assert.Contains("Code: ______", player.LoadingText);
+            Assert.False(player.IsShowingFailure);
+
+            Press(player, Key.Enter); // nothing typed yet: nothing is sent
+            Press(player, Key.D1);
+            Press(player, Key.NumPad2);
+            Press(player, Key.D3);
+            Press(player, Key.Left); // deletes the 3
+            Press(player, Key.D4);
+            Assert.Contains("Code: 124", player.LoadingText);
+            Assert.Empty(searches); // the digits are the code, not a channel number
+            Assert.False(svc.SubmitMfaCalled);
+
+            svc.AuthStatusToReturn = new AuthPageStatus(WatchUrl, "t", false, false, false, 0); // Netflix accepts it
+            Press(player, Key.Enter);
+
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading, 5000), player.LoadingText);
+            Assert.Equal("124", svc.LastSubmittedPin);
+            Assert.False(player.IsEnteringCode);
         }
 
         [AvaloniaFact]

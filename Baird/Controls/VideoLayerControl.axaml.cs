@@ -83,19 +83,14 @@ namespace Baird.Controls
             }
         }
 
-        private void OnSearchRequested(object? sender, string text)
+        private void OnSearchRequested(object? sender, string digit)
         {
             if (DataContext is ViewModels.MainViewModel vm)
             {
-                vm.OmniSearch.Clear();
-                // Open MainMenu focused on Search tab (index 1)
-                vm.OpenMainMenu(tabIndex: 1);
-
-                if (!string.IsNullOrEmpty(text))
-                {
-                    vm.OmniSearch.SearchText = text;
-                    vm.OmniSearch.RequestKeyboardFocus();
-                }
+                // A number key on the player goes straight to the guide, which lists the channels starting with it.
+                vm.Epg.ChannelNumberFilter = "";
+                vm.OpenMainMenu(tabIndex: vm.MainMenu.Tabs.ToList().FindIndex(t => t.Title == "Guide"));
+                vm.Epg.AppendChannelDigit(digit);
             }
         }
 

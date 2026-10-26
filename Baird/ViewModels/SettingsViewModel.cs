@@ -30,41 +30,8 @@ namespace Baird.ViewModels
             }
         }
 
-        // --- Video-quality feature flags (each maps to an mpv option; applied live via MainView) ---
-
-        private bool _highQualityScaling;
-        /// <summary>Lead 1: spline36 scaler instead of default bilinear.</summary>
-        public bool HighQualityScaling
-        {
-            get => _highQualityScaling;
-            set
-            {
-                if (_highQualityScaling != value)
-                {
-                    this.RaiseAndSetIfChanged(ref _highQualityScaling, value);
-                    SaveSetting("HighQualityScaling", value ? "true" : "false");
-                }
-            }
-        }
-
-        private bool _sharperDeinterlacing;
-        /// <summary>
-        /// Deinterlace live TV to 50 fps (smoother motion) instead of the default 25 fps. Off by
-        /// default: Baird's embedded renderer can't sustain 50 fps on the Pi 5 and drops frames.
-        /// Config key kept as "SharperDeinterlacing" for compatibility.
-        /// </summary>
-        public bool SharperDeinterlacing
-        {
-            get => _sharperDeinterlacing;
-            set
-            {
-                if (_sharperDeinterlacing != value)
-                {
-                    this.RaiseAndSetIfChanged(ref _sharperDeinterlacing, value);
-                    SaveSetting("SharperDeinterlacing", value ? "true" : "false");
-                }
-            }
-        }
+        // --- Diagnostic flag (maps to an mpv-side option; applied live via MainView). The video-quality flags
+        // (HighQualityScaling, SharperDeinterlacing) were removed on 2026-10-25: switched back on, they dropped frames. ---
 
         private bool _logRenderDimensions;
         /// <summary>Lead 2: log the FBO size mpv renders into, to confirm display-native rendering.</summary>
@@ -112,8 +79,6 @@ namespace Baird.ViewModels
                 {
                     _uiScale = Math.Clamp(savedScale, MinScale, MaxScale);
                 }
-                _highQualityScaling = ParseBool(_configuration["Baird:HighQualityScaling"]);
-                _sharperDeinterlacing = ParseBool(_configuration["Baird:SharperDeinterlacing"]);
                 _logRenderDimensions = ParseBool(_configuration["Baird:LogRenderDimensions"]);
             }
             IncreaseScaleCommand = ReactiveCommand.Create(() =>
