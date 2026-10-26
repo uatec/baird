@@ -89,13 +89,6 @@ namespace Baird.NewUi.Screens
         public void OnFocusOut() { _lit = false; Draw(); }
     }
 
-    /// <summary>Search in phase 1: a note. One search for everything arrives in phase 5.</summary>
-    public sealed class SearchPlaceholder : ListScreen
-    {
-        public SearchPlaceholder() : base("Search", "One search across shows, films, channels and what's on arrives in phase 5. Switch to Classic in Settings to search now.") { }
-        public override bool OnAction(UiAction a, bool repeat) => a != UiAction.Up && a != UiAction.Back && a != UiAction.Voice || base.OnAction(a, repeat);
-    }
-
     /// <summary>New-mode Settings: Interface (Classic / New, restarts) and Interface size. ◂ ▸ change values.</summary>
     public sealed class SettingsScreen : ListScreen
     {

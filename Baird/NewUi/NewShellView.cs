@@ -54,7 +54,9 @@ namespace Baird.NewUi
             var playback = new PlaybackController(router, a => Dispatcher.UIThread.Post(a), timers, () => DateTimeOffset.Now,
                 (id, pos, dur) => _ = history.SaveAsync(id, pos, dur), mpv.ConfigureForSource);
             var home = new HomeData(services.Data, services.Epg, services.Seerr);
-            _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now);
+            _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
+            _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
+            _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
             var guideData = new GuideData(home, services.Epg);
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
@@ -71,20 +73,21 @@ namespace Baird.NewUi
                 {
                     Place.Home => new HomeScreen(_ctx),
                     Place.LiveTv => new GuideScreen(_ctx, guideData.LoadAsync, timers),
-                    Place.Search => new SearchPlaceholder(),
+                    Place.Search => new SearchScreen(_ctx),
                     _ => new SettingsScreen(() => UiMode.New, mode => { UiModes.Save(mode); AppRestarter.ForThisProcess().Restart(); }, scale, v =>
                     {
                         ApplyScale(v);
                         IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "NewUiSize", v.ToString("0.0", CultureInfo.InvariantCulture));
                     }),
                 },
-                CreatePage: _ => new EmptyScreen(),
+                CreatePage: p => p.Name == "show" && p.Params is Model.CatalogueTitle t ? new ShowPage(_ctx, t) : new EmptyScreen(),
                 CreateOverlay: o => o.Name switch
                 {
                     "info" => new InfoBar(_ctx),
                     "channels" => new ChannelList(_ctx, timers),
                     "actions" => new ActionsPanel(_ctx, () => _shell!.GoPlace(Place.LiveTv)),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
+                    _ when o.Params is ChoiceList list => new ChoiceSheet(_ctx, list),
                     _ => new EmptyScreen(),
                 },
                 VideoAction: videoActions.OnAction,

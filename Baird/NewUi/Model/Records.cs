@@ -21,10 +21,11 @@ namespace Baird.NewUi.Model
 
     /// <summary>
     /// A card on Home. Payload carries what playing it needs: a <see cref="Channel"/> (with its current programme in
-    /// <see cref="Programme"/>), or an item id + stream URL + resume point.
+    /// <see cref="Programme"/>), or an item id + stream URL + resume point. <see cref="Title"/> is the title it belongs to,
+    /// when known (search results), so OK can open its show page.
     /// </summary>
     public sealed record HomeCard(
         CardKind Kind, string Id, string Label, string? Sublabel, string? ImageUrl, double? Progress, string? Badge,
         string Source, PlayVia Via, string? StreamUrl = null, TimeSpan Resume = default, Channel? Channel = null, Programme? Programme = null,
-        string? Synopsis = null);
+        string? Synopsis = null, CatalogueTitle? Title = null);
 }
