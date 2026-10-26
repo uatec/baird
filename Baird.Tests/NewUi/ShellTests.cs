@@ -135,5 +135,35 @@ namespace Baird.Tests.NewUi
             Assert.Equal(-80, t!.Value.M31);
             Assert.Equal(0, t.Value.M32);
         }
+
+        private sealed class TextScreen : IScreen
+        {
+            public Control View { get; } = new Border { Width = 1920, Height = 1080 };
+            public string Typed = "";
+            public bool OnAction(UiAction a, bool repeat) => !(a == UiAction.Up);
+            public bool AcceptsText => true;
+            public void TypeText(string? text) => Typed += text ?? "⌫";
+        }
+
+        [AvaloniaFact]
+        public void Typed_text_reaches_a_text_screen_but_not_while_its_tab_is_lit()
+        {
+            var nav = new Navigator();
+            var screen = new TextScreen();
+            var shell = new Shell(new ShellDeps(new Border(), nav, _ => screen, pr => new FakeScreen(pr.Name), o => new FakeScreen(o.Name), (_, _) => true, () => "BBC One"));
+            var w = new Window { Width = 1920, Height = 1080, Content = shell };
+            w.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(shell.AcceptsText);
+            shell.TypeText("a"); shell.TypeText(null);
+            Assert.Equal("a⌫", screen.Typed);
+
+            shell.OnAction(UiAction.Up, false); // off the top: the tab bar lights
+            Assert.True(shell.TabFocus);
+            Assert.False(shell.AcceptsText);
+            shell.TypeText("b");
+            Assert.Equal("a⌫", screen.Typed);
+        }
     }
 }
