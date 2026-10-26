@@ -121,8 +121,32 @@ namespace Baird.NewUi.Screens
             return list;
         }
 
+        /// <summary>The rows' data as shown now.</summary>
+        public List<(string Title, string Eyebrow, CardShape Shape, IReadOnlyList<HomeCard> Cards)> CurrentRows() =>
+            _rowList.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Select(c => c.Data).ToList())).ToList();
+
+        private static object Key(HomeCard c) => (c.Id, c.Badge, c.Programme?.Id, c.Programme?.ImageUrl, c.ImageUrl, c.Label, c.Sublabel);
+
+        /// <summary>
+        /// Rebuilds only if something would look different. Rebuilding every card is heavy on the Pi (input lag), and
+        /// needless rebuilds were also moving the highlight back to the first card.
+        /// </summary>
+        private bool RebuildIfChanged(IEnumerable<(string Title, string Eyebrow, CardShape Shape, IReadOnlyList<HomeCard> Cards)> rows)
+        {
+            var wanted = WithNowPlaying(rows).Where(r => r.Cards.Count > 0).ToList();
+            var same = wanted.Count == _rowList.Count && wanted.Zip(_rowList).All(p =>
+                p.First.Title == p.Second.Title && p.First.Cards.Select(Key).SequenceEqual(p.Second.Cards.Select(c => Key(c.Data))));
+            if (same) return false;
+            Build(rows);
+            return true;
+        }
+
         public void Build(IEnumerable<(string Title, string Eyebrow, CardShape Shape, IReadOnlyList<HomeCard> Cards)> rows)
         {
+            // Keep the lit card lit across the rebuild (found by id, preferring the same row).
+            var litRow = _rowList.Count > _pos.Row ? _rowList[_pos.Row].Title : null;
+            var litId = _rowList.Count > _pos.Row && _rowList[_pos.Row].Cards.Count > _pos.Col ? _rowList[_pos.Row].Cards[_pos.Col].Data.Id : null;
+            var oldPos = _pos;
             rows = WithNowPlaying(rows);
             _rowList = rows.Where(r => r.Cards.Count > 0).Select(r =>
             {
@@ -138,7 +162,16 @@ namespace Baird.NewUi.Screens
             }).ToList();
             _rows.Children.Clear();
             foreach (var r in _rowList) _rows.Children.Add(r.View);
-            _pos = (Math.Min(_pos.Row, Math.Max(0, _rowList.Count - 1)), 0);
+            _pos = (Math.Min(oldPos.Row, Math.Max(0, _rowList.Count - 1)), 0);
+            if (litId != null)
+            {
+                var rowIndex = _rowList.FindIndex(r => r.Title == litRow);
+                var found = rowIndex >= 0 ? (rowIndex, _rowList[rowIndex].Cards.FindIndex(c => c.Data.Id == litId)) : (-1, -1);
+                if (found.Item2 < 0)
+                    for (var i = 0; i < _rowList.Count && found.Item2 < 0; i++) found = (i, _rowList[i].Cards.FindIndex(c => c.Data.Id == litId));
+                if (found.Item2 >= 0) _pos = found;
+                else if (_rowList.Count > 0) _pos = (_pos.Row, Math.Min(oldPos.Col, _rowList[_pos.Row].Cards.Count - 1));
+            }
             Layout();
         }
 
@@ -256,8 +289,8 @@ namespace Baird.NewUi.Screens
             // Put what's playing (or take what stopped) at the front of the first row, lit when something plays.
             if (_rowList.Count > 0)
             {
-                Build(_rowList.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Select(c => c.Data).ToList())).ToList());
-                if (_ctx.NowPlaying != null) { _pos = (0, 0); _memory.Clear(); }
+                RebuildIfChanged(CurrentRows());
+                if (_ctx.NowPlaying != null && _overVideo) { _pos = (0, 0); _memory.Clear(); }
             }
             _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync();
             Layout();
@@ -282,13 +315,9 @@ namespace Baird.NewUi.Screens
                 var same = cards.Select(c => (c.Id, c.Programme?.Id, c.Programme?.ImageUrl)).SequenceEqual(_rowList[i].Cards.Select(c => (c.Data.Id, c.Data.Programme?.Id, c.Data.Programme?.ImageUrl)));
                 if (same) return;
                 _ctx.Channels = cards.Where(c => c.Channel != null).Select(c => c.Channel!).ToList();
-                var pos = _pos;
-                var rows = _rowList.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Select(c => c.Data).ToList())).ToList();
+                var rows = CurrentRows();
                 rows[i] = (rows[i].Title, rows[i].Eyebrow, rows[i].Shape, cards);
-                Build(rows);
-                _pos = (Math.Min(pos.Row, _rowList.Count - 1), Math.Min(pos.Col, Math.Max(0, _rowList[Math.Min(pos.Row, _rowList.Count - 1)].Cards.Count - 1)));
-                _heroKey = null;
-                Layout();
+                if (RebuildIfChanged(rows)) { _heroKey = null; Layout(); }
             }
             if (Dispatcher.UIThread.CheckAccess()) Apply(); else Dispatcher.UIThread.Post(Apply);
         }
@@ -300,11 +329,9 @@ namespace Baird.NewUi.Screens
             Dispatcher.UIThread.Post(() =>
             {
                 if (_rowList.Count == 0) return;
-                var same = cards.Select(c => c.Id).SequenceEqual(_rowList[0].Cards.Select(c => c.Data.Id));
-                if (same) return;
-                var rows = _rowList.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Select(c => c.Data).ToList())).ToList();
+                var rows = CurrentRows();
                 rows[0] = (rows[0].Title, rows[0].Eyebrow, rows[0].Shape, cards);
-                Build(rows);
+                RebuildIfChanged(rows);
             });
         }
     }

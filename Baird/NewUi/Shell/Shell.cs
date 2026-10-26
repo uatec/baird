@@ -124,6 +124,22 @@ namespace Baird.NewUi.Shell
             return s;
         }
 
+        /// <summary>The screen with the remote's focus is a text field (not while the tab bar is lit).</summary>
+        public bool AcceptsText
+        {
+            get
+            {
+                var st = _d.Nav.State;
+                var onPlace = st.Overlay == null && st.Pages.Count == 0 && !(st.Video != null && st.AtVideo);
+                return !(onPlace && TabFocus) && ActiveScreen?.AcceptsText == true;
+            }
+        }
+
+        public void TypeText(string? text)
+        {
+            if (AcceptsText) ActiveScreen!.TypeText(text);
+        }
+
         public IScreen? ActiveScreen
         {
             get

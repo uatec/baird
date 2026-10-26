@@ -75,6 +75,9 @@ namespace Baird.Services
 
         /// <summary>True while an advert plays instead of the programme (the position then stays where the programme was).</summary>
         public bool IsAdvertPlaying => _advert;
+        /// <summary>Jump each advert to its end (on by default; Baird:ItvxSkipAdverts=false keeps them).</summary>
+        public bool SkipAdverts { get; set; } = true;
+        private string? _lastAudio;
 
         public void Play(string url, double? startSeconds = null) => _ = PlayAsync(url); // ITVX resumes at its own place
 
@@ -323,6 +326,21 @@ namespace Baird.Services
             }
             if (!state.HasVideo) return;
             _missingPolls = 0;
+
+            // Sound: say what the page's audio is whenever it changes (diagnosis), and make it audible; skip adverts if asked.
+            var audio = $"{(state.Muted ? "muted" : "not muted")}, volume {state.Volume:0.00}{(state.UnmuteButton ? ", ITVX shows Unmute" : "")}";
+            if (audio != _lastAudio) { _lastAudio = audio; Console.WriteLine($"[ItvxEngine] Audio: {audio}."); }
+            var skip = SkipAdverts && state.AdvertPlaying;
+            if (state.Muted || state.Volume < 0.99 || state.UnmuteButton || skip)
+            {
+                try
+                {
+                    var r = await _service.PageDriver.EvaluateAsync(ItvxPlayerControl.FixAudioScript(skip));
+                    if (r is { ValueKind: System.Text.Json.JsonValueKind.String } done) Console.WriteLine($"[ItvxEngine] Audio fix: {done.GetString()}.");
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { Console.WriteLine($"[ItvxEngine] Couldn't fix the audio: {ex.Message}"); }
+            }
 
             if (state.AdvertPlaying != _advert)
             {

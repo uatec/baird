@@ -59,8 +59,11 @@ namespace Baird.NewUi.Playback
         public double TimePositionSeconds => Active.TimePositionSeconds;
         public double DurationSeconds => Active.DurationSeconds;
 
+        private static IDisposable Doing(string what) => Diagnostics.Breadcrumbs.Shared.Doing(what);
+
         public void Play(string url, double? startSeconds = null)
         {
+            using var _ = Doing($"engine Play ({(BrowserFor(url)?.Name ?? "mpv")})");
             var next = (IPlaybackEngine?)BrowserFor(url) ?? _mpv;
             if (next != Active)
             {
@@ -71,12 +74,12 @@ namespace Baird.NewUi.Playback
             Active.Play(url, startSeconds);
         }
 
-        public void Pause() => Active.Pause();
-        public void Resume() => Active.Resume();
-        public void Seek(double seconds) => Active.Seek(seconds);
-        public void SeekRelative(double seconds) => Active.SeekRelative(seconds);
-        public void SetSubtitle(bool enabled) => Active.SetSubtitle(enabled);
-        public void Stop() => Active.Stop();
+        public void Pause() { using var _ = Doing("engine Pause"); Active.Pause(); }
+        public void Resume() { using var _ = Doing("engine Resume"); Active.Resume(); }
+        public void Seek(double seconds) { using var _ = Doing("engine Seek"); Active.Seek(seconds); }
+        public void SeekRelative(double seconds) { using var _ = Doing("engine SeekRelative"); Active.SeekRelative(seconds); }
+        public void SetSubtitle(bool enabled) { using var _ = Doing("engine SetSubtitle"); Active.SetSubtitle(enabled); }
+        public void Stop() { using var _ = Doing("engine Stop"); Active.Stop(); }
 
         // ---- the questions a browser engine can put on the video
         public string? StatusText => ActiveBrowser?.StatusText;

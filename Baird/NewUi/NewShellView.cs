@@ -30,6 +30,8 @@ namespace Baird.NewUi
         private readonly NewUiContext _ctx;
         private Key? _lastKey;
         private readonly TvLifecycle _life;
+        private readonly ICecService _cec;
+        private CecRemoteControl? _tvRemote;
         private readonly Key _voiceKey;
         private readonly VoiceSearch? _voice;
         private Intro? _intro = new();
@@ -60,6 +62,9 @@ namespace Baird.NewUi
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
+            // Netflix searches in the one shared browser: while another service plays there, say so instead of silently missing it.
+            _ctx.SearchNote = () => services.Netflix is { } nf && nf.Hub.ActivePlayback is { } busy && nf.DirectSearchWorks != true
+                ? $"Netflix search is paused while {busy} plays — stop it to search Netflix." : null;
             // An episode started from Home (not its show page): find its show, so the end card can offer the next one.
             _ctx.FindFollowing = async card =>
             {
@@ -309,6 +314,16 @@ namespace Baird.NewUi
                 };
                 av.Start();
             }
+            // Freeze diagnostics: a watchdog notices the UI thread not answering and writes ~/.baird/freezes/freeze-*.txt.
+            var crumbs = Diagnostics.Breadcrumbs.Shared;
+            nav.Changed += () => crumbs.Add($"screen {DescribeScreen()}{(nav.State.Video != null ? " (video behind)" : "")}");
+            playback.Loaded += () => crumbs.Add($"playing {playback.Current?.Title}");
+            playback.Ended += () => crumbs.Add($"ended {playback.Current?.Title}");
+            playback.Changed += () => { if (playback.Failure is { } f) crumbs.Add($"playback failed: {f}"); };
+            new Diagnostics.FreezeWatchdog(a => Dispatcher.UIThread.Post(a, DispatcherPriority.Send), () => DateTime.Now, Diagnostics.FreezeWatchdog.DefaultDir, crumbs,
+                () => $"screen {DescribeScreen()}; playing {(playback.Current is { } c ? $"{c.Kind} '{c.Title}'{(playback.IsLoading ? " (loading)" : "")}{(playback.IsPaused ? " (paused)" : "")} via {(router.ActiveBrowser?.Name ?? "mpv")}" : "nothing")}; " +
+                      $"intro {(_intro != null ? "showing" : "done")}; screensaver {(saver.IsActive ? "on" : "off")}").Start();
+            _cec = services.Cec;
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
                 inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn);
             _ = System.Threading.Tasks.Task.Run(() => services.Screensaver.InitializeAsync());
@@ -338,6 +353,8 @@ namespace Baird.NewUi
                 top.AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Tunnel);
                 top.AddHandler(PointerReleasedEvent, OnPointerReleased, RoutingStrategies.Tunnel);
                 top.AddHandler(PointerWheelChangedEvent, (_, e) => e.Handled = true, RoutingStrategies.Tunnel);
+                // The TV's own remote: keys it passes on over CEC arrive as the same key presses as the USB remote's.
+                _tvRemote = new CecRemoteControl(_cec, (key, down) => Dispatcher.UIThread.Post(() => global::Baird.Controls.SyntheticKeyInput.Raise(top, key, down)));
             }
         }
 
@@ -350,6 +367,8 @@ namespace Baird.NewUi
                 top.RemoveHandler(PointerPressedEvent, OnPointerPressed);
                 top.RemoveHandler(PointerReleasedEvent, OnPointerReleased);
             }
+            _tvRemote?.Dispose();
+            _tvRemote = null;
             base.OnDetachedFromVisualTree(e);
         }
 
@@ -372,6 +391,13 @@ namespace Baird.NewUi
             if (_voice != null && e.Key == _voiceKey) { e.Handled = true; _ = _voice.PressAsync(); return; }
             // TV first: power/volume go to the TV; a key that wakes the screensaver or the TV does nothing else.
             if (_life.HandleInput(TvInputOf(e))) { e.Handled = true; return; }
+            // A real keyboard on a text field types (H, G, Space… would otherwise be Home, Guide, pause).
+            if (_shell.AcceptsText && InputMap.TryText(e.Key, e.KeyModifiers, e.KeySymbol, out var typed))
+            {
+                e.Handled = true;
+                _shell.TypeText(typed);
+                return;
+            }
             if (_input.Map(e.Key) is not { } action) return;
             e.Handled = true;
             var repeat = _lastKey == e.Key;
@@ -417,9 +443,18 @@ namespace Baird.NewUi
 
         private readonly ToggleGate _toggles = new();
 
+        private string DescribeScreen()
+        {
+            var st = _ctx.Nav.State;
+            return st.Overlay?.Name ?? (st.Pages.Count > 0 ? st.Pages[^1].Name : st.AtVideo ? "video" : st.Place.ToString());
+        }
+
         private void Dispatch(UiAction action, bool repeat)
         {
             if (!_toggles.Pass(action, repeat, DateTime.UtcNow)) return;
+            var crumbs = Diagnostics.Breadcrumbs.Shared;
+            if (!repeat) crumbs.Add($"key {action}");
+            using var _ = crumbs.Doing($"{action}{(repeat ? " (held)" : "")} on {DescribeScreen()}");
             try { _shell.OnAction(action, repeat); }
             catch (Exception ex) { Console.WriteLine($"[NewUi] {action} failed: {ex}"); }
         }

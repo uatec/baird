@@ -64,6 +64,67 @@ namespace Baird.Tests.Services
             Assert.Equal("", items[1].ImageUrl);
         }
 
+        private sealed class FakeNetflixHttp : System.Net.Http.HttpMessageHandler
+        {
+            public readonly System.Collections.Generic.List<System.Net.Http.HttpRequestMessage> Requests = new();
+            public System.Net.HttpStatusCode Status = System.Net.HttpStatusCode.OK;
+            protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
+            {
+                Requests.Add(request);
+                return Task.FromResult(new System.Net.Http.HttpResponseMessage(Status) { Content = new System.Net.Http.StringContent(Reply()) });
+            }
+        }
+
+        [Fact]
+        public async Task Search_WhileAnotherServicePlays_AsksNetflixDirectlyWithTheBrowsersCookies()
+        {
+            var svc = new MockCdpBrowserService { SessionSequence = Member, GraphQlReply = _ => Reply(), CookieHeader = "NetflixId=abc; SecureNetflixId=def" };
+            var http = new FakeNetflixHttp();
+            var session = Session(svc);
+            session.DirectHttp = new System.Net.Http.HttpClient(http);
+            var provider = new NetflixProvider(session);
+            await provider.SearchAsync("one piece");          // idle: in the browser, and the cookies are kept
+            session.Hub.ActivePlayback = "ITVX";               // ITVX now plays in the shared tab
+
+            var items = (await provider.SearchAsync("one piece")).ToList();
+
+            Assert.Equal(2, items.Count);
+            Assert.Single(svc.GraphQlBodies);                  // the tab wasn't touched again
+            var req = Assert.Single(http.Requests);
+            Assert.Equal("https://www.netflix.com/graphql", req.RequestUri!.ToString());
+            Assert.Equal("NetflixId=abc; SecureNetflixId=def", req.Headers.GetValues("Cookie").Single());
+            Assert.Equal("https://www.netflix.com", req.Headers.GetValues("Origin").Single());
+            Assert.True(session.DirectSearchWorks);
+        }
+
+        [Fact]
+        public async Task Search_WhileAnotherServicePlays_WithoutCookiesYet_ReturnsNoResults()
+        {
+            var svc = new MockCdpBrowserService { SessionSequence = Member, GraphQlReply = _ => Reply() };
+            var http = new FakeNetflixHttp();
+            var session = Session(svc);
+            session.DirectHttp = new System.Net.Http.HttpClient(http);
+            session.Hub.ActivePlayback = "ITVX";
+
+            Assert.Empty(await new NetflixProvider(session).SearchAsync("one piece"));
+            Assert.Empty(http.Requests);
+        }
+
+        [Fact]
+        public async Task A_refused_direct_search_says_so_and_returns_no_results()
+        {
+            var svc = new MockCdpBrowserService { SessionSequence = Member, GraphQlReply = _ => Reply(), CookieHeader = "NetflixId=abc" };
+            var http = new FakeNetflixHttp { Status = System.Net.HttpStatusCode.Forbidden };
+            var session = Session(svc);
+            session.DirectHttp = new System.Net.Http.HttpClient(http);
+            var provider = new NetflixProvider(session);
+            await provider.SearchAsync("one piece");
+            session.Hub.ActivePlayback = "ITVX";
+
+            Assert.Empty(await provider.SearchAsync("one piece"));
+            Assert.False(session.DirectSearchWorks);
+        }
+
         [Fact]
         public async Task SeriesPage_OffersPlayNextEpisodeWithTheWatchUrl()
         {

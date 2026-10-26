@@ -103,6 +103,10 @@ namespace Baird.Tests.Services
             Assert.Equal("https://ic.c4assets.com/brands/derry-girls/a35376d6.jpg?interpolation=progressive-bicubic&output-format=jpeg&output-quality=90&resize=480px:*", results[0].ImageUrl);
         }
 
+        [Fact]
+        public void No_matches_is_an_empty_list_not_a_failure() =>
+            Assert.Empty(Channel4Catalogue.ParseSearch("{\"results\":{\"title\":\"No Matches\",\"summary\":\"Please check spelling\"}}")!);
+
         [Theory]
         [InlineData("<html>")]
         [InlineData("{\"error\":\"x\"}")]

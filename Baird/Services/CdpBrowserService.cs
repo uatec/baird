@@ -73,6 +73,8 @@ namespace Baird.Services
         /// </summary>
         Task<NetflixSessionState?> WatchNetflixSignInAsync(CancellationToken ct = default);
         Task<string?> PostNetflixGraphQlAsync(string requestBody, CancellationToken ct = default);
+        /// <summary>The browser's netflix.com cookies as a Cookie header (so Baird can call Netflix's API itself), or null.</summary>
+        Task<string?> GetNetflixCookieHeaderAsync(CancellationToken ct = default) => Task.FromResult<string?>(null);
         Task<string?> CaptureNetflixSearchRequestAsync(string searchTerm, CancellationToken ct = default);
         Task<string?> SelectNetflixProfileAsync(string? preferredName, CancellationToken ct = default);
         Task<SignInSubmitResult> SubmitCredentialsAsync(string user, string password, CancellationToken ct = default);
@@ -513,6 +515,21 @@ namespace Baird.Services
             })()";
             var r = await EvaluateInPageAsync(script, ct);
             return r is { ValueKind: JsonValueKind.String } v ? v.GetString() : null;
+        }
+
+        public async Task<string?> GetNetflixCookieHeaderAsync(CancellationToken ct = default)
+        {
+            if (_pageWs == null || _pageWs.State != WebSocketState.Open) return null;
+            try
+            {
+                var r = await SendPageCommandAsync("Network.getCookies", new JsonObject { ["urls"] = new JsonArray("https://www.netflix.com/") }, ct);
+                if (!r.TryGetProperty("cookies", out var cookies) || cookies.ValueKind != JsonValueKind.Array) return null;
+                var pairs = cookies.EnumerateArray()
+                    .Select(c => (Name: c.GetProperty("name").GetString(), Value: c.GetProperty("value").GetString()))
+                    .Where(c => !string.IsNullOrEmpty(c.Name)).Select(c => $"{c.Name}={c.Value}").ToList();
+                return pairs.Count > 0 ? string.Join("; ", pairs) : null;
+            }
+            catch (Exception ex) { Log($"[CDP] Couldn't read Netflix's cookies: {ex.Message}"); return null; }
         }
 
         /// <summary>

@@ -235,7 +235,7 @@ namespace Baird.Tests.NewUi
             Assert.Equal(new[] { 1, 2, 3, 4 }, d.Seasons.Select(s => s.Number));
             Assert.Equal(new[] { SeasonState.Available, SeasonState.Partial, SeasonState.Requested, SeasonState.Missing }, d.Seasons.Select(s => s.State));
             Assert.Equal(new[] { "Jellyfin", "1 of 3 on Jellyfin", "Downloading 40%", "Not streaming" }, d.Seasons.Select(s => s.StateLabel));
-            Assert.Equal("Season 1 on Jellyfin · 1 of 3 episodes of season 2 on Jellyfin · Season 3 downloading · Season 4 can be requested", d.Summary);
+            Assert.Equal("Seasons 1–2 on Jellyfin · 3 downloading · 4 to request", d.Summary);
         }
 
 
@@ -314,6 +314,49 @@ namespace Baird.Tests.NewUi
             var film = await w.Shows.DetailsAsync(ShowData.FromCard(new HomeCard(CardKind.Film, "tmdb:movie:999", "The Simpsons Movie", "2007", null, null, "get", "Seerr", PlayVia.None)));
             await w.Shows.RequestAsync(film, null);
             Assert.Equal((999, "movie", (IReadOnlyList<int>?)null), (w.Seerr.Requests[2].Id, w.Seerr.Requests[2].Type, w.Seerr.Requests[2].Seasons));
+        }
+
+        // ------------------------------------------------------------------ the availability line
+        private static Season S(int n, SeasonState state, string? service = "Disney+") =>
+            new(n, $"Season {n}", state, state is SeasonState.Available or SeasonState.Partial ? service : null, Array.Empty<Episode>(), 10, state == SeasonState.Partial ? 8 : 10);
+
+        private static ShowDetails Series(params Season[] seasons) =>
+            new(new CatalogueTitle("k", TitleKind.Series, "The Simpsons", 1989, null, null, new[] { new TitleSource("Disney+", "d1", PlayVia.Browser) }), seasons);
+
+        [Fact]
+        public void A_long_messy_show_is_summed_up_in_a_few_ranges()
+        {
+            // The Simpsons: 1–14 on Disney+ (3 and 6 only partly), 15–33 not streaming.
+            var seasons = Enumerable.Range(1, 33).Select(n => n > 14 ? S(n, SeasonState.Missing) : n is 3 or 6 ? S(n, SeasonState.Partial) : S(n, SeasonState.Available)).ToArray();
+            Assert.Equal("Seasons 1–14 on Disney+ · 3, 6 partly · 15–33 to request", Series(seasons).Summary);
+        }
+
+        [Fact]
+        public void A_complete_show_on_one_service_is_all_its_seasons()
+        {
+            Assert.Equal("All 33 seasons on Disney+", Series(Enumerable.Range(1, 33).Select(n => S(n, SeasonState.Available)).ToArray()).Summary);
+            Assert.Equal("On Jellyfin", Series(S(1, SeasonState.Available, "Jellyfin")).Summary);
+        }
+
+        [Fact]
+        public void Downloading_and_requestable_seasons_are_ranges_and_there_are_never_more_than_three_clauses()
+        {
+            var d = Series(S(1, SeasonState.Available, "Jellyfin"), S(2, SeasonState.Available, "Jellyfin"), S(3, SeasonState.Available, "Jellyfin"),
+                S(4, SeasonState.Available, "Jellyfin"), S(5, SeasonState.Partial, "Jellyfin"), S(6, SeasonState.Requested), S(7, SeasonState.Requested),
+                S(8, SeasonState.Requested), S(9, SeasonState.Missing));
+            Assert.Equal("Seasons 1–5 on Jellyfin · 6–8 downloading · 9 to request", d.Summary); // "5 partly" drops off: the tab says it
+            Assert.Equal(3, d.Summary.Split(" · ").Length);
+            Assert.Equal("Season 3 downloading", Series(S(3, SeasonState.Requested)).Summary);
+            Assert.Equal("1–3, 5–7, 9–10…", ShowDetails.Ranges(new[] { 1, 2, 3, 5, 6, 7, 9, 10, 12 }));
+        }
+
+        [Fact]
+        public void A_films_line_is_where_it_streams_or_its_request()
+        {
+            var film = new CatalogueTitle("f", TitleKind.Film, "Alien", 1979, null, null, new[] { new TitleSource("Jellyfin", "a", PlayVia.Mpv) });
+            Assert.Equal("On Jellyfin", new ShowDetails(film, Array.Empty<Season>()).Summary);
+            var wanted = film with { Sources = Array.Empty<TitleSource>(), Seerr = new SeerrRef(1, "movie", 3) };
+            Assert.Equal("Downloading · 40%", new ShowDetails(wanted, Array.Empty<Season>(), SeasonState.Requested, 0.4).Summary);
         }
 
         [Fact]

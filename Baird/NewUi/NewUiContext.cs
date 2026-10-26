@@ -20,6 +20,8 @@ namespace Baird.NewUi
         /// <summary>Channels in number order (from On now), for Pg± and number entry.</summary>
         public IReadOnlyList<Channel> Channels { get; set; } = Array.Empty<Channel>();
         public event Action<Channel>? Tuning;
+        /// <summary>Something Search should say about missing results (e.g. Netflix paused while another service plays), or null.</summary>
+        public Func<string?> SearchNote { get; set; } = () => null;
         /// <summary>Up next changed (an item was taken off it): Home refreshes the row.</summary>
         public event Action? UpNextChanged;
         public void RaiseUpNextChanged() => UpNextChanged?.Invoke();

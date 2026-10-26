@@ -149,8 +149,10 @@ namespace Baird.Services
             try
             {
                 using var doc = JsonDocument.Parse(body);
-                if (doc.RootElement.ValueKind != JsonValueKind.Object ||
-                    !doc.RootElement.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array) return null;
+                if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("results", out var results)) return null;
+                // No matches: "results" is a message object ({"title":"No Matches",...}) instead of a list.
+                if (results.ValueKind == JsonValueKind.Object && results.TryGetProperty("title", out _)) return Array.Empty<Channel4SearchResult>();
+                if (results.ValueKind != JsonValueKind.Array) return null;
                 var list = new List<Channel4SearchResult>();
                 foreach (var r in results.EnumerateArray())
                 {

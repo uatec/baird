@@ -502,6 +502,41 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task Thirty_three_season_tabs_scroll_so_the_lit_one_is_always_wholly_on_screen()
+        {
+            var rig = Build();
+            rig.World.Seerr.Status[95396] = new Baird.Services.JellyseerrMediaStatus(1,
+                Enumerable.Range(1, 33).Select(n => new Baird.Services.JellyseerrSeason(n, 22, 1)).ToArray(), Array.Empty<Baird.Services.JellyseerrDownload>());
+            var page = new ShowPage(rig.Ctx, ShowDataFor("tmdb:tv:95396", "Severance", "get", CardKind.Series));
+            Show(page.View);
+            await page.Loaded;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(33, page.Details!.Seasons.Count);
+            page.OnAction(UiAction.Down, false);
+            for (var i = 0; i < 24; i++) page.OnAction(UiAction.Right, false); // season 25
+            Assert.Equal(24, page.SeasonIndex);
+            await Wait(700);
+            var tab = (SeasonTab)page.LitElement!;
+            var m = tab.TransformToVisual(page.View)!.Value;
+            Assert.InRange(new Point(0, 0).Transform(m).X, 0, 1920);
+            Assert.InRange(new Point(tab.Bounds.Width, 0).Transform(m).X, 0, 1920);
+            Assert.True(page.TabScroll > 0);
+            for (var i = 0; i < 24; i++) page.OnAction(UiAction.Left, false); // and back to the start
+            Assert.Equal(0, page.TabScroll);
+        }
+
+        [Fact]
+        public void The_strip_moves_as_little_as_it_can_and_never_past_its_ends()
+        {
+            var widths = Enumerable.Repeat(150.0, 33).ToList();
+            Assert.Equal(0, ShowPage.StripScroll(widths, 12, 3, 0, 1728, 20));
+            var at25 = ShowPage.StripScroll(widths, 12, 24, 0, 1728, 20);
+            Assert.Equal(24 * 162 + 150 + 20 - 1728, at25); // its right edge (and lift) just inside the view
+            Assert.Equal(at25, ShowPage.StripScroll(widths, 12, 20, at25, 1728, 20)); // a tab already in view: no move
+            Assert.Equal(33 * 150 + 32 * 12 - 1728 + 20, ShowPage.StripScroll(widths, 12, 32, 0, 1728, 20));
+        }
+
+        [AvaloniaFact]
         public void Series_and_seerr_cards_on_home_open_their_page_instead_of_a_toast()
         {
             var rig = Build();
@@ -512,6 +547,53 @@ namespace Baird.Tests.NewUi
             var t = (CatalogueTitle)rig.Ctx.Nav.State.Pages.Single().Params!;
             Assert.Equal(7, t.Seerr!.TmdbId);
             Assert.Empty(rig.Home.Toasts);
+        }
+
+        [AvaloniaFact]
+        public async Task A_real_keyboard_types_into_the_query_and_backspace_deletes()
+        {
+            var rig = Build();
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            Assert.True(s.AcceptsText);
+            s.TypeText("A"); s.TypeText("l"); s.TypeText("i"); s.TypeText("x");
+            s.TypeText(null);
+            Assert.Equal("Ali", s.Query);
+            rig.Home.Timers.Advance(SearchScreen.Debounce);
+            await s.RunAsync();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Alien", s.ResultRows[0][0].Title!.Name);
+        }
+
+        [AvaloniaFact]
+        public void Typing_while_a_result_is_lit_goes_back_to_the_query()
+        {
+            var rig = Build();
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            s.SetQuery("al");
+            Dispatcher.UIThread.RunJobs();
+            s.OnAction(UiAction.Right, false);
+            s.TypeText("i");
+            Assert.Equal("ali", s.Query);
+        }
+
+        [AvaloniaFact]
+        public void The_caret_sits_right_after_the_last_letter_and_before_the_hint_when_empty()
+        {
+            var rig = Build();
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+
+            static double X(Control c, Control root) => c.TranslatePoint(new Point(0, 0), root)!.Value.X;
+
+            Assert.True(X(s.Caret, s.View) < X(s.QueryText, s.View)); // empty: caret, then the hint
+
+            s.TypeText("Alien");
+            Dispatcher.UIThread.RunJobs();
+            var textEnd = X(s.QueryText, s.View) + s.QueryText.Bounds.Width;
+            var gap = X(s.Caret, s.View) - textEnd;
+            Assert.InRange(gap, 0, 3); // no space-sized gap between the last letter and the caret
         }
     }
 }

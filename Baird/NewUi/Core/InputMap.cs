@@ -73,6 +73,20 @@ namespace Baird.NewUi.Core
             _ => null,
         };
 
+        /// <summary>
+        /// A real keyboard typing into a text field: a printable character (from the key's symbol, so shift and layout
+        /// count) or Backspace (<paramref name="text"/> null). Remote buttons carry no printable symbol (OK is "\r").
+        /// </summary>
+        public static bool TryText(Key key, KeyModifiers modifiers, string? keySymbol, out string? text)
+        {
+            text = null;
+            if ((modifiers & (KeyModifiers.Control | KeyModifiers.Alt | KeyModifiers.Meta)) != 0) return false;
+            if (key == Key.Back) return true;
+            if (keySymbol is not { Length: > 0 } s || s.Any(char.IsControl)) return false;
+            text = s;
+            return true;
+        }
+
         public static int? DigitOf(UiAction a) => a >= UiAction.Digit0 && a <= UiAction.Digit9 ? a - UiAction.Digit0 : null;
     }
 

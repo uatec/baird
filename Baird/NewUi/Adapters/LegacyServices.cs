@@ -69,7 +69,7 @@ namespace Baird.NewUi.Adapters
             var itvx = new ItvxService(netflix.Hub, new ItvxCatalogue(), ItvxCredentials.FromConfiguration(config));
             itvx.Log += m => Console.WriteLine($"[ItvxService] {m}");
             providers.Add(new ItvxProvider(itvx.Catalogue, itvx));
-            engines.Add(new ItvxPlaybackEngine(itvx));
+            engines.Add(new ItvxPlaybackEngine(itvx) { SkipAdverts = !string.Equals(config["Baird:ItvxSkipAdverts"], "false", StringComparison.OrdinalIgnoreCase) });
 
             BrowserEngines = engines;
             Data = new DataService(providers, new JsonHistoryService(), new JsonWatchlistService(), new MediaItemCache(), new JsonMediaDataCache());

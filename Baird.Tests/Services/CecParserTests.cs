@@ -53,5 +53,56 @@ namespace Baird.Tests.Services
         {
             Assert.False(CecParser.TryParseFrame(line, out _, out _));
         }
+
+        [Theory]
+        [InlineData(new byte[] { 0x08, 0x44, 0x01 }, 8, true, (byte)0x01)]
+        [InlineData(new byte[] { 0x04, 0x44, 0x01 }, 8, false, (byte)0x01)]
+        public void TryParseUserControl_ReadsPressedKeyAndWhetherItIsForUs(byte[] frame, int ourAddress, bool forUs, byte code)
+        {
+            Assert.True(CecParser.TryParseUserControl(frame, ourAddress, out var userControl));
+            Assert.Equal(0, userControl.Source);
+            Assert.Equal(frame[0] & 0xF, userControl.Destination);
+            Assert.Equal(forUs, userControl.ForThisDevice);
+            Assert.Equal(code, userControl.Code);
+        }
+
+        [Fact]
+        public void TryParseUserControl_ReadsReleaseWithoutACode()
+        {
+            Assert.True(CecParser.TryParseUserControl(new byte[] { 0x08, 0x45 }, 8, out var userControl));
+            Assert.True(userControl.ForThisDevice);
+            Assert.Null(userControl.Code);
+        }
+
+        [Theory]
+        [InlineData(new byte[] { 0x08, 0x90, 0x00 })]
+        [InlineData(new byte[] { 0x08, 0x44 })]
+        [InlineData(new byte[] { 0x08 })]
+        public void TryParseUserControl_RejectsOtherFrames(byte[] frame)
+        {
+            Assert.False(CecParser.TryParseUserControl(frame, 8, out _));
+        }
+
+        [Theory]
+        [InlineData(new byte[] { 0x08, 0x41, 0x24 }, (byte)0x44)] // Play forward → Play
+        [InlineData(new byte[] { 0x08, 0x41, 0x25 }, (byte)0x46)] // Play still → Pause
+        [InlineData(new byte[] { 0x08, 0x41, 0x05 }, (byte)0x49)] // Fast forward
+        [InlineData(new byte[] { 0x08, 0x41, 0x09 }, (byte)0x48)] // Fast reverse → Rewind
+        [InlineData(new byte[] { 0x08, 0x42, 0x03 }, (byte)0x45)] // Deck Control: Stop
+        public void TryParseDeckKey_ReadsTransportKeysAsUserControl(byte[] frame, byte code)
+        {
+            Assert.True(CecParser.TryParseDeckKey(frame, 8, out var key));
+            Assert.True(key.ForThisDevice);
+            Assert.Equal(code, key.Code);
+        }
+
+        [Theory]
+        [InlineData(new byte[] { 0x08, 0x44, 0x01 })]
+        [InlineData(new byte[] { 0x08, 0x42, 0x04 })] // Eject
+        [InlineData(new byte[] { 0x08, 0x41 })]
+        public void TryParseDeckKey_RejectsOtherFrames(byte[] frame)
+        {
+            Assert.False(CecParser.TryParseDeckKey(frame, 8, out _));
+        }
     }
 }

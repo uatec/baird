@@ -31,8 +31,11 @@ namespace Baird.Services
             if (string.IsNullOrWhiteSpace(query)) return Enumerable.Empty<MediaItemData>();
             if (_session.Hub.ActivePlayback is { } playing)
             {
-                // The one shared browser is playing (Netflix or Disney+); searching in it would disturb the video. Not a failure.
-                Console.WriteLine($"[NetflixProvider] {playing} is playing; no Netflix results until it stops.");
+                // The one shared browser is playing; searching in it would disturb the video. Ask Netflix directly instead (with the
+                // browser's cookies); if that isn't possible or Netflix refuses it, no results (not a failure).
+                var direct = await _session.SearchDirectAsync(query.Trim(), cancellationToken);
+                if (direct.Ok) return direct.Reply!.Results.Select(ToMediaItem).ToList();
+                Console.WriteLine($"[NetflixProvider] {playing} is playing and the direct search didn't work ({direct.Failure}); no Netflix results until it stops.");
                 return Enumerable.Empty<MediaItemData>();
             }
 

@@ -32,7 +32,11 @@ namespace Baird.Services
             { 0x04, "Image View On" },
             { 0x0D, "Text View On" },
             { 0x32, "Set Menu Language" },
+            { 0x1A, "Give Deck Status" },
+            { 0x1B, "Deck Status" },
             { 0x36, "Standby" },
+            { 0x41, "Play" },
+            { 0x42, "Deck Control" },
             { 0x44, "User Control Pressed" },
             { 0x45, "User Control Released" },
             { 0x46, "Give OSD Name" },
@@ -49,6 +53,8 @@ namespace Baird.Services
             { 0x86, "Set Stream Path" },
             { 0x87, "Device Vendor ID" },
             { 0x89, "Vendor Command" },
+            { 0x8A, "Vendor Remote Button Down" },
+            { 0x8B, "Vendor Remote Button Up" },
             { 0x8C, "Give Device Vendor ID" },
             { 0x8D, "Menu Request" },
             { 0x8E, "Menu Status" },
@@ -193,6 +199,68 @@ namespace Baird.Services
             frame = match.Groups[2].Value.Split(':').Select(b => Convert.ToByte(b, 16)).ToArray();
             return true;
         }
+
+        /// <summary>
+        /// Reads a User Control Pressed (0x44) or Released (0x45) frame: a key on the TV's remote passed on to a
+        /// device. <paramref name="ourAddress"/> is Baird's logical address, to tell keys for Baird from keys for others.
+        /// </summary>
+        public static bool TryParseUserControl(byte[] frame, int ourAddress, out CecUserControlEventArgs userControl)
+        {
+            userControl = new CecUserControlEventArgs();
+            if (frame.Length < 2) return false;
+
+            byte? code;
+            if (frame[1] == 0x44 && frame.Length > 2) code = frame[2];
+            else if (frame[1] == 0x45) code = null;
+            else return false;
+
+            var destination = frame[0] & 0xF;
+            userControl = new CecUserControlEventArgs
+            {
+                Source = frame[0] >> 4,
+                Destination = destination,
+                ForThisDevice = destination == ourAddress,
+                Code = code,
+            };
+            return true;
+        }
+
+        /// <summary>
+        /// Reads Play (0x41) and Deck Control (0x42), which some TVs send for their remote's transport keys instead of
+        /// User Control, as the equivalent User Control press (Play, Pause, Stop, Rewind, Fast Forward, skip).
+        /// </summary>
+        public static bool TryParseDeckKey(byte[] frame, int ourAddress, out CecUserControlEventArgs key)
+        {
+            key = new CecUserControlEventArgs();
+            if (frame.Length < 3) return false;
+            byte? code = (frame[1], frame[2]) switch
+            {
+                (0x41, 0x24) => 0x44,                 // Play forward → Play
+                (0x41, 0x25) => 0x46,                 // Play still → Pause
+                (0x41, >= 0x05 and <= 0x07) => 0x49,  // Fast forward
+                (0x41, >= 0x09 and <= 0x0B) => 0x48,  // Fast reverse → Rewind
+                (0x42, 0x01) => 0x4B,                 // Skip forward → Forward
+                (0x42, 0x02) => 0x4C,                 // Skip reverse → Backward
+                (0x42, 0x03) => 0x45,                 // Stop
+                _ => null,
+            };
+            if (code == null) return false;
+
+            var destination = frame[0] & 0xF;
+            key = new CecUserControlEventArgs
+            {
+                Source = frame[0] >> 4,
+                Destination = destination,
+                ForThisDevice = destination == ourAddress,
+                Code = code,
+            };
+            return true;
+        }
+
+        public static string UserControlName(byte code) =>
+            UserControlCodes.TryGetValue(code, out var name) ? name : $"Unknown Key ({code:X2})";
+
+        public static string AddressName(int address) => GetAddressName(address);
 
         private static string ParsePacket(string hexString)
         {

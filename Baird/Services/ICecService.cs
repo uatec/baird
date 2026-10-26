@@ -11,6 +11,19 @@ namespace Baird.Services
         public DateTime Timestamp { get; set; } = DateTime.Now;
     }
 
+    /// <summary>
+    /// A key on the TV's own remote, passed on over CEC: User Control Pressed (with <see cref="Code"/>) or
+    /// User Control Released (<see cref="Code"/> null). The TV sends them to whichever device it is showing.
+    /// </summary>
+    public class CecUserControlEventArgs : EventArgs
+    {
+        public int Source { get; init; }
+        public int Destination { get; init; }
+        /// <summary>Addressed to Baird's logical address, rather than another device on the bus.</summary>
+        public bool ForThisDevice { get; init; }
+        public byte? Code { get; init; }
+    }
+
     public enum TvPowerStatus
     {
         Unknown,
@@ -27,6 +40,7 @@ namespace Baird.Services
         event EventHandler? TvPowerOn;
         event EventHandler? InputLost;
         event EventHandler? InputRegained;
+        event EventHandler<CecUserControlEventArgs>? UserControlReceived;
 
         bool IsAvailable { get; }
 

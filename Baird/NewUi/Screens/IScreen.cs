@@ -13,6 +13,10 @@ namespace Baird.NewUi.Screens
         void OnFocusIn() { }
         void OnFocusOut() { }
         void Destroy() { }
+        /// <summary>A text field that a real keyboard types into (letters are then text, not shortcuts).</summary>
+        bool AcceptsText => false;
+        /// <summary>Text typed on a real keyboard; null deletes the last character (Backspace).</summary>
+        void TypeText(string? text) { }
         /// <summary>The lit element, if any (tests check there is exactly one and it is on screen).</summary>
         Control? LitElement => null;
         /// <summary>Where it slides in from as an overlay (the info bar rises; the channel list comes from the left…).</summary>
