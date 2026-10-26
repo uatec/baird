@@ -39,10 +39,13 @@ namespace Baird.Services
 
         public static bool IsChannelId(string id) => id.StartsWith(IdPrefix, StringComparison.Ordinal);
 
-        /// <summary>The id of the next page of a folder (<c>yt:channel/UC|videos</c> → <c>…@2</c>), or null when this page was the last (short).</summary>
+        /// <summary>
+        /// The id of the next page of a folder (<c>yt:channel/UC|videos</c> → <c>…@2</c>), or null when this page was the last. A page
+        /// comes back a little short when live streams and premieres are dropped from it, so "nearly full" still means more.
+        /// </summary>
         public static string? NextPageId(string folderId, int returned)
         {
-            if (returned < PageSize || !IsChannelId(folderId)) return null;
+            if (returned < PageSize * 8 / 10 || !IsChannelId(folderId)) return null;
             ParseId(folderId, out var baseId, out var page);
             return $"{baseId}@{page + 1}";
         }

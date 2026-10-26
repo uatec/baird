@@ -27,6 +27,8 @@ namespace Baird.NewUi.Screens
     {
         private const double EpStep = 384 + 36;
         private const double LowerTop = 640;
+        /// <summary>When the lit episode is this close to the end of a season that has more pages, the next page is fetched.</summary>
+        private const int LoadAhead = 8;
         private static readonly TimeSpan Poll = TimeSpan.FromSeconds(30);
 
         private sealed record ButtonDef(string Label, string? Icon, bool Primary, Action Run);
@@ -54,11 +56,14 @@ namespace Baird.NewUi.Screens
         private readonly CancellationTokenSource _life = new();
         private IDisposable? _poll;
         private bool _moved;
+        private bool _loadingMore;
         private (Channel Channel, Programme Programme)? _onTv;
         private bool Checking => _details?.CheckingLibrary == true && _title.Sources.Count == 0;
 
         public Control View => _root;
         public Task Loaded { get; private set; }
+        /// <summary>The page of episodes being fetched as the viewer nears the end of a long season (completed when none is).</summary>
+        public Task LoadingMore { get; private set; } = Task.CompletedTask;
         public ShowDetails? Details => _details;
         public IReadOnlyList<string> ButtonLabels => _buttons.Select(b => b.Label).ToList();
         public int SeasonIndex => _season;
@@ -377,6 +382,46 @@ namespace Baird.NewUi.Screens
             // The lit item is always wholly on screen: the episodes lift the page up.
             _content.RenderTransform = TransformOperations.Parse($"translate(0px, {(onEps ? -150 : 0)}px)");
             if (_rows[_pos.Row] == RowKind.Seasons && _details != null) _ctx.Prefetch?.Season(_details, _season); // the seasons either side
+            if (onEps) LoadMore();
+        }
+
+        /// <summary>Near the end of a season that lists its episodes a page at a time (a YouTube channel), fetches the next page and adds it on.</summary>
+        private void LoadMore()
+        {
+            if (_loadingMore || _details == null || _ctx.Shows == null) return;
+            var season = _details.Seasons[_season];
+            if (season.MoreId == null || _pos.Col < season.Episodes.Count - LoadAhead) return;
+            _loadingMore = true;
+            LoadingMore = LoadMoreAsync(season);
+        }
+
+        private async Task LoadMoreAsync(Season season)
+        {
+            try
+            {
+                var (episodes, more) = await _ctx.Shows!.MoreEpisodesAsync(season, _life.Token);
+                OnUi(() =>
+                {
+                    var i = _details?.Seasons.ToList().FindIndex(s => s.Number == season.Number && s.MoreId == season.MoreId) ?? -1;
+                    if (i < 0 || _life.IsCancellationRequested) return; // the page was refreshed meanwhile: it asks again if it needs to
+                    var cur = _details!.Seasons[i];
+                    var all = cur.Episodes.Concat(episodes).ToList();
+                    var seasons = _details.Seasons.ToList();
+                    seasons[i] = cur with { Episodes = all, InLibrary = all.Count, EpisodeCount = Math.Max(all.Count, cur.EpisodeCount ?? 0), MoreId = more };
+                    _details = _details with { Seasons = seasons };
+                    if (i != _season) return;
+                    foreach (var e in episodes)
+                    {
+                        var card = new Card(EpisodeCard(e), CardShape.Wide);
+                        _epEls.Add(card);
+                        _epTrack.Children.Add(card);
+                    }
+                    Draw();
+                });
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { Console.WriteLine($"[ShowPage] More of {_title.Name} failed: {ex.Message}"); }
+            finally { OnUi(() => _loadingMore = false); }
         }
 
         public bool OnAction(UiAction a, bool repeat)

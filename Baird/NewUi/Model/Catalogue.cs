@@ -57,9 +57,10 @@ namespace Baird.NewUi.Model
     /// <summary>
     /// A season: what's in the library (its episodes) merged with what Seerr knows (<see cref="EpisodeCount"/>, requested,
     /// downloading). Episodes Seerr knows of that aren't in the library are listed as missing or downloading.
+    /// <see cref="MoreId"/>: the library id of this season's next page of episodes, when it lists them a page at a time (YouTube); null when all are here.
     /// </summary>
     public sealed record Season(int Number, string Label, SeasonState State, string? Service, IReadOnlyList<Episode> Episodes,
-        int? EpisodeCount = null, int InLibrary = 0, double? Download = null)
+        int? EpisodeCount = null, int InLibrary = 0, double? Download = null, string? MoreId = null)
     {
         /// <summary>A state, never a call to action: "Jellyfin", "6 of 10 on Jellyfin", "Downloading 40%", "Not streaming".</summary>
         public string StateLabel => State switch

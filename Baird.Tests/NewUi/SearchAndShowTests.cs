@@ -11,6 +11,7 @@ using Baird.NewUi.Controls;
 using Baird.NewUi.Core;
 using Baird.NewUi.Model;
 using Baird.NewUi.Screens;
+using Baird.Services;
 using Xunit;
 
 namespace Baird.Tests.NewUi
@@ -304,6 +305,35 @@ namespace Baird.Tests.NewUi
 
         private static CatalogueTitle ShowDataFor(string id, string name, string badge, CardKind kind = CardKind.Film) =>
             Baird.NewUi.Adapters.ShowData.FromCard(new HomeCard(kind, id, name, null, null, null, badge, "Seerr", PlayVia.None));
+
+        [AvaloniaFact]
+        public async Task A_long_youtube_channel_loads_its_next_page_as_the_viewer_nears_the_end()
+        {
+            var rig = Build();
+            const string id = "yt:channel/UCtest";
+            rig.World.Jellyfin.Children[id] = Enumerable.Range(1, YouTubeService.PageSize).Select(n => CatalogueTests.Item($"v{n}", $"Video {n}", source: "YouTube")).ToList();
+            rig.World.Jellyfin.Children[id + "@2"] = Enumerable.Range(51, 20).Select(n => CatalogueTests.Item($"v{n}", $"Video {n}", source: "YouTube")).ToList();
+            var title = new CatalogueTitle("series:yt", TitleKind.Series, "Test Channel", null, null, null, new[] { new TitleSource("YouTube", id, PlayVia.Mpv) });
+            var page = new ShowPage(rig.Ctx, title);
+            Show(page.View);
+            await page.Loaded;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(YouTubeService.PageSize, page.Details!.Seasons.Single().Episodes.Count);
+
+            page.OnAction(UiAction.Down, false); // seasons
+            page.OnAction(UiAction.Down, false); // episodes
+            for (var i = 0; i < 20; i++) page.OnAction(UiAction.Right, false);
+            await page.LoadingMore;
+            Assert.Equal(YouTubeService.PageSize, page.Details!.Seasons.Single().Episodes.Count); // nowhere near the end: no fetch
+
+            for (var i = 0; i < 25; i++) page.OnAction(UiAction.Right, false);
+            await page.LoadingMore;
+            Dispatcher.UIThread.RunJobs();
+            var season = page.Details!.Seasons.Single();
+            Assert.Equal(70, season.Episodes.Count);
+            Assert.Equal("70. Video 70", season.Episodes[^1].Label); // numbered on from the first page
+            Assert.Null(season.MoreId); // the second page was short: that was the last
+        }
 
         // ------------------------------------------------------------------ slow sources (Jellyfin 12)
         private static (HomeScreenTests.Rig Rig, CatalogueTests.Gated Jellyfin) SlowRig()

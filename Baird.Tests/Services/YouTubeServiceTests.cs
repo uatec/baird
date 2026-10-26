@@ -104,7 +104,8 @@ namespace Baird.Tests.Services
             var id = $"{YouTubeService.ChannelPrefix}{Channel}|videos";
             Assert.Equal(id + "@2", YouTubeService.NextPageId(id, YouTubeService.PageSize));
             Assert.Equal(id + "@3", YouTubeService.NextPageId(id + "@2", YouTubeService.PageSize));
-            Assert.Null(YouTubeService.NextPageId(id, YouTubeService.PageSize - 1));
+            Assert.Equal(id + "@2", YouTubeService.NextPageId(id, YouTubeService.PageSize - 3)); // live streams dropped from the page
+            Assert.Null(YouTubeService.NextPageId(id, YouTubeService.PageSize / 2));
         }
 
         [Fact]
