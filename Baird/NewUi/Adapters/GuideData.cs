@@ -40,7 +40,19 @@ namespace Baird.NewUi.Adapters
             return new DateTimeOffset(t.Year, t.Month, t.Day, t.Hour, t.Minute >= 30 ? 30 : 0, 0, t.Offset);
         }
 
+        /// <summary>How long a load is reused (the guide place and a guide page over the video share it; ~100 channels is slow to fetch).</summary>
+        public static readonly TimeSpan Fresh = TimeSpan.FromMinutes(5);
+        private (DateTimeOffset At, GuideModel Model)? _last;
+
         public async Task<GuideModel> LoadAsync(DateTimeOffset now)
+        {
+            if (_last is { } last && now >= last.At && now - last.At < Fresh && WindowStartFor(now) == last.Model.Start) return last.Model;
+            var model = await FetchAsync(now).ConfigureAwait(false);
+            if (model.Channels.Count > 0) _last = (now, model);
+            return model;
+        }
+
+        private async Task<GuideModel> FetchAsync(DateTimeOffset now)
         {
             var start = WindowStartFor(now);
             var end = start + Ahead;

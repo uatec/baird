@@ -249,9 +249,13 @@ namespace Baird.NewUi.Shell
                     if (PlaceScreen(Place.Home) is HomeScreen home) home.Reset(); // the Home key: back to the first card
                     Render(); return;
                 case UiAction.Guide:
-                    GoPlace(Place.LiveTv); return;
+                    // The guide's own key inside the guide; over the video, the guide opens as a page (Back returns to
+                    // the picture); elsewhere, the Live TV place.
+                    if (st.Pages.Count > 0 && st.Pages[^1].Name == GuidePage && _pages.TryGetValue(st.Pages[^1], out var gp)) { nav.CloseOverlay(); gp.OnAction(a, repeat); return; }
+                    if (st.Video != null && st.AtVideo && st.Pages.Count == 0) { nav.OpenPage(new PageRef(GuidePage)); return; }
+                    ShowPlace(Place.LiveTv, st.Place == Place.LiveTv && st.Pages.Count == 0 && !st.AtVideo ? a : null); return;
                 case UiAction.Voice:
-                    GoPlace(Place.Search); PlaceScreen(Place.Search).OnAction(UiAction.Voice, false); return;
+                    ShowPlace(Place.Search, a); return;
             }
 
             // The tab bar: moving across it switches the place straight away; ▾ / OK enter the content.
@@ -282,13 +286,32 @@ namespace Baird.NewUi.Shell
             else if (a == UiAction.PlayPause) _d.VideoAction(a, repeat);
         }
 
+        /// <summary>The page name the guide uses when it opens over the video.</summary>
+        public const string GuidePage = "guide";
+
         public void GoPlace(Place p)
         {
-            _d.Nav.Home();
-            _d.Nav.SetPlace(p);
+            _d.Nav.GoPlace(p); // one change: nothing (Home) flashes in between
             TabFocus = false;
             PlaceScreen(p).OnFocusIn();
             Render();
+        }
+
+        /// <summary>
+        /// Show a place's content: if it's already the bare place, only close any overlay and take focus from the tab bar
+        /// (its focus stays where it was); otherwise go there. Then hand it <paramref name="key"/>, if any (≡, voice).
+        /// </summary>
+        public void ShowPlace(Place p, UiAction? key = null)
+        {
+            var st = _d.Nav.State;
+            if (st.Place == p && st.Pages.Count == 0 && !st.AtVideo)
+            {
+                _d.Nav.CloseOverlay();
+                if (TabFocus) { TabFocus = false; PlaceScreen(p).OnFocusIn(); }
+                Render();
+            }
+            else GoPlace(p);
+            if (key is { } k) PlaceScreen(p).OnAction(k, false);
         }
     }
 }

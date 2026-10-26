@@ -74,6 +74,15 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public async Task A_load_is_shared_for_a_few_minutes_then_fetched_afresh()
+        {
+            var (guide, _) = Build();
+            var first = await guide.LoadAsync(Now);
+            Assert.Same(first, await guide.LoadAsync(Now.AddMinutes(4)));
+            Assert.NotSame(first, await guide.LoadAsync(Now.AddMinutes(6)));
+        }
+
+        [Fact]
         public async Task A_channel_without_guide_data_is_one_no_information_span()
         {
             var (guide, _) = Build();

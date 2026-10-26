@@ -44,6 +44,17 @@ namespace Baird.NewUi.Core
             Raise();
         }
 
+        /// <summary>
+        /// Straight to a place's bare content from anywhere (≡, voice, "This channel's schedule"): the stack, overlay and
+        /// journey back are cleared and the video (if any) stays behind it — in one change, so nothing flashes between.
+        /// </summary>
+        public void GoPlace(Place place)
+        {
+            if (_place == place && _pages.Count == 0 && _overlay == null && !_atVideo && _originPages.Count == 0) return;
+            _place = place; _pages = new(); _overlay = null; _atVideo = false; _originPages = new();
+            Raise();
+        }
+
         public void OpenPage(PageRef page) { _overlay = null; _pages.Add(page); Raise(); }
         public void OpenOverlay(OverlayRef overlay) { _overlay = overlay; Raise(); }
         public void CloseOverlay() { if (_overlay == null) return; _overlay = null; Raise(); }
