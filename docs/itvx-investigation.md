@@ -157,3 +157,13 @@ device when it first signs in.
 - Run 1: search (7 results), episode list (14 series), Play pressed; the sign-in stopped at the emailed-code page (the "Use password instead" press came too early). Fixed with the retry.
 - Run 2: signed in automatically in 6 s, answered the parental prompt, video 20.7 s after Play. Then a minute of adverts for Vera (so `adRule: NEVER` does not mean no adverts), shown full screen with Baird's overlay on top; Baird's "Opening the programme…" covers the sign-in pages, so the viewer never sees them.
 - Run 3: already signed in; episode list in 372 ms; video 8.2 s after Play.
+- Run 4: failed. The first Play press came before the page was ready, the parental prompt only came on the third press, and after it
+  was answered the page went back to its Play button with no presses left. Fixed: Play is pressed every 5 s while the page shows it
+  and nothing plays (up to 8), and the press after the parental prompt waits a full gap.
+- Run 5: **passed.** Episode list in 344 ms; Play, parental prompt, video 13.9 s after Play (no adverts this time); position 4.8 → 9.8
+  → 14.8 s; a 60 s seek landed at 77.3 s and kept playing (82.3, 87.3 s). Screenshots after the seek show the episode full screen,
+  moving, with no ITVX page showing. Browser CPU while playing: ~63–75 % (top, all Chromium processes).
+
+**Not done yet:** subtitles (`SetSubtitle` does nothing), ITVX's "Skip intro" / next-episode prompts (`IPromptingEngine`), what
+happens at the end of an episode (the engine ends the stream if the URL changes or the video ends; not seen on the device), mid-roll
+adverts, and live channels.
