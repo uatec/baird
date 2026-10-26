@@ -340,5 +340,120 @@ namespace Baird.Tests.NewUi
             Assert.Equal(0.75, s.Progress(2, 1)!.Value, 3);
             Assert.Null(s.Progress(1));
         }
+
+        // ------------------------------------------------------------------ progressive results
+        /// <summary>A provider that answers only when released (Jellyfin 12's slow search), or never.</summary>
+        internal sealed class Gated : IMediaProvider
+        {
+            public string Name { get; }
+            private readonly Library _inner;
+            public readonly TaskCompletionSource Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            public int Searches;
+            public Gated(string name, Library inner) { Name = name; _inner = inner; }
+            public Task<IEnumerable<MediaItemData>> GetListingAsync() => _inner.GetListingAsync();
+            public async Task<IEnumerable<MediaItemData>> SearchAsync(string q, CancellationToken ct = default)
+            {
+                Interlocked.Increment(ref Searches);
+                await Gate.Task.WaitAsync(ct);
+                return await _inner.SearchAsync(q, ct);
+            }
+            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => _inner.GetChildrenAsync(id);
+            public Task<MediaItemData?> GetItemAsync(string id) => _inner.GetItemAsync(id);
+        }
+
+        /// <summary>Loki is on a slow Jellyfin (S1 with 2 episodes) and in Seerr; iPlayer answers at once.</summary>
+        internal static (CatalogueSearch Search, ShowData Shows, Gated Jellyfin, FakeSeerr Seerr) Slow(TimeSpan? timeout = null)
+        {
+            var jf = new Library("Jellyfin");
+            jf.Items.Add(Item("loki", "Loki", type: MediaType.Brand, details: "2021"));
+            jf.Children["loki"] = new() { Item("loki-1", "Glorious Purpose"), Item("loki-2", "The Variant") };
+            var ip = new Library("BBC iPlayer");
+            ip.Items.Add(Item("ip-lok", "Loki Odyssey", source: "BBC iPlayer"));
+            var gated = new Gated("Jellyfin", jf);
+            var seerr = new FakeSeerr();
+            seerr.Results.Add(new JellyseerrSearchResult { Id = 84958, MediaType = "tv", Title = "Loki", ReleaseDate = "2021-06-09", MediaInfoStatus = 5 });
+            seerr.Status[84958] = new JellyseerrMediaStatus(5, new[] { new JellyseerrSeason(1, 2, 5) }, Array.Empty<JellyseerrDownload>());
+            var data = new DataService(new List<IMediaProvider> { gated, ip }, new NoHistory(), new NoWatchlist(), new MediaItemCache(), new MockMediaDataCache());
+            var search = new CatalogueSearch(data, new MockEpgService(), seerr, timeout: timeout);
+            return (search, new ShowData(data, seerr, search), gated, seerr);
+        }
+
+        private static IEnumerable<SearchHit> All(SearchResults r) => (r.Top == null ? Array.Empty<SearchHit>() : new[] { r.Top }).Concat(r.Titles);
+
+        [Fact]
+        public async Task Results_arrive_source_by_source_and_say_checking_your_library_until_it_has_answered()
+        {
+            var (search, _, jf, _) = Slow();
+            var updates = new List<SearchResults>();
+            var run = search.SearchAsync("loki", Channels, DateTimeOffset.UtcNow, r => { lock (updates) updates.Add(r); });
+            await Task.Delay(150);
+            SearchResults early;
+            lock (updates) early = updates.Last();
+            Assert.Contains("Jellyfin", early.Pending);
+            var loki = All(early).Single(h => h.Title?.Name == "Loki");
+            Assert.EndsWith("Checking your library…", loki.Card.Sublabel);
+            Assert.Null(loki.Card.Badge); // never "not in your library" while the library is still answering
+            Assert.Contains(All(early), h => h.Title?.Name == "Loki Odyssey"); // the fast source is already in
+
+            jf.Gate.SetResult();
+            var final = await run;
+            Assert.Empty(final.Pending);
+            var t = All(final).Single(h => h.Title?.Name == "Loki").Title!;
+            Assert.Equal("loki", t.Best!.ItemId);
+            Assert.Equal(84958, t.Seerr!.TmdbId);
+            lock (updates) Assert.Same(final, updates.Last());
+        }
+
+        [Fact]
+        public async Task A_source_that_never_answers_is_given_up_on_after_its_timeout()
+        {
+            var (search, _, _, _) = Slow(TimeSpan.FromMilliseconds(300));
+            var final = await search.SearchAsync("loki", Channels, DateTimeOffset.UtcNow);
+            Assert.Empty(final.Pending);
+            var loki = All(final).Single(h => h.Title?.Name == "Loki");
+            Assert.Equal(Availability.Library, loki.Title!.Availability);
+        }
+
+        [Fact]
+        public async Task The_show_page_shows_seerr_at_once_and_its_library_episodes_when_the_library_answers()
+        {
+            var (_, shows, jf, _) = Slow();
+            var title = ShowData.FromCard(new HomeCard(CardKind.Series, "tmdb:tv:84958", "Loki", "2021", null, null, null, "Seerr", PlayVia.None));
+            var seen = new List<ShowDetails>();
+            var run = shows.DetailsAsync(title, d => { lock (seen) seen.Add(d); });
+            await Task.Delay(150);
+            ShowDetails first;
+            lock (seen) first = seen.Last();
+            Assert.True(first.CheckingLibrary);
+            Assert.Equal("Checking your library…", first.Summary);
+            jf.Gate.SetResult();
+            var d = await run;
+            Assert.False(d.CheckingLibrary);
+            Assert.Equal("loki-1", d.Seasons[0].Episodes[0].Source!.ItemId);
+            Assert.Equal("Play S1 E1", d.Next!.Value.Label);
+        }
+
+        [Fact]
+        public async Task The_show_page_reuses_a_search_still_running_for_the_same_name()
+        {
+            var (search, shows, jf, _) = Slow();
+            var running = search.SearchAsync("loki", Channels, DateTimeOffset.UtcNow);
+            var details = shows.DetailsAsync(ShowData.FromCard(new HomeCard(CardKind.Series, "tmdb:tv:84958", "Loki", "2021", null, null, null, "Seerr", PlayVia.None)));
+            await Task.Delay(100);
+            jf.Gate.SetResult();
+            await running; await details;
+            Assert.Equal(1, jf.Searches);
+        }
+
+        [Fact]
+        public async Task Browser_services_titles_carry_how_they_play()
+        {
+            var nf = new Library("Netflix");
+            nf.Items.Add(Item("nf-1", "Wednesday", source: "Netflix", stream: "https://www.netflix.com/watch/1"));
+            var data = new DataService(new List<IMediaProvider> { nf }, new NoHistory(), new NoWatchlist(), new MediaItemCache(), new MockMediaDataCache());
+            var r = await new CatalogueSearch(data, new MockEpgService(), null).SearchAsync("wednesday", Channels, DateTimeOffset.UtcNow);
+            Assert.Equal(PlayVia.Browser, r.Top!.Card.Via);
+            Assert.Equal("https://www.netflix.com/watch/1", r.Top.Card.StreamUrl);
+        }
     }
 }

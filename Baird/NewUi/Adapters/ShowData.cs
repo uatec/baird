@@ -40,18 +40,6 @@ namespace Baird.NewUi.Adapters
                 new[] { new TitleSource(CatalogueSearch.ServiceOf(c.Source), c.Id, c.Via, c.StreamUrl, c.Resume, c.Progress) });
         }
 
-        /// <summary>Fill in what's missing: where it streams (for a Seerr title) and its Seerr entry (for a library one).</summary>
-        public async Task<CatalogueTitle> ResolveAsync(CatalogueTitle t, CancellationToken ct = default)
-        {
-            if (t.Sources.Count == 0 && t.Seerr?.Status is null or 4 or 5)
-            {
-                var found = (await _search.LibraryTitlesAsync(t.Name, ct).ConfigureAwait(false)).FirstOrDefault(x => CatalogueSearch.Matches(x, t));
-                if (found != null) t = t with { Sources = found.Sources, ImageUrl = t.ImageUrl ?? found.ImageUrl, Synopsis = t.Synopsis ?? found.Synopsis, Year = t.Year ?? found.Year };
-            }
-            if (t.Seerr == null) t = t with { Seerr = await _search.FindInSeerrAsync(t, ct).ConfigureAwait(false) };
-            return t;
-        }
-
         private static readonly Regex Number = new(@"\d+", RegexOptions.Compiled);
 
         /// <summary>"Season 2" / "Series 2" → 2; "Specials" → 0; otherwise its position.</summary>
@@ -62,21 +50,52 @@ namespace Baird.NewUi.Adapters
             return m.Success && int.TryParse(m.Value, out var n) ? n : position;
         }
 
-        /// <summary>Everything the show page shows: resolved title, seasons and episodes merged with Seerr's state.</summary>
-        public async Task<ShowDetails> DetailsAsync(CatalogueTitle title, CancellationToken ct = default)
+        /// <summary>
+        /// Everything the show page shows: where it streams, its seasons and episodes merged with Seerr's state.
+        /// Reported as it's learnt (<paramref name="progress"/>, in order): a title known only to Seerr shows Seerr's
+        /// view at once, marked as still checking the library, then each library source that has it as it answers
+        /// (each provider is asked separately; a slow one doesn't hold the others back). Returns the final details.
+        /// </summary>
+        public async Task<ShowDetails> DetailsAsync(CatalogueTitle title, Action<ShowDetails>? progress = null, CancellationToken ct = default)
         {
-            var t = await ResolveAsync(title, ct).ConfigureAwait(false);
+            var t = title;
+            var searching = t.Sources.Count == 0 && t.Kind != TitleKind.Episode;
+            var sources = searching ? _search.SearchSources(t.Name, ct) : Array.Empty<(string Source, Task<IReadOnlyList<MediaItemViewModel>?> Results)>();
+
+            if (t.Seerr == null) t = t with { Seerr = await _search.FindInSeerrAsync(t, ct).ConfigureAwait(false) };
             var status = await StatusAsync(t, ct).ConfigureAwait(false);
             if (status != null && t.Seerr != null) t = t with { Seerr = t.Seerr with { Status = status.Status } };
 
+            var remaining = sources.Select(s => s.Results).ToList();
+            var found = new List<MediaItemViewModel>();
+            var details = await ComposeAsync(t, status, remaining.Count > 0, ct).ConfigureAwait(false);
+            progress?.Invoke(details);
+            while (remaining.Count > 0)
+            {
+                var done = await Task.WhenAny(remaining).ConfigureAwait(false);
+                remaining.Remove(done);
+                ct.ThrowIfCancellationRequested();
+                if (done.IsCompletedSuccessfully && done.Result is { } items) found.AddRange(items);
+                var match = CatalogueSearch.Group(found, Array.Empty<JellyseerrSearchResult>()).Titles.FirstOrDefault(x => CatalogueSearch.Matches(x, t));
+                var changed = match != null && !match.Sources.Select(s => s.ItemId).SequenceEqual(t.Sources.Select(s => s.ItemId));
+                if (changed) t = t with { Sources = match!.Sources, ImageUrl = t.ImageUrl ?? match.ImageUrl, Synopsis = t.Synopsis ?? match.Synopsis, Year = t.Year ?? match.Year };
+                if (!changed && remaining.Count > 0) continue;
+                details = changed ? await ComposeAsync(t, status, remaining.Count > 0, ct).ConfigureAwait(false) : details with { CheckingLibrary = false };
+                progress?.Invoke(details);
+            }
+            return details;
+        }
+
+        private async Task<ShowDetails> ComposeAsync(CatalogueTitle t, JellyseerrMediaStatus? status, bool checking, CancellationToken ct)
+        {
             if (t.Kind != TitleKind.Series)
             {
                 var film = t.Sources.Count > 0 || status?.Status == 5 ? SeasonState.Available
                     : status?.Status is 2 or 3 or 4 ? SeasonState.Requested : SeasonState.Missing;
-                return new ShowDetails(t, Array.Empty<Season>(), film, status?.Progress());
+                return new ShowDetails(t, Array.Empty<Season>(), film, status?.Progress(), checking);
             }
             var library = await LibrarySeasonsAsync(t, ct).ConfigureAwait(false);
-            return new ShowDetails(t, Merge(library, status, t.Best?.Service));
+            return new ShowDetails(t, Merge(library, status, t.Best?.Service), CheckingLibrary: checking);
         }
 
         private async Task<JellyseerrMediaStatus?> StatusAsync(CatalogueTitle t, CancellationToken ct)

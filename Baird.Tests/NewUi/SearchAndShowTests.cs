@@ -305,6 +305,75 @@ namespace Baird.Tests.NewUi
         private static CatalogueTitle ShowDataFor(string id, string name, string badge, CardKind kind = CardKind.Film) =>
             Baird.NewUi.Adapters.ShowData.FromCard(new HomeCard(kind, id, name, null, null, null, badge, "Seerr", PlayVia.None));
 
+        // ------------------------------------------------------------------ slow sources (Jellyfin 12)
+        private static (HomeScreenTests.Rig Rig, CatalogueTests.Gated Jellyfin) SlowRig()
+        {
+            var home = HomeScreenTests.Context();
+            var (search, shows, jf, _) = CatalogueTests.Slow();
+            home.Ctx.Search = search; home.Ctx.Shows = shows; home.Ctx.Channels = CatalogueTests.Channels; home.Ctx.Timers = home.Timers;
+            return (home, jf);
+        }
+
+        private static async Task Until(Func<bool> condition)
+        {
+            for (var i = 0; i < 200 && !condition(); i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(10); }
+            Assert.True(condition());
+        }
+
+        [AvaloniaFact]
+        public async Task Search_shows_fast_sources_first_checks_the_slow_library_and_keeps_the_lit_result_lit()
+        {
+            var (rig, jf) = SlowRig();
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            foreach (var ch in "loki") TypeLetter(s, ch);
+            rig.Timers.Advance(SearchScreen.Debounce);
+            var run = s.RunAsync();
+            await Until(() => s.ResultRows.SelectMany(r => r).Any(h => h.Title?.Name == "Loki") && s.ResultRows.SelectMany(r => r).Any(h => h.Title?.Name == "Loki Odyssey"));
+            var loki = s.ResultRows.SelectMany(r => r).Single(h => h.Title?.Name == "Loki");
+            Assert.EndsWith("Checking your library…", loki.Card.Sublabel);
+            Assert.Null(loki.Card.Badge);
+
+            // Light Loki Odyssey (iPlayer, already in), then let Jellyfin answer: Loki Odyssey stays lit.
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false);
+            for (var i = 0; i < 6 && ((Card)s.LitElement!).Data.Label != "Loki Odyssey"; i++) s.OnAction(UiAction.Down, false);
+            Assert.Equal("Loki Odyssey", ((Card)s.LitElement!).Data.Label);
+            jf.Gate.SetResult();
+            await run;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Loki Odyssey", ((Card)s.LitElement!).Data.Label);
+            var found = s.ResultRows.SelectMany(r => r).Single(h => h.Title?.Name == "Loki").Title!;
+            Assert.Equal("loki", found.Best!.ItemId);
+        }
+
+        [AvaloniaFact]
+        public async Task A_show_page_opened_while_the_library_is_checking_says_so_then_offers_play()
+        {
+            var (rig, jf) = SlowRig();
+            var page = new ShowPage(rig.Ctx, ShowDataFor("tmdb:tv:84958", "Loki", "", CardKind.Series));
+            Show(page.View);
+            await Until(() => page.Details != null);
+            Assert.Equal(new[] { "Checking your library…" }, page.ButtonLabels);
+            jf.Gate.SetResult();
+            await page.Loaded;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Play S1 E1", page.ButtonLabels[0]);
+        }
+
+        [AvaloniaFact]
+        public async Task A_netflix_result_plays_in_the_new_interface()
+        {
+            var rig = Build();
+            rig.World.IPlayer.Items.Add(CatalogueTests.Item("nf-1", "Wednesday", source: "Netflix", stream: "https://www.netflix.com/watch/1"));
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            await Type(s, rig, "wednesday");
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false);
+            s.OnAction(UiAction.Ok, false);
+            Assert.Equal("https://www.netflix.com/watch/1", rig.Home.Engine.Plays.Single().Url);
+            Assert.Empty(rig.Home.Toasts);
+        }
+
         [AvaloniaFact]
         public void Series_and_seerr_cards_on_home_open_their_page_instead_of_a_toast()
         {

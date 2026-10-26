@@ -80,8 +80,12 @@ namespace Baird.NewUi.Model
     }
 
     /// <summary>A show page's content: the title, its seasons (empty for a film), and Seerr's state of a film.</summary>
-    public sealed record ShowDetails(CatalogueTitle Title, IReadOnlyList<Season> Seasons, SeasonState FilmState = SeasonState.Missing, double? FilmDownload = null)
+    /// <remarks><see cref="CheckingLibrary"/>: some library source hasn't answered yet, so nothing is called missing.</remarks>
+    public sealed record ShowDetails(CatalogueTitle Title, IReadOnlyList<Season> Seasons, SeasonState FilmState = SeasonState.Missing, double? FilmDownload = null,
+        bool CheckingLibrary = false)
     {
+        public const string Checking = "Checking your library…";
+
         public IEnumerable<int> MissingSeasons => Seasons.Where(s => s.State == SeasonState.Missing).Select(s => s.Number);
 
         /// <summary>
@@ -110,6 +114,7 @@ namespace Baird.NewUi.Model
         {
             get
             {
+                if (CheckingLibrary && Title.Sources.Count == 0) return Checking;
                 if (Title.Kind != TitleKind.Series || Seasons.Count == 0)
                     return Title.Sources.Count > 0 ? Title.Where : FilmState switch
                     {
@@ -152,8 +157,11 @@ namespace Baird.NewUi.Model
     public sealed record SearchHit(HitKind Kind, HomeCard Card, CatalogueTitle? Title = null, double Score = 0);
 
     /// <summary>Search results grouped as the design has them: top result, shows and films, channels, on TV.</summary>
-    public sealed record SearchResults(string Query, SearchHit? Top, IReadOnlyList<SearchHit> Titles, IReadOnlyList<SearchHit> Channels, IReadOnlyList<SearchHit> OnTv)
+    /// <remarks><see cref="Pending"/>: the library sources still searching (results arrive source by source).</remarks>
+    public sealed record SearchResults(string Query, SearchHit? Top, IReadOnlyList<SearchHit> Titles, IReadOnlyList<SearchHit> Channels, IReadOnlyList<SearchHit> OnTv,
+        IReadOnlyList<string>? PendingSources = null)
     {
+        public IReadOnlyList<string> Pending => PendingSources ?? Array.Empty<string>();
         public static readonly SearchResults Empty = new("", null, Array.Empty<SearchHit>(), Array.Empty<SearchHit>(), Array.Empty<SearchHit>());
         public bool IsEmpty => Top == null && Titles.Count == 0 && Channels.Count == 0 && OnTv.Count == 0;
     }

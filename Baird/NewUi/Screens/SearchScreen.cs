@@ -162,12 +162,19 @@ namespace Baird.NewUi.Screens
             _queryText.Text = _query.Length > 0 ? _query : "Shows, films, channels, what's on";
             _queryText.Foreground = _query.Length > 0 ? T.Text : T.Text3;
             _queryText.FontSize = _query.Length > 0 ? 36 : 30;
-            _status.Text = _searching ? "Searching…"
+            _status.Text = _searching ? Waiting()
                 : _query.Trim().Length > 0 && _rows.Count == 0 && _shownQuery == _query.Trim() ? $"Nothing called “{_query.Trim()}” yet. Try fewer letters, or a channel number."
                 : "Digits and DEL on the remote type too. ▸ from the keyboard reaches the results.";
         }
 
-        /// <summary>Runs the search for the current query (the debounce has passed). Tests await it.</summary>
+        /// <summary>While results are still arriving: which library sources haven't answered yet.</summary>
+        private string Waiting()
+        {
+            var pending = _results.Query == _query.Trim() ? _results.Pending : Array.Empty<string>();
+            return pending.Count == 0 ? "Searching…" : $"Still checking {string.Join(", ", pending.Select(n => n == "TvHeadend" ? "Live TV" : n))}…";
+        }
+
+        /// <summary>Runs the search for the current query (the debounce has passed); results show as each source answers. Tests await it.</summary>
         public async Task RunAsync()
         {
             var q = _query.Trim();
@@ -178,9 +185,10 @@ namespace Baird.NewUi.Screens
             _searching = true; DrawField();
             try
             {
-                var r = await _ctx.Search.SearchAsync(q, _ctx.Channels, _ctx.Now(), cts.Token);
+                var r = await _ctx.Search.SearchAsync(q, _ctx.Channels, _ctx.Now(),
+                    partial => OnUi(() => { if (!cts.IsCancellationRequested && _query.Trim() == q) Show(partial); }), cts.Token);
                 if (cts.IsCancellationRequested) return;
-                OnUi(() => { if (_query.Trim() == q) { _searching = false; Show(r); } });
+                OnUi(() => { if (!cts.IsCancellationRequested && _query.Trim() == q) { _searching = false; Show(r); } });
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
@@ -194,6 +202,14 @@ namespace Baird.NewUi.Screens
 
         private SearchResults _results = SearchResults.Empty;
         private void Show(SearchResults r) { _results = r; Build(); }
+
+        /// <summary>Who a hit is, across updates (a title keeps its identity as more sources for it arrive).</summary>
+        private static string KeyOf(SearchHit h) => h.Title is { } t
+            ? Adapters.CatalogueSearch.IdentityOf(t)
+            : $"{h.Kind}:{h.Card.Id}";
+
+        private string _signature = "\0";
+        private string _builtFor = "\0";
 
         // ------------------------------------------------------------------ results
         private void Build()
@@ -216,6 +232,16 @@ namespace Baird.NewUi.Screens
                 if (_results.OnTv.Count > 0) sections.Add(("On TV", Shape.Wide, _results.OnTv.Take(9).ToList()));
             }
             _shownQuery = _results.Query.Length > 0 ? _results.Query : q.Length == 0 ? "" : _shownQuery;
+
+            // Nothing new (e.g. a source answered with nothing): leave the cards alone, so nothing flickers.
+            var signature = string.Join("|", sections.Select(sec => $"{sec.Title}:{string.Join(",", sec.Hits.Select(h => $"{KeyOf(h)}/{h.Card.Id}/{h.Card.Sublabel}/{h.Card.Badge}/{h.Card.Programme?.Id}"))}"));
+            if (signature == _signature) { DrawField(); return; }
+            _signature = signature;
+            // The same query with more results: keep the lit result lit wherever it has moved to (never yank focus).
+            var sameQuery = _shownQuery == _builtFor;
+            var litKey = sameQuery && _zone == Zone.Results && _rows.Count > 0 ? KeyOf(_rows[_pos.Row].Hits[_pos.Col]) : null;
+            var oldPos = _pos;
+            _builtFor = _shownQuery;
 
             _rows = new();
             var y = 0.0;
@@ -240,7 +266,17 @@ namespace Baird.NewUi.Screens
             _inner.Children.Clear();
             foreach (var r in _rows) _inner.Children.Add(r.View);
             _pos = (0, 0);
-            _memory.Clear();
+            if (!sameQuery) _memory.Clear();
+            if (sameQuery && _rows.Count > 0)
+            {
+                var at = _rows.SelectMany((r, i) => r.Hits.Select((h, j) => (i, j, h))).FirstOrDefault(x => KeyOf(x.h) == litKey);
+                if (litKey != null && at.h != null) _pos = (at.i, at.j);
+                else
+                {
+                    var row = Math.Min(oldPos.Row, _rows.Count - 1);
+                    _pos = (row, Math.Min(oldPos.Col, _rows[row].Els.Count - 1));
+                }
+            }
             if (_rows.Count == 0 && _zone == Zone.Results) _zone = Zone.Keyboard; // nothing to the right: stay on the keyboard
             DrawField();
             Draw();

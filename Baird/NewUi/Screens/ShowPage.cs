@@ -53,6 +53,8 @@ namespace Baird.NewUi.Screens
         private int _season; // index into Seasons
         private readonly CancellationTokenSource _life = new();
         private IDisposable? _poll;
+        private bool _moved;
+        private bool Checking => _details?.CheckingLibrary == true && _title.Sources.Count == 0;
 
         public Control View => _root;
         public Task Loaded { get; private set; }
@@ -101,7 +103,8 @@ namespace Baird.NewUi.Screens
             if (_ctx.Shows == null) return;
             try
             {
-                var d = await _ctx.Shows.DetailsAsync(_title, _life.Token);
+                // What Seerr knows shows at once; each library source that has it fills in as it answers.
+                var d = await _ctx.Shows.DetailsAsync(_title, partial => OnUi(() => Apply(partial)), _life.Token);
                 OnUi(() => Apply(d));
             }
             catch (OperationCanceledException) { }
@@ -116,8 +119,9 @@ namespace Baird.NewUi.Screens
 
         private void Apply(ShowDetails d)
         {
-            if (_life.IsCancellationRequested) return;
-            var first = _details == null;
+            if (_life.IsCancellationRequested || ReferenceEquals(d, _details)) return;
+            // Choose where to open until the viewer moves (more of the show may arrive as the library answers).
+            var first = !_moved;
             if (d.Title.ImageUrl != _title.ImageUrl) SetArt(d.Title.ImageUrl);
             _details = d; _title = d.Title;
             if (first && d.Seasons.Count > 0)
@@ -164,7 +168,7 @@ namespace Baird.NewUi.Screens
                     : t.Kind == TitleKind.Episode ? "Episode" : t.Best?.Duration is { TotalMinutes: > 0 } dur ? $"Film · {(int)dur.TotalHours} h {dur.Minutes} min" : "Film",
             }.Where(x => x != null));
             _body.Children.Add(new TextBlock { Text = meta, FontSize = T.Body, FontWeight = FontWeight.SemiBold, Foreground = T.Text2 });
-            var where = _details?.Summary ?? t.Where;
+            var where = _details?.Summary ?? (t.Sources.Count == 0 && t.Kind != TitleKind.Episode ? ShowDetails.Checking : t.Where);
             _body.Children.Add(new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -189,7 +193,7 @@ namespace Baird.NewUi.Screens
             _lower.IsVisible = _details is { Seasons.Count: > 0 };
             if (_details is not { Seasons.Count: > 0 } d) return;
             _tabs.Children.Clear();
-            _tabEls = d.Seasons.Select(s => new SeasonTab(s)).ToList();
+            _tabEls = d.Seasons.Select(s => new SeasonTab(s, Checking)).ToList();
             foreach (var tab in _tabEls) _tabs.Children.Add(tab);
             RenderEpisodes();
         }
@@ -211,7 +215,7 @@ namespace Baird.NewUi.Screens
             var badge = e.State switch
             {
                 EpisodeState.Requested => e.Download is { } d ? $"dl:{d * 100:0}" : "requested",
-                EpisodeState.Missing => "missing",
+                EpisodeState.Missing => Checking ? null : "missing",
                 _ => null,
             };
             var src = e.Source;
@@ -229,6 +233,12 @@ namespace Baird.NewUi.Screens
             if (d == null) return list;
             var t = d.Title;
             var canRequest = _ctx.Shows?.CanRequest == true && t.Seerr != null;
+            if (Checking)
+            {
+                // Never "not in your library" (nor Request) while a library source is still answering.
+                list.Add(new(ShowDetails.Checking, null, true, () => _ctx.Toast($"Still looking for {t.Name} in your library…")));
+                return list;
+            }
             if (t.Kind == TitleKind.Series && d.Seasons.Count > 0)
             {
                 if (d.Next is { } n) list.Add(new(n.Label, Icon.Play, true, () => _ctx.Activate(EpisodeCard(n.Episode))));
@@ -334,6 +344,7 @@ namespace Baird.NewUi.Screens
             {
                 case UiAction.Up when _pos.Row == 0: return false;
                 case UiAction.Up or UiAction.Down or UiAction.Left or UiAction.Right:
+                    _moved = true;
                     var before = _pos.Row;
                     var dir = a switch { UiAction.Up => Dir.Up, UiAction.Down => Dir.Down, UiAction.Left => Dir.Left, _ => Dir.Right };
                     _pos = FocusMath.MoveInRows(_rows.Select((_, i) => Math.Max(1, RowCount(i))).ToList(), _pos, dir, _memory);
@@ -375,7 +386,8 @@ namespace Baird.NewUi.Screens
                     _ctx.Toast(e.Download is { } d ? $"{e.Code} is downloading ({d * 100:0}%). It appears in Up next when it's ready." : $"{e.Code} is requested. It appears in Up next when it's ready.");
                     break;
                 default:
-                    if (_ctx.Shows?.CanRequest == true && _title.Seerr != null) OpenRequest(e.Season, e.Number);
+                    if (Checking) _ctx.Toast($"Still looking for {_title.Name} in your library…");
+                    else if (_ctx.Shows?.CanRequest == true && _title.Seerr != null) OpenRequest(e.Season, e.Number);
                     else _ctx.Toast($"{e.Code} isn't streaming, and Baird can't find {_title.Name} in Seerr to request it.");
                     break;
             }
@@ -429,13 +441,13 @@ namespace Baird.NewUi.Screens
         private readonly Season _season;
         private bool _lit, _current;
 
-        public SeasonTab(Season s)
+        public SeasonTab(Season s, bool checking = false)
         {
             _season = s;
             CornerRadius = new CornerRadius(18); Padding = new Thickness(22, 8);
             RenderTransformOrigin = RelativePoint.Center;
             _name = new TextBlock { Text = s.Label, FontSize = 24, FontWeight = FontWeight.SemiBold };
-            _state = new TextBlock { Text = s.StateLabel, FontSize = 18, FontWeight = FontWeight.SemiBold };
+            _state = new TextBlock { Text = checking && s.State == SeasonState.Missing ? "Checking…" : s.StateLabel, FontSize = 18, FontWeight = FontWeight.SemiBold };
             Child = new StackPanel { Children = { _name, _state } };
             Motion.Animate(this, T.Fast);
             Paint();
