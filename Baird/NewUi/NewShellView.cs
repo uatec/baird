@@ -30,6 +30,8 @@ namespace Baird.NewUi
         private readonly NewUiContext _ctx;
         private Key? _lastKey;
         private readonly TvLifecycle _life;
+        private readonly ICecService _cec;
+        private CecRemoteControl? _tvRemote;
         private readonly Key _voiceKey;
         private readonly VoiceSearch? _voice;
         private Intro? _intro = new();
@@ -307,6 +309,7 @@ namespace Baird.NewUi
                 };
                 av.Start();
             }
+            _cec = services.Cec;
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
                 inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn);
             _ = System.Threading.Tasks.Task.Run(() => services.Screensaver.InitializeAsync());
@@ -336,6 +339,8 @@ namespace Baird.NewUi
                 top.AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Tunnel);
                 top.AddHandler(PointerReleasedEvent, OnPointerReleased, RoutingStrategies.Tunnel);
                 top.AddHandler(PointerWheelChangedEvent, (_, e) => e.Handled = true, RoutingStrategies.Tunnel);
+                // The TV's own remote: keys it passes on over CEC arrive as the same key presses as the USB remote's.
+                _tvRemote = new CecRemoteControl(_cec, (key, down) => Dispatcher.UIThread.Post(() => global::Baird.Controls.SyntheticKeyInput.Raise(top, key, down)));
             }
         }
 
@@ -348,6 +353,8 @@ namespace Baird.NewUi
                 top.RemoveHandler(PointerPressedEvent, OnPointerPressed);
                 top.RemoveHandler(PointerReleasedEvent, OnPointerReleased);
             }
+            _tvRemote?.Dispose();
+            _tvRemote = null;
             base.OnDetachedFromVisualTree(e);
         }
 

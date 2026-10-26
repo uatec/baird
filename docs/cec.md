@@ -135,9 +135,10 @@ volume keys come back. `configure_pi.sh` checks the file it writes.
 
 When Baird is the input on screen, the TV passes most keys from its own remote on over CEC as *User
 Control Pressed* (`0x44`) / *Released* (`0x45`) frames addressed to Baird. `CecService` raises
-`UserControlReceived` for each, and `CecRemoteControl` turns them into the key presses Baird already
+`UserControlReceived` for each, and `CecRemoteControl` (wired in both the classic `MainView` and the
+new UI's `NewShellView`) turns them into the key presses Baird already
 handles: arrows, OK (Select) → Enter, Exit → BrowserBack, Root Menu → BrowserHome, 0–9, Channel Up/Down →
-PageUp/PageDown, EPG → G, play/pause/stop, rewind/fast forward → Left/Right, subtitles → Apps. Power,
+PageUp/PageDown, EPG → G, play/pause/stop, rewind/fast forward → Left/Right. Power,
 volume and mute are left to the TV. Keys are raised through `SyntheticKeyInput`, which also runs
 KeyBindings (channel up/down), as Avalonia's keyboard device does. A key with no Released within 550 ms
 is treated as let go (CEC 1.4 §13.13). A key from the TV while inputs are blocked unblocks them — the TV
