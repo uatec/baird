@@ -26,6 +26,12 @@ namespace Baird.Tests.Controls
             window.Show();
             window.UpdateLayout();
             Dispatcher.UIThread.RunJobs();
+            // Hit-testing reads the composited scene, which only updates on a render tick (a slow CI runner may not have ticked yet).
+            for (var i = 0; i < 3; i++)
+            {
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+            }
             return (window, target);
         }
 
@@ -48,7 +54,9 @@ namespace Baird.Tests.Controls
             window.MouseUp(Centre, MouseButton.Left);
             Dispatcher.UIThread.RunJobs();
 
-            Assert.NotSame(target, window.InputHitTest(Centre));
+            var hit = window.InputHitTest(Centre);
+            Assert.NotNull(hit);
+            Assert.NotSame(target, hit);
             Assert.False(target.IsPointerOver);
             Assert.Equal(1, presses);
         }
