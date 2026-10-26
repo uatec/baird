@@ -23,7 +23,15 @@ systemctl --user daemon-reload
 
 # 3. Enable and (re)start the app and the updater timer. The updater service
 #    itself is not enabled; the timer triggers it.
+# Automatic updates can be paused: touch ~/.baird/auto-update-paused (updates on demand, e.g. Settings → Update,
+# still work, and leave the timer off).
+PAUSED_MARKER="$HOME/.baird/auto-update-paused"
 for unit in baird.service baird-updater.timer; do
+    if [ "$unit" = baird-updater.timer ] && [ -e "$PAUSED_MARKER" ]; then
+        systemctl --user disable --now "$unit" 2>/dev/null || true
+        echo "Automatic updates are paused ($PAUSED_MARKER): $unit left off."
+        continue
+    fi
     systemctl --user enable "$unit"
     # Clear any start-limit-hit / failed state, otherwise restart is refused.
     systemctl --user reset-failed "$unit" 2>/dev/null || true

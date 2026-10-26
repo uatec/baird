@@ -102,7 +102,7 @@ namespace Baird.NewUi.Screens
         private readonly ListRow? _layout;
 
         public SettingsScreen(Func<UiMode> getMode, Action<UiMode> setModeAndRestart, double scale, Action<double> setScale,
-            Func<Model.GuideLayout>? getGuideLayout = null, Action<Model.GuideLayout>? setGuideLayout = null) : base("Settings", null)
+            Func<Model.GuideLayout>? getGuideLayout = null, Action<Model.GuideLayout>? setGuideLayout = null, UpdateService? updates = null) : base("Settings", null)
         {
             _getMode = getMode; _setModeAndRestart = setModeAndRestart; _scale = scale; _setScale = setScale;
             _getLayout = getGuideLayout; _setLayout = setGuideLayout;
@@ -110,7 +110,31 @@ namespace Baird.NewUi.Screens
             _size = new ListRow("Interface size", $"‹  {_scale * 100:0}%  ›");
             var rows = new List<ListRow> { _interface, _size };
             if (_getLayout != null && _setLayout != null) rows.Add(_layout = new ListRow("Guide layout", LayoutText(_getLayout())));
+            _updates = updates;
+            if (updates != null) { rows.Add(_update = new ListRow("Software update", $"{updates.Current} · checking…")); _ = CheckAsync(); }
             SetRows(rows);
+        }
+
+        private readonly UpdateService? _updates;
+        private readonly ListRow? _update;
+        private string _updateText = "";
+        private string? _latest;
+        private bool _updating, _checking;
+        public string UpdateText => _updateText;
+
+        private void SetUpdate(string text) { _updateText = text; if (_update != null) _update.Value = text; }
+
+        private async System.Threading.Tasks.Task CheckAsync()
+        {
+            if (_updates == null || _checking) return;
+            _checking = true;
+            SetUpdate($"{_updates.Current} · checking…");
+            _latest = await _updates.LatestAsync();
+            _checking = false;
+            if (_updating) return;
+            if (_latest == null) SetUpdate($"{_updates.Current} · couldn't check for updates · OK to try again");
+            else if (UpdateService.IsNewer(_latest, _updates.Current)) SetUpdate($"{_updates.Current} · {_latest} available · OK to update");
+            else SetUpdate($"{_updates.Current} · up to date · OK to check again");
         }
 
         private static string LayoutText(Model.GuideLayout l) => l == Model.GuideLayout.Columns ? "‹  Channels across  ›" : "‹  Channels down  ›";
@@ -122,6 +146,18 @@ namespace Baird.NewUi.Screens
 
         public override bool OnAction(UiAction a, bool repeat)
         {
+            if (_update != null && Index < Rows.Count && Rows[Index] == _update && a == UiAction.Ok)
+            {
+                if (_updating) return true;
+                if (_updates != null && UpdateService.IsNewer(_latest, _updates.Current))
+                {
+                    _updating = true;
+                    SetUpdate($"Updating to {_latest}… Baird restarts by itself when it's ready");
+                    _updates.StartUpdate();
+                }
+                else _ = CheckAsync();
+                return true;
+            }
             if (Index == 0 && a is UiAction.Left or UiAction.Right or UiAction.Ok)
             {
                 _interface.Value = "Switching to Classic… Baird restarts";

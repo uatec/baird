@@ -84,7 +84,7 @@ namespace Baird.NewUi
                     {
                         ApplyScale(v);
                         IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "NewUiSize", v.ToString("0.0", CultureInfo.InvariantCulture));
-                    }, () => _ctx.GuideLayout, l => _ctx.SetGuideLayout(l)),
+                    }, () => _ctx.GuideLayout, l => _ctx.SetGuideLayout(l), UpdateService.ForThisMachine(config)),
                 },
                 CreatePage: p => p.Name == "show" && p.Params is Model.CatalogueTitle t ? new ShowPage(_ctx, t) : new EmptyScreen(),
                 CreateOverlay: o => o.Name switch
@@ -259,6 +259,22 @@ namespace Baird.NewUi
                     _shell.GoPlace(Place.Search);
                     if (_shell.PlaceScreen(Place.Search) is SearchScreen search) search.SetQuery(text);
                 }, _shell.Toast);
+            // Motion budget measurement: BAIRD_AV_LOG=true logs dropped frames every 5 s with what's on screen.
+            if (bool.TryParse(config["BAIRD_AV_LOG"], out var avLog) && avLog)
+            {
+                long? lastVo = null, lastDec = null;
+                var av = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                av.Tick += async (_, _) =>
+                {
+                    if (playback.Current == null || router.ActiveBrowser != null) { lastVo = lastDec = null; return; }
+                    var st = await mpv.SampleAvStatsAsync();
+                    if (st == null) return;
+                    var where = nav.State.Overlay?.Name ?? (nav.State.Pages.Count > 0 ? nav.State.Pages[^1].Name : nav.State.AtVideo ? "video" : nav.State.Place.ToString());
+                    Console.WriteLine($"[AvLog] screen={where} vo_drops={st.VoDrops - (lastVo ?? st.VoDrops)} dec_drops={st.DecoderDrops - (lastDec ?? st.DecoderDrops)} total_vo={st.VoDrops} fps={st.EstimatedVideoFps:0.0}");
+                    lastVo = st.VoDrops; lastDec = st.DecoderDrops;
+                };
+                av.Start();
+            }
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
                 inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn);
             _ = System.Threading.Tasks.Task.Run(() => services.Screensaver.InitializeAsync());
