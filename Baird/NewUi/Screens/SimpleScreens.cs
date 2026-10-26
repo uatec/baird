@@ -97,13 +97,27 @@ namespace Baird.NewUi.Screens
         private readonly ListRow _interface, _size;
         private double _scale;
         private readonly Action<double> _setScale;
+        private readonly Func<Model.GuideLayout>? _getLayout;
+        private readonly Action<Model.GuideLayout>? _setLayout;
+        private readonly ListRow? _layout;
 
-        public SettingsScreen(Func<UiMode> getMode, Action<UiMode> setModeAndRestart, double scale, Action<double> setScale) : base("Settings", null)
+        public SettingsScreen(Func<UiMode> getMode, Action<UiMode> setModeAndRestart, double scale, Action<double> setScale,
+            Func<Model.GuideLayout>? getGuideLayout = null, Action<Model.GuideLayout>? setGuideLayout = null) : base("Settings", null)
         {
             _getMode = getMode; _setModeAndRestart = setModeAndRestart; _scale = scale; _setScale = setScale;
+            _getLayout = getGuideLayout; _setLayout = setGuideLayout;
             _interface = new ListRow("Interface", "New  ·  ◂ ▸ to switch to Classic");
             _size = new ListRow("Interface size", $"‹  {_scale * 100:0}%  ›");
-            SetRows(new[] { _interface, _size });
+            var rows = new List<ListRow> { _interface, _size };
+            if (_getLayout != null && _setLayout != null) rows.Add(_layout = new ListRow("Guide layout", LayoutText(_getLayout())));
+            SetRows(rows);
+        }
+
+        private static string LayoutText(Model.GuideLayout l) => l == Model.GuideLayout.Columns ? "‹  Channels across  ›" : "‹  Channels down  ›";
+
+        public override void OnShow()
+        {
+            if (_layout != null) _layout.Value = LayoutText(_getLayout!()); // the guide's strip may have switched it
         }
 
         public override bool OnAction(UiAction a, bool repeat)
@@ -119,6 +133,13 @@ namespace Baird.NewUi.Screens
                 _scale = Math.Clamp(Math.Round(_scale + (a == UiAction.Left ? -0.1 : 0.1), 1), 0.8, 1.3);
                 _size.Value = $"‹  {_scale * 100:0}%  ›";
                 _setScale(_scale);
+                return true;
+            }
+            if (Index == 2 && _layout != null && a is UiAction.Left or UiAction.Right or UiAction.Ok)
+            {
+                var next = _getLayout!() == Model.GuideLayout.Rows ? Model.GuideLayout.Columns : Model.GuideLayout.Rows;
+                _setLayout!(next);
+                _layout.Value = LayoutText(next);
                 return true;
             }
             return base.OnAction(a, repeat);

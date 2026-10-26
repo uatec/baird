@@ -13,6 +13,7 @@ using Baird.NewUi.Core;
 using Baird.NewUi.Model;
 using Baird.NewUi.Playback;
 using Baird.NewUi.Screens;
+using Baird.Services;
 using Xunit;
 
 namespace Baird.Tests.NewUi
@@ -22,7 +23,7 @@ namespace Baird.Tests.NewUi
         // 18:10 local: the window starts at 17:30.
         private static readonly DateTimeOffset Now = new(new DateTime(2026, 10, 26, 18, 10, 0, DateTimeKind.Local));
 
-        private sealed record Rig(GuideScreen Guide, NewUiContext Ctx, PlaybackControllerTests.FakeTimers Timers, List<string> Toasts, List<Channel> Tuned, GuideModel Model);
+        private sealed record Rig(GuideScreen Guide, NewUiContext Ctx, PlaybackControllerTests.FakeTimers Timers, List<string> Toasts, List<Channel> Tuned, GuideModel Model, List<GuideLayout> Saved);
 
         /// <summary>Channels numbered 101…; every row is 30-minute programmes, except a 20-minute offset on odd rows and no EPG on rows listed.</summary>
         internal static GuideModel Model(int channels, params int[] noEpg)
@@ -45,7 +46,7 @@ namespace Baird.Tests.NewUi
             return new GuideModel(start, end, list);
         }
 
-        private static async Task<Rig> Shown(GuideModel? model = null)
+        private static async Task<Rig> Shown(GuideModel? model = null, GuideLayout layout = GuideLayout.Rows, bool load = true)
         {
             model ??= Model(20, 3);
             var engine = new PlaybackControllerTests.FakeEngine();
@@ -54,16 +55,22 @@ namespace Baird.Tests.NewUi
             var ctx = new NewUiContext(new Navigator(), playback, HomeDataTests.Build().Home, () => Now);
             var toasts = new List<string>();
             var tuned = new List<Channel>();
+            var saved = new List<GuideLayout>();
             ctx.Toast = toasts.Add;
             ctx.Tuning += tuned.Add;
+            ctx.SetGuideLayout(layout, save: false);
+            ctx.SaveGuideLayout = saved.Add; // never the real ~/.baird/config.ini
             var guide = new GuideScreen(ctx, _ => Task.FromResult(model), timers);
             ctx.Nav.SetPlace(Place.LiveTv);
             var w = new Window { Width = 1920, Height = 1080, Content = guide.View };
             w.Show();
-            await guide.LoadAsync();
-            guide.OnShow();
+            if (load)
+            {
+                await guide.LoadAsync();
+                guide.OnShow();
+            }
             Dispatcher.UIThread.RunJobs();
-            return new Rig(guide, ctx, timers, toasts, tuned, model);
+            return new Rig(guide, ctx, timers, toasts, tuned, model, saved);
         }
 
         private static async Task Wait(int ms) { var until = DateTime.UtcNow.AddMilliseconds(ms); while (DateTime.UtcNow < until) { Dispatcher.UIThread.RunJobs(); await Task.Delay(15); } }
@@ -105,13 +112,52 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public async Task Up_off_the_top_row_is_left_to_the_shell()
+        public async Task Up_off_the_top_row_lights_the_strip_then_is_left_to_the_shell()
         {
             var r = await Shown();
-            Assert.False(r.Guide.OnAction(UiAction.Up, false));
             Press(r.Guide, UiAction.Down);
-            Assert.True(r.Guide.OnAction(UiAction.Up, false));
+            Press(r.Guide, UiAction.Up);
             Assert.Equal(0, r.Guide.Pos.Ch);
+            Assert.False(r.Guide.StripFocused);
+            Press(r.Guide, UiAction.Up);
+            Assert.True(r.Guide.StripFocused);
+            Assert.Contains("focused", r.Guide.LitElement!.Classes);
+            Assert.DoesNotContain(r.Guide.Cells, c => c.Lit); // one lit thing: the strip item
+            Assert.False(r.Guide.OnAction(UiAction.Up, false)); // the shell lights the tab bar
+            Assert.False(r.Guide.StripFocused);
+        }
+
+        [AvaloniaFact]
+        public async Task The_strip_jumps_in_time_and_down_returns_to_the_grid()
+        {
+            var r = await Shown();
+            Press(r.Guide, UiAction.Up); // the strip, on "Now"
+            Press(r.Guide, UiAction.Right); // "This evening": 19:00
+            Press(r.Guide, UiAction.Ok);
+            Assert.False(r.Guide.StripFocused);
+            Assert.Equal(new DateTime(2026, 10, 26, 19, 0, 0), r.Guide.Lit.Start.LocalDateTime);
+            Press(r.Guide, UiAction.Up);
+            Press(r.Guide, UiAction.Down);
+            Assert.False(r.Guide.StripFocused);
+            Assert.Single(r.Guide.Cells, c => c.Lit);
+        }
+
+        [AvaloniaFact]
+        public async Task The_strip_switches_the_layout_keeping_your_place_and_saves_it()
+        {
+            var r = await Shown();
+            Press(r.Guide, UiAction.Right, 3);
+            var lit = r.Guide.Lit;
+            Press(r.Guide, UiAction.Up); // the top row already: the strip
+            Press(r.Guide, UiAction.Right, 10); // the last item: the layout switch
+            Press(r.Guide, UiAction.Ok);
+            Assert.Equal(GuideLayout.Columns, r.Guide.Layout);
+            Assert.Equal(GuideLayout.Columns, r.Ctx.GuideLayout);
+            Assert.Equal(new[] { GuideLayout.Columns }, r.Saved);
+            Assert.Contains("channels across", r.Toasts.Last());
+            Press(r.Guide, UiAction.Down);
+            Assert.Equal(lit.Id, r.Guide.Lit.Id);
+            Assert.Single(r.Guide.Cells, c => c.Lit);
         }
 
         [AvaloniaFact]
@@ -149,14 +195,77 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public async Task Ok_on_a_later_programme_says_when_it_is_on_and_does_not_tune()
+        public async Task Ok_on_a_later_programme_sets_a_reminder_with_a_bell_and_ok_again_cancels_it()
         {
             var r = await Shown();
             Press(r.Guide, UiAction.Right, 2);
             Press(r.Guide, UiAction.Ok);
             Assert.Empty(r.Tuned);
-            Assert.Contains("Show 0.3", r.Toasts.Single());
+            Assert.Contains("Reminder set: Show 0.3", r.Toasts.Single());
             Assert.Contains("19:00", r.Toasts.Single());
+            Assert.True(r.Ctx.Reminders.Has("ch0-p3"));
+            Assert.True(r.Guide.Cells.Single(c => c.Programme.Id == "ch0-p3").Bell);
+            Assert.False(r.Guide.Cells.Single(c => c.Programme.Id == "ch0-p2").Bell);
+            Press(r.Guide, UiAction.HoldOk);
+            Assert.Contains("Cancel reminder", r.Guide.ActionLabels);
+            Press(r.Guide, UiAction.Back);
+            Press(r.Guide, UiAction.Ok);
+            Assert.False(r.Ctx.Reminders.Has("ch0-p3"));
+            Assert.Contains("Reminder cancelled", r.Toasts.Last());
+            Assert.False(r.Guide.Cells.Single(c => c.Programme.Id == "ch0-p3").Bell);
+        }
+
+        [AvaloniaFact]
+        public async Task Columns_move_channels_with_left_right_time_with_up_down_and_an_hour_with_pg()
+        {
+            var r = await Shown(layout: GuideLayout.Columns);
+            Assert.Equal(GuideLayout.Columns, r.Guide.Layout);
+            Assert.Equal("Show 0.1", r.Guide.Lit.Title);
+            Press(r.Guide, UiAction.Down); // later
+            Assert.Equal("Show 0.2", r.Guide.Lit.Title);
+            Press(r.Guide, UiAction.Right, 2); // two channels across, same time
+            Assert.Equal("Show 2.2", r.Guide.Lit.Title);
+            Press(r.Guide, UiAction.PageDown); // an hour on: 19:30
+            Assert.Equal("Show 2.4", r.Guide.Lit.Title);
+            Press(r.Guide, UiAction.PageUp, 3); // never before the window
+            Assert.Equal("Show 2.0", r.Guide.Lit.Title);
+            Press(r.Guide, UiAction.Left, 5);
+            Assert.Equal(0, r.Guide.Pos.Ch);
+            Press(r.Guide, UiAction.Up); // already the earliest: the strip
+            Assert.True(r.Guide.StripFocused);
+            Assert.False(r.Guide.OnAction(UiAction.Up, false));
+        }
+
+        [AvaloniaFact]
+        public async Task Columns_realise_only_the_visible_window_and_keep_the_lit_cell_on_screen()
+        {
+            var r = await Shown(Model(150), GuideLayout.Columns);
+            Assert.InRange(r.Guide.RealisedCells, 1, 120);
+            foreach (var a in new[] { UiAction.Right, UiAction.Right, UiAction.Right, UiAction.Right, UiAction.Right, UiAction.Down, UiAction.Down, UiAction.Down, UiAction.Down, UiAction.PageDown })
+            {
+                Press(r.Guide, a);
+                await Wait(550);
+                var m = r.Guide.LitElement!.TransformToVisual(r.Guide.View)!.Value;
+                var tl = new Point(0, 0).Transform(m);
+                Assert.InRange(tl.X, GuideGeometry.Columns.ChStart - 1, 1920 - GuideGeometry.Columns.ChSize + 20);
+                Assert.InRange(tl.Y, GuideGeometry.Columns.TimeStart - 1, 1080 - 60);
+            }
+            Assert.InRange(r.Guide.RealisedCells, 1, 120);
+            Assert.Single(r.Guide.Cells, c => c.Lit);
+        }
+
+        [AvaloniaFact]
+        public async Task Focus_lights_a_channel_at_a_time_before_or_after_loading()
+        {
+            var early = await Shown(load: false);
+            early.Guide.Focus("ch7", Now);
+            await early.Guide.LoadAsync();
+            Assert.Equal((7, "Show 7.1"), (early.Guide.Pos.Ch, early.Guide.Lit.Title)); // 17:50–18:20 covers 18:10
+
+            var r = await Shown();
+            Press(r.Guide, UiAction.Right, 4);
+            r.Guide.Focus("ch12", Now);
+            Assert.Equal((12, "Show 12.1"), (r.Guide.Pos.Ch, r.Guide.Lit.Title));
         }
 
         [AvaloniaFact]
@@ -257,6 +366,49 @@ namespace Baird.Tests.NewUi
             Assert.True(GuideScreen.ShowsPreview(nav.State, playing: true));
             nav.SetPlace(Place.Home);
             Assert.False(GuideScreen.ShowsPreview(nav.State, playing: true));
+        }
+
+        [AvaloniaFact]
+        public void Settings_switches_the_guide_layout_with_left_and_right()
+        {
+            var layout = GuideLayout.Rows;
+            var set = new List<GuideLayout>();
+            var s = new SettingsScreen(() => UiMode.New, _ => { }, 1.0, _ => { }, () => layout, l => { layout = l; set.Add(l); });
+            s.OnAction(UiAction.Down, false);
+            s.OnAction(UiAction.Down, false);
+            s.OnAction(UiAction.Right, false);
+            Assert.Equal(GuideLayout.Columns, layout);
+            s.OnAction(UiAction.Left, false);
+            Assert.Equal(new[] { GuideLayout.Columns, GuideLayout.Rows }, set);
+        }
+
+        [AvaloniaFact]
+        public async Task A_layout_change_from_settings_relays_the_guide_out_in_place()
+        {
+            var r = await Shown();
+            Press(r.Guide, UiAction.Down, 4);
+            var lit = r.Guide.Lit;
+            r.Ctx.SetGuideLayout(GuideLayout.Columns);
+            Assert.Equal(GuideLayout.Columns, r.Guide.Layout);
+            Assert.Equal(lit.Id, r.Guide.Lit.Id);
+            Assert.Single(r.Guide.Cells, c => c.Lit);
+            Assert.Equal(new[] { GuideLayout.Columns }, r.Saved);
+        }
+
+        [AvaloniaFact]
+        public async Task This_channels_schedule_opens_the_guide_lit_on_the_playing_channel_at_now()
+        {
+            var r = await Shown();
+            Press(r.Guide, UiAction.Right, 6); // somewhere else entirely
+            r.Ctx.PlayLive(r.Model.Channels[9].Channel);
+            var nav = r.Ctx.Nav;
+            ((Window)TopLevel.GetTopLevel(r.Guide.View)!).Content = null; // the shell hosts it now
+            var shell = new Baird.NewUi.Shell.Shell(new Baird.NewUi.Shell.ShellDeps(new Border(), nav,
+                p => p == Place.LiveTv ? r.Guide : new EmptyScreen(), _ => new EmptyScreen(), _ => new EmptyScreen(), (_, _) => true, () => "x"));
+            GuideScreen.OpenSchedule(shell, "ch9", Now);
+            Assert.Equal(Place.LiveTv, nav.State.Place);
+            Assert.False(nav.State.AtVideo);
+            Assert.Equal((9, "Show 9.1"), (r.Guide.Pos.Ch, r.Guide.Lit.Title)); // 17:50–18:20 covers 18:10
         }
 
         [AvaloniaFact]
