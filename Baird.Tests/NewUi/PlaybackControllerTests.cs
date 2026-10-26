@@ -11,7 +11,7 @@ namespace Baird.Tests.NewUi
 {
     public class PlaybackControllerTests
     {
-        private sealed class FakeEngine : IPlaybackEngine
+        internal sealed class FakeEngine : IPlaybackEngine
         {
             public readonly List<(string Url, double? Start)> Plays = new();
             public readonly List<string> Calls = new();
@@ -35,7 +35,7 @@ namespace Baird.Tests.NewUi
         }
 
         /// <summary>A manual clock: timers fire when time is advanced past them.</summary>
-        private sealed class FakeTimers : ITimers
+        internal sealed class FakeTimers : ITimers
         {
             public DateTimeOffset Now = DateTimeOffset.UnixEpoch;
             private readonly List<(DateTimeOffset At, Action Run, bool[] Cancelled)> _pending = new();

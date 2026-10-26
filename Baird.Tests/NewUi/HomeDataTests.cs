@@ -21,7 +21,7 @@ namespace Baird.Tests.NewUi
             Source = source, ChannelNumber = number, Type = type, Synopsis = "s", Subtitle = subtitle, Duration = TimeSpan.FromMinutes(50),
         };
 
-        private sealed class History : IHistoryService
+        internal sealed class History : IHistoryService
         {
             public readonly List<HistoryItem> Items = new();
             public readonly List<(string Id, TimeSpan Pos)> Upserts = new();
@@ -58,7 +58,7 @@ namespace Baird.Tests.NewUi
             public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
         }
 
-        private static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false)
+        internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false)
         {
             var items = new[]
             {
