@@ -706,8 +706,8 @@ namespace Baird.ViewModels
         /// <summary>
         /// BAIRD_AUTOTEST=itvx-core: the ITVX core journey, as a viewer does it. Search for BAIRD_AUTOTEST_ITVX_QUERY (default "Vera") on
         /// the Search tab, open the first ITVX programme, its first series folder (or the one labelled BAIRD_AUTOTEST_ITVX_SERIES), play its
-        /// first episode through Baird's normal player (signing in if ITVX asks) and wait until a video plays. Then samples the player every
-        /// 10 s for a minute and seeks forward once. Logs "[AutoTest] RESULT core=...". Does nothing unless set.
+        /// first episode through Baird's normal player (signing in if ITVX asks) and wait until a video plays. Then waits up to 4 minutes for
+        /// the adverts to end, samples the programme's position for 30 s and seeks forward 60 s once. Logs "[AutoTest] RESULT core=...". Does nothing unless set.
         /// </summary>
         private async Task RunItvxCoreAutoTestAsync()
         {
@@ -784,16 +784,26 @@ namespace Baird.ViewModels
                     return;
                 }
                 var playedAfter = playClock.Elapsed.TotalSeconds;
-                for (var i = 0; i < 6; i++)
+                // Free ITVX starts with adverts (minutes of them): wait for the programme, then check its position moves and a seek lands.
+                var advertClock = System.Diagnostics.Stopwatch.StartNew();
+                while (engine.IsAdvertPlaying && advertClock.Elapsed < TimeSpan.FromMinutes(4))
                 {
                     await Task.Delay(TimeSpan.FromSeconds(10));
+                    Console.WriteLine($"[AutoTest] ITVX player: {engine.State}, advert {engine.IsAdvertPlaying} ({advertClock.Elapsed.TotalSeconds:F0} s), length {engine.DurationSeconds:F0} s.");
+                }
+                Console.WriteLine($"[AutoTest] Adverts before the programme: {advertClock.Elapsed.TotalSeconds:F0} s{(engine.IsAdvertPlaying ? " (still playing)" : "")}.");
+                var before = engine.TimePositionSeconds;
+                for (var i = 0; i < 6; i++)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5));
                     Console.WriteLine($"[AutoTest] ITVX player: {engine.State}, position {engine.TimePositionSeconds:F1} s of {engine.DurationSeconds:F0} s, advert {engine.IsAdvertPlaying}.");
-                    if (i == 3 && !engine.IsAdvertPlaying)
+                    if (i == 2 && !engine.IsAdvertPlaying)
                     {
-                        Console.WriteLine("[AutoTest] Seeking forward 60 s.");
+                        Console.WriteLine($"[AutoTest] Seeking forward 60 s from {engine.TimePositionSeconds:F1} s.");
                         engine.SeekRelative(60);
                     }
                 }
+                Console.WriteLine($"[AutoTest] Programme position moved from {before:F1} s to {engine.TimePositionSeconds:F1} s (a 60 s seek included).");
                 Console.WriteLine($"[AutoTest] RESULT core=PLAYING title=\"{programme.Name} - {episode.Name}\" play_after={playedAfter:F1}s duration={engine.DurationSeconds:F0}s position={engine.TimePositionSeconds:F0}s");
             }
             catch (Exception ex)

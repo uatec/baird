@@ -416,6 +416,8 @@ namespace Baird.Tests.Services
             b.LastState = FakeItvxBrowser.State(Episode, signedIn: true, video: true, paused: true, duration: 4990.8, advert: true, advertTime: 1.3);
 
             await engine.PlayAsync(Episode);
+            Assert.True(engine.IsAdvertPlaying); // known as soon as it plays, before the first poll
+            Assert.Equal(4990.8, engine.DurationSeconds);
             await engine.PollOnceAsync();
 
             Assert.Equal(PlaybackState.Playing, engine.State); // an advert plays: not paused

@@ -218,6 +218,8 @@ namespace Baird.Services
                 SetStatus(state.AdvertPlaying ? "Advert…" : "Loading the video…");
                 if (time > 0.1 && previous is { } p && time > p)
                 {
+                    _advert = state.AdvertPlaying; // known from the start, not only from the first poll
+                    if (state.Duration > 0) Volatile.Write(ref _duration, state.Duration);
                     Console.WriteLine($"[ItvxEngine] The video plays ({p:F2} s -> {time:F2} s, programme length {state.Duration:F0} s, advert {state.AdvertPlaying}).");
                     return null;
                 }
@@ -333,6 +335,7 @@ namespace Baird.Services
         {
             _state = PlaybackState.Playing;
             SetStatus("Playing.");
+            if (DurationSeconds > 0) DurationChanged?.Invoke(this, DurationSeconds);
             FileLoaded?.Invoke(this, EventArgs.Empty);
             StartPolling();
         }
