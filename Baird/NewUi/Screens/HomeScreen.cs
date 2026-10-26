@@ -79,7 +79,17 @@ namespace Baird.NewUi.Screens
             _root.DetachedFromVisualTree += (_, _) => refresh.Stop();
         }
 
+        private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        /// <summary>Completes once Home's rows are on screen (the start-up animation waits for it).</summary>
+        public Task Ready => _ready.Task;
+
         public async Task LoadAsync()
+        {
+            try { await LoadRowsAsync(); }
+            catch (Exception ex) { Console.WriteLine($"[Home] Loading failed: {ex.Message}"); _ready.TrySetResult(); }
+        }
+
+        private async Task LoadRowsAsync()
         {
             var now = _ctx.Now();
             var upNext = _ctx.Home.UpNextAsync();
@@ -95,6 +105,7 @@ namespace Baird.NewUi.Screens
                 ("Your watchlist", "In your watchlist", CardShape.Poster, watch.Result),
                 ("Discover", "Discover", CardShape.Poster, disc.Result),
             }));
+            Dispatcher.UIThread.Post(() => _ready.TrySetResult());
         }
 
         /// <summary>What's playing goes first in the first row, so one OK from Home goes back to it.</summary>

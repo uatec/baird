@@ -90,6 +90,22 @@ namespace Baird.Tests.NewUi
             Assert.True(lit, "the disc never appeared");
         }
 
+        [AvaloniaFact]
+        public async Task It_waits_with_a_spinner_until_home_is_ready()
+        {
+            var (intro, _) = Shown();
+            var ready = new TaskCompletionSource();
+            var done = 0;
+            intro.Play(() => done++, ready.Task);
+            await Wait((int)(Intro.Fallback + Intro.FadeOut).TotalMilliseconds + 300);
+            Assert.Equal(0, done);
+            Assert.True(intro.IsVisible);
+            Assert.True(intro.Waiting);
+            ready.SetResult();
+            await Wait((int)Intro.FadeOut.TotalMilliseconds + 400);
+            Assert.Equal(1, done);
+        }
+
         /// <summary>Writes the boot splash (the intro's first frame) when BAIRD_WRITE_SPLASH names a PNG path.</summary>
         [AvaloniaFact]
         public void Renders_the_boot_splash()

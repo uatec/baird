@@ -175,6 +175,14 @@ namespace Baird.NewUi.Screens
                     _rest?.Dispose();
                     _rest = _timers.After(Rest, Tune);
                     return true;
+                case UiAction.PageUp or UiAction.PageDown:
+                    // Channel up/down: move and tune at once (no resting), with the strip staying up.
+                    if (_channels.Count == 0) return true;
+                    _index = ((_index + (a == UiAction.PageUp ? 1 : -1)) % _channels.Count + _channels.Count) % _channels.Count;
+                    Draw();
+                    Bump();
+                    Tune();
+                    return true;
                 case UiAction.Ok:
                     Tune();
                     Close();

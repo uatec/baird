@@ -46,11 +46,40 @@ namespace Baird.NewUi.Screens
             var stage = new Panel { Width = 1920, Height = 1080 };
             stage.Children.Add(_disc);
             stage.Children.Add(Wordmark);
+            stage.Children.Add(_spinner);
             Children.Add(new Viewbox { Stretch = Stretch.Uniform, Child = stage });
             Transitions = new Avalonia.Animation.Transitions
             {
                 new Avalonia.Animation.DoubleTransition { Property = OpacityProperty, Duration = FadeOut, Easing = T.Ease },
             };
+        }
+
+        /// <summary>How long it will wait for Home before showing it anyway.</summary>
+        public static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(25);
+        private System.Threading.Tasks.Task? _ready;
+        private readonly Avalonia.Controls.Shapes.Arc _spinner = new()
+        {
+            Width = 40,
+            Height = 40,
+            StartAngle = 0,
+            SweepAngle = 100,
+            Stroke = Brushes.White,
+            StrokeThickness = 4,
+            Opacity = 0,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 330, 0, 0),
+        };
+        private DispatcherTimer? _spin;
+
+        /// <summary>The animation has played but Home isn't ready: the spinner shows and the intro stays.</summary>
+        public bool Waiting { get; private set; }
+
+        /// <summary>Plays, then stays (with a spinner) until <paramref name="ready"/> completes, so Home appears ready.</summary>
+        public void Play(Action done, System.Threading.Tasks.Task? ready)
+        {
+            _ready = ready;
+            Play(done);
         }
 
         public void Play(Action done)
@@ -82,13 +111,27 @@ namespace Baird.NewUi.Screens
         }
 
         /// <summary>A key during the intro: go straight to Home.</summary>
-        public void Skip() => Finish();
+        public void Skip() { _ready = null; Finish(); }
 
         public bool IsFinishing => _finishing;
 
         private void Finish()
         {
             if (_finishing) return;
+            if (_ready is { IsCompleted: false } ready && !Waiting)
+            {
+                // The animation's done but Home isn't: hold the picture, with a spinner, until it is.
+                Waiting = true;
+                _timer?.Dispose();
+                Motion.Animate(_spinner, T.Fast);
+                _spinner.Opacity = 1;
+                _spin = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
+                _spin.Tick += (_, _) => _spinner.StartAngle = (_spinner.StartAngle + 12) % 360;
+                if (!Motion.Lite) _spin.Start();
+                _ = System.Threading.Tasks.Task.WhenAny(ready, System.Threading.Tasks.Task.Delay(MaxWait))
+                    .ContinueWith(_ => Dispatcher.UIThread.Post(() => { _ready = null; _spin?.Stop(); Finish(); }));
+                return;
+            }
             _finishing = true;
             _timer?.Dispose();
             Opacity = 0;

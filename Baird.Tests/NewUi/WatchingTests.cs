@@ -324,5 +324,22 @@ namespace Baird.Tests.NewUi
             Assert.Equal("e2", rig.Ctx.NextEpisode()?.Id);
             Assert.Equal("Loki", rig.Ctx.FollowingShow);
         }
+
+        [AvaloniaFact]
+        public void Channel_up_tunes_at_once_and_shows_the_channel_strip()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.Channels = new[] { Bbc1, Bbc2, C4 };
+            rig.Ctx.PlayLive(Bbc1);
+            var keys = new VideoActions(rig.Ctx, rig.Timers);
+            keys.OnAction(UiAction.PageUp, false);
+            Assert.Equal(Bbc2, rig.Ctx.Playback.Current!.Channel);
+            Assert.Equal("channels", rig.Ctx.Nav.State.Overlay?.Name);
+            var list = new ChannelList(rig.Ctx, rig.Timers);
+            Assert.Equal(Bbc2, list.Lit);
+            list.OnAction(UiAction.PageUp, false);                   // again, with the strip up: tunes at once
+            Assert.Equal(C4, rig.Ctx.Playback.Current!.Channel);
+            Assert.Equal(C4, list.Lit);
+        }
     }
 }

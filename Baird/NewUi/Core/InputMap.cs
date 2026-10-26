@@ -90,7 +90,18 @@ namespace Baird.NewUi.Core
             _now = now ?? (() => DateTime.UtcNow);
         }
 
-        public void Down() { if (_downAt != null) return; _downAt = _now(); _fired = false; }
+        private DateTime _lastSeen;
+        /// <summary>No word from a press for this long: its release was lost, so the next press starts afresh.</summary>
+        public static readonly TimeSpan Stale = TimeSpan.FromSeconds(1);
+
+        public void Down()
+        {
+            var now = _now();
+            // A held key repeats its down events; silence means the release went missing (e.g. it went to another window),
+            // and treating the old press as still held would turn the next quick click into a hold.
+            if (_downAt != null && now - _lastSeen <= Stale) { _lastSeen = now; return; }
+            _downAt = now; _lastSeen = now; _fired = false;
+        }
 
         public UiAction? Tick()
         {

@@ -123,6 +123,30 @@ namespace Baird.Tests.NewUi
 
     public class InputMapTests
     {
+        [Fact]
+        public void A_press_whose_release_was_lost_doesnt_turn_the_next_quick_click_into_a_hold()
+        {
+            var t = DateTime.UnixEpoch;
+            var hold = new HoldDetector(now: () => t);
+            hold.Down();                  // the release of this press never arrives
+            t = t.AddSeconds(30);
+            hold.Down();                  // a new quick press…
+            t = t.AddMilliseconds(120);
+            Assert.Equal(UiAction.Ok, hold.Up()); // …is an OK, not a hold
+        }
+
+        [Fact]
+        public void Pause_toggles_once_per_press_however_the_remote_repeats_or_duplicates_it()
+        {
+            var t = DateTime.UnixEpoch;
+            var gate = new ToggleGate();
+            Assert.True(gate.Pass(UiAction.PlayPause, repeat: false, t));
+            Assert.False(gate.Pass(UiAction.PlayPause, repeat: true, t.AddMilliseconds(500)));   // held: autorepeat
+            Assert.False(gate.Pass(UiAction.PlayPause, repeat: false, t.AddMilliseconds(120)));  // the same press from a second device
+            Assert.True(gate.Pass(UiAction.PlayPause, repeat: false, t.AddMilliseconds(900)));   // a new press
+            Assert.True(gate.Pass(UiAction.Down, repeat: true, t.AddMilliseconds(950)));         // moving keeps repeating
+        }
+
         [Theory]
         [InlineData(Avalonia.Input.PointerUpdateKind.LeftButtonPressed, UiAction.Ok)]
         [InlineData(Avalonia.Input.PointerUpdateKind.RightButtonPressed, UiAction.Back)]

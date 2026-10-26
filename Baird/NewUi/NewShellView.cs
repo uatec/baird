@@ -326,7 +326,7 @@ namespace Baird.NewUi
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
-            _intro?.Play(() => { _shell.Children.Remove(_intro); _intro = null; });
+            _intro?.Play(() => { _shell.Children.Remove(_intro); _intro = null; }, (_shell.PlaceScreen(Place.Home) as HomeScreen)?.Ready);
             if (TopLevel.GetTopLevel(this) is { } top)
             {
                 top.AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
@@ -413,8 +413,11 @@ namespace Baird.NewUi
             if (_hold.Up() is { } ok) Dispatch(ok, false);
         }
 
+        private readonly ToggleGate _toggles = new();
+
         private void Dispatch(UiAction action, bool repeat)
         {
+            if (!_toggles.Pass(action, repeat, DateTime.UtcNow)) return;
             try { _shell.OnAction(action, repeat); }
             catch (Exception ex) { Console.WriteLine($"[NewUi] {action} failed: {ex}"); }
         }

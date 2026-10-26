@@ -50,6 +50,8 @@ namespace Baird.NewUi.Playback
                 case UiAction.PageUp or UiAction.PageDown:
                     if (p.Current?.Kind != "live") return false;
                     if (_ctx.NeighbourChannel(a == UiAction.PageUp ? 1 : -1) is { } ch) _ctx.PlayLive(ch);
+                    // Show the channel strip, lit on the new channel, so you can see where you are.
+                    if (_ctx.Nav.State.Overlay?.Name != "channels") _ctx.Nav.OpenOverlay(new OverlayRef("channels"));
                     return true;
             }
             return false;
