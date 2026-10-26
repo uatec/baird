@@ -796,6 +796,27 @@ namespace Baird.Mpv
             return $"{error} ({text ?? "unknown"})";
         }
 
+        /// <summary>
+        /// Selects the next audio track (e.g. audio description). Returns a label for the new one, or null when there is
+        /// only one audio track.
+        /// </summary>
+        public string? CycleAudio()
+        {
+            int count = GetPropertyInt("track-list/count"), audio = 0;
+            for (int i = 0; i < count; i++) if (GetPropertyString($"track-list/{i}/type") == "audio") audio++;
+            if (audio < 2) return null;
+            Command("cycle", "audio");
+            var aid = GetPropertyString("aid");
+            for (int i = 0; i < count; i++)
+            {
+                if (GetPropertyString($"track-list/{i}/type") != "audio" || GetPropertyString($"track-list/{i}/id") != aid) continue;
+                var lang = GetPropertyString($"track-list/{i}/lang");
+                var title = GetPropertyString($"track-list/{i}/title");
+                return $"Audio: {(string.IsNullOrWhiteSpace(title) ? lang ?? aid : title)}";
+            }
+            return $"Audio track {aid}";
+        }
+
         private void LogAudioTracks()
         {
             int count = GetPropertyInt("track-list/count");

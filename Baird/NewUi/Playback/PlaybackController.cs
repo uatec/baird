@@ -175,6 +175,24 @@ namespace Baird.NewUi.Playback
             Start(Current.Url, Current.Kind == "live" ? null : _start);
         }
 
+        /// <summary>mpv starts with its best subtitle track on ("sid=auto").</summary>
+        public bool SubtitlesOn { get; private set; } = true;
+
+        public void StartOver()
+        {
+            if (Current is not { Kind: "vod" }) return;
+            _engine.Seek(0);
+            Changed?.Invoke();
+        }
+
+        public void ToggleSubtitles()
+        {
+            if (Current == null) return;
+            SubtitlesOn = !SubtitlesOn;
+            _engine.SetSubtitle(SubtitlesOn);
+            Changed?.Invoke();
+        }
+
         public void TogglePause()
         {
             if (Current == null) return;

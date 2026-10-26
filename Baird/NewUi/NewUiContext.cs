@@ -23,6 +23,8 @@ namespace Baird.NewUi
         /// <summary>An on-demand item started (the shell shows its loading card).</summary>
         public event Action<HomeCard>? Starting;
         /// <summary>OK on the video answers the service's prompt ("Skip intro") if one is up.</summary>
+        /// <summary>Next audio track (mpv); returns a label for it, or null when there's no choice.</summary>
+        public Func<string?> CycleAudio { get; set; } = () => null;
         public Func<bool> TryActivatePrompt { get; set; } = () => false;
         /// <summary>What OK does about the current failure ("sign in to Channel 4"), if anything.</summary>
         public Func<string?> FailureAction { get; set; } = () => null;

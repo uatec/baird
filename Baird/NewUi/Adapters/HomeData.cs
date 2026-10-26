@@ -84,6 +84,20 @@ namespace Baird.NewUi.Adapters
             catch (Exception ex) { Console.WriteLine($"[HomeData] Guide for {channelId} failed: {ex.Message}"); return null; }
         }
 
+        /// <summary>The first programme starting after what's on now (for "Next: 18:30 Regional News").</summary>
+        public async Task<Programme?> NextProgrammeAsync(string channelId, DateTimeOffset now)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(EpgTimeout);
+                var task = _epg.GetChannelScheduleAsync(channelId, 4);
+                var done = await Task.WhenAny(task, Task.Delay(Timeout.Infinite, cts.Token)).ConfigureAwait(false);
+                if (done != task) return null;
+                return (await task.ConfigureAwait(false)).Select(Map).Where(p => p != null && p.Start > now).OrderBy(p => p!.Start).FirstOrDefault();
+            }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Next on {channelId} failed: {ex.Message}"); return null; }
+        }
+
         public static Programme? Map(EpgProgram? p) => p == null || p.StartUnix <= 0 ? null :
             new Programme(p.Id, p.ChannelId, p.Title, string.IsNullOrWhiteSpace(p.Subtitle) ? null : p.Subtitle,
                 string.IsNullOrWhiteSpace(p.DisplayDetails) ? null : p.DisplayDetails,

@@ -56,6 +56,7 @@ namespace Baird.NewUi
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now);
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
+            _ctx.CycleAudio = () => router.ActiveBrowser == null ? mpv.CycleAudio() : null;
             _ctx.TryActivatePrompt = () => router.PromptText != null && router.ActivatePrompt();
             _ctx.FailureAction = () => router.FailureAction;
             _ctx.RunFailureAction = () => router.RunFailureActionAsync();
@@ -79,6 +80,8 @@ namespace Baird.NewUi
                 CreateOverlay: o => o.Name switch
                 {
                     "info" => new InfoBar(_ctx),
+                    "channels" => new ChannelList(_ctx, timers),
+                    "actions" => new ActionsPanel(_ctx, () => _shell!.GoPlace(Place.LiveTv)),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
                     _ => new EmptyScreen(),
                 },
@@ -102,6 +105,47 @@ namespace Baird.NewUi
             };
             Shell.Motion.Animate(prompt, Baird.NewUi.Theme.T.Fast);
             _shell.Stage.Children.Insert(1, prompt);
+            // Live TV, last 5 minutes of a programme: a corner card with what's next (OK keeps watching; ▴ ▾ find something else).
+            var upNextText = new TextBlock { FontSize = 24, Foreground = Baird.NewUi.Theme.T.Text, TextWrapping = TextWrapping.Wrap, MaxWidth = 560 };
+            var upNextCard = new Border
+            {
+                Background = Baird.NewUi.Theme.T.Glass,
+                CornerRadius = new CornerRadius(20),
+                Padding = new Thickness(28, 20),
+                Opacity = 0,
+                IsHitTestVisible = false,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+                Margin = new Thickness(0, 64, 96, 0),
+                Child = upNextText,
+            };
+            Shell.Motion.Animate(upNextCard, Baird.NewUi.Theme.T.Med);
+            _shell.Stage.Children.Insert(2, upNextCard);
+            var liveUpNext = new LiveUpNext();
+            var nearEnd = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+            nearEnd.Tick += async (_, _) =>
+            {
+                // Keep "what's on" current as programmes change while a channel plays.
+                if (playback.Current is { Kind: "live", Channel: { } live } && (_ctx.Programme == null || DateTimeOffset.Now >= _ctx.Programme.End))
+                {
+                    var fresh = await home.CurrentProgrammeAsync(live.Id);
+                    if (playback.Current?.Channel?.Id == live.Id) _ctx.Programme = fresh;
+                }
+                var prog = _ctx.Programme;
+                if (playback.Current is not { Kind: "live", Channel: { } ch } || !nav.State.AtVideo || nav.State.Overlay != null || !liveUpNext.ShouldShow(prog, DateTimeOffset.Now))
+                {
+                    if (upNextCard.Opacity > 0 && (prog == null || DateTimeOffset.Now >= prog.End || !nav.State.AtVideo)) upNextCard.Opacity = 0;
+                    return;
+                }
+                if (upNextCard.Opacity > 0) return;
+                var next = await home.NextProgrammeAsync(ch.Id, DateTimeOffset.Now);
+                if (next == null) return;
+                upNextText.Text = $"Up next on {ch.Name}\n{next.Start.LocalDateTime:HH:mm}  {next.Title}\nOK to stay · ▴ ▾ for something else";
+                upNextCard.Opacity = 1;
+                liveUpNext.Dismiss(prog);
+                DispatcherTimer.RunOnce(() => upNextCard.Opacity = 0, TimeSpan.FromSeconds(20));
+            };
+            nearEnd.Start();
             var saver = new ScreensaverLayer(services.Screensaver);
             _shell.Children.Add(saver.View); // over everything, at native resolution
             ApplyScale(scale);
@@ -145,6 +189,7 @@ namespace Baird.NewUi
             playback.Loaded += ident.Loaded;
             nav.Changed += () =>
             {
+                if (nav.State.Overlay != null) upNextCard.Opacity = 0;
                 if (nav.State.Overlay != null || !nav.State.AtVideo) ident.Hide();
                 if (!nav.State.AtVideo) prompt.Opacity = 0;
             };

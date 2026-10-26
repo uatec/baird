@@ -32,10 +32,18 @@ namespace Baird.NewUi.Playback
                     _ctx.Nav.OpenOverlay(new OverlayRef("info"));
                     return true;
                 case UiAction.PlayPause: p.TogglePause(); return true;
+                case UiAction.HoldOk:
+                    if (p.Current == null) return false;
+                    _ctx.Nav.OpenOverlay(new OverlayRef("actions"));
+                    return true;
                 case UiAction.Left or UiAction.Right:
                     p.SeekRelative(TimeSpan.FromSeconds((a == UiAction.Left ? -1 : 1) * (repeat ? 120 : 30))); return true;
                 case UiAction.Prev or UiAction.Next:
                     p.SeekRelative(TimeSpan.FromSeconds(a == UiAction.Prev ? -10 : 30)); return true;
+                case UiAction.Up or UiAction.Down:
+                    if (p.Current?.Kind != "live" || _ctx.Channels.Count == 0) return false;
+                    _ctx.Nav.OpenOverlay(new OverlayRef("channels"));
+                    return true;
                 case UiAction.PageUp or UiAction.PageDown:
                     if (p.Current?.Kind != "live") return false;
                     if (_ctx.NeighbourChannel(a == UiAction.PageUp ? 1 : -1) is { } ch) _ctx.PlayLive(ch);
