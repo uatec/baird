@@ -174,7 +174,7 @@ namespace Baird.NewUi.Screens
             if (_overVideo || string.IsNullOrEmpty(image)) return;
             // Shown whole if it's a portrait poster (on the right, over a dimmed fill), never cropped through a face.
             var img = new Baird.NewUi.Controls.ArtImage(image) { OpacityMask = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.92) } } };
-            img.Main.Margin = new Thickness(0, 0, 96, 0);
+            img.Shown += poster => img.Main.Margin = poster ? new Thickness(0, 0, 96, 0) : default;
             _heroArt.Children.Add(img);
         }
 
