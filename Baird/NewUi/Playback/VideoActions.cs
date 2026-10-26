@@ -11,18 +11,20 @@ namespace Baird.NewUi.Playback
     /// </summary>
     public sealed class VideoActions
     {
-        public static readonly TimeSpan NumberWait = TimeSpan.FromSeconds(2);
         private readonly NewUiContext _ctx;
         private readonly ITimers _timers;
-        private NumberEntry? _entry;
-        private IDisposable? _entryTimer;
 
         public VideoActions(NewUiContext ctx, ITimers timers) { _ctx = ctx; _timers = timers; }
 
         public bool OnAction(UiAction a, bool repeat)
         {
             var p = _ctx.Playback;
-            if (InputMap.DigitOf(a) is { } digit) { Digit(digit); return true; }
+            if (InputMap.DigitOf(a) is { } digit)
+            {
+                if (_ctx.Channels.Count == 0) return false;
+                _ctx.Nav.OpenOverlay(new OverlayRef("number", digit));
+                return true;
+            }
             switch (a)
             {
                 case UiAction.Ok:
@@ -31,18 +33,19 @@ namespace Baird.NewUi.Playback
                     if (p.Failure != null && _ctx.FailureAction() != null) { _ = RunFailureActionAsync(); return true; }
                     _ctx.Nav.OpenOverlay(new OverlayRef("info"));
                     return true;
-                case UiAction.PlayPause: p.TogglePause(); return true;
+                case UiAction.PlayPause: p.TogglePause(); ShowInfo(); return true;
                 case UiAction.HoldOk:
                     if (p.Current == null) return false;
                     _ctx.Nav.OpenOverlay(new OverlayRef("actions"));
                     return true;
                 case UiAction.Left or UiAction.Right:
-                    p.SeekRelative(TimeSpan.FromSeconds((a == UiAction.Left ? -1 : 1) * (repeat ? 120 : 30))); return true;
+                    // Scrub, with the info bar showing where you are.
+                    p.SeekRelative(TimeSpan.FromSeconds((a == UiAction.Left ? -1 : 1) * (repeat ? 120 : 30))); ShowInfo(); return true;
                 case UiAction.Prev or UiAction.Next:
-                    p.SeekRelative(TimeSpan.FromSeconds(a == UiAction.Prev ? -10 : 30)); return true;
+                    p.SeekRelative(TimeSpan.FromSeconds(a == UiAction.Prev ? -10 : 30)); ShowInfo(); return true;
                 case UiAction.Up or UiAction.Down:
                     if (p.Current?.Kind != "live" || _ctx.Channels.Count == 0) return false;
-                    _ctx.Nav.OpenOverlay(new OverlayRef("channels"));
+                    _ctx.Nav.OpenOverlay(new OverlayRef("channels", a));
                     return true;
                 case UiAction.PageUp or UiAction.PageDown:
                     if (p.Current?.Kind != "live") return false;
@@ -50,6 +53,11 @@ namespace Baird.NewUi.Playback
                     return true;
             }
             return false;
+        }
+
+        private void ShowInfo()
+        {
+            if (_ctx.Playback.Current != null && _ctx.Nav.State.Overlay?.Name != "info") _ctx.Nav.OpenOverlay(new OverlayRef("info"));
         }
 
         private bool _running;
@@ -66,26 +74,6 @@ namespace Baird.NewUi.Playback
             }
             catch (Exception ex) { _ctx.Toast(ex.Message); }
             finally { _running = false; }
-        }
-
-        private void Digit(int d)
-        {
-            _entry ??= new NumberEntry(_ctx.Channels.Select(c => c.Number));
-            var r = _entry.Push(d);
-            _entryTimer?.Dispose();
-            if (r.Error != null) { _ctx.Toast(r.Error); _entry = null; return; }
-            _ctx.Toast(r.Text);
-            if (_entry.IsUnique) { Commit(); return; }
-            _entryTimer = _timers.After(NumberWait, Commit);
-        }
-
-        private void Commit()
-        {
-            var r = _entry?.State();
-            _entry = null;
-            if (r?.Match is not { } number) { if (r?.Text is { Length: > 0 } t) _ctx.Toast($"No channel {t}"); return; }
-            var ch = _ctx.Channels.FirstOrDefault(c => c.Number == number);
-            if (ch != null) _ctx.PlayLive(ch);
         }
     }
 }

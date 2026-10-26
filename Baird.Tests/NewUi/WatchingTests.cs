@@ -148,6 +148,8 @@ namespace Baird.Tests.NewUi
         {
             var (bar, rig) = InfoOver(live: false);
             Assert.Equal(new[] { "Pause", "Subtitles on", "Audio" }, bar.Buttons);
+            Assert.True(bar.OnScrubRow);
+            bar.OnAction(UiAction.Down, false);           // down to the buttons
             Assert.Equal(0, bar.LitButton);
             bar.OnAction(UiAction.Right, false);
             bar.OnAction(UiAction.Ok, false);
@@ -162,7 +164,7 @@ namespace Baird.Tests.NewUi
         public void Up_or_down_on_live_info_bar_swaps_it_for_the_channel_list()
         {
             var (bar, rig) = InfoOver(live: true);
-            Assert.True(bar.OnAction(UiAction.Down, false));
+            Assert.True(bar.OnAction(UiAction.Up, false));
             Assert.Equal("channels", rig.Ctx.Nav.State.Overlay?.Name);
         }
 
@@ -260,6 +262,53 @@ namespace Baird.Tests.NewUi
             Assert.False(rig.Ctx.Nav.State.AtVideo);
             for (var i = 0; i < UpNextCard.Countdown.TotalSeconds; i++) rig.Timers.Advance(TimeSpan.FromSeconds(1));
             Assert.Null(rig.Ctx.Playback.Current);
+        }
+
+        [AvaloniaFact]
+        public void The_info_bar_opens_on_the_scrubber_where_left_and_right_seek_and_ok_pauses()
+        {
+            var (bar, rig) = InfoOver(live: false);
+            Assert.True(bar.OnScrubRow);
+            bar.OnAction(UiAction.Left, false);
+            bar.OnAction(UiAction.Right, true);
+            Assert.Equal(new[] { "rel -30", "rel 120" }, rig.Engine.Calls.Where(c => c.StartsWith("rel")));
+            bar.OnAction(UiAction.Ok, false);
+            Assert.Contains("pause", rig.Engine.Calls);
+            bar.OnAction(UiAction.Down, false);
+            Assert.False(bar.OnScrubRow);
+            bar.OnAction(UiAction.Up, false);
+            Assert.True(bar.OnScrubRow);
+        }
+
+        [Fact]
+        public void Pausing_or_seeking_on_the_bare_video_shows_where_you_are()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.PlayItem(new HomeCard(CardKind.Film, "f", "Film", null, null, null, null, "Jellyfin", PlayVia.Mpv, "http://jf/f"));
+            rig.Engine.Loaded();
+            var keys = new VideoActions(rig.Ctx, rig.Timers);
+            keys.OnAction(UiAction.PlayPause, false);
+            Assert.Equal("info", rig.Ctx.Nav.State.Overlay?.Name);
+            rig.Ctx.Nav.CloseOverlay();
+            keys.OnAction(UiAction.Right, false);
+            Assert.Contains("rel 30", rig.Engine.Calls);
+            Assert.Equal("info", rig.Ctx.Nav.State.Overlay?.Name);
+            rig.Ctx.Nav.CloseOverlay();
+            keys.OnAction(UiAction.Prev, false);
+            Assert.Equal("info", rig.Ctx.Nav.State.Overlay?.Name);
+        }
+
+        [AvaloniaFact]
+        public void The_first_press_that_opens_the_channel_list_also_moves_one_channel()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.Channels = new[] { Bbc1, Bbc2, C4 };
+            rig.Ctx.PlayLive(Bbc1);
+            rig.Ctx.Nav.OpenOverlay(new OverlayRef("channels", UiAction.Down));
+            var list = new ChannelList(rig.Ctx, rig.Timers, UiAction.Down);
+            Assert.Equal(Bbc1, list.Lit);
+            rig.Timers.Advance(ChannelList.FirstStep);
+            Assert.Equal(Bbc2, list.Lit);
         }
     }
 }

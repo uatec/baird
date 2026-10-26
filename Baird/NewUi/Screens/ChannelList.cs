@@ -34,13 +34,14 @@ namespace Baird.NewUi.Screens
         private readonly StackPanel _rows = new();
         private readonly TextBlock _clock = new() { FontSize = 26, FontWeight = FontWeight.SemiBold, Foreground = T.Text2 };
         private int _index;
-        private IDisposable? _rest, _idle;
+        private IDisposable? _rest, _idle, _firstStep;
 
         public Control View => _root;
         public Channel? Lit => _channels.Count > 0 ? _channels[_index] : null;
         public Control? LitElement => _rows.Children.OfType<Control>().FirstOrDefault(c => c.Tag is true);
 
-        public ChannelList(NewUiContext ctx, ITimers timers)
+        public static readonly TimeSpan FirstStep = TimeSpan.FromMilliseconds(260);
+        public ChannelList(NewUiContext ctx, ITimers timers, UiAction? step = null)
         {
             _ctx = ctx; _timers = timers; _channels = ctx.Channels;
             _index = Math.Max(0, _channels.ToList().FindIndex(c => c.Id == ctx.Playback.Current?.Channel?.Id));
@@ -70,6 +71,8 @@ namespace Baird.NewUi.Screens
             Draw();
             Bump();
             _ = LoadProgrammesAsync();
+            // Opened by ▴ / ▾: that press also moves one channel, a moment after the list arrives.
+            if (step is UiAction.Up or UiAction.Down) _firstStep = _timers.After(FirstStep, () => OnAction(step.Value, false));
         }
 
         private async System.Threading.Tasks.Task LoadProgrammesAsync()

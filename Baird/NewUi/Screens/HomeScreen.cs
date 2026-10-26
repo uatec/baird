@@ -8,6 +8,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Transformation;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Baird.NewUi.Controls;
 using Baird.NewUi.Core;
 using Baird.NewUi.Model;
@@ -71,6 +72,11 @@ namespace Baird.NewUi.Screens
             _root.Children.Add(_hero);
             _root.Children.Add(_rows);
             _ = LoadAsync();
+            // Keep On now current while Home is up (programmes change all day).
+            var refresh = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+            refresh.Tick += (_, _) => { if (_root.IsEffectivelyVisible && _root.GetVisualRoot() != null) _ = RefreshOnNowAsync(); };
+            _root.AttachedToVisualTree += (_, _) => refresh.Start();
+            _root.DetachedFromVisualTree += (_, _) => refresh.Stop();
         }
 
         public async Task LoadAsync()
@@ -194,12 +200,37 @@ namespace Baird.NewUi.Screens
             return false;
         }
 
-        public void OnShow() { _overVideo = _ctx.Nav.State.Video != null; _heroKey = null; _ = RefreshUpNextAsync(); Layout(); }
+        public void OnShow() { _overVideo = _ctx.Nav.State.Video != null; _heroKey = null; _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync(); Layout(); }
         public void OnFocusIn() { _lit = true; Layout(); }
         public void OnFocusOut() { _lit = false; Layout(); }
 
         /// <summary>The Home key: back to the first card of Up next.</summary>
         public void Reset() { _pos = (0, 0); _memory.Clear(); _lit = true; Layout(); }
+
+        /// <summary>What's on changes through the day: refresh On now in place (the lit card stays lit).</summary>
+        public async Task RefreshOnNowAsync()
+        {
+            IReadOnlyList<HomeCard> cards;
+            try { cards = await _ctx.Home.OnNowAsync(_ctx.Now()); }
+            catch (Exception ex) { Console.WriteLine($"[Home] On now refresh failed: {ex.Message}"); return; }
+            if (cards.Count == 0) return;
+            void Apply()
+            {
+                var i = _rowList.FindIndex(r => r.Title == "On now");
+                if (i < 0) return;
+                var same = cards.Select(c => (c.Id, c.Programme?.Id, c.Programme?.ImageUrl)).SequenceEqual(_rowList[i].Cards.Select(c => (c.Data.Id, c.Data.Programme?.Id, c.Data.Programme?.ImageUrl)));
+                if (same) return;
+                _ctx.Channels = cards.Where(c => c.Channel != null).Select(c => c.Channel!).ToList();
+                var pos = _pos;
+                var rows = _rowList.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Select(c => c.Data).ToList())).ToList();
+                rows[i] = (rows[i].Title, rows[i].Eyebrow, rows[i].Shape, cards);
+                Build(rows);
+                _pos = (Math.Min(pos.Row, _rowList.Count - 1), Math.Min(pos.Col, Math.Max(0, _rowList[Math.Min(pos.Row, _rowList.Count - 1)].Cards.Count - 1)));
+                _heroKey = null;
+                Layout();
+            }
+            if (Dispatcher.UIThread.CheckAccess()) Apply(); else Dispatcher.UIThread.Post(Apply);
+        }
 
         private async Task RefreshUpNextAsync()
         {

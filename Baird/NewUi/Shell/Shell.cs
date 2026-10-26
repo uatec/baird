@@ -245,7 +245,9 @@ namespace Baird.NewUi.Shell
             switch (a)
             {
                 case UiAction.Home:
-                    nav.Home(); TabFocus = false; PlaceScreen(Place.Home).OnFocusIn(); Render(); return;
+                    nav.Home(); TabFocus = false; PlaceScreen(Place.Home).OnFocusIn();
+                    if (PlaceScreen(Place.Home) is HomeScreen home) home.Reset(); // the Home key: back to the first card
+                    Render(); return;
                 case UiAction.Guide:
                     GoPlace(Place.LiveTv); return;
                 case UiAction.Voice:

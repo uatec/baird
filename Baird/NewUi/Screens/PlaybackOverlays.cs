@@ -129,6 +129,8 @@ namespace Baird.NewUi.Screens
             _audio ?? "Audio",
         };
         public int LitButton => _button;
+        public bool OnScrubRow => _scrub;
+        private bool _scrub = true;
 
         public InfoBar(NewUiContext ctx)
         {
@@ -190,6 +192,9 @@ namespace Baird.NewUi.Screens
             var track = new Grid { Height = 8 };
             track.Children.Add(new Border { Background = new SolidColorBrush(Color.Parse("#2EFFFFFF")), CornerRadius = new CornerRadius(4) });
             track.Children.Add(new Border { Background = T.Text, CornerRadius = new CornerRadius(4), HorizontalAlignment = HorizontalAlignment.Left, Width = Math.Clamp(frac, 0, 1) * trackWidth });
+            if (_scrub)
+                // The playhead, while ◂ ▸ move it.
+                track.Children.Add(new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(11), Background = T.Text, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(Math.Clamp(frac, 0, 1) * trackWidth - 11, -7, 0, -7), BoxShadow = T.FocusGlow });
             if (now.Kind == "live" && _ctx.Programme is { } lp)
                 // The live edge, in red, when time-shifted.
                 track.Children.Add(new Border { Background = T.Live, Width = 4, CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(Math.Clamp(lp.ProgressAt(_ctx.Now()), 0, 1) * trackWidth - 2, -4, 0, -4), IsVisible = p.BehindLive > TimeSpan.FromSeconds(30) });
@@ -205,7 +210,7 @@ namespace Baird.NewUi.Screens
             var labels = Buttons;
             for (var i = 0; i < labels.Count; i++)
             {
-                var lit = i == _button;
+                var lit = !_scrub && i == _button;
                 buttons.Children.Add(new Border
                 {
                     CornerRadius = new CornerRadius(999),
@@ -225,8 +230,14 @@ namespace Baird.NewUi.Screens
             Bump();
             switch (a)
             {
+                case UiAction.Left or UiAction.Right when _scrub:
+                    _ctx.Playback.SeekRelative(TimeSpan.FromSeconds((a == UiAction.Left ? -1 : 1) * (repeat ? 120 : 30))); Draw(); return true;
                 case UiAction.Left or UiAction.Right:
                     _button = Math.Clamp(_button + (a == UiAction.Left ? -1 : 1), 0, Buttons.Count - 1); Draw(); return true;
+                case UiAction.Down when _scrub: _scrub = false; Draw(); return true;
+                case UiAction.Up when !_scrub: _scrub = true; Draw(); return true;
+                case UiAction.HoldOk: _ctx.Nav.OpenOverlay(new OverlayRef("actions")); return true;
+                case UiAction.Ok when _scrub: _ctx.Playback.TogglePause(); Draw(); return true;
                 case UiAction.Ok:
                     if (_button == 0) _ctx.Playback.TogglePause();
                     else if (_button == 1) _ctx.Playback.ToggleSubtitles();
@@ -235,7 +246,8 @@ namespace Baird.NewUi.Screens
                 case UiAction.PlayPause: _ctx.Playback.TogglePause(); Draw(); return true;
                 case UiAction.Prev or UiAction.Next: _ctx.Playback.SeekRelative(TimeSpan.FromSeconds(a == UiAction.Prev ? -10 : 30)); Draw(); return true;
                 case UiAction.Up or UiAction.Down when _ctx.Playback.Current?.Kind == "live" && _ctx.Channels.Count > 0:
-                    _ctx.Nav.OpenOverlay(new OverlayRef("channels")); return true;
+                    _ctx.Nav.OpenOverlay(new OverlayRef("channels", a)); return true;
+                case UiAction.Up or UiAction.Down: return true;
             }
             return false;
         }

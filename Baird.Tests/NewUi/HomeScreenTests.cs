@@ -135,5 +135,29 @@ namespace Baird.Tests.NewUi
             s.OnAction(UiAction.Right, false);
             Assert.Equal(new[] { 1.3, 1.3 }, sizes);
         }
+
+        [AvaloniaFact]
+        public async Task On_now_stays_current_when_a_programme_changes()
+        {
+            var (home, rig, _) = await Shown();
+            var epg = (Baird.Tests.Mocks.MockEpgService)typeof(Baird.NewUi.Adapters.HomeData).GetField("_epg", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(rig.Ctx.Home)!;
+            var now = DateTimeOffset.UtcNow;
+            epg.MockSchedules["ch1"] = new System.Collections.Generic.List<Baird.Models.EpgProgram> { new() { Id = "p9", ChannelId = "ch1", Title = "Regional News", StartUnix = now.AddMinutes(-1).ToUnixTimeSeconds(), StopUnix = now.AddMinutes(29).ToUnixTimeSeconds() } };
+            home.OnAction(UiAction.Down, false); // lit: On now, first channel
+            var litBefore = ((Card)home.LitElement!).Data.Id;
+            await home.RefreshOnNowAsync();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Contains(Cards(home.View), c => c.Data.Programme?.Title == "Regional News");
+            Assert.Equal(litBefore, ((Card)home.LitElement!).Data.Id);
+        }
+
+        [AvaloniaFact]
+        public async Task The_home_key_goes_back_to_the_first_card()
+        {
+            var (home, rig, _) = await Shown();
+            home.OnAction(UiAction.Down, false); home.OnAction(UiAction.Right, false);
+            home.Reset();
+            Assert.Equal("Casper", ((Card)home.LitElement!).Data.Label);
+        }
     }
 }

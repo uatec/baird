@@ -48,34 +48,70 @@ namespace Baird.Tests.NewUi
             Assert.Equal(new[] { Bbc1.StreamUrl, C4.StreamUrl }, rig.Engine.Plays.Select(p => p.Url));
         }
 
-        [Fact]
-        public void Typing_a_whole_channel_number_tunes_it_straight_away()
+        private static (NumberPanel Panel, HomeScreenTests.Rig Rig) Typing(int first)
         {
             var (keys, rig) = Watching(Bbc1);
-            keys.OnAction(UiAction.Digit1, false);
-            keys.OnAction(UiAction.Digit0, false);
-            keys.OnAction(UiAction.Digit4, false);
-            Assert.Equal(C4, rig.Ctx.Playback.Current!.Channel);
+            keys.OnAction(UiAction.Digit0 + first, false);
+            Assert.Equal("number", rig.Ctx.Nav.State.Overlay?.Name);
+            Assert.Equal(first, rig.Ctx.Nav.State.Overlay!.Params);
+            return (new NumberPanel(rig.Ctx, rig.Timers, first), rig);
         }
 
-        [Fact]
+        [AvaloniaFact]
+        public void A_whole_channel_number_shows_the_channel_then_tunes_it()
+        {
+            var (panel, rig) = Typing(1);
+            panel.OnAction(UiAction.Digit0, false);
+            panel.OnAction(UiAction.Digit4, false);
+            Assert.Equal("104", panel.Text);
+            Assert.Equal(C4, panel.Match);
+            Assert.Equal(Bbc1, rig.Ctx.Playback.Current!.Channel);
+            rig.Timers.Advance(NumberPanel.ExactWait);
+            Assert.Equal(C4, rig.Ctx.Playback.Current!.Channel);
+            Assert.Null(rig.Ctx.Nav.State.Overlay);
+        }
+
+        [AvaloniaFact]
+        public void Ok_tunes_the_matching_channel_straight_away()
+        {
+            var (panel, rig) = Typing(1);
+            panel.OnAction(UiAction.Digit0, false);
+            panel.OnAction(UiAction.Digit2, false);
+            panel.OnAction(UiAction.Ok, false);
+            Assert.Equal(Bbc2, rig.Ctx.Playback.Current!.Channel);
+        }
+
+        [AvaloniaFact]
         public void A_number_that_does_not_exist_says_so_and_stays_put()
         {
-            var (keys, rig) = Watching(Bbc1);
-            keys.OnAction(UiAction.Digit9, false);
-            Assert.Equal("No channel 9", rig.Toasts.Last());
+            var (panel, rig) = Typing(9);
+            Assert.Equal("No channel 9", panel.Error);
+            rig.Timers.Advance(NumberPanel.ErrorWait);
             Assert.Equal(Bbc1, rig.Ctx.Playback.Current!.Channel);
+            Assert.Null(rig.Ctx.Nav.State.Overlay);
         }
 
-        [Fact]
-        public void An_unfinished_number_is_tried_after_a_pause()
+        [AvaloniaFact]
+        public void Del_corrects_a_digit_and_deleting_the_last_closes()
         {
-            var (keys, rig) = Watching(Bbc1);
-            keys.OnAction(UiAction.Digit1, false);
-            keys.OnAction(UiAction.Digit0, false);
-            rig.Timers.Advance(VideoActions.NumberWait);
-            Assert.Equal("No channel 10", rig.Toasts.Last());
+            var (panel, rig) = Typing(1);
+            panel.OnAction(UiAction.Digit9, false);
+            Assert.NotNull(panel.Error);
+            panel.OnAction(UiAction.Del, false);
+            Assert.Equal("1", panel.Text);
+            Assert.Null(panel.Error);
+            panel.OnAction(UiAction.Del, false);
+            Assert.Null(rig.Ctx.Nav.State.Overlay);
+        }
+
+        [AvaloniaFact]
+        public void An_unfinished_number_that_matches_nothing_goes_after_a_pause()
+        {
+            var (panel, rig) = Typing(1);
+            panel.OnAction(UiAction.Digit0, false);
+            rig.Timers.Advance(NumberPanel.PartialWait);
             Assert.Equal(Bbc1, rig.Ctx.Playback.Current!.Channel);
+            Assert.Null(rig.Ctx.Nav.State.Overlay);
         }
 
         [Fact]

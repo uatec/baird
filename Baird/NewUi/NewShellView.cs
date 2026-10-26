@@ -90,7 +90,8 @@ namespace Baird.NewUi
                 CreateOverlay: o => o.Name switch
                 {
                     "info" => new InfoBar(_ctx),
-                    "channels" => new ChannelList(_ctx, timers),
+                    "number" when o.Params is int first => new NumberPanel(_ctx, timers, first),
+                    "channels" => new ChannelList(_ctx, timers, o.Params as UiAction?),
                     "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
                     "reminder" when o.Params is Model.Reminder r => new ReminderCard(_ctx, r),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
