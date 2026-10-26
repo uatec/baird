@@ -28,7 +28,10 @@ namespace Baird.Services
         bool Ended,
         bool AdvertPlaying,
         double AdvertTime,
-        string Text);
+        string Text,
+        bool Muted = false,
+        double Volume = 1,
+        bool UnmuteButton = false);
 
     /// <summary>
     /// Reads and controls ITVX's web player over CDP. Measured on the Pi, 2026-10-26 (see docs/itvx-investigation.md §8):
@@ -70,6 +73,9 @@ namespace Baird.Services
                 ended: v ? v.ended : false,
                 advertPlaying: !!ad,
                 advertTime: ad ? ad.currentTime : 0,
+                muted: [v, ad].some(x => x && x.muted),
+                volume: Math.min(v ? v.volume : 1, ad ? ad.volume : 1),
+                unmuteButton: [...document.querySelectorAll('button')].some(b => /unmute/i.test(b.getAttribute('aria-label') || '')),
                 text: text.slice(0, 240)
             };
         })()";
@@ -81,7 +87,8 @@ namespace Baird.Services
                 Str(r, "url") ?? "", Bool(r, "signInPage"), Bool(r, "signedIn"), Bool(r, "emailField"), Bool(r, "passwordField"),
                 Bool(r, "playButton"), Bool(r, "parentalPrompt"), Bool(r, "hasVideo"), Num(r, "currentTime"), Num(r, "duration"),
                 !r.TryGetProperty("paused", out var p) || p.ValueKind != JsonValueKind.False,
-                Bool(r, "ended"), Bool(r, "advertPlaying"), Num(r, "advertTime"), Str(r, "text") ?? "");
+                Bool(r, "ended"), Bool(r, "advertPlaying"), Num(r, "advertTime"), Str(r, "text") ?? "",
+                Bool(r, "muted"), r.TryGetProperty("volume", out var vol) && vol.ValueKind == JsonValueKind.Number ? vol.GetDouble() : 1, Bool(r, "unmuteButton"));
         }
 
         public static async Task<ItvxPageState?> ReadStateAsync(ICdpPageDriver page, CancellationToken ct = default)
@@ -90,6 +97,23 @@ namespace Baird.Services
             catch (OperationCanceledException) { throw; }
             catch (Exception) { return null; } // the page is navigating (sign-in steps): no answer this time
         }
+
+        /// <summary>
+        /// JS that makes the programme (and any advert) audible — unmuted, full volume, ITVX's own Unmute button pressed — and, when
+        /// <paramref name="skipAdvert"/>, jumps a playing advert to its end. Returns what it changed, or null.
+        /// </summary>
+        public static string FixAudioScript(bool skipAdvert) => @"(function(skip) { /* __bairdItvxAudio */
+            " + FindVideos + @"
+            const done = [];
+            for (const x of document.querySelectorAll('video')) {
+                if (x.muted) { x.muted = false; done.push('unmuted'); }
+                if (x.volume < 1) { x.volume = 1; done.push('volume up'); }
+            }
+            const u = [...document.querySelectorAll('button')].find(b => /unmute/i.test(b.getAttribute('aria-label') || ''));
+            if (u) { u.click(); done.push('pressed Unmute'); }
+            if (skip && ad && isFinite(ad.duration) && ad.duration > 0 && ad.currentTime < ad.duration - 0.5) { ad.currentTime = ad.duration - 0.1; done.push('skip advert'); }
+            return done.length ? done.join(', ') : null;
+        })(" + (skipAdvert ? "true" : "false") + ")";
 
         /// <summary>JS that presses the title page's Play button. Returns "clicked" or null.</summary>
         public const string PressPlayScript = "(function() { const b = document.querySelector('button.videoPlayer__play-btn'); if (!b) return null; b.click(); return 'clicked'; })()";

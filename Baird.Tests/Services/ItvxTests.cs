@@ -288,8 +288,12 @@ namespace Baird.Tests.Services
 
         public static JsonObject State(string url, bool signInPage = false, bool signedIn = false, bool email = false, bool password = false,
             bool playButton = false, bool parental = false, bool video = false, double t = 0, double duration = 0, bool paused = false,
-            bool ended = false, bool advert = false, double advertTime = 0, string text = "") => new()
+            bool ended = false, bool advert = false, double advertTime = 0, string text = "", bool muted = false, double volume = 1,
+            bool unmuteButton = false) => new()
             {
+                ["muted"] = muted,
+                ["volume"] = volume,
+                ["unmuteButton"] = unmuteButton,
                 ["url"] = url,
                 ["signInPage"] = signInPage,
                 ["signedIn"] = signedIn,
@@ -426,6 +430,46 @@ namespace Baird.Tests.Services
             Assert.Contains("play", b.Actions.Skip(parental)); // pressed again after the prompt
         }
 
+        private static bool AudioFixed(FakeItvxBrowser b) => b.ControlScripts.Any(x => x.Contains("__bairdItvxAudio"));
+
+        [Fact]
+        public async Task A_muted_programme_is_unmuted_and_said_so()
+        {
+            var (b, _, engine) = Engine();
+            PlaysAfterPress(b);
+            b.LastState = FakeItvxBrowser.State(Episode, signedIn: true, video: true, t: 1.0, duration: 5360, muted: true, volume: 0.2);
+            engine.SkipAdverts = false;
+            await engine.PlayAsync(Episode);
+            await engine.PollOnceAsync();
+            Assert.True(AudioFixed(b));
+            Assert.Contains("muted = false", b.ControlScripts.First(x => x.Contains("__bairdItvxAudio")));
+        }
+
+        [Fact]
+        public async Task A_programme_with_sound_is_left_alone()
+        {
+            var (b, _, engine) = Engine();
+            PlaysAfterPress(b);
+            engine.SkipAdverts = false;
+            await engine.PlayAsync(Episode);
+            await engine.PollOnceAsync();
+            Assert.False(AudioFixed(b));
+        }
+
+        [Fact]
+        public async Task Adverts_are_skipped_when_asked()
+        {
+            var (b, _, engine) = Engine();
+            b.States.Enqueue(FakeItvxBrowser.State(Episode, signedIn: true, playButton: true));
+            b.States.Enqueue(FakeItvxBrowser.State(Episode, signedIn: true, video: true, paused: true, duration: 4990.8, advert: true, advertTime: 0.3));
+            b.States.Enqueue(FakeItvxBrowser.State(Episode, signedIn: true, video: true, paused: true, duration: 4990.8, advert: true, advertTime: 0.8));
+            b.LastState = FakeItvxBrowser.State(Episode, signedIn: true, video: true, paused: true, duration: 4990.8, advert: true, advertTime: 1.3);
+            engine.SkipAdverts = true;
+            await engine.PlayAsync(Episode);
+            await engine.PollOnceAsync();
+            Assert.Contains("skip", b.ControlScripts.First(x => x.Contains("__bairdItvxAudio")));
+        }
+
         [Fact]
         public async Task An_advert_counts_as_playing_and_leaves_the_position_alone()
         {
@@ -435,6 +479,7 @@ namespace Baird.Tests.Services
             b.States.Enqueue(FakeItvxBrowser.State(Episode, signedIn: true, video: true, paused: true, duration: 4990.8, advert: true, advertTime: 0.8));
             b.LastState = FakeItvxBrowser.State(Episode, signedIn: true, video: true, paused: true, duration: 4990.8, advert: true, advertTime: 1.3);
 
+            engine.SkipAdverts = false;
             await engine.PlayAsync(Episode);
             Assert.True(engine.IsAdvertPlaying); // known as soon as it plays, before the first poll
             Assert.Equal(4990.8, engine.DurationSeconds);
