@@ -42,7 +42,7 @@ namespace Baird.NewUi.Screens
         }
     }
 
-    /// <summary>A vertical list with a title on the left: Settings, and the Live TV placeholder.</summary>
+    /// <summary>A vertical list with a title on the left: Settings, and the Search placeholder.</summary>
     public abstract class ListScreen : IScreen
     {
         protected readonly Panel Root = new() { Width = 1920, Height = 1080, Background = new SolidColorBrush(Color.Parse("#F0000000")) };
@@ -87,27 +87,6 @@ namespace Baird.NewUi.Screens
         public virtual void OnShow() { }
         public void OnFocusIn() { _lit = true; Draw(); }
         public void OnFocusOut() { _lit = false; Draw(); }
-    }
-
-    /// <summary>Live TV in phase 1: On now as a list that plays. The guide arrives in phase 4.</summary>
-    public sealed class LiveTvPlaceholder : ListScreen
-    {
-        private readonly NewUiContext _ctx;
-        private IReadOnlyList<HomeCard> _cards = Array.Empty<HomeCard>();
-        public LiveTvPlaceholder(NewUiContext ctx) : base("Live TV", "The guide arrives in phase 4. For now, here's what's on — OK to watch.") { _ctx = ctx; }
-
-        public override async void OnShow()
-        {
-            try { _cards = await _ctx.Home.OnNowAsync(_ctx.Now()); }
-            catch (Exception ex) { Console.WriteLine($"[NewUi] On now failed: {ex.Message}"); return; }
-            SetRows(_cards.Select(c => new ListRow(c.Label, c.Programme?.Title ?? "No programme information")));
-        }
-
-        public override bool OnAction(UiAction a, bool repeat)
-        {
-            if (a == UiAction.Ok && Index < _cards.Count) { _ctx.Activate(_cards[Index]); return true; }
-            return base.OnAction(a, repeat);
-        }
     }
 
     /// <summary>Search in phase 1: a note. One search for everything arrives in phase 5.</summary>
