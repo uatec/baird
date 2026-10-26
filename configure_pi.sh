@@ -263,7 +263,7 @@ if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
     <keybind key="XF86AudioMute"><action name="None" /></keybind>
     <keybind key="XF86PowerOff" onRelease="yes"><action name="None" /></keybind>
   </keyboard>
-  <!-- The Netflix spike's Chromium (--class=baird-netflix, kiosk) opens at the bottom of the stack, behind Baird's fullscreen
+  <!-- The Netflix spike's Chromium (window class baird-netflix, kiosk) opens at the bottom of the stack, behind Baird's fullscreen
        window, and is raised with xdotool windowactivate when playback starts. Don't add ignoreFocusRequest: it blocks the raise. -->
   <windowRules>
     <windowRule identifier="baird-netflix" skipTaskbar="yes" skipWindowSwitcher="yes"><action name="Lower"/></windowRule>
@@ -271,6 +271,11 @@ if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
 </labwc_config>
 LABWC_RC_XML
         chown "$TARGET_USER:$TARGET_USER" "$LABWC_RC"
+        # labwc ignores the whole file if it isn't well-formed XML (e.g. "--" inside a comment), and the
+        # Pi's power dialog and volume keys silently come back.
+        if ! python3 -c 'import sys, xml.dom.minidom; xml.dom.minidom.parse(sys.argv[1])' "$LABWC_RC"; then
+            echo "[Remote] ERROR: $LABWC_RC is not valid XML — labwc will ignore it."
+        fi
     else
         echo "[Remote] $LABWC_RC exists and isn't managed by Baird — add 'None' keybinds for"
         echo "         XF86AudioRaiseVolume/LowerVolume/Mute and XF86PowerOff to it by hand."
