@@ -36,8 +36,14 @@ namespace Baird.NewUi.Screens
             IsHitTestVisible = false;
             _card = new Border
             {
-                Background = T.Glass, CornerRadius = new CornerRadius(26), Padding = new Thickness(40, 26), MinWidth = 760, Opacity = 0,
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 120),
+                Background = T.Glass,
+                CornerRadius = new CornerRadius(26),
+                Padding = new Thickness(40, 26),
+                MinWidth = 760,
+                Opacity = 0,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 0, 120),
                 Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 30, Children = { _num, new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { _name, _prog } }, _spinner } },
             };
             Motion.Animate(_dim, T.Fast);

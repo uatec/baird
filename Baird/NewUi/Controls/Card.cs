@@ -104,7 +104,12 @@ namespace Baird.NewUi.Controls
 
         private static Border Pill(string text, IBrush back, IBrush fore, HorizontalAlignment h) => new()
         {
-            Background = back, CornerRadius = new CornerRadius(999), Padding = new Thickness(12, 4), Margin = new Thickness(12), HorizontalAlignment = h, VerticalAlignment = VerticalAlignment.Top,
+            Background = back,
+            CornerRadius = new CornerRadius(999),
+            Padding = new Thickness(12, 4),
+            Margin = new Thickness(12),
+            HorizontalAlignment = h,
+            VerticalAlignment = VerticalAlignment.Top,
             Child = new TextBlock { Text = text, FontSize = 19, FontWeight = FontWeight.SemiBold, Foreground = fore },
         };
 

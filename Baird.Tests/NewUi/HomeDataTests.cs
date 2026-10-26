@@ -17,8 +17,18 @@ namespace Baird.Tests.NewUi
     {
         private static MediaItemData Item(string id, string name, bool live = false, string? number = null, string source = "Jellyfin: x", string subtitle = "", MediaType type = MediaType.Video, string? stream = null) => new()
         {
-            Id = id, Name = name, Details = "2021", ImageUrl = $"http://img/{id}", IsLive = live, StreamUrl = stream ?? $"http://stream/{id}",
-            Source = source, ChannelNumber = number, Type = type, Synopsis = "s", Subtitle = subtitle, Duration = TimeSpan.FromMinutes(50),
+            Id = id,
+            Name = name,
+            Details = "2021",
+            ImageUrl = $"http://img/{id}",
+            IsLive = live,
+            StreamUrl = stream ?? $"http://stream/{id}",
+            Source = source,
+            ChannelNumber = number,
+            Type = type,
+            Synopsis = "s",
+            Subtitle = subtitle,
+            Duration = TimeSpan.FromMinutes(50),
         };
 
         internal sealed class History : IHistoryService

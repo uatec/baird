@@ -69,15 +69,28 @@ namespace Baird.NewUi.Shell
 
             _backChip = new Border
             {
-                Background = T.Glass, CornerRadius = new CornerRadius(999), Padding = new Thickness(16, 10, 22, 10), Opacity = 0,
-                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(T.SafeX, 44, 0, 0), IsHitTestVisible = false,
+                Background = T.Glass,
+                CornerRadius = new CornerRadius(999),
+                Padding = new Thickness(16, 10, 22, 10),
+                Opacity = 0,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(T.SafeX, 44, 0, 0),
+                IsHitTestVisible = false,
                 Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { new TextBlock { Text = "‹", FontSize = 34, Foreground = T.Text, VerticalAlignment = VerticalAlignment.Center }, _backChipText } },
             };
             Motion.Animate(_backChip, T.Fast);
             _toast = new Border
             {
-                Background = T.Glass, CornerRadius = new CornerRadius(20), Padding = new Thickness(30, 18), Opacity = 0, IsHitTestVisible = false,
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 60, 0, 0), Child = _toastText,
+                Background = T.Glass,
+                CornerRadius = new CornerRadius(20),
+                Padding = new Thickness(30, 18),
+                Opacity = 0,
+                IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 60, 0, 0),
+                Child = _toastText,
             };
             Motion.Animate(_toast, Motion.Med);
 

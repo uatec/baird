@@ -30,7 +30,10 @@ namespace Baird.NewUi
 
         private string PlaceLabel() => Nav.State.Pages.Count > 0 ? Nav.State.Pages[^1].Name : Nav.State.Place switch
         {
-            Place.LiveTv => "Live TV", Place.Search => "Search", Place.Settings => "Settings", _ => "Home",
+            Place.LiveTv => "Live TV",
+            Place.Search => "Search",
+            Place.Settings => "Settings",
+            _ => "Home",
         };
 
         public void PlayLive(Channel channel)
