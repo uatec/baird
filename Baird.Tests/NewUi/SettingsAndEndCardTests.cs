@@ -83,18 +83,33 @@ namespace Baird.Tests.NewUi
         {
             var now = DateTimeOffset.UnixEpoch;
             var seerr = new CountingSeerr();
-            bool? netflix = false;
-            var reader = new SourceStatusReader(() => 120, () => true, seerr, true, () => netflix, false, () => now);
+            var netflix = AccountState.NeedsSignIn;
+            var reader = new SourceStatusReader(() => 120, () => true, seerr, true, () => netflix, () => AccountState.NotSetUp, () => now);
             var first = await reader.ReadAsync();
             Assert.Equal(new[] { "120 channels", "Connected", "Connected", "Needs signing in", "Not set up" }, first.Select(x => x.Text));
             Assert.Equal(SourceHealth.Warning, first.Single(x => x.Name == "Netflix").Health);
             await reader.ReadAsync();
             Assert.Equal(1, seerr.Calls);
             now += SourceStatusReader.SeerrEvery;
-            netflix = null;
+            netflix = AccountState.NotSetUp;
             var later = await reader.ReadAsync();
             Assert.Equal(2, seerr.Calls);
             Assert.Equal("Not set up", later.Single(x => x.Name == "Netflix").Text);
+        }
+
+        [Fact]
+        public async Task Browser_services_say_set_up_until_seen_signed_in_and_never_ask_for_a_sign_in_without_cause()
+        {
+            var nf = AccountState.SetUp;
+            var dn = AccountState.SetUp;
+            var reader = new SourceStatusReader(() => 1, () => true, null, false, () => nf, () => dn, () => DateTimeOffset.UnixEpoch);
+            var before = await reader.ReadAsync();
+            Assert.Equal("Set up", before.Single(x => x.Name == "Netflix").Text);
+            Assert.Equal("Set up", before.Single(x => x.Name == "Disney+").Text);
+            Assert.Equal(SourceHealth.Ok, before.Single(x => x.Name == "Disney+").Health);
+            nf = AccountState.SignedIn; dn = AccountState.SignedIn; // Netflix saw a member; Disney+ took its API token
+            var after = await reader.ReadAsync();
+            Assert.Equal(new[] { "Signed in", "Signed in" }, after.Where(x => x.Name is "Netflix" or "Disney+").Select(x => x.Text));
         }
 
         [Fact]

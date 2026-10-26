@@ -384,6 +384,8 @@ namespace Baird.NewUi.Screens
             }
             _scroll = y;
             _inner.RenderTransform = TransformOperations.Parse($"translate(0px, {y}px)");
+            // The lit result's page gets ready while it's lit (artwork too), so opening it draws at once.
+            _ctx.Prefetch?.Lit(_zone == Zone.Results && _rows.Count > 0 ? _rows[_pos.Row].Hits[_pos.Col].Card : null);
         }
 
         // ------------------------------------------------------------------ keys

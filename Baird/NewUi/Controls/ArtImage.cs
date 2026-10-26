@@ -33,7 +33,13 @@ namespace Baird.NewUi.Controls
             Children.Add(Main);
         }
 
-        public ArtImage(string url) : this() => _ = LoadAsync(url);
+        public ArtImage(string url) : this()
+        {
+            // Prefetched (the page you're opening): shown at once, no fade.
+            if (ImageCache.TryGet(url, out var cached) && cached != null) { Transitions = null; Show(cached); Motion.Animate(this, T.Slow); return; }
+            _ = LoadAsync(url);
+        }
+
 
         private async Task LoadAsync(string url)
         {

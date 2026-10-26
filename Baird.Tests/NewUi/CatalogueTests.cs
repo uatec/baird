@@ -225,7 +225,7 @@ namespace Baird.Tests.NewUi
         private static async Task<ShowDetails> Simpsons(World w)
         {
             var r = await w.Search.SearchAsync("simpsons", Channels, DateTimeOffset.UtcNow);
-            return await w.Shows.DetailsAsync(r.Top!.Title!);
+            return await w.Shows.DetailsAsync(r.Top!.Title!, fresh: true);
         }
 
         [Fact]
