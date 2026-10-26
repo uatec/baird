@@ -60,7 +60,7 @@ namespace Baird.NewUi
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
-            _ctx.OpenGuide = (id, at) => GuideScreen.OpenSchedule(_shell!, id, at);
+            _ctx.OpenGuide = (id, at) => GuideScreen.OpenSchedule(_shell!, nav, id, at);
             var guideData = new GuideData(home, services.Epg);
             _ctx.Reminders = new Reminders(Reminders.DefaultPath, () => DateTimeOffset.Now);
             _ctx.SetGuideLayout(string.Equals(config["Baird:GuideLayout"], "columns", StringComparison.OrdinalIgnoreCase) ? Model.GuideLayout.Columns : Model.GuideLayout.Rows, save: false);
