@@ -267,10 +267,10 @@ namespace Baird.Tests.Services
             svc.SessionSequence = NetflixSessionTests.SignedOut;
             svc.AuthStatusToReturn = NetflixSessionTests.VerifyPage(); // Netflix answers the sign-in with its verification step
             var signIn = new NetflixSession(svc, new NetflixCredentials("viewer@example.com", "secret"))
-                { PollInterval = TimeSpan.FromMilliseconds(5), SettleDelay = TimeSpan.FromMilliseconds(5) };
+            { PollInterval = TimeSpan.FromMilliseconds(5), SettleDelay = TimeSpan.FromMilliseconds(5) };
             var e2 = new NetflixPlaybackEngine(signIn, () => new NetflixPlaybackFlow(svc)
-                { PollInterval = TimeSpan.FromMilliseconds(5), AuthCheckTimeout = TimeSpan.FromMilliseconds(200), BufferingTimeout = TimeSpan.FromMilliseconds(300) })
-                { PollInterval = TimeSpan.FromHours(1) };
+            { PollInterval = TimeSpan.FromMilliseconds(5), AuthCheckTimeout = TimeSpan.FromMilliseconds(200), BufferingTimeout = TimeSpan.FromMilliseconds(300) })
+            { PollInterval = TimeSpan.FromHours(1) };
             var reasons = new List<string>();
             e2.Failed += (_, r) => reasons.Add(r);
 

@@ -203,7 +203,9 @@ namespace Baird.Services
         }
 
         /// <summary>
-        /// Waits until a video plays on the page (its time above 0.1 s and advancing between two reads). Returns null when it plays, else
+        /// Waits until a video plays on the page: the programme or an advert (the programme waits paused at 0 while the adverts play, so
+        /// they can take minutes), its time above 0.1 s and advancing between two reads. Presses the page's Play button if the page
+        /// shows it with nothing playing after a few seconds. Returns null when it plays, else
         /// the reason it did not (the page asking for a sign-in is one).
         /// </summary>
         private async Task<string?> WaitForVideoAsync(string playUrl, int generation, CancellationToken ct)
@@ -211,6 +213,8 @@ namespace Baird.Services
             var sw = System.Diagnostics.Stopwatch.StartNew();
             double? previous = null;
             Channel4PageState? last = null;
+            var playPresses = 0;
+            var lastPress = TimeSpan.Zero;
             while (sw.Elapsed < StartTimeout)
             {
                 if (generation != _generation) return null;
@@ -222,18 +226,30 @@ namespace Baird.Services
                 // Baird does not sign in (Channel 4 refuses automated sign-ins); the failure screen offers the viewer the sign-in page.
                 if (state.NeedsSignIn) return Channel4Service.NotSignedInMessage;
 
-                if (!state.HasVideo)
+                // The page does not always start by itself: press its Play button (at most 3 times, 5 s apart).
+                if (state.PlayButton && !state.OtherVideoPlaying && (!state.HasVideo || state.Paused) && playPresses < 3
+                    && sw.Elapsed > TimeSpan.FromSeconds(3) && sw.Elapsed - lastPress > TimeSpan.FromSeconds(5))
+                {
+                    playPresses++;
+                    lastPress = sw.Elapsed;
+                    var pressed = await _service.PageDriver.EvaluateAsync(Channel4PlayerControl.PressPlayScript, ct);
+                    Console.WriteLine($"[Channel4Engine] Pressed the page's Play button ({(pressed is { ValueKind: JsonValueKind.String } ? "clicked" : "not there")}).");
+                }
+
+                if (!state.HasVideo && !state.OtherVideoPlaying)
                 {
                     previous = null;
                     continue;
                 }
+                // An advert counts as playing: the viewer sees it, and the programme starts after it.
+                var time = state.OtherVideoPlaying ? state.AdvertTime : state.CurrentTime;
                 SetStatus(state.OtherVideoPlaying ? "Advert…" : "Loading the video…");
-                if (state.CurrentTime > 0.1 && previous is { } p && state.CurrentTime > p)
+                if (time > 0.1 && previous is { } p && time > p)
                 {
-                    Console.WriteLine($"[Channel4Engine] The video plays ({p:F2} s -> {state.CurrentTime:F2} s, length {state.Duration:F0} s, advert {state.OtherVideoPlaying}).");
+                    Console.WriteLine($"[Channel4Engine] The video plays ({p:F2} s -> {time:F2} s, programme length {state.Duration:F0} s, advert {state.OtherVideoPlaying}).");
                     return null;
                 }
-                previous = state.CurrentTime;
+                previous = time;
             }
             return $"No video played within {StartTimeout.TotalSeconds:F0} s. Last page: {last?.Url ?? "unreadable"} \"{last?.Text}\"";
         }
@@ -332,15 +348,13 @@ namespace Baird.Services
                 _advert = advert;
                 Console.WriteLine(advert ? "[Channel4Engine] An advert plays." : "[Channel4Engine] The programme plays.");
             }
-            if (!advert)
+            if (!advert) Volatile.Write(ref _position, state.CurrentTime);
+            // The page's own length is exact (the programme page only gives minutes). It is the programme's even while an advert plays
+            // in the other video element; only an advert in the programme's own element (none seen yet) has a length that is not.
+            if ((!advert || state.OtherVideoPlaying) && state.Duration > 0 && Math.Abs(state.Duration - DurationSeconds) > 1)
             {
-                Volatile.Write(ref _position, state.CurrentTime);
-                // The page's own length is exact; the programme page only gives minutes.
-                if (state.Duration > 0 && Math.Abs(state.Duration - DurationSeconds) > 1)
-                {
-                    Volatile.Write(ref _duration, state.Duration);
-                    DurationChanged?.Invoke(this, state.Duration);
-                }
+                Volatile.Write(ref _duration, state.Duration);
+                DurationChanged?.Invoke(this, state.Duration);
             }
             SetPaused(state.Paused && !state.OtherVideoPlaying);
         }

@@ -10,6 +10,8 @@ namespace Baird.Services
     /// <param name="Authenticated">The page's own <c>__PARAMS__.initialData.isUserAuthenticated</c>; null on a page without it (sign-in pages, robots.txt).</param>
     /// <param name="SignInPrompt">"Please sign in to watch" is on the page.</param>
     /// <param name="OtherVideoPlaying">A video other than the programme plays (an advert).</param>
+    /// <param name="AdvertTime">That advert's own time (the programme video stays paused at 0 while adverts play).</param>
+    /// <param name="PlayButton">The page shows its Play button (it does not always start the video by itself).</param>
     public sealed record Channel4PageState(
         string Url,
         bool? Authenticated,
@@ -22,7 +24,9 @@ namespace Baird.Services
         bool Paused,
         bool Ended,
         bool OtherVideoPlaying,
-        string Text)
+        string Text,
+        double AdvertTime = 0,
+        bool PlayButton = false)
     {
         /// <summary>The page asks for a sign-in (or shows the sign-in form).</summary>
         public bool NeedsSignIn => Authenticated == false || SignInPrompt || EmailField || PasswordField;
@@ -38,9 +42,10 @@ namespace Baird.Services
     /// disabled" page. Baird does not sign in; the viewer does, once, with <c>channel4_signin.sh</c>.</item>
     /// <item>The cookie banner's "Accept &amp; Continue" (<c>.all4-cc-primary-button</c>) accepts a script click.</item>
     /// </list>
-    /// NOT yet measured (needs Baird's browser signed in on the Pi): the player's DOM, its adverts, whether <c>video.duration</c> is the
-    /// programme's length, and whether a native seek is safe. The scripts therefore only rely on standard &lt;video&gt; behaviour:
-    /// the programme is the video with the longest finite duration; another video playing is taken to be an advert.
+    /// Measured on the Pi, signed in (2026-10-25): the page has two &lt;video&gt; elements. The programme is a <c>blob:</c> video whose
+    /// <c>duration</c> is the programme's real length (2089.9 s for a "35 mins" Countdown); the adverts play in the OTHER element
+    /// (15 s and 30 s clips from Channel 4's advert CDN), while the programme waits paused at 0. The page shows "Advert: Programme starts
+    /// in 01:06". NOT yet measured: whether a native seek is safe, mid-roll adverts, the end of a programme.
     /// </summary>
     public static class Channel4PlayerControl
     {
@@ -71,6 +76,8 @@ namespace Baird.Services
                 paused: v ? v.paused : true,
                 ended: v ? v.ended : false,
                 otherVideoPlaying: !!ad,
+                advertTime: ad ? ad.currentTime : 0,
+                playButton: !!document.querySelector('button.text-button.play'),
                 text: text.slice(0, 240)
             };
         })()";
@@ -111,7 +118,7 @@ namespace Baird.Services
                 Bool(r, "signInPrompt"), Bool(r, "emailField"), Bool(r, "passwordField"), Bool(r, "hasVideo"),
                 Num(r, "currentTime"), Num(r, "duration"),
                 !r.TryGetProperty("paused", out var p) || p.ValueKind != JsonValueKind.False,
-                Bool(r, "ended"), Bool(r, "otherVideoPlaying"), Str(r, "text") ?? "");
+                Bool(r, "ended"), Bool(r, "otherVideoPlaying"), Str(r, "text") ?? "", Num(r, "advertTime"), Bool(r, "playButton"));
         }
 
         public static async Task<Channel4PageState?> ReadStateAsync(ICdpPageDriver page, CancellationToken ct = default)
@@ -128,6 +135,12 @@ namespace Baird.Services
         public static bool IsAdvert(Channel4PageState state, double programmeSeconds) =>
             state.OtherVideoPlaying ||
             (programmeSeconds > 0 && state.Duration > 0 && state.Duration < Math.Min(AdvertMaxSeconds, programmeSeconds * 0.5));
+
+        /// <summary>
+        /// JS that presses the page's Play button (an on-demand page does not always start the video by itself; measured on the Pi:
+        /// signed in, the page showed "Play" and no video until it was pressed). A script click works on it. Returns "clicked" or null.
+        /// </summary>
+        public const string PressPlayScript = "(function() { const b = document.querySelector('button.text-button.play'); if (!b) return null; b.click(); return 'clicked'; })()";
 
         /// <summary>JS for pause and play: pause stops every playing video; play resumes the advert if one is under way, else the programme.</summary>
         public static string ControlScript(NetflixPlayerAction action) => $@"(function(action) {{

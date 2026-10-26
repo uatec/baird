@@ -424,10 +424,10 @@ namespace Baird.Controls
                 return;
             }
 
-            // Handle Down key for History
-            if (e.Key == Avalonia.Input.Key.Down)
+            // Home opens the menu (the History tab)
+            if (e.Key is Avalonia.Input.Key.BrowserHome or Avalonia.Input.Key.Home)
             {
-                Console.WriteLine("[VideoPlayer] Down key pressed -> HistoryRequested");
+                Console.WriteLine("[VideoPlayer] Home key pressed -> HistoryRequested");
                 HistoryRequested?.Invoke(this, EventArgs.Empty);
                 UserActivity?.Invoke(this, EventArgs.Empty);
                 e.Handled = true;
