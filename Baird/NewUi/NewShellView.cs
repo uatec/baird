@@ -93,7 +93,7 @@ namespace Baird.NewUi
                 {
                     "info" => new InfoBar(_ctx),
                     "number" when o.Params is int first => new NumberPanel(_ctx, timers, first),
-                    "channels" => new ChannelList(_ctx, timers, o.Params as UiAction?),
+                    "channels" => new ChannelList(_ctx, timers, o.Params as UiAction?, guideData.LoadAsync),
                     "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, nav, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
                     "reminder" when o.Params is Model.Reminder r => new ReminderCard(_ctx, r),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
@@ -156,8 +156,9 @@ namespace Baird.NewUi
                 }
                 if (upNextCard.Opacity > 0) return;
                 var next = await home.NextProgrammeAsync(ch.Id, DateTimeOffset.Now);
-                if (next == null) return;
-                upNextText.Text = $"Up next on {ch.Name}\n{next.Start.LocalDateTime:HH:mm}  {next.Title}\nOK to stay · ▴ ▾ for something else";
+                if (next == null || prog == null) return;
+                var after = await home.NextProgrammeAsync(ch.Id, next.Start);
+                upNextText.Inlines = LiveUpNext.Inlines(ch, prog, next, after, DateTimeOffset.Now);
                 upNextCard.Opacity = 1;
                 liveUpNext.Dismiss(prog);
                 DispatcherTimer.RunOnce(() => upNextCard.Opacity = 0, TimeSpan.FromSeconds(20));

@@ -354,6 +354,48 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task Showings_are_marked_new_or_repeat_and_each_can_be_reminded_in_place()
+        {
+            var model = Model(4);
+            var ch2 = model.Channels[2];
+            var target = ch2.Schedule[20];
+            var renamed = ch2.Schedule.Select(p => p.Id == target.Id ? p with { Title = "Show 0.3" } : p).ToList();
+            model = model with { Channels = model.Channels.Select((c, i) => i == 2 ? c with { Schedule = renamed } : c).ToList() };
+            var r = await Shown(model);
+            Press(r.Guide, UiAction.Right, 2);
+            Press(r.Guide, UiAction.HoldOk);
+            r.Guide.RunAction("All showings");
+            var items = r.Guide.ActionItems;
+            Assert.Contains("New", items[0].Pills!);
+            Assert.Contains("Repeat", items[1].Pills!); // no subtitle: the same title again is a repeat
+            Assert.Equal(new[] { "Go to it", "Remind me" }, items[1].Buttons!.Select(b => b.Label));
+            Press(r.Guide, UiAction.Down);
+            Press(r.Guide, UiAction.Right); // Remind me
+            Assert.Contains("focused", r.Guide.LitElement!.Classes);
+            Press(r.Guide, UiAction.Ok);
+            Assert.True(r.Ctx.Reminders.Has(target.Id));
+            Assert.True(r.Guide.ActionsOpen); // still on the list, same row and button
+            Assert.Equal(1, r.Guide.ActionIndex);
+            Assert.Equal("Cancel reminder", r.Guide.ActionItems[1].Buttons![1].Label);
+            Assert.Contains("Reminder set", r.Guide.ActionItems[1].Pills!);
+            Press(r.Guide, UiAction.Ok);
+            Assert.False(r.Ctx.Reminders.Has(target.Id));
+        }
+
+        [AvaloniaFact]
+        public async Task A_showing_on_now_offers_watch_now()
+        {
+            var r = await Shown();
+            Press(r.Guide, UiAction.HoldOk); // Show 0.1, on now
+            r.Guide.RunAction("All showings");
+            var only = Assert.Single(r.Guide.ActionItems);
+            Assert.Contains("Live", only.Pills!);
+            Assert.Equal("Watch now", Assert.Single(only.Buttons!).Label);
+            Press(r.Guide, UiAction.Ok);
+            Assert.Equal("ch0", r.Tuned.Single().Id);
+        }
+
+        [AvaloniaFact]
         public void The_preview_frames_the_video_only_on_the_guide_while_something_plays()
         {
             var nav = new Navigator();

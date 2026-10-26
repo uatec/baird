@@ -101,6 +101,8 @@ namespace Baird.NewUi.Screens
         public string EntryText => _header.EntryText;
         public bool ActionsOpen => _actions.IsOpen;
         public IReadOnlyList<string> ActionLabels => _actions.Labels;
+        public IReadOnlyList<GuideAction> ActionItems => _actions.Items;
+        public int ActionIndex => _actions.Index;
         public void RunAction(string label) => _actions.Run(label);
         public bool StripFocused => _strip != null;
         public GuideLayout Layout => _grid.Geometry.Layout;
@@ -316,29 +318,40 @@ namespace Baird.NewUi.Screens
             _actions.Open(p.NoInfo ? ch.Name : p.Title, p.NoInfo ? "No information" : $"{ch.Name}, {GuideHeader.Hhmm(p.Start)}–{GuideHeader.Hhmm(p.End)}", items);
         }
 
-        /// <summary>Every showing of this title from now on, across the channels and the day the guide holds; OK glides there.</summary>
-        private void OpenShowings(Programme p)
+        /// <summary>
+        /// Every showing of this title from now on, across the channels and the day the guide holds (prototype
+        /// showings.js): New / Repeat (a subtitle — or, without one, the title — seen earlier is a repeat), Live, and a
+        /// bell when reminded. ◂ ▸ choose: on now, Watch now; later, Go to it (the grid glides there) or Remind me.
+        /// </summary>
+        private void OpenShowings(Programme p, bool keep = false)
         {
             var now = _ctx.Now();
             var showings = _model!.Channels
                 .SelectMany((c, i) => c.Schedule.Where(x => !x.NoInfo && x.End > now && string.Equals(x.Title, p.Title, StringComparison.OrdinalIgnoreCase)).Select(x => (Row: i, P: x, Ch: c.Channel)))
                 .OrderBy(s => s.P.Start)
                 .ToList();
-            var seen = new HashSet<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var items = showings.Select(s =>
             {
-                var key = s.P.Subtitle ?? s.P.Title;
-                var repeat = !seen.Add(key) && s.P.Subtitle != null;
-                var label = $"{GuideHeader.DayWord(s.P.Start, now)} {GuideHeader.Hhmm(s.P.Start)}  ·  {s.Ch.Name}";
-                var detail = s.P.IsOnAt(now) ? "On now" : _ctx.Reminders.Has(s.P.Id) ? "Reminder set" : repeat ? "Repeat" : s.P.Subtitle;
-                return new GuideAction(label, detail, () =>
-                {
-                    _actions.Close();
-                    _pos = new GuidePos(s.Row, s.P.Id, s.P.IsOnAt(now) ? now : s.P.Start);
-                    Draw();
-                });
+                var live = s.P.IsOnAt(now);
+                var repeat = !seen.Add(s.P.Subtitle ?? s.P.Title);
+                var pills = new List<string>();
+                if (live) pills.Add("Live");
+                pills.Add(repeat ? "Repeat" : "New");
+                if (_ctx.Reminders.Has(s.P.Id)) pills.Add("Reminder set");
+                var label = $"{GuideHeader.DayWord(s.P.Start, now)} {GuideHeader.Hhmm(s.P.Start)}  ·  {s.Ch.Number} {s.Ch.Name}";
+                void GoTo() { _actions.Close(); _pos = new GuidePos(s.Row, s.P.Id, live ? now : s.P.Start); Draw(); }
+                var buttons = live
+                    ? new[] { new GuideButton("Watch now", () => { _actions.Close(); _ctx.PlayLive(s.Ch); }) }
+                    : new[]
+                    {
+                        new GuideButton("Go to it", GoTo),
+                        new GuideButton(_ctx.Reminders.Has(s.P.Id) ? "Cancel reminder" : "Remind me", () => { ToggleReminder(s.P, s.Ch); OpenShowings(p, keep: true); }),
+                    };
+                return new GuideAction(label, s.P.Subtitle ?? s.P.Synopsis, GoTo, Pills: pills, Buttons: buttons);
             }).ToList();
-            _actions.Open(p.Title, showings.Count == 1 ? "This is the only showing in the guide" : $"{showings.Count} showings in the next day", items);
+            var channels = showings.Select(s => s.Ch.Id).Distinct().Count();
+            _actions.Open(p.Title, showings.Count == 1 ? "This is the only showing in the guide" : $"{showings.Count} showings across {channels} channel{(channels == 1 ? "" : "s")} in the next day", items, keep);
         }
 
         // ------------------------------------------------------------------ number entry
