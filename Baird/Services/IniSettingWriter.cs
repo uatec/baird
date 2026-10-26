@@ -32,7 +32,13 @@ namespace Baird.Services
             {
                 var end = lines.FindIndex(start + 1, l => l.TrimStart().StartsWith("["));
                 if (end < 0) end = lines.Count;
-                var existing = lines.FindIndex(start + 1, end - start - 1, l => l.Trim().StartsWith(key + "=", StringComparison.OrdinalIgnoreCase));
+                // The key as the INI reader sees it: the name before '=', trimmed ("Ui = new" too), never a comment.
+                var existing = lines.FindIndex(start + 1, end - start - 1, l =>
+                {
+                    var t = l.TrimStart();
+                    return !t.StartsWith(";") && !t.StartsWith("#") && t.Contains('=')
+                        && t.Split('=', 2)[0].Trim().Equals(key, StringComparison.OrdinalIgnoreCase);
+                });
                 if (existing >= 0) lines[existing] = $"{key}={value}";
                 else
                 {

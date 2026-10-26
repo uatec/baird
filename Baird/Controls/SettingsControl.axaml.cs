@@ -36,7 +36,8 @@ namespace Baird.Controls
 
         private void Interface_KeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.Key is Key.Enter or Key.Space or Key.Left or Key.Right && DataContext is SettingsViewModel vm)
+            // OK only: ◂ ▸ here used to adjust size, and a stray press mustn't restart Baird into the other interface.
+            if (e.Key is Key.Enter && DataContext is SettingsViewModel vm)
             {
                 vm.ToggleUiModeCommand.Execute().Subscribe();
                 e.Handled = true;

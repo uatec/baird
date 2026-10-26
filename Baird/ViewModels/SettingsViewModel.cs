@@ -52,6 +52,7 @@ namespace Baird.ViewModels
 
         // --- Interface: Classic / New. Changing it saves the setting and restarts Baird into that mode. ---
         private Baird.Services.UiMode _uiMode;
+        private bool _switching;
         public Baird.Services.UiMode UiMode { get => _uiMode; private set { this.RaiseAndSetIfChanged(ref _uiMode, value); this.RaisePropertyChanged(nameof(UiModeText)); } }
         public string UiModeText => _uiMode == Baird.Services.UiMode.New ? "New" : "Classic";
         public ReactiveCommand<Unit, Unit> ToggleUiModeCommand { get; }
@@ -93,6 +94,9 @@ namespace Baird.ViewModels
             if (_configuration != null) _uiMode = Baird.Services.UiModes.Read(_configuration);
             ToggleUiModeCommand = ReactiveCommand.Create(() =>
             {
+                // One switch per run: a held or repeated OK mustn't flip it back while Baird restarts.
+                if (_switching) return;
+                _switching = true;
                 var next = _uiMode == Baird.Services.UiMode.New ? Baird.Services.UiMode.Classic : Baird.Services.UiMode.New;
                 SaveSetting(Baird.Services.UiModes.SettingKey, Baird.Services.UiModes.ToSetting(next));
                 UiMode = next;

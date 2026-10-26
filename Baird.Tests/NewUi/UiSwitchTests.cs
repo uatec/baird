@@ -39,6 +39,24 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void Updates_a_hand_written_key_with_spaces_instead_of_adding_a_duplicate()
+        {
+            Directory.CreateDirectory(_dir);
+            File.WriteAllLines(PathOf, new[] { "[Baird]", "; Ui=old comment", "Ui = new", "UiScale=1.4" });
+            IniSettingWriter.Save(PathOf, "Baird", "Ui", "classic");
+            Assert.Equal(new[] { "[Baird]", "; Ui=old comment", "Ui=classic", "UiScale=1.4" }, File.ReadAllLines(PathOf));
+        }
+
+        [Fact]
+        public void Does_not_mistake_a_longer_key_for_the_one_being_saved()
+        {
+            Directory.CreateDirectory(_dir);
+            File.WriteAllLines(PathOf, new[] { "[Baird]", "UiScale=1.4" });
+            IniSettingWriter.Save(PathOf, "Baird", "Ui", "new");
+            Assert.Equal(new[] { "[Baird]", "UiScale=1.4", "Ui=new" }, File.ReadAllLines(PathOf));
+        }
+
+        [Fact]
         public void Appends_to_the_section_when_it_is_last()
         {
             Directory.CreateDirectory(_dir);
@@ -56,6 +74,16 @@ namespace Baird.Tests.NewUi
             foreach (var (k, v) in kv) d[k] = v;
             return new ConfigurationBuilder().AddInMemoryCollection(d).Build();
         }
+
+        [Fact]
+        public void A_new_ui_that_fails_to_start_falls_back_to_classic()
+        {
+            var built = UiModes.Build<string>(UiMode.New, () => throw new InvalidOperationException("font missing"), () => "classic");
+            Assert.Equal("classic", built);
+        }
+
+        [Fact] public void Classic_mode_builds_classic() => Assert.Equal("classic", UiModes.Build(UiMode.Classic, () => "new", () => "classic"));
+        [Fact] public void New_mode_builds_new() => Assert.Equal("new", UiModes.Build(UiMode.New, () => "new", () => "classic"));
 
         [Fact] public void Missing_is_classic() => Assert.Equal(UiMode.Classic, UiModes.Read(Config()));
         [Fact] public void New_from_the_setting() => Assert.Equal(UiMode.New, UiModes.Read(Config(("Baird:Ui", "new"))));
@@ -109,6 +137,18 @@ namespace Baird.Tests.NewUi
             Assert.Contains("Ui=new", System.IO.File.ReadAllLines(path));
             Assert.Equal(1, restarted);
             Assert.Equal("New", vm.UiModeText);
+        }
+
+        [Avalonia.Headless.XUnit.AvaloniaFact]
+        public void A_second_press_while_restarting_does_nothing()
+        {
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "baird-cfg-" + System.Guid.NewGuid().ToString("N"), "config.ini");
+            var restarted = 0;
+            var vm = new Baird.ViewModels.SettingsViewModel(null) { ConfigPath = path, Restart = () => restarted++ };
+            vm.ToggleUiModeCommand.Execute().Subscribe();
+            vm.ToggleUiModeCommand.Execute().Subscribe();
+            Assert.Contains("Ui=new", System.IO.File.ReadAllLines(path));
+            Assert.Equal(1, restarted);
         }
     }
 }

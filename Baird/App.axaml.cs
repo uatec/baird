@@ -55,7 +55,7 @@ namespace Baird
                 Console.WriteLine($"[App] Interface: {uiMode}");
                 desktop.MainWindow = new Window
                 {
-                    Content = uiMode == Baird.Services.UiMode.New ? new Baird.NewUi.NewShellView(Configuration) : new MainView(Configuration),
+                    Content = Baird.Services.UiModes.Build<Control>(uiMode, () => new Baird.NewUi.NewShellView(Configuration), () => new MainView(Configuration)),
                     Title = "Baird",
                     Background = Brushes.Black,
                 };

@@ -143,5 +143,44 @@ namespace Baird.Tests.NewUi
             Assert.Equal(1, ended);
             Assert.Single(saved);
         }
+
+        [Fact]
+        public void An_old_channels_load_timeout_does_not_cut_short_the_next_tune()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("101"));
+            t.Advance(PlaybackController.TuneDebounce);
+            t.Advance(PlaybackController.LoadTimeout - TimeSpan.FromMilliseconds(100));
+            c.PlayLive(Ch("102"));
+            t.Advance(TimeSpan.FromMilliseconds(200)); // the old load timer's moment, inside the new tune's debounce
+            Assert.Equal(new[] { "http://tvh/101" }, e.Plays.Select(p => p.Url));
+            t.Advance(PlaybackController.TuneDebounce);
+            Assert.Equal(new[] { "http://tvh/101", "http://tvh/102" }, e.Plays.Select(p => p.Url));
+        }
+
+        [Fact]
+        public void A_live_stream_that_drops_is_retuned_rather_than_ended()
+        {
+            var (c, e, t, _) = Build();
+            var ended = 0; c.Ended += () => ended++;
+            c.PlayLive(Ch("101"));
+            t.Advance(PlaybackController.TuneDebounce);
+            e.Loaded();
+            t.Advance(TimeSpan.FromMinutes(5));
+            e.Ended();
+            Assert.Equal(0, ended);
+            Assert.Equal(new[] { "http://tvh/101", "http://tvh/101" }, e.Plays.Select(p => p.Url));
+        }
+
+        [Fact]
+        public void A_live_stream_that_keeps_dropping_at_once_gives_up_and_says_so()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("101"));
+            t.Advance(PlaybackController.TuneDebounce);
+            for (var i = 0; i < 6; i++) { e.Loaded(); t.Advance(TimeSpan.FromSeconds(1)); e.Ended(); }
+            Assert.NotNull(c.Failure);
+            Assert.True(e.Plays.Count <= 4, $"{e.Plays.Count} plays");
+        }
     }
 }

@@ -39,6 +39,11 @@ namespace Baird.NewUi.Playback
         private double? _start;
         private DateTimeOffset? _pausedAt;
         private bool _saved;
+        private DateTimeOffset _loadedAt;
+        private int _quickDrops;
+        /// <summary>A live stream that ends this soon after loading counts towards giving up.</summary>
+        private static readonly TimeSpan QuickDrop = TimeSpan.FromSeconds(10);
+        private const int MaxQuickDrops = 3;
 
         public NowPlaying? Current { get; private set; }
         public bool IsLoading { get; private set; }
@@ -68,8 +73,8 @@ namespace Baird.NewUi.Playback
         {
             SaveCurrent();
             Current = new NowPlaying("live", channel.Id, channel.Name, channel.StreamUrl, channel);
-            BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; IsLoading = true; _saved = false;
-            _tuneTimer?.Dispose();
+            BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; IsLoading = true; _saved = false; _quickDrops = 0;
+            _tuneTimer?.Dispose(); _loadTimer?.Dispose();
             _tuneTimer = _timers.After(TuneDebounce, () => Start(channel.StreamUrl, null));
             Changed?.Invoke();
         }
@@ -80,6 +85,7 @@ namespace Baird.NewUi.Playback
             _tuneTimer?.Dispose();
             Current = new NowPlaying("vod", itemId, title, url, null);
             BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; _saved = false;
+            _loadTimer?.Dispose();
             Start(url, resume > TimeSpan.Zero ? resume.TotalSeconds : null);
         }
 
@@ -119,12 +125,29 @@ namespace Baird.NewUi.Playback
         {
             _loadTimer?.Dispose();
             IsLoading = false; Failure = null;
+            _loadedAt = _now();
             Loaded?.Invoke();
             Changed?.Invoke();
         }
 
         private void OnEnded()
         {
+            // A live stream has no end: if it drops, tune it again (unless it keeps dropping straight away).
+            if (Current is { Kind: "live" } live)
+            {
+                _quickDrops = _now() - _loadedAt < QuickDrop ? _quickDrops + 1 : 0;
+                if (_quickDrops < MaxQuickDrops)
+                {
+                    Console.WriteLine($"[Playback] {live.Title} stopped; tuning again.");
+                    Start(live.Url, null);
+                    return;
+                }
+                IsLoading = false;
+                Failure = $"{live.Title} keeps stopping. Try again, or another channel.";
+                Console.WriteLine($"[Playback] {Failure}");
+                Changed?.Invoke();
+                return;
+            }
             SaveCurrent();
             Ended?.Invoke();
         }
