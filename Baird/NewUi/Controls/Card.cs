@@ -109,7 +109,9 @@ namespace Baird.NewUi.Controls
             Children.Add(artStack);
 
             var label = data.Kind == CardKind.Channel ? data.Sublabel ?? "No programme information" : data.Label;
-            var sub = data.Kind == CardKind.Channel ? null : data.Sublabel;
+            var sub = data.Kind == CardKind.Channel
+                ? data.Programme is { NoInfo: false } p2 && (int)Math.Ceiling((p2.End - DateTimeOffset.Now).TotalMinutes) is var left and > 0 and < 600 ? $"{left} min left" : null
+                : data.Sublabel;
             _text = new StackPanel { Opacity = 0.55, Spacing = 4 };
             _text.Children.Add(new TextBlock { Text = label, FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = T.Text, TextTrimming = TextTrimming.CharacterEllipsis });
             if (!string.IsNullOrEmpty(sub)) _text.Children.Add(new TextBlock { Text = sub, FontSize = 21, Foreground = T.Text2, TextTrimming = TextTrimming.CharacterEllipsis });

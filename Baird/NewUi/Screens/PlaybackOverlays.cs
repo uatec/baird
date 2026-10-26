@@ -168,7 +168,19 @@ namespace Baird.NewUi.Screens
             if (now.Channel != null) top.Children.Add(new TextBlock { Text = now.Channel.Number, FontSize = 40, FontWeight = FontWeight.Bold, Foreground = T.Text3 });
             if (now.Channel != null) top.Children.Add(new TextBlock { Text = now.Channel.Name, FontSize = 26, FontWeight = FontWeight.SemiBold, Foreground = T.Text, VerticalAlignment = VerticalAlignment.Center });
             if (now.Kind == "live") top.Children.Add(new Border { Background = T.Live, CornerRadius = new CornerRadius(999), Padding = new Thickness(12, 2), VerticalAlignment = VerticalAlignment.Center, Child = new TextBlock { Text = "Live", FontSize = 20, FontWeight = FontWeight.SemiBold, Foreground = T.Text } });
-            if (top.Children.Count > 0) _bar.Children.Add(top);
+            // On demand: where it's from, and which episode.
+            if (now.Kind != "live" && _ctx.NowPlaying is { } card)
+            {
+                var service = Adapters.CatalogueSearch.ServiceOf(card.Source);
+                if (!string.IsNullOrEmpty(service)) top.Children.Add(new TextBlock { Text = service, FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = T.Text2, VerticalAlignment = VerticalAlignment.Center });
+                if (card.Kind == Model.CardKind.Episode && card.Sublabel is { Length: > 0 } ep) top.Children.Add(new TextBlock { Text = ep, FontSize = 24, Foreground = T.Text2, VerticalAlignment = VerticalAlignment.Center });
+            }
+            if (p.IsPaused) top.Children.Add(new TextBlock { Text = "❚❚", FontSize = 26, FontWeight = FontWeight.Bold, Foreground = T.Text, VerticalAlignment = VerticalAlignment.Center });
+            // The time (the clock is hidden while watching).
+            var header = new Grid();
+            header.Children.Add(top);
+            header.Children.Add(new TextBlock { Text = DateTime.Now.ToString("HH:mm"), FontSize = 28, FontWeight = FontWeight.SemiBold, Foreground = T.Text2, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center });
+            _bar.Children.Add(header);
             _bar.Children.Add(new TextBlock { Text = now.Kind == "live" ? _ctx.Programme?.Title ?? "No programme information" : now.Title, FontSize = 56, FontWeight = FontWeight.Bold, Foreground = T.Text, Margin = new Thickness(0, 4, 0, 14) });
 
             double frac; string left, mid, right;

@@ -256,6 +256,9 @@ namespace Baird.NewUi.Shell
             var st = nav.State;
             switch (a)
             {
+                case UiAction.Help:
+                    Toast("OK select · hold OK more · ◂ ▸ ▴ ▾ move · Back back · Home home · ≡ guide · Pg± page or channel · 0–9 channel · ⏯ pause · ⏮ ⏭ skip");
+                    return;
                 case UiAction.Home:
                     nav.Home(); TabFocus = false; PlaceScreen(Place.Home).OnFocusIn();
                     if (PlaceScreen(Place.Home) is HomeScreen home) home.Reset(); // the Home key: back to the first card

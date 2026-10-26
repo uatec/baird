@@ -159,8 +159,18 @@ namespace Baird.NewUi.Screens
         {
             if (_overVideo && _ctx.Playback.Current is { } now)
             {
-                SetHero("playing:" + now.ItemId, null, now.Kind == "live" ? "Now playing · live" : "Now playing", now.Title,
-                    now.Kind == "live" ? now.Channel?.Name : null, null);
+                if (now.Kind == "live")
+                {
+                    var prog = _ctx.Programme;
+                    SetHero("playing:" + now.ItemId + prog?.Id, null, $"● Live · Now playing on {now.Channel?.Name}", prog?.Title ?? now.Title,
+                        prog != null ? $"{prog.Start.LocalDateTime:HH:mm}–{prog.End.LocalDateTime:HH:mm}{MinLeft(prog)}" : null, prog?.Synopsis);
+                }
+                else
+                {
+                    var pb = _ctx.Playback;
+                    var ends = pb.Duration > TimeSpan.Zero ? $"Ends at {DateTime.Now + (pb.Duration - pb.Position):HH:mm}" : null;
+                    SetHero("playing:" + now.ItemId, null, "Now playing", now.Title, string.Join("  ·  ", new[] { _ctx.NowPlaying?.Sublabel, ends }.Where(x => !string.IsNullOrEmpty(x))), _ctx.NowPlaying?.Synopsis);
+                }
                 return;
             }
             if (_rowList.Count == 0) { SetHero("empty", null, "Welcome", "Baird", "Loading what's on and what you're watching…", null); return; }
@@ -168,8 +178,14 @@ namespace Baird.NewUi.Screens
             var c = row.Cards[_pos.Col].Data;
             var eyebrow = c.Kind == CardKind.Channel ? $"● Live   {c.Label}" : $"{row.Eyebrow}{(c.Source is { Length: > 0 } s && s != "Seerr" && s != "TV" ? $" · {s.Split(':')[0]}" : "")}";
             var title = c.Kind == CardKind.Channel ? c.Programme?.Title ?? c.Label : c.Label;
-            var meta = c.Kind == CardKind.Channel ? (c.Programme is { } p ? $"{p.Start.LocalDateTime:HH:mm}–{p.End.LocalDateTime:HH:mm}" : "No programme information") : c.Sublabel;
+            var meta = c.Kind == CardKind.Channel ? (c.Programme is { } p ? $"{p.Start.LocalDateTime:HH:mm}–{p.End.LocalDateTime:HH:mm}{MinLeft(p)}" : "No programme information") : c.Sublabel;
             SetHero(c.Id, c.Kind == CardKind.Channel ? c.Programme?.ImageUrl : c.ImageUrl, eyebrow, title, meta, c.Synopsis);
+        }
+
+        private string MinLeft(Programme p)
+        {
+            var left = (int)Math.Ceiling((p.End - _ctx.Now()).TotalMinutes);
+            return left > 0 && left < 600 ? $"  ·  {left} min left" : "";
         }
 
         private void SetHero(string key, string? image, string eyebrow, string title, string? meta, string? synopsis)
@@ -197,6 +213,13 @@ namespace Baird.NewUi.Screens
             switch (a)
             {
                 case UiAction.Up when _pos.Row == 0: return false;
+                case UiAction.PageUp or UiAction.PageDown:
+                    // Four cards along the row at a time.
+                    var row = _rowList[_pos.Row];
+                    _pos = (_pos.Row, Math.Clamp(_pos.Col + (a == UiAction.PageDown ? 4 : -4), 0, row.Cards.Count - 1));
+                    _overVideo = false;
+                    Layout();
+                    return true;
                 case UiAction.Up or UiAction.Down or UiAction.Left or UiAction.Right:
                     var dir = a switch { UiAction.Up => Dir.Up, UiAction.Down => Dir.Down, UiAction.Left => Dir.Left, _ => Dir.Right };
                     _pos = FocusMath.MoveInRows(_rowList.Select(r => r.Cards.Count).ToList(), _pos, dir, _memory);
