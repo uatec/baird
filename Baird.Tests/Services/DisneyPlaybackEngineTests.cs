@@ -38,7 +38,7 @@ namespace Baird.Tests.Services
                 SignInTimeout = TimeSpan.FromSeconds(3),
                 PollInterval = TimeSpan.FromMilliseconds(5)
             };
-            var engine = new DisneyPlaybackEngine(service, () => new DisneySpikeViewModel(service)
+            var engine = new DisneyPlaybackEngine(service, () => new DisneyPlaybackFlow(service)
             {
                 UseBairdHud = true,
                 BufferingTimeout = TimeSpan.FromMilliseconds(400)
@@ -225,7 +225,7 @@ namespace Baird.Tests.Services
         {
             var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/identity/login/enter-email", login: true) };
             var service = new DisneyService(new BrowserHub(b), null) { SignInTimeout = TimeSpan.FromSeconds(1), PollInterval = TimeSpan.FromMilliseconds(5) };
-            var engine = new DisneyPlaybackEngine(service, () => new DisneySpikeViewModel(service) { UseBairdHud = true });
+            var engine = new DisneyPlaybackEngine(service, () => new DisneyPlaybackFlow(service) { UseBairdHud = true });
             string? reason = null;
             engine.Failed += (_, r) => reason = r;
 
@@ -553,13 +553,13 @@ namespace Baird.Tests.Services
         public async Task In_engine_mode_the_page_style_is_injected_the_window_is_not_raised_and_Baird_is_told()
         {
             var (b, service) = Setup();
-            var vm = new DisneySpikeViewModel(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
+            var vm = new DisneyPlaybackFlow(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
             var confirmed = 0;
             vm.PlaybackConfirmed += () => confirmed++;
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
             Assert.Equal(1, confirmed);
             Assert.True(b.InjectOverlayCalled);
             Assert.False(b.RevealWindowCalled);
@@ -569,13 +569,13 @@ namespace Baird.Tests.Services
         public async Task In_the_spike_tab_mode_the_window_is_raised_and_Baird_is_not_told()
         {
             var (b, service) = Setup();
-            var vm = new DisneySpikeViewModel(service) { UseBairdHud = false, BufferingTimeout = TimeSpan.FromSeconds(2) };
+            var vm = new DisneyPlaybackFlow(service) { UseBairdHud = false, BufferingTimeout = TimeSpan.FromSeconds(2) };
             var confirmed = 0;
             vm.PlaybackConfirmed += () => confirmed++;
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
             Assert.Equal(0, confirmed);
             Assert.True(b.RevealWindowCalled);
         }
@@ -584,7 +584,7 @@ namespace Baird.Tests.Services
         public async Task The_playing_flag_is_cleared_only_after_the_tab_is_back_on_the_idle_page()
         {
             var (b, service) = Setup();
-            var vm = new DisneySpikeViewModel(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
+            var vm = new DisneyPlaybackFlow(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
             await vm.LaunchPlaybackFlowAsync();
             Assert.Equal("Disney+", service.Hub.ActivePlayback);
 
@@ -598,15 +598,15 @@ namespace Baird.Tests.Services
         public async Task A_disposed_flow_no_longer_reacts_to_the_browser_or_the_service()
         {
             var (b, service) = Setup();
-            var vm = new DisneySpikeViewModel(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
+            var vm = new DisneyPlaybackFlow(service) { UseBairdHud = true, BufferingTimeout = TimeSpan.FromSeconds(2) };
             await vm.LaunchPlaybackFlowAsync();
             var logLines = vm.LogEntries.Count;
             vm.Dispose();
 
             b.RaisePageSignal("{\"type\":\"exit\"}"); // the next flow's Back must not stop this old one
 
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
-            Assert.False(b.NavigatedUrls.Contains(DisneyService.IdleUrl) && vm.State == DisneySpikeState.Stopped);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
+            Assert.False(b.NavigatedUrls.Contains(DisneyService.IdleUrl) && vm.State == DisneyPlaybackFlowState.Stopped);
             Assert.Equal(logLines, vm.LogEntries.Count);
         }
     }

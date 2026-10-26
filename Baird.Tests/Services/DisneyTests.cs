@@ -260,11 +260,11 @@ namespace Baird.Tests.Services
         }
     }
 
-    public class DisneySpikeViewModelTests
+    public class DisneyPlaybackFlowTests
     {
         private const string Play = "https://www.disneyplus.com/en-gb/play/d830ec57-499e-498c-b6b3-2b85a18a5f51";
 
-        private static DisneySpikeViewModel Vm(FakeDisneyBrowser b, DisneyCredentials? creds = null) => new(b, creds)
+        private static DisneyPlaybackFlow Vm(FakeDisneyBrowser b, DisneyCredentials? creds = null) => new(b, creds)
         {
             SignInTimeout = TimeSpan.FromSeconds(3),
             BufferingTimeout = TimeSpan.FromSeconds(2),
@@ -285,7 +285,7 @@ namespace Baird.Tests.Services
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
             Assert.Equal("Robert", b.ProfileClicked);
             Assert.True(b.InjectOverlayCalled);
             Assert.True(b.RevealWindowCalled);
@@ -298,7 +298,7 @@ namespace Baird.Tests.Services
             var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State(Play, video: true, t: 0, text: "Something went wrong") };
             var vm = Vm(b);
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(DisneySpikeState.Failed, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Failed, vm.State);
             Assert.Contains("Something went wrong", vm.StatusMessage);
             Assert.False(b.RevealWindowCalled);
             Assert.True(b.StopCalled);
@@ -310,7 +310,7 @@ namespace Baird.Tests.Services
             var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/identity/login/enter-email", login: true) };
             var vm = Vm(b);
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(DisneySpikeState.Failed, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Failed, vm.State);
             Assert.Contains("DISNEY_USER", vm.StatusMessage);
             Assert.False(b.RevealWindowCalled);
         }
@@ -326,7 +326,7 @@ namespace Baird.Tests.Services
             Assert.Equal(1, b.Typed.Count(s => s == "input[type=password]")); // one attempt per run
             Assert.DoesNotContain(vm.LogEntries, l => l.Contains("hunter2-secret"));
             Assert.DoesNotContain("hunter2-secret", vm.StatusMessage);
-            Assert.Equal(DisneySpikeState.Failed, vm.State); // the form never went away in this fake
+            Assert.Equal(DisneyPlaybackFlowState.Failed, vm.State); // the form never went away in this fake
         }
 
         [Fact]
@@ -336,7 +336,7 @@ namespace Baird.Tests.Services
             var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/browse/search") };
             var vm = Vm(b);
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(DisneySpikeState.Failed, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Failed, vm.State);
             Assert.Contains("no signed-in Disney+ page", vm.StatusMessage);
         }
 
@@ -360,7 +360,7 @@ namespace Baird.Tests.Services
             b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: 3));
             var vm = Vm(b);
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
         }
 
         [Fact]
@@ -377,7 +377,7 @@ namespace Baird.Tests.Services
             b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: 3));
             var vm = Vm(b);
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
         }
 
         [Fact]
@@ -395,7 +395,7 @@ namespace Baird.Tests.Services
             b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: 3));
             var vm = Vm(b, new DisneyCredentials("me@example.com", "pw"));
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
             Assert.Empty(b.Typed);
         }
 
@@ -409,14 +409,14 @@ namespace Baird.Tests.Services
             Assert.Contains(vm.LogEntries, l => l.Contains("already signed in"));
         }
 
-        private static async Task<(FakeDisneyBrowser, DisneySpikeViewModel)> PlayingVm()
+        private static async Task<(FakeDisneyBrowser, DisneyPlaybackFlow)> PlayingVm()
         {
             var b = new FakeDisneyBrowser();
             b.States.Enqueue(FakeDisneyBrowser.State(Play));
             for (int t = 1; t <= 12; t++) b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: t));
             var vm = Vm(b);
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
             return (b, vm);
         }
 
@@ -427,7 +427,7 @@ namespace Baird.Tests.Services
             Assert.False(b.StopCalled); // a playing session has not stopped the browser
             b.RaisePageSignal("{\"type\":\"exit\"}");
             Assert.True(b.StopCalled);
-            Assert.Equal(DisneySpikeState.Stopped, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Stopped, vm.State);
         }
 
         [Theory]
@@ -440,7 +440,7 @@ namespace Baird.Tests.Services
             var (b, vm) = await PlayingVm();
             b.RaisePageSignal(payload);
             Assert.False(b.StopCalled);
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
         }
 
         [Fact]
@@ -450,7 +450,7 @@ namespace Baird.Tests.Services
             var vm = Vm(b);
             b.RaisePageSignal("{\"type\":\"exit\"}");
             Assert.False(b.StopCalled);
-            Assert.Equal(DisneySpikeState.Idle, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Idle, vm.State);
         }
 
         [Fact]
@@ -459,80 +459,8 @@ namespace Baird.Tests.Services
             var b = new FakeDisneyBrowser { LaunchResult = false, LastError = "profile locked" };
             var vm = Vm(b);
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(DisneySpikeState.Failed, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Failed, vm.State);
             Assert.Contains("profile locked", vm.StatusMessage);
-        }
-    }
-
-    public class DisneySearchSpikeViewModelTests
-    {
-        private static DisneySearchSpikeViewModel Vm(FakeDisneyBrowser b) => new(b)
-        {
-            SignInTimeout = TimeSpan.FromSeconds(3),
-            PollInterval = TimeSpan.FromMilliseconds(10)
-        };
-
-        [Fact]
-        public async Task Search_returns_the_accounts_titles_and_closes_the_browser()
-        {
-            var b = new FakeDisneyBrowser
-            {
-                LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true),
-                SearchBody = DisneySearchParserTests.Reply(DisneySearchParserTests.Item("The Mandalorian", "id-1", "series"))
-            };
-            var vm = Vm(b);
-            await vm.SearchAsync();
-            Assert.True(vm.Succeeded);
-            Assert.Single(vm.Results);
-            Assert.Equal("The Mandalorian", vm.Results[0].Title);
-            Assert.True(b.StopCalled);
-            Assert.False(vm.IsBusy);
-        }
-
-        [Fact]
-        public async Task The_token_is_sent_to_the_api_but_never_logged()
-        {
-            var b = new FakeDisneyBrowser
-            {
-                LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true),
-                SearchBody = DisneySearchParserTests.Reply(DisneySearchParserTests.Item("X", "id-1", "movie"))
-            };
-            var vm = Vm(b);
-            await vm.SearchAsync();
-            Assert.Contains(b.Scripts, s => s.Contains("fetch(") && s.Contains("SECRET-TOKEN") && s.Contains("query=Mandalorian"));
-            Assert.DoesNotContain(vm.LogEntries, l => l.Contains("SECRET-TOKEN"));
-            Assert.DoesNotContain("SECRET-TOKEN", vm.Status);
-        }
-
-        [Fact]
-        public async Task An_expired_token_is_a_loud_failure_not_an_empty_list()
-        {
-            var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true), SearchStatus = 401, SearchBody = "{}" };
-            var vm = Vm(b);
-            await vm.SearchAsync();
-            Assert.False(vm.Succeeded);
-            Assert.StartsWith("FAILED", vm.Status);
-            Assert.Contains("401", vm.Status);
-        }
-
-        [Fact]
-        public async Task No_captured_api_request_is_a_loud_failure()
-        {
-            var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/en-gb/home", nav: true), Captured = null };
-            var vm = Vm(b);
-            await vm.SearchAsync();
-            Assert.StartsWith("FAILED", vm.Status);
-            Assert.Contains("capture", vm.Status);
-        }
-
-        [Fact]
-        public async Task Not_signed_in_and_no_credentials_fails_naming_the_config_keys()
-        {
-            var b = new FakeDisneyBrowser { LastState = FakeDisneyBrowser.State("https://www.disneyplus.com/identity/login/enter-email", login: true) };
-            var vm = Vm(b);
-            await vm.SearchAsync();
-            Assert.StartsWith("FAILED", vm.Status);
-            Assert.Contains("DISNEY_USER", vm.Status);
         }
     }
 
@@ -694,17 +622,17 @@ namespace Baird.Tests.Services
             var (b, hub, disney, _) = Setup();
             b.States.Enqueue(FakeDisneyBrowser.State(Home, nav: true));
             for (int t = 1; t <= 12; t++) b.States.Enqueue(FakeDisneyBrowser.State(Play, video: true, t: t));
-            var vm = new DisneySpikeViewModel(disney) { BufferingTimeout = TimeSpan.FromSeconds(2) };
+            var vm = new DisneyPlaybackFlow(disney) { BufferingTimeout = TimeSpan.FromSeconds(2) };
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(DisneySpikeState.Playing, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Playing, vm.State);
             Assert.Equal("Disney+", hub.ActivePlayback);
             Assert.True(vm.KeepBrowserOpen);
 
             b.RaisePageSignal("{\"type\":\"exit\"}"); // remote Back
 
-            Assert.Equal(DisneySpikeState.Stopped, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Stopped, vm.State);
             Assert.False(b.StopCalled);
             Assert.True(b.HideWindowCalled); // the revealed window must go back behind Baird, or the TV keeps showing the browser
             Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);
@@ -717,11 +645,11 @@ namespace Baird.Tests.Services
         {
             var (b, hub, disney, _) = Setup();
             b.LastState = FakeDisneyBrowser.State(Home, nav: true);
-            var vm = new DisneySpikeViewModel(disney) { BufferingTimeout = TimeSpan.FromMilliseconds(300) };
+            var vm = new DisneyPlaybackFlow(disney) { BufferingTimeout = TimeSpan.FromMilliseconds(300) };
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(DisneySpikeState.Failed, vm.State);
+            Assert.Equal(DisneyPlaybackFlowState.Failed, vm.State);
             Assert.False(b.StopCalled);
             Assert.Null(hub.ActivePlayback);
             Assert.Equal(DisneyService.IdleUrl, b.LastNavigatedUrl);

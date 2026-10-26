@@ -11,7 +11,7 @@ using ReactiveUI;
 
 namespace Baird.ViewModels
 {
-    public enum NetflixSpikeState
+    public enum NetflixPlaybackFlowState
     {
         Idle,
         LaunchingHiddenBrowser,
@@ -30,14 +30,13 @@ namespace Baird.ViewModels
         Stopped
     }
 
-    public class NetflixSpikeViewModel : ReactiveObject, IDisposable
+    public class NetflixPlaybackFlow : ReactiveObject, IDisposable
     {
         public const string SignInUrl = "https://www.netflix.com/login";
 
         private readonly ICdpBrowserService _browserService;
         private CancellationTokenSource? _activeCts;
 
-        public event EventHandler? BackRequested;
         /// <summary>The video plays (Baird HUD mode): Baird's player takes over from here (see NetflixPlaybackEngine).</summary>
         public event Action? PlaybackConfirmed;
 
@@ -56,8 +55,8 @@ namespace Baird.ViewModels
             set => this.RaiseAndSetIfChanged(ref _targetUrl, value);
         }
 
-        private NetflixSpikeState _state = NetflixSpikeState.Idle;
-        public NetflixSpikeState State
+        private NetflixPlaybackFlowState _state = NetflixPlaybackFlowState.Idle;
+        public NetflixPlaybackFlowState State
         {
             get => _state;
             set
@@ -73,62 +72,25 @@ namespace Baird.ViewModels
                 this.RaisePropertyChanged(nameof(IsSigningIn));
                 this.RaisePropertyChanged(nameof(IsNotLoggedIn));
                 this.RaisePropertyChanged(nameof(IsFailed));
-                this.RaisePropertyChanged(nameof(IsProblem));
                 this.RaisePropertyChanged(nameof(CanLaunch));
                 this.RaisePropertyChanged(nameof(CanStop));
-                this.RaisePropertyChanged(nameof(StateBadgeColor));
-                this.RaisePropertyChanged(nameof(StateDisplayName));
             }
         }
 
-        public bool IsIdle => State == NetflixSpikeState.Idle;
-        public bool IsLaunching => State == NetflixSpikeState.LaunchingHiddenBrowser;
-        public bool IsCheckingAuth => State == NetflixSpikeState.CheckingAuth;
-        public bool IsMfaRequired => State == NetflixSpikeState.MfaRequired;
-        public bool IsBuffering => State == NetflixSpikeState.BufferingVideo;
-        public bool IsPlaying => State == NetflixSpikeState.Playing;
-        public bool IsStopped => State == NetflixSpikeState.Stopped;
-        public bool IsSigningIn => State == NetflixSpikeState.SigningIn;
-        public bool IsNotLoggedIn => State == NetflixSpikeState.NotLoggedIn;
-        public bool IsFailed => State == NetflixSpikeState.Failed;
-        /// <summary>True when the on-screen red banner should show StatusMessage.</summary>
-        public bool IsProblem => IsNotLoggedIn || IsFailed;
+        public bool IsIdle => State == NetflixPlaybackFlowState.Idle;
+        public bool IsLaunching => State == NetflixPlaybackFlowState.LaunchingHiddenBrowser;
+        public bool IsCheckingAuth => State == NetflixPlaybackFlowState.CheckingAuth;
+        public bool IsMfaRequired => State == NetflixPlaybackFlowState.MfaRequired;
+        public bool IsBuffering => State == NetflixPlaybackFlowState.BufferingVideo;
+        public bool IsPlaying => State == NetflixPlaybackFlowState.Playing;
+        public bool IsStopped => State == NetflixPlaybackFlowState.Stopped;
+        public bool IsSigningIn => State == NetflixPlaybackFlowState.SigningIn;
+        public bool IsNotLoggedIn => State == NetflixPlaybackFlowState.NotLoggedIn;
+        public bool IsFailed => State == NetflixPlaybackFlowState.Failed;
 
-        public bool CanLaunch => State is NetflixSpikeState.Idle or NetflixSpikeState.Stopped
-            or NetflixSpikeState.NotLoggedIn or NetflixSpikeState.Failed or NetflixSpikeState.SignedIn;
+        public bool CanLaunch => State is NetflixPlaybackFlowState.Idle or NetflixPlaybackFlowState.Stopped
+            or NetflixPlaybackFlowState.NotLoggedIn or NetflixPlaybackFlowState.Failed or NetflixPlaybackFlowState.SignedIn;
         public bool CanStop => !CanLaunch;
-
-        public string StateDisplayName => State switch
-        {
-            NetflixSpikeState.Idle => "Idle",
-            NetflixSpikeState.LaunchingHiddenBrowser => "Launching Browser",
-            NetflixSpikeState.CheckingAuth => "Checking Authentication",
-            NetflixSpikeState.SigningIn => "Sign-in In Progress",
-            NetflixSpikeState.SignedIn => "Signed In",
-            NetflixSpikeState.NotLoggedIn => "NOT LOGGED IN",
-            NetflixSpikeState.Failed => "FAILED",
-            NetflixSpikeState.MfaRequired => "MFA Required",
-            NetflixSpikeState.BufferingVideo => "Waiting for Video",
-            NetflixSpikeState.Playing => "Playing (Revealed)",
-            NetflixSpikeState.Stopped => "Stopped",
-            _ => State.ToString()
-        };
-
-        public string StateBadgeColor => State switch
-        {
-            NetflixSpikeState.Idle => "#64748B",
-            NetflixSpikeState.LaunchingHiddenBrowser => "#38BDF8",
-            NetflixSpikeState.CheckingAuth => "#A855F7",
-            NetflixSpikeState.SigningIn => "#0EA5E9",
-            NetflixSpikeState.SignedIn => "#16A34A",
-            NetflixSpikeState.NotLoggedIn => "#DC2626",
-            NetflixSpikeState.Failed => "#DC2626",
-            NetflixSpikeState.MfaRequired => "#F59E0B",
-            NetflixSpikeState.BufferingVideo => "#FBBF24",
-            NetflixSpikeState.Playing => "#22C55E",
-            NetflixSpikeState.Stopped => "#475569",
-            _ => "#64748B"
-        };
 
         private string _statusMessage = "Ready. Use 'Sign in' once, then 'Launch hidden playback'.";
         public string StatusMessage
@@ -152,11 +114,8 @@ namespace Baird.ViewModels
             set
             {
                 this.RaiseAndSetIfChanged(ref _mfaPin, value);
-                this.RaisePropertyChanged(nameof(MfaPinDisplay));
             }
         }
-
-        public string MfaPinDisplay => string.IsNullOrEmpty(_mfaPin) ? "____" : _mfaPin;
 
         private bool _isSimulateMfaEnabled;
         /// <summary>When true the MFA step is a UI simulation only: no PIN is sent to any page.</summary>
@@ -189,17 +148,6 @@ namespace Baird.ViewModels
 
         public ObservableCollection<string> LogEntries { get; } = new();
 
-        public ReactiveCommand<Unit, Unit> LaunchCommand { get; }
-        public ReactiveCommand<Unit, Unit> SignInCommand { get; }
-        public ReactiveCommand<Unit, Unit> CompleteSignInCommand { get; }
-        public ReactiveCommand<Unit, Unit> StopCommand { get; }
-        public ReactiveCommand<Unit, Unit> SubmitMfaCommand { get; }
-        public ReactiveCommand<Unit, Unit> ClearMfaCommand { get; }
-        public ReactiveCommand<string, Unit> AppendMfaDigitCommand { get; }
-        public ReactiveCommand<Unit, Unit> BackspaceMfaCommand { get; }
-        public ReactiveCommand<string, Unit> SelectPresetCommand { get; }
-        public ReactiveCommand<Unit, Unit> BackCommand { get; }
-
         /// <summary>Overridable for tests.</summary>
         public string ProfileDir { get; set; } = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -208,6 +156,8 @@ namespace Baird.ViewModels
         /// <summary>How long to wait for the page to classify as something other than Unknown.</summary>
         public TimeSpan AuthCheckTimeout { get; set; } = TimeSpan.FromSeconds(8);
         public TimeSpan BufferingTimeout { get; set; } = TimeSpan.FromSeconds(90);
+        /// <summary>After a verification code is sent, how long Netflix's verification page may stay before the code counts as refused.</summary>
+        public TimeSpan MfaSubmitGrace { get; set; } = TimeSpan.FromSeconds(6);
         public TimeSpan SignInTimeout { get; set; } = TimeSpan.FromSeconds(30);
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(400);
 
@@ -226,11 +176,11 @@ namespace Baird.ViewModels
             ? $"No Netflix credentials configured (set {NetflixCredentials.UserKey} and {NetflixCredentials.PasswordKey} in ~/.baird/config.ini)."
             : $"Netflix credentials configured for {_credentials.User}.";
 
-        public NetflixSpikeViewModel(NetflixCredentials? credentials = null) : this(new CdpBrowserService(), credentials)
+        public NetflixPlaybackFlow(NetflixCredentials? credentials = null) : this(new CdpBrowserService(), credentials)
         {
         }
 
-        public NetflixSpikeViewModel(ICdpBrowserService browserService, NetflixCredentials? credentials = null)
+        public NetflixPlaybackFlow(ICdpBrowserService browserService, NetflixCredentials? credentials = null)
         {
             _browserService = browserService;
             _credentials = credentials;
@@ -243,33 +193,6 @@ namespace Baird.ViewModels
             DetectedBrowser = _browserService.FindBrowserExecutable();
             AddLog($"[Init] Detected browser executable: {DetectedBrowser}");
             AddLog($"[Init] {CredentialsStatus}");
-
-            LaunchCommand = ReactiveCommand.CreateFromTask(LaunchPlaybackFlowAsync);
-            SignInCommand = ReactiveCommand.CreateFromTask(StartSignInAsync);
-            CompleteSignInCommand = ReactiveCommand.CreateFromTask(CompleteSignInAsync);
-            StopCommand = ReactiveCommand.CreateFromTask(StopPlaybackAsync);
-            SubmitMfaCommand = ReactiveCommand.CreateFromTask(SubmitMfaAsync);
-            ClearMfaCommand = ReactiveCommand.Create(() => { MfaPin = ""; });
-            AppendMfaDigitCommand = ReactiveCommand.Create<string>(AppendMfaPin);
-            BackspaceMfaCommand = ReactiveCommand.Create(BackspaceMfaPin);
-
-            SelectPresetCommand = ReactiveCommand.Create<string>(url =>
-            {
-                TargetUrl = url;
-                AddLog($"[Preset] Target URL set to: {url}");
-            });
-
-            BackCommand = ReactiveCommand.Create(() =>
-            {
-                if (IsMfaRequired)
-                {
-                    _ = StopPlaybackAsync();
-                }
-                else
-                {
-                    BackRequested?.Invoke(this, EventArgs.Empty);
-                }
-            });
         }
 
         public void AppendMfaPin(string digit)
@@ -289,8 +212,8 @@ namespace Baird.ViewModels
         }
 
         /// <summary>
-        /// False when the browser is shared (NetflixSession): it already writes its log to the journal once, so this screen
-        /// only shows the browser's lines.
+        /// False when the browser is shared (NetflixSession): it already writes its log to the journal once, so this flow
+        /// only keeps the browser's lines in LogEntries.
         /// </summary>
         public bool LogBrowserToJournal { get; set; } = true;
 
@@ -310,7 +233,7 @@ namespace Baird.ViewModels
         {
             var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
             LogEntries.Add(line);
-            Console.WriteLine($"[NetflixSpike] {message}"); // also to the journal (journalctl -t baird); messages never contain the password
+            Console.WriteLine($"[NetflixFlow] {message}"); // also to the journal (journalctl -t baird); messages never contain the password
             if (LogEntries.Count > 200)
             {
                 LogEntries.RemoveAt(0);
@@ -407,11 +330,11 @@ namespace Baird.ViewModels
             var ct = BeginFlow();
             try
             {
-                SetState(NetflixSpikeState.LaunchingHiddenBrowser, "Opening a VISIBLE browser window for sign-in...");
+                SetState(NetflixPlaybackFlowState.LaunchingHiddenBrowser, "Opening a VISIBLE browser window for sign-in...");
                 if (!await TryLaunchAsync(SignInUrl, visible: true, ct)) return;
 
                 await CheckDrmAsync(ct);
-                SetState(NetflixSpikeState.SigningIn,
+                SetState(NetflixPlaybackFlowState.SigningIn,
                     "Sign in to Netflix in the browser window (including any verification), then choose 'I've signed in - verify'.");
             }
             catch (OperationCanceledException) { }
@@ -424,7 +347,7 @@ namespace Baird.ViewModels
         /// <summary>Re-checks auth after manual sign-in; on success closes the browser so the profile is flushed.</summary>
         public async Task CompleteSignInAsync()
         {
-            if (State != NetflixSpikeState.SigningIn) return;
+            if (State != NetflixPlaybackFlowState.SigningIn) return;
             var ct = _activeCts?.Token ?? CancellationToken.None;
             try
             {
@@ -450,7 +373,7 @@ namespace Baird.ViewModels
                 }
 
                 await _browserService.StopAsync(); // graceful Browser.close flushes cookies to the profile
-                SetState(NetflixSpikeState.SignedIn,
+                SetState(NetflixPlaybackFlowState.SignedIn,
                     $"Looks signed in (page: {status.Url}). Profile saved at {ProfileDir}. Persistence is confirmed only when a hidden launch skips the login page.");
             }
             catch (OperationCanceledException) { }
@@ -467,19 +390,19 @@ namespace Baird.ViewModels
 
             try
             {
-                SetState(NetflixSpikeState.LaunchingHiddenBrowser, "Launching browser offscreen at (-4000, -4000)...");
+                SetState(NetflixPlaybackFlowState.LaunchingHiddenBrowser, "Launching browser offscreen at (-4000, -4000)...");
                 AddLog($"Starting launch flow for URL: {TargetUrl}");
 
                 if (!await TryLaunchAsync(TargetUrl, visible: false, ct)) return;
 
                 await CheckDrmAsync(ct);
 
-                SetState(NetflixSpikeState.CheckingAuth, "Checking page login state in the hidden browser...");
+                SetState(NetflixPlaybackFlowState.CheckingAuth, "Checking page login state in the hidden browser...");
 
                 if (IsSimulateMfaEnabled)
                 {
                     AddLog("[Simulation] MFA SIMULATION active: no real verification will be sent.");
-                    SetState(NetflixSpikeState.MfaRequired, "SIMULATED MFA (UI test only, nothing is sent to a page). Enter any PIN.");
+                    SetState(NetflixPlaybackFlowState.MfaRequired, "SIMULATED MFA (UI test only, nothing is sent to a page). Enter any PIN.");
                     return;
                 }
 
@@ -553,7 +476,7 @@ namespace Baird.ViewModels
             if (DateTime.UtcNow < _errorGraceUntil) return false;
 
             Fail($"Netflix refused to play this title: \"{reason}\" (Error Code {auth.PlaybackErrorCode}) even after clearing its site data and reloading. You are signed in. " +
-                 $"Try another title: edit the URL above, or set NETFLIX_TARGET_URL in ~/.baird/config.ini. Page: {auth.Url}");
+                 $"Try another title. Page: {auth.Url}");
             await ReleaseBrowserAsync();
             return true;
         }
@@ -569,7 +492,7 @@ namespace Baird.ViewModels
                     var outcome = await SignInWithConfiguredCredentialsAsync(ct);
                     if (outcome == null) return false; // signed in, keep going
                     SetState(outcome.Value.State, outcome.Value.Message);
-                    if (outcome.Value.State != NetflixSpikeState.MfaRequired) await ReleaseBrowserAsync();
+                    if (outcome.Value.State != NetflixPlaybackFlowState.MfaRequired) await ReleaseBrowserAsync();
                     return true;
                 }
 
@@ -577,9 +500,9 @@ namespace Baird.ViewModels
                     ? "Netflix sees an anonymous visitor: Baird's browser profile has no signed-in Netflix account."
                     : "Netflix is asking for credentials.";
                 var credHint = _credentials == null
-                    ? $"No Netflix credentials are configured: set {NetflixCredentials.UserKey} and {NetflixCredentials.PasswordKey} in ~/.baird/config.ini, or press 'Sign in (visible browser)' once."
+                    ? $"No Netflix credentials are configured: set {NetflixCredentials.UserKey} and {NetflixCredentials.PasswordKey} in ~/.baird/config.ini, or sign in on the TV (OK on the failure screen)."
                     : "The configured credentials were already tried this run.";
-                SetState(NetflixSpikeState.NotLoggedIn,
+                SetState(NetflixPlaybackFlowState.NotLoggedIn,
                     $"NOT LOGGED IN: {why} {credHint} The session lives in the browser profile at {ProfileDir}. Playback was not attempted (page: {url}).");
                 AddLog("[Auth Check] Login page detected. Stopping flow.");
                 await ReleaseBrowserAsync();
@@ -588,7 +511,7 @@ namespace Baird.ViewModels
 
             if (kind == NetflixPageKind.MfaRequired)
             {
-                SetState(NetflixSpikeState.MfaRequired,
+                SetState(NetflixPlaybackFlowState.MfaRequired,
                     "Netflix is showing a verification step. Enter the PIN (submission to the page is a best-effort guess at its form fields; unverified).");
                 return true;
             }
@@ -600,18 +523,18 @@ namespace Baird.ViewModels
         /// Types the configured credentials into the login page. Returns null when signed in (flow continues), otherwise
         /// the terminal state + message. Messages never contain the password.
         /// </summary>
-        private async Task<(NetflixSpikeState State, string Message)?> SignInWithConfiguredCredentialsAsync(CancellationToken ct)
+        private async Task<(NetflixPlaybackFlowState State, string Message)?> SignInWithConfiguredCredentialsAsync(CancellationToken ct)
         {
             var creds = _credentials!;
-            SetState(NetflixSpikeState.CheckingAuth, $"Not signed in. Signing in as {creds.User} with the configured credentials...");
+            SetState(NetflixPlaybackFlowState.CheckingAuth, $"Not signed in. Signing in as {creds.User} with the configured credentials...");
             AddLog($"[SignIn] Using configured credentials for {creds.User} (password not logged).");
 
             if (!await _browserService.NavigateAsync("https://www.netflix.com/login", ct))
-                return (NetflixSpikeState.Failed, "Could not open the Netflix login page over CDP.");
+                return (NetflixPlaybackFlowState.Failed, "Could not open the Netflix login page over CDP.");
 
             var submit = await _browserService.SubmitCredentialsAsync(creds.User, creds.Password, ct);
             AddLog($"[SignIn] {submit.Detail}");
-            if (!submit.Submitted) return (NetflixSpikeState.Failed, $"Could not fill in the Netflix login form: {submit.Detail}.");
+            if (!submit.Submitted) return (NetflixPlaybackFlowState.Failed, $"Could not fill in the Netflix login form: {submit.Detail}.");
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             while (sw.Elapsed < SignInTimeout && !ct.IsCancellationRequested)
@@ -622,7 +545,7 @@ namespace Baird.ViewModels
                 AddLog($"[SignIn] URL: {st.Url} | Kind: {st.Kind} | membership: {st.MembershipStatus ?? "n/a"}");
 
                 if (st.Kind == NetflixPageKind.MfaRequired)
-                    return (NetflixSpikeState.MfaRequired, "Netflix is asking for a verification code after sign-in. Enter it (best-effort, unverified).");
+                    return (NetflixPlaybackFlowState.MfaRequired, "Netflix is asking for a verification code after sign-in. Enter it (best-effort, unverified).");
 
                 if (st.IsSignedIn && st.Kind != NetflixPageKind.LoginRequired)
                 {
@@ -633,7 +556,7 @@ namespace Baird.ViewModels
             }
 
             var err = await _browserService.GetLoginErrorTextAsync(ct);
-            return (NetflixSpikeState.NotLoggedIn,
+            return (NetflixPlaybackFlowState.NotLoggedIn,
                 err != null
                     ? $"NOT LOGGED IN: Netflix rejected the configured credentials for {creds.User}: \"{err}\". Check {NetflixCredentials.UserKey}/{NetflixCredentials.PasswordKey} in ~/.baird/config.ini."
                     : $"NOT LOGGED IN: signing in as {creds.User} did not complete within {SignInTimeout.TotalSeconds:F0}s (no error shown by Netflix; possibly a captcha or an extra check).");
@@ -666,8 +589,8 @@ namespace Baird.ViewModels
                     AddLog("[MFA Simulation] Simulated PIN 'accepted' (nothing was sent).");
                 }
 
-                SetState(NetflixSpikeState.BufferingVideo, "PIN submitted. Waiting to observe video.currentTime advance...");
-                await RunBufferingLoopAsync(ct, mfaGrace: TimeSpan.FromSeconds(6));
+                SetState(NetflixPlaybackFlowState.BufferingVideo, "PIN submitted. Waiting to observe video.currentTime advance...");
+                await RunBufferingLoopAsync(ct, mfaGrace: MfaSubmitGrace);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
@@ -682,7 +605,7 @@ namespace Baird.ViewModels
         /// </summary>
         private async Task RunBufferingLoopAsync(CancellationToken ct, TimeSpan mfaGrace)
         {
-            SetState(NetflixSpikeState.BufferingVideo, "Waiting to observe video.currentTime advance in the hidden browser...");
+            SetState(NetflixPlaybackFlowState.BufferingVideo, "Waiting to observe video.currentTime advance in the hidden browser...");
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             double? previous = null;
@@ -729,7 +652,7 @@ namespace Baird.ViewModels
                 await Task.Delay(PollInterval, ct);
             }
 
-            if (!ct.IsCancellationRequested && State == NetflixSpikeState.BufferingVideo)
+            if (!ct.IsCancellationRequested && State == NetflixPlaybackFlowState.BufferingVideo)
             {
                 Fail($"No video playback observed within {BufferingTimeout.TotalSeconds:F0}s (video.currentTime never advanced). Page was not a login page.");
                 await ReleaseBrowserAsync();
@@ -740,23 +663,23 @@ namespace Baird.ViewModels
         {
             if (UseBairdHud)
             {
-                SetState(NetflixSpikeState.Playing, "video.currentTime is advancing. Hiding Netflix's UI for Baird's player...");
+                SetState(NetflixPlaybackFlowState.Playing, "video.currentTime is advancing. Hiding Netflix's UI for Baird's player...");
                 var styled = await _browserService.InjectOverlayScriptAsync(CdpBrowserService.LoadNetflixPageStyleScript(), ct);
                 AddLog(styled ? "[Reveal] Netflix page style applied." : "[Reveal] WARNING: the Netflix page style was not applied; Netflix's own UI may show.");
 
-                SetState(NetflixSpikeState.Playing, "Playback observed (currentTime advancing); Baird's player has the controls.");
+                SetState(NetflixPlaybackFlowState.Playing, "Playback observed (currentTime advancing); Baird's player has the controls.");
                 AddLog("[Reveal] Playback confirmed (Baird keeps focus).");
                 PlaybackConfirmed?.Invoke();
                 return;
             }
 
-            SetState(NetflixSpikeState.Playing, "video.currentTime is advancing. Injecting HUD and moving window to (0,0)...");
+            SetState(NetflixPlaybackFlowState.Playing, "video.currentTime is advancing. Injecting HUD and moving window to (0,0)...");
             AddLog("[Reveal] Injecting baird-overlay.js...");
 
             await _browserService.InjectOverlayScriptAsync(null, ct);
             await _browserService.RevealWindowAsync(ct);
 
-            SetState(NetflixSpikeState.Playing, "Playback observed (currentTime advancing); window revealed with Baird HUD.");
+            SetState(NetflixPlaybackFlowState.Playing, "Playback observed (currentTime advancing); window revealed with Baird HUD.");
             AddLog("[Reveal] Window revealed.");
         }
 
@@ -799,18 +722,18 @@ namespace Baird.ViewModels
 
             await ReleaseBrowserAsync();
 
-            SetState(NetflixSpikeState.Stopped, KeepBrowserOpen ? "Stopped. The browser stays open on its idle page." : "Stopped. Browser closed.");
+            SetState(NetflixPlaybackFlowState.Stopped, KeepBrowserOpen ? "Stopped. The browser stays open on its idle page." : "Stopped. Browser closed.");
             CurrentVideoTime = 0;
             MfaPin = "";
         }
 
         private void Fail(string message)
         {
-            SetState(NetflixSpikeState.Failed, message);
+            SetState(NetflixPlaybackFlowState.Failed, message);
             AddLog("[FAILED] " + message);
         }
 
-        private void SetState(NetflixSpikeState newState, string message)
+        private void SetState(NetflixPlaybackFlowState newState, string message)
         {
             State = newState;
             StatusMessage = message;

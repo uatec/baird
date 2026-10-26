@@ -117,18 +117,68 @@ namespace Baird.Controls
             SubscribeEngine(engine);
             engine.StatusChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
-                if (_engine == engine && !IsShowingFailure && engine.State == PlaybackState.Loading) LoadingText = engine.StatusText;
+                if (_engine == engine && !IsShowingFailure && !IsEnteringCode && engine.State == PlaybackState.Loading) LoadingText = engine.StatusText;
             });
+            if (engine is ICodeEntryEngine codeEntry)
+            {
+                codeEntry.CodeRequestChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_engine == engine) UpdateCodeEntry(codeEntry);
+                });
+            }
             engine.Failed += (_, reason) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 if (_engine != engine) return;
                 Console.WriteLine($"[VideoPlayer] {engine.Name} could not play: {reason}");
                 IsShowingFailure = true;
+                IsEnteringCode = false;
                 PromptText = "";
                 LoadingText = FailureText(engine, reason);
                 IsLoading = true;
                 IsShowingBrowser = false;
             });
+        }
+
+        private const int MaxCodeLength = 8;
+        private string _code = "";
+
+        /// <summary>The engine asked for a code, or stopped asking: show the request with an empty code, or the loading step again.</summary>
+        private void UpdateCodeEntry(ICodeEntryEngine engine)
+        {
+            _code = "";
+            IsEnteringCode = engine.CodeRequest != null && !IsShowingFailure;
+            if (IsEnteringCode) ShowCodeEntry(engine);
+            else if (!IsShowingFailure && engine.State == PlaybackState.Loading) LoadingText = engine.StatusText;
+        }
+
+        private void ShowCodeEntry(ICodeEntryEngine engine) =>
+            LoadingText = $"{engine.CodeRequest}\nCode: {_code.PadRight(6, '_')}\nType it with the number keys, then press OK. Left deletes a digit, Back cancels.";
+
+        /// <summary>A key while the code is asked for: digits type it, Left (or Backspace) deletes one, OK sends it. False for other keys.</summary>
+        private bool HandleCodeKey(ICodeEntryEngine engine, Avalonia.Input.Key key)
+        {
+            if (IsNumericKey(key))
+            {
+                if (_code.Length < MaxCodeLength) _code += GetNumericChar(key);
+                ShowCodeEntry(engine);
+                return true;
+            }
+            if (key is Avalonia.Input.Key.Left or Avalonia.Input.Key.Back)
+            {
+                if (_code.Length > 0) _code = _code[..^1];
+                ShowCodeEntry(engine);
+                return true;
+            }
+            if (key != Avalonia.Input.Key.Enter) return false;
+            if (_code.Length == 0) return true; // nothing typed yet: nothing to send
+
+            var code = _code;
+            _code = "";
+            IsEnteringCode = false;
+            LoadingText = "Sending the code…";
+            Console.WriteLine($"[VideoPlayer] OK: sending the {engine.Name} code ({code.Length} digits).");
+            _ = engine.SubmitCodeAsync(code);
+            return true;
         }
 
         /// <summary>The failure screen's text: the reason, then what OK does (if the engine offers something) and Back.</summary>
@@ -282,8 +332,39 @@ namespace Baird.Controls
         public bool IsShowingFailure
         {
             get => _isShowingFailure;
-            private set => SetAndRaise(IsShowingFailureProperty, ref _isShowingFailure, value);
+            private set
+            {
+                SetAndRaise(IsShowingFailureProperty, ref _isShowingFailure, value);
+                UpdateSpinner();
+            }
         }
+
+        private bool _isEnteringCode;
+        public static readonly DirectProperty<VideoPlayer, bool> IsEnteringCodeProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, bool>(nameof(IsEnteringCode), o => o._isEnteringCode);
+
+        /// <summary>
+        /// The service asked for a code the viewer was sent (Netflix's verification code): the loading overlay shows it, the
+        /// number keys type it and OK sends it.
+        /// </summary>
+        public bool IsEnteringCode
+        {
+            get => _isEnteringCode;
+            private set
+            {
+                SetAndRaise(IsEnteringCodeProperty, ref _isEnteringCode, value);
+                UpdateSpinner();
+            }
+        }
+
+        private bool _isShowingSpinner = true;
+        public static readonly DirectProperty<VideoPlayer, bool> IsShowingSpinnerProperty =
+            AvaloniaProperty.RegisterDirect<VideoPlayer, bool>(nameof(IsShowingSpinner), o => o._isShowingSpinner);
+
+        /// <summary>The loading overlay's spinner: not under a failure or a code request, which wait for the viewer.</summary>
+        public bool IsShowingSpinner => _isShowingSpinner;
+
+        private void UpdateSpinner() => SetAndRaise(IsShowingSpinnerProperty, ref _isShowingSpinner, !_isShowingFailure && !_isEnteringCode);
 
         private string _loadingText = DefaultLoadingText;
         public static readonly DirectProperty<VideoPlayer, string> LoadingTextProperty =
@@ -334,6 +415,14 @@ namespace Baird.Controls
         {
             base.OnKeyDown(e);
             if (e.Handled) return;
+
+            // The service asked for a code (Netflix's verification code): the number keys, Left and OK are for typing it.
+            if (IsEnteringCode && _engine is ICodeEntryEngine codeEntry && HandleCodeKey(codeEntry, e.Key))
+            {
+                UserActivity?.Invoke(this, EventArgs.Empty);
+                e.Handled = true;
+                return;
+            }
 
             // Handle Down key for History
             if (e.Key == Avalonia.Input.Key.Down)
@@ -974,6 +1063,8 @@ namespace Baird.Controls
             IsShowingBrowser = false;
             PromptText = "";
             IsShowingFailure = false;
+            IsEnteringCode = false;
+            _code = "";
             LoadingText = next is IBrowserPlaybackEngine browserEngine ? $"Starting {browserEngine.Name}…" : DefaultLoadingText;
 
             _pendingUrl = url;
@@ -1054,6 +1145,8 @@ namespace Baird.Controls
             IsShowingBrowser = false;
             PromptText = "";
             IsShowingFailure = false;
+            IsEnteringCode = false;
+            _code = "";
             IsLoading = false;
             IsPaused = true;
         }

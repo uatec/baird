@@ -11,7 +11,7 @@ using ReactiveUI;
 
 namespace Baird.ViewModels
 {
-    public enum DisneySpikeState
+    public enum DisneyPlaybackFlowState
     {
         Idle,
         Launching,
@@ -24,11 +24,11 @@ namespace Baird.ViewModels
     }
 
     /// <summary>
-    /// Spike: play a Disney+ title in the hidden Chromium (Widevine) and reveal it over Baird once video.currentTime advances.
-    /// Same shape as <see cref="NetflixSpikeViewModel"/>: shares its browser profile, window class and labwc rule, so the two
-    /// spikes never run at the same time. Failures end in Failed with the cause; nothing fails silently.
+    /// Plays a Disney+ title in the hidden Chromium (Widevine) and hands over to Baird once video.currentTime advances; run by
+    /// <see cref="Baird.Services.DisneyPlaybackEngine"/>. Same shape as <see cref="NetflixPlaybackFlow"/>: shares its browser
+    /// profile, window class and labwc rule. Failures end in Failed with the cause; nothing fails silently.
     /// </summary>
-    public class DisneySpikeViewModel : ReactiveObject
+    public class DisneyPlaybackFlow : ReactiveObject
     {
         public const string DefaultTargetUrl = "https://www.disneyplus.com/en-gb/play/d830ec57-499e-498c-b6b3-2b85a18a5f51";
 
@@ -40,23 +40,21 @@ namespace Baird.ViewModels
         private Action<string>? _signalHandler;
         private CancellationTokenSource? _activeCts;
 
-        public event EventHandler? BackRequested;
-
         /// <summary>The video plays and Baird's player has taken over (see <see cref="UseBairdHud"/>): raised once per play.</summary>
         public event Action? PlaybackConfirmed;
 
         /// <summary>
         /// True (the engine's setting): Baird keeps focus and its own video player draws the HUD while the browser shows the
         /// video behind the transparent main window. Disney+'s controls are hidden and the window is not raised.
-        /// False (the Disney spike tab): the browser is raised with focus and the injected HTML overlay is used.
+        /// False: the browser is raised with focus and the injected HTML overlay is used.
         /// </summary>
         public bool UseBairdHud { get; set; }
 
         private string _targetUrl = DefaultTargetUrl;
         public string TargetUrl { get => _targetUrl; set => this.RaiseAndSetIfChanged(ref _targetUrl, value); }
 
-        private DisneySpikeState _state = DisneySpikeState.Idle;
-        public DisneySpikeState State
+        private DisneyPlaybackFlowState _state = DisneyPlaybackFlowState.Idle;
+        public DisneyPlaybackFlowState State
         {
             get => _state;
             private set
@@ -65,35 +63,12 @@ namespace Baird.ViewModels
                 this.RaisePropertyChanged(nameof(CanLaunch));
                 this.RaisePropertyChanged(nameof(CanStop));
                 this.RaisePropertyChanged(nameof(IsFailed));
-                this.RaisePropertyChanged(nameof(StateDisplayName));
-                this.RaisePropertyChanged(nameof(StateBadgeColor));
             }
         }
 
-        public bool CanLaunch => State is DisneySpikeState.Idle or DisneySpikeState.Failed or DisneySpikeState.Stopped;
+        public bool CanLaunch => State is DisneyPlaybackFlowState.Idle or DisneyPlaybackFlowState.Failed or DisneyPlaybackFlowState.Stopped;
         public bool CanStop => !CanLaunch;
-        public bool IsFailed => State == DisneySpikeState.Failed;
-
-        public string StateDisplayName => State switch
-        {
-            DisneySpikeState.Launching => "Launching Browser",
-            DisneySpikeState.SigningIn => "Signing In",
-            DisneySpikeState.BufferingVideo => "Waiting for Video",
-            DisneySpikeState.Playing => "Playing (Revealed)",
-            DisneySpikeState.Failed => "FAILED",
-            _ => State.ToString()
-        };
-
-        public string StateBadgeColor => State switch
-        {
-            DisneySpikeState.Launching => "#38BDF8",
-            DisneySpikeState.SigningIn => "#A855F7",
-            DisneySpikeState.BufferingVideo => "#FBBF24",
-            DisneySpikeState.Playing => "#22C55E",
-            DisneySpikeState.Failed => "#DC2626",
-            DisneySpikeState.Stopped => "#475569",
-            _ => "#64748B"
-        };
+        public bool IsFailed => State == DisneyPlaybackFlowState.Failed;
 
         private string _statusMessage = "Ready. Press 'Launch hidden playback'.";
         public string StatusMessage { get => _statusMessage; private set => this.RaiseAndSetIfChanged(ref _statusMessage, value); }
@@ -109,10 +84,6 @@ namespace Baird.ViewModels
         public string VideoInfo { get => _videoInfo; private set => this.RaiseAndSetIfChanged(ref _videoInfo, value); }
 
         public ObservableCollection<string> LogEntries { get; } = new();
-
-        public ReactiveCommand<Unit, Unit> LaunchCommand { get; }
-        public ReactiveCommand<Unit, Unit> StopCommand { get; }
-        public ReactiveCommand<Unit, Unit> BackCommand { get; }
 
         /// <summary>The browser profile (shared with Netflix: Chromium keeps one session per site in one profile).</summary>
         public string ProfileDir { get => _service.Hub.ProfileDir; set => _service.Hub.ProfileDir = value; }
@@ -131,20 +102,20 @@ namespace Baird.ViewModels
             ? $"No Disney+ credentials configured (set {DisneyCredentials.UserKey} and {DisneyCredentials.PasswordKey} in ~/.baird/config.ini)."
             : $"Disney+ credentials configured for {_service.Credentials.User}.";
 
-        public DisneySpikeViewModel(DisneyCredentials? credentials = null, string? profileName = null)
+        public DisneyPlaybackFlow(DisneyCredentials? credentials = null, string? profileName = null)
             : this(new CdpBrowserService(), credentials, profileName) { }
 
         /// <summary>A Disney+-only browser (tests, no shared browser). It closes the browser when playback ends.</summary>
-        public DisneySpikeViewModel(ICdpBrowserService browser, DisneyCredentials? credentials = null, string? profileName = null)
+        public DisneyPlaybackFlow(ICdpBrowserService browser, DisneyCredentials? credentials = null, string? profileName = null)
             : this(new DisneyService(new BrowserHub(browser) { Port = 9224 }, credentials, profileName), shared: false)
         {
             if (browser is CdpBrowserService cdp) cdp.LogMessage += AddLog;
         }
 
         /// <summary>Disney+ on Baird's shared browser. The service's log reaches the journal once, from where it was created.</summary>
-        public DisneySpikeViewModel(DisneyService service) : this(service, shared: true) { KeepBrowserOpen = true; }
+        public DisneyPlaybackFlow(DisneyService service) : this(service, shared: true) { KeepBrowserOpen = true; }
 
-        private DisneySpikeViewModel(DisneyService service, bool shared)
+        private DisneyPlaybackFlow(DisneyService service, bool shared)
         {
             _service = service;
             _shared = shared;
@@ -159,9 +130,6 @@ namespace Baird.ViewModels
             _browser.PageSignalReceived += _signalHandler;
 
             AddLog($"[Init] {CredentialsStatus}");
-            LaunchCommand = ReactiveCommand.CreateFromTask(LaunchPlaybackFlowAsync);
-            StopCommand = ReactiveCommand.CreateFromTask(StopPlaybackAsync);
-            BackCommand = ReactiveCommand.Create(() => BackRequested?.Invoke(this, EventArgs.Empty));
         }
 
         /// <summary>Removes this flow's handlers from the shared browser and service (a new flow is created for each play).</summary>
@@ -182,7 +150,7 @@ namespace Baird.ViewModels
         public void AddLog(string message)
         {
             AddScreenLog(message);
-            Console.WriteLine($"[DisneySpike] {message}"); // journal (journalctl -t baird); never contains the password
+            Console.WriteLine($"[DisneyFlow] {message}"); // journal (journalctl -t baird); never contains the password
         }
 
         public async Task LaunchPlaybackFlowAsync()
@@ -196,7 +164,7 @@ namespace Baird.ViewModels
 
             try
             {
-                SetState(DisneySpikeState.SigningIn, "Opening the browser and checking that Disney+ is signed in...");
+                SetState(DisneyPlaybackFlowState.SigningIn, "Opening the browser and checking that Disney+ is signed in...");
                 var failure = await _service.EnsureReadyAsync(ct, beginPlayback: true);
                 if (failure != null)
                 {
@@ -213,7 +181,7 @@ namespace Baird.ViewModels
 
                 // The browser is ready on Disney+'s idle page, and the tab is ours until playback ends (EnsureReadyAsync marked it
                 // as playing inside the gate).
-                SetState(DisneySpikeState.Launching, $"Opening {TargetUrl} ...");
+                SetState(DisneyPlaybackFlowState.Launching, $"Opening {TargetUrl} ...");
                 await _browser.NavigateAsync(TargetUrl, ct);
 
                 await WaitForPlaybackAsync(ct);
@@ -229,7 +197,7 @@ namespace Baird.ViewModels
         /// <summary>Waits for evidence of playback: currentTime above the threshold AND increasing between two polls.</summary>
         private async Task WaitForPlaybackAsync(CancellationToken ct)
         {
-            SetState(DisneySpikeState.BufferingVideo, "Waiting to observe video.currentTime advance...");
+            SetState(DisneyPlaybackFlowState.BufferingVideo, "Waiting to observe video.currentTime advance...");
             var sw = System.Diagnostics.Stopwatch.StartNew();
             double? previous = null;
             DisneyPageStatus? last = null;
@@ -266,7 +234,7 @@ namespace Baird.ViewModels
                 await Task.Delay(PollInterval, ct);
             }
 
-            if (!ct.IsCancellationRequested && State == DisneySpikeState.BufferingVideo)
+            if (!ct.IsCancellationRequested && State == DisneyPlaybackFlowState.BufferingVideo)
             {
                 Fail($"No video playback observed within {BufferingTimeout.TotalSeconds:F0}s. Last page: {last?.Url ?? "unreadable"} \"{last?.Text}\"");
                 await ReleaseBrowserAsync();
@@ -277,19 +245,19 @@ namespace Baird.ViewModels
         {
             if (UseBairdHud)
             {
-                SetState(DisneySpikeState.Playing, "currentTime is advancing. Hiding Disney+'s controls for Baird's player...");
+                SetState(DisneyPlaybackFlowState.Playing, "currentTime is advancing. Hiding Disney+'s controls for Baird's player...");
                 var styled = await _browser.InjectOverlayScriptAsync(CdpBrowserService.LoadDisneyPageStyleScript(), ct);
                 AddLog(styled ? "[Reveal] Disney+ page style applied." : "[Reveal] WARNING: the Disney+ page style was not applied; Disney+'s own controls may show.");
-                SetState(DisneySpikeState.Playing, $"Playback observed (currentTime advancing, {VideoInfo}); Baird's player has the controls.");
+                SetState(DisneyPlaybackFlowState.Playing, $"Playback observed (currentTime advancing, {VideoInfo}); Baird's player has the controls.");
                 AddLog("[Reveal] Playback confirmed (Baird keeps focus).");
                 PlaybackConfirmed?.Invoke();
                 return;
             }
 
-            SetState(DisneySpikeState.Playing, "currentTime is advancing. Injecting the HUD and revealing the window...");
+            SetState(DisneyPlaybackFlowState.Playing, "currentTime is advancing. Injecting the HUD and revealing the window...");
             await _browser.InjectOverlayScriptAsync(null, ct);
             await _browser.RevealWindowAsync(ct);
-            SetState(DisneySpikeState.Playing, $"Playback observed (currentTime advancing, {VideoInfo}); window revealed with the Baird HUD.");
+            SetState(DisneyPlaybackFlowState.Playing, $"Playback observed (currentTime advancing, {VideoInfo}); window revealed with the Baird HUD.");
             AddLog("[Reveal] Window revealed.");
         }
 
@@ -321,7 +289,7 @@ namespace Baird.ViewModels
             _activeCts?.Cancel();
             _activeCts = null;
             await ReleaseBrowserAsync();
-            SetState(DisneySpikeState.Stopped, KeepBrowserOpen ? "Stopped. The browser stays open on its idle page." : "Stopped. Browser closed.");
+            SetState(DisneyPlaybackFlowState.Stopped, KeepBrowserOpen ? "Stopped. The browser stays open on its idle page." : "Stopped. Browser closed.");
             CurrentVideoTime = 0;
         }
 
@@ -358,11 +326,11 @@ namespace Baird.ViewModels
 
         private void Fail(string message)
         {
-            SetState(DisneySpikeState.Failed, message);
+            SetState(DisneyPlaybackFlowState.Failed, message);
             AddLog("[FAILED] " + message);
         }
 
-        private void SetState(DisneySpikeState state, string message)
+        private void SetState(DisneyPlaybackFlowState state, string message)
         {
             State = state;
             StatusMessage = message;
