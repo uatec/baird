@@ -16,6 +16,8 @@ namespace Baird.Models
         public string? Description { get; set; }
         public long StartUnix { get; set; }
         public long StopUnix { get; set; }
+        /// <summary>A poster or still for the programme, when the guide source has one.</summary>
+        public string? ImageUrl { get; set; }
 
         public bool IsStreamingEpisode { get; set; }
         public double? StreamingProgress { get; set; }

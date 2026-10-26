@@ -38,10 +38,24 @@ namespace Baird.NewUi.Controls
             var layers = new Grid();
             var isLogo = data.Kind == CardKind.Channel && !string.IsNullOrEmpty(data.ImageUrl);
             layers.Children.Add(Fallback(data, shape, showTitle: !isLogo));
+            // What's on, when the guide has a picture of it: fills the card behind the channel's logo.
+            if (data.Kind == CardKind.Channel && data.Programme?.ImageUrl is { Length: > 0 } still)
+            {
+                var art = new Image { Stretch = Stretch.UniformToFill, Opacity = 0, VerticalAlignment = VerticalAlignment.Top };
+                Motion.Animate(art, T.Slow);
+                art.PropertyChanged += (_, e) => { if (e.Property == Image.SourceProperty && art.Source != null) art.Opacity = 1; };
+                AsyncImageLoader.ImageLoader.SetSource(art, still);
+                layers.Children.Add(art);
+                layers.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#99000000"), 0), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1) } } });
+            }
+            var hasStill = data.Kind == CardKind.Channel && data.Programme?.ImageUrl is { Length: > 0 };
             if (!string.IsNullOrEmpty(data.ImageUrl))
             {
                 // A channel's image is its logo: shown whole, smallish, above the name; artwork fills the card.
-                var img = isLogo
+                var img = isLogo && hasStill
+                    // Over a programme picture the logo is a small badge, top right.
+                    ? new Image { Stretch = Stretch.Uniform, Opacity = 0, MaxHeight = 44, MaxWidth = 110, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 16, 16, 0) }
+                    : isLogo
                     ? new Image { Stretch = Stretch.Uniform, Opacity = 0, MaxHeight = 92, MaxWidth = 220, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 34, 0, 0) }
                     : new Image { Stretch = Stretch.UniformToFill, Opacity = 0 };
                 Motion.Animate(img, T.Slow);

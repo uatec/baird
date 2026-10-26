@@ -248,7 +248,7 @@ namespace Baird.Services
             return dict;
         }
 
-        private static EpgProgram MapToEpgProgram(TvHeadendEpgEvent e, string fallbackChannelId)
+        public static EpgProgram MapToEpgProgram(TvHeadendEpgEvent e, string fallbackChannelId)
         {
             return new EpgProgram
             {
@@ -261,7 +261,8 @@ namespace Baird.Services
                 Summary = e.Summary,
                 Description = e.Description,
                 StartUnix = e.Start,
-                StopUnix = e.Stop
+                StopUnix = e.Stop,
+                ImageUrl = string.IsNullOrWhiteSpace(e.Image) ? null : e.Image,
             };
         }
 
@@ -515,6 +516,10 @@ namespace Baird.Services
 
         [JsonPropertyName("start")]
         public long Start { get; set; }
+
+        /// <summary>The programme's image, when the guide source has one (an XMLTV grabber's poster/still URL).</summary>
+        [JsonPropertyName("image")]
+        public string? Image { get; set; }
 
         [JsonPropertyName("stop")]
         public long Stop { get; set; }

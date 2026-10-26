@@ -150,7 +150,7 @@ namespace Baird.NewUi.Screens
             var eyebrow = c.Kind == CardKind.Channel ? $"● Live   {c.Label}" : $"{row.Eyebrow}{(c.Source is { Length: > 0 } s && s != "Seerr" && s != "TV" ? $" · {s.Split(':')[0]}" : "")}";
             var title = c.Kind == CardKind.Channel ? c.Programme?.Title ?? c.Label : c.Label;
             var meta = c.Kind == CardKind.Channel ? (c.Programme is { } p ? $"{p.Start.LocalDateTime:HH:mm}–{p.End.LocalDateTime:HH:mm}" : "No programme information") : c.Sublabel;
-            SetHero(c.Id, c.Kind == CardKind.Channel ? null : c.ImageUrl, eyebrow, title, meta, c.Synopsis);
+            SetHero(c.Id, c.Kind == CardKind.Channel ? c.Programme?.ImageUrl : c.ImageUrl, eyebrow, title, meta, c.Synopsis);
         }
 
         private void SetHero(string key, string? image, string eyebrow, string title, string? meta, string? synopsis)

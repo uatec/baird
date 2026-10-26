@@ -6,7 +6,8 @@ namespace Baird.NewUi.Model
     public sealed record Channel(string Id, string Number, string Name, string? LogoUrl, string StreamUrl);
 
     /// <summary>A broadcast. <paramref name="NoInfo"/> marks a stretch the guide has nothing for (shown honestly, still watchable).</summary>
-    public sealed record Programme(string Id, string ChannelId, string Title, string? Subtitle, string? Synopsis, DateTimeOffset Start, DateTimeOffset End, bool NoInfo = false)
+    public sealed record Programme(string Id, string ChannelId, string Title, string? Subtitle, string? Synopsis, DateTimeOffset Start, DateTimeOffset End, bool NoInfo = false,
+        string? ImageUrl = null)
     {
         public bool IsOnAt(DateTimeOffset t) => Start <= t && t < End;
 

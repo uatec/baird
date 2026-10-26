@@ -106,7 +106,7 @@ namespace Baird.NewUi.Adapters
         public static Programme? Map(EpgProgram? p) => p == null || p.StartUnix <= 0 ? null :
             new Programme(p.Id, p.ChannelId, p.Title, string.IsNullOrWhiteSpace(p.Subtitle) ? null : p.Subtitle,
                 string.IsNullOrWhiteSpace(p.DisplayDetails) ? null : p.DisplayDetails,
-                DateTimeOffset.FromUnixTimeSeconds(p.StartUnix), DateTimeOffset.FromUnixTimeSeconds(p.StopUnix));
+                DateTimeOffset.FromUnixTimeSeconds(p.StartUnix), DateTimeOffset.FromUnixTimeSeconds(p.StopUnix), ImageUrl: p.ImageUrl);
 
         public async Task<IReadOnlyList<HomeCard>> WatchlistAsync()
         {

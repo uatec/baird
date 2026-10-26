@@ -60,5 +60,15 @@ namespace Baird.Tests.Services
             Assert.Equal(1700000000, ev1.Start);
             Assert.Equal(1700001800, ev1.Stop);
         }
+
+        [Fact]
+        public void A_programme_image_from_the_guide_source_comes_through()
+        {
+            var json = """{ "entries": [ { "eventId": 7, "channelUuid": "c", "title": "Sharpe", "start": 1, "stop": 2, "image": "https://iptv-epg.org/images/x" } ] }""";
+            var grid = JsonSerializer.Deserialize(json, TvHeadendJsonContext.Default.TvHeadendEpgGrid)!;
+            Assert.Equal("https://iptv-epg.org/images/x", grid.Entries[0].Image);
+            Assert.Equal("https://iptv-epg.org/images/x", TvHeadendService.MapToEpgProgram(grid.Entries[0], "c").ImageUrl);
+            Assert.Equal("https://iptv-epg.org/images/x", Baird.NewUi.Adapters.HomeData.Map(TvHeadendService.MapToEpgProgram(grid.Entries[0], "c"))!.ImageUrl);
+        }
     }
 }
