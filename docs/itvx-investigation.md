@@ -115,3 +115,28 @@ and the Pi tooling all exist. The new parts are the ITVX selectors, the page dat
 - Probes from the dev PC on 2026-10-25 (search API, image CDN, `magni.itv.com` reachable, `www.itv.com` not reachable without a browser).
 - viwx, the open-source Kodi ITVX add-on: <https://github.com/dimkroon/itvx-for-kodi> (v1.7.5, 2025-12). Files
   `resources/lib/itvx.py` (playlist request), `parsex.py` (page and search parsing), `itv_account.py` (sign-in).
+
+## 8. Measured on the Pi (2026-10-26)
+
+A probe Chromium (`spikes/netflix-tooling/itvx_harness.sh`: Baird's flags, muted, a `/tmp` copy of the browser profile, CDP 9557)
+driven with `itvx_probe.py`. `baird.service` kept running. Screenshots were checked by eye.
+
+| Question (§4) | Answer |
+|---|---|
+| Pages in a real browser | **Load.** `www.itv.com` refuses curl and headless Chrome (`ERR_HTTP2_PROTOCOL_ERROR`), but the Pi's normal Chromium gets every page. |
+| Episode list | `__NEXT_DATA__` → `props.pageProps.seriesList[]` (`seriesNumber` as a string, `seriesLabel`, `titles[]`) lists **every** series and episode on one page (Vera: 14 series, 56 episodes, matching search). Per episode: `ccid`, `series`, `episode`, `episodeTitle`, `description`, `notFormattedDuration` (`PT1H29M`), `image` (template), `premium`, `tier`, `adRule`, `encodedEpisodeId.letterA`. `pageProps.programme` has `titleSlug`, `ccid`, `tier`. A film page has one entry, series `"others"`. |
+| URLs | Programme `/watch/{slug}/{programme ccid}`; episode `/watch/{slug}/{programme ccid}/{encodedEpisodeId.letterA}` (e.g. `/watch/vera/mz0gq64/1a7314a0001`, from the page's own links); film and special `/watch/{slug}/{own ccid}`. A special under a parent programme also has its own page; the parent URL with the special's id falls back to the parent's page. A wrong slug redirects to the right one. |
+| Sign-in | **Automated sign-in works, no captcha.** Play signed out → `/watch/user/signin` → email (`input[type=email]`) → CONTINUE → `/watch/user/email-pair` (a code is **emailed by default**) → link "Use password instead" (`/watch/user/signin?step=password`) → `input[type=password]` → SIGN IN → back on the title's page. Signed in: an `Itv.Session` cookie (visible to JS) and a button `aria-label="Open account menu"`. |
+| Cookie banner | Buttons ACCEPT / REJECT / MANAGE; a script click on REJECT works. |
+| Starting a play | Pages do not autoplay: press `button.videoPlayer__play-btn` (WATCH NOW / PLAY). A title with guidance ("G") then shows a dialog "Parental Controls are off" in `div.dialogs-container-wrapper`: press its WATCH NOW. |
+| Video | Like Channel 4: the programme is a `blob:` `<video>` whose `duration` is the real length (4990.8 s for a 1 h 23 m film, 5360 s for a 1 h 29 m episode) and `currentTime` the real position. Adverts play in OTHER `<video>` elements (`ar.prd.content.itv.com`) while the programme waits paused at 0. |
+| Resolution | 1024×576 (film), **1280×720** (Vera). Better than Disney+ (854 px). |
+| Seek, pause | `currentTime += 120` and `-= 60` resumed at once (buffer rebuilt from the new point, no stall). `pause()` / `play()` work. |
+| Adverts | The film (adRule not checked): ~2 min of pre-roll (4 s, 60 s, 30 s, 10 s, 10 s clips). Vera (`adRule: NEVER`): only ~9 s of ITV idents. Mid-rolls not seen (not watched long enough). Ad handling is deferred; the engine only has to show the picture and not count an advert as the programme. |
+| CPU | Probe Chromium ~80–110 % of one core while playing. The Pi was also short of memory with the probe running (Baird 3.6 GB resident, kswapd busy). |
+
+**Not measured:** the end of a programme and ITVX's next-episode behaviour, subtitles, mid-roll adverts, what the controls overlay looks
+like when woken (none showed while playing untouched; the page shows a scrollbar, which the page style must hide).
+
+**Device registrations:** the probe signed in once in a profile copy, which was then deleted. Baird's own profile will register a second
+device when it first signs in.

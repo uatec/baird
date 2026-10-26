@@ -14,15 +14,15 @@ namespace Baird.Services
 
     /// <summary>
     /// One search result: a programme (it has episodes), a special (one programme, sometimes under a parent programme) or a film.
-    /// <see cref="WatchUrl"/> is its page on www.itv.com.
+    /// <see cref="WatchUrl"/> is its own page on www.itv.com, for a special too (measured on the Pi: the parent's page with the
+    /// special's id falls back to the parent's page). A wrong slug is redirected to the right one.
     /// </summary>
     public sealed record ItvxSearchResult(ItvxKind Kind, string Id, string Title, string Description, string? ImageUrl,
         string? ParentId, string? ParentTitle, int EpisodeCount, double RuntimeSeconds)
     {
-        /// <summary>The slug of the page the result lives on: its parent programme's for a special that has one, else its own.</summary>
-        public string Slug => ItvxCatalogue.Slug(ParentTitle ?? Title);
+        public string Slug => ItvxCatalogue.Slug(Title);
 
-        public string WatchUrl => ParentId != null ? ItvxCatalogue.WatchUrl(Slug, ParentId, Id) : ItvxCatalogue.WatchUrl(Slug, Id);
+        public string WatchUrl => ItvxCatalogue.WatchUrl(Slug, Id);
     }
 
     /// <summary>

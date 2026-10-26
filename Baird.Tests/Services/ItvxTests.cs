@@ -71,12 +71,14 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
-        public void A_special_plays_under_its_parent_programme_when_it_has_one()
+        public void A_special_plays_from_its_own_page_even_when_it_has_a_parent_programme()
         {
             var results = ItvxCatalogue.ParseSearch(ItvxFixtures.SearchReply)!;
 
             Assert.Equal(ItvxKind.Special, results[1].Kind);
-            Assert.Equal("https://www.itv.com/watch/pocoyo/d5ncvxk/3wczy52", results[1].WatchUrl);
+            Assert.Equal("Pocoyo", results[1].ParentTitle);
+            // Measured on the Pi: /watch/pocoyo/d5ncvxk/3wczy52 falls back to Pocoyo's page; the special's own page plays it.
+            Assert.Equal("https://www.itv.com/watch/a-very-special-guest/3wczy52", results[1].WatchUrl);
             Assert.Equal("https://www.itv.com/watch/vera-farewell-pet/dy6cs7y", results[2].WatchUrl);
         }
 
