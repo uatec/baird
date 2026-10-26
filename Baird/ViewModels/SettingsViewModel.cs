@@ -50,6 +50,14 @@ namespace Baird.ViewModels
 
         private readonly IConfiguration? _configuration;
 
+        // --- Interface: Classic / New. Changing it saves the setting and restarts Baird into that mode. ---
+        private Baird.Services.UiMode _uiMode;
+        public Baird.Services.UiMode UiMode { get => _uiMode; private set { this.RaiseAndSetIfChanged(ref _uiMode, value); this.RaisePropertyChanged(nameof(UiModeText)); } }
+        public string UiModeText => _uiMode == Baird.Services.UiMode.New ? "New" : "Classic";
+        public ReactiveCommand<Unit, Unit> ToggleUiModeCommand { get; }
+        /// <summary>Called after the choice is saved; restarts the app (replaceable in tests).</summary>
+        public Action Restart { get; set; } = () => Baird.Services.AppRestarter.ForThisProcess().Restart();
+
         public ReactiveCommand<Unit, Unit> IncreaseScaleCommand { get; }
         public ReactiveCommand<Unit, Unit> DecreaseScaleCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
@@ -69,6 +77,7 @@ namespace Baird.ViewModels
         public SettingsViewModel(IConfiguration? configuration = null)
         {
             _configuration = configuration;
+            ConfigPath = configuration != null ? Baird.Services.IniSettingWriter.DefaultPath : null;
 
             // Load persisted settings if available (set backing fields directly to avoid
             // re-persisting during load).
@@ -81,6 +90,15 @@ namespace Baird.ViewModels
                 }
                 _logRenderDimensions = ParseBool(_configuration["Baird:LogRenderDimensions"]);
             }
+            if (_configuration != null) _uiMode = Baird.Services.UiModes.Read(_configuration);
+            ToggleUiModeCommand = ReactiveCommand.Create(() =>
+            {
+                var next = _uiMode == Baird.Services.UiMode.New ? Baird.Services.UiMode.Classic : Baird.Services.UiMode.New;
+                SaveSetting(Baird.Services.UiModes.SettingKey, Baird.Services.UiModes.ToSetting(next));
+                UiMode = next;
+                Restart();
+            });
+
             IncreaseScaleCommand = ReactiveCommand.Create(() =>
             {
                 if (UiScale < MaxScale)
@@ -123,67 +141,17 @@ namespace Baird.ViewModels
             => SaveSetting("UiScale", scale.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
 
         /// <summary>
-        /// Persists a single key under the [Baird] section of ~/.baird/config.ini, updating it in
-        /// place if present, inserting it into the section, or creating the section as needed. Other
-        /// settings and surrounding lines are preserved.
+        /// Where settings are saved. ~/.baird/config.ini when the app runs (a configuration is given); null when built
+        /// without one (tests), so tests never write the real config unless they choose a path.
         /// </summary>
+        public string? ConfigPath { get; set; }
+
+        /// <summary>Persists a single key under the [Baird] section of the config file.</summary>
         private void SaveSetting(string key, string value)
         {
-            try
-            {
-                var userProfile = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
-                var configDir = Path.Combine(userProfile, ".baird");
-                var configPath = Path.Combine(configDir, "config.ini");
-
-                if (!Directory.Exists(configDir))
-                {
-                    Directory.CreateDirectory(configDir);
-                }
-
-                // Read all lines to preserve other settings
-                var lines = File.Exists(configPath) ? File.ReadAllLines(configPath).ToList() : new System.Collections.Generic.List<string>();
-
-                bool settingsSectionFound = false;
-                bool keyFound = false;
-
-                for (int i = 0; i < lines.Count; i++)
-                {
-                    var line = lines[i].Trim();
-                    if (line.Equals("[Baird]", StringComparison.OrdinalIgnoreCase))
-                    {
-                        settingsSectionFound = true;
-                    }
-                    else if (settingsSectionFound && line.StartsWith(key + "=", StringComparison.OrdinalIgnoreCase))
-                    {
-                        lines[i] = $"{key}={value}";
-                        keyFound = true;
-                        break;
-                    }
-                    else if (settingsSectionFound && line.StartsWith("["))
-                    {
-                        // Start of a new section before finding the key — insert it here.
-                        lines.Insert(i, $"{key}={value}");
-                        keyFound = true;
-                        break;
-                    }
-                }
-
-                if (!settingsSectionFound)
-                {
-                    lines.Add("[Baird]");
-                    lines.Add($"{key}={value}");
-                }
-                else if (!keyFound)
-                {
-                    lines.Add($"{key}={value}");
-                }
-
-                File.WriteAllLines(configPath, lines);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[SettingsViewModel] Failed to save {key}: {ex.Message}");
-            }
+            if (ConfigPath == null) return;
+            try { Baird.Services.IniSettingWriter.Save(ConfigPath, "Baird", key, value); }
+            catch (Exception ex) { Console.WriteLine($"[Settings] Failed to save {key}: {ex.Message}"); }
         }
     }
 }
