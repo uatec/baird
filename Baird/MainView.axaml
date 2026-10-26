@@ -52,18 +52,6 @@
                     <DataTemplate DataType="{x:Type vm:RequestsViewModel}">
                         <c:RequestsControl/>
                     </DataTemplate>
-                    <DataTemplate DataType="{x:Type vm:NetflixSearchSpikeViewModel}">
-                        <c:NetflixSearchSpikeControl/>
-                    </DataTemplate>
-                    <DataTemplate DataType="{x:Type vm:NetflixSpikeViewModel}">
-                        <c:NetflixSpikeControl/>
-                    </DataTemplate>
-                    <DataTemplate DataType="{x:Type vm:DisneySearchSpikeViewModel}">
-                        <c:DisneySearchSpikeControl/>
-                    </DataTemplate>
-                    <DataTemplate DataType="{x:Type vm:DisneySpikeViewModel}">
-                        <c:DisneySpikeControl/>
-                    </DataTemplate>
                     <DataTemplate DataType="{x:Type vm:LottieSpikeViewModel}">
                         <c:LottieSpikeControl/>
                     </DataTemplate>

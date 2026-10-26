@@ -150,6 +150,39 @@ namespace Baird.Tests.Controls
         }
 
         [AvaloniaFact]
+        public async Task NetflixVerificationCode_IsTypedWithTheNumberKeys_AndOKSendsIt()
+        {
+            var (svc, _, engine) = NetflixPlaybackEngineTests.Engine();
+            svc.AuthStatusToReturn = new AuthPageStatus("https://www.netflix.com/verify", "Verify", false, true, false, 0);
+            var player = new VideoPlayer(new FakeMpv()) { NetflixEngine = engine };
+            var searches = new List<string>();
+            player.SearchRequested += (_, d) => searches.Add(d);
+
+            player.Source = WatchUrl;
+            Assert.True(await WaitUntil(() => player.IsEnteringCode), player.LoadingText);
+            Assert.Contains("verification code", player.LoadingText);
+            Assert.Contains("Code: ______", player.LoadingText);
+            Assert.False(player.IsShowingFailure);
+
+            Press(player, Key.Enter); // nothing typed yet: nothing is sent
+            Press(player, Key.D1);
+            Press(player, Key.NumPad2);
+            Press(player, Key.D3);
+            Press(player, Key.Left); // deletes the 3
+            Press(player, Key.D4);
+            Assert.Contains("Code: 124", player.LoadingText);
+            Assert.Empty(searches); // the digits are the code, not a channel number
+            Assert.False(svc.SubmitMfaCalled);
+
+            svc.AuthStatusToReturn = new AuthPageStatus(WatchUrl, "t", false, false, false, 0); // Netflix accepts it
+            Press(player, Key.Enter);
+
+            Assert.True(await WaitUntil(() => player.IsShowingBrowser && !player.IsLoading, 5000), player.LoadingText);
+            Assert.Equal("124", svc.LastSubmittedPin);
+            Assert.False(player.IsEnteringCode);
+        }
+
+        [AvaloniaFact]
         public async Task NetflixFailure_ShowsTheReasonInTheLoadingOverlay()
         {
             var (_, _, engine) = NetflixPlaybackEngineTests.Engine(video: () => null);

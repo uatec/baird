@@ -17,6 +17,9 @@ namespace Baird.Services
     /// profile and Chromium locks a profile to one process. <see cref="Start"/> opens it hidden behind Baird soon after Baird
     /// starts, signs in and picks the profile, so the first search or play does not wait for that. It then stays open: a
     /// playback navigates it to the watch URL and back to <see cref="IdleUrl"/>, and a watchdog opens it again if it stops.
+    /// <para>When signing in with the configured credentials fails, or Netflix answers it with a verification step, Baird does
+    /// not try again in the background (each try can send the viewer another code): the next play asks the viewer, either for
+    /// the code (<see cref="SubmitVerificationCodeAsync"/>) or to sign in by hand on the TV (<see cref="SignInByHandAsync"/>).</para>
     /// </summary>
     public sealed class NetflixSession : IAsyncDisposable
     {
@@ -29,9 +32,16 @@ namespace Baird.Services
         public const string IdleUrl = "https://www.netflix.com/robots.txt";
 
         private const string Owner = "Netflix";
+        public const string LoginUrl = "https://www.netflix.com/login";
+        /// <summary>What the viewer is told when Netflix stopped a sign-in to ask for the code it sent them.</summary>
+        public const string VerificationCodeMessage = "Netflix asked for the verification code it sent you.";
+        /// <summary>What the viewer is told when Netflix still shows its verification step after a code was sent.</summary>
+        public const string CodeRefusedMessage = "Netflix did not accept that code.";
         private readonly BrowserHub _hub;
         private readonly string? _profileName;
         private int _memberConfirmedPid;
+        /// <summary>Why the last sign-in with the configured credentials failed; set, the background does not sign in again.</summary>
+        private volatile string? _signInFailure;
         private readonly CancellationTokenSource _lifetime = new();
 
         public ICdpBrowserService Browser => _hub.Browser;
@@ -57,6 +67,15 @@ namespace Baird.Services
         public TimeSpan SettleDelay { get; set; } = TimeSpan.FromSeconds(4);
         /// <summary>How often the watchdog checks that the browser is still open.</summary>
         public TimeSpan WatchdogInterval { get; set; } = TimeSpan.FromSeconds(60);
+
+        /// <summary>How long Netflix's sign-in page stays on screen for the viewer before Baird gives up and comes back.</summary>
+        public TimeSpan HandSignInTimeout { get; set; } = TimeSpan.FromMinutes(10);
+
+        /// <summary>Netflix is not signed in and Baird could not sign in itself: the viewer has to (by hand, or with a code).</summary>
+        public bool NeedsSignIn => _signInFailure != null;
+
+        /// <summary>The browser is on Netflix's verification step after a sign-in, waiting for the code Netflix sent the viewer.</summary>
+        public bool NeedsVerificationCode { get; private set; }
 
         public event Action<string>? Log;
 
@@ -122,14 +141,18 @@ namespace Baird.Services
         /// Opens the browser if it is not open, and makes sure it is a signed-in member on a chosen profile. Returns null when
         /// ready, else the reason. Search and playback call it; it does the slow part only once per browser process.
         /// </summary>
-        public async Task<string?> EnsureReadyAsync(CancellationToken ct)
+        /// <param name="signInAgain">
+        /// True when the viewer asked (a play): sign in again even if the last sign-in failed. Otherwise that failure is returned
+        /// without touching Netflix.
+        /// </param>
+        public async Task<string?> EnsureReadyAsync(CancellationToken ct, bool signInAgain = false)
         {
             await _hub.Gate.WaitAsync(ct);
-            try { return await EnsureReadyCoreAsync(ct); }
+            try { return await EnsureReadyCoreAsync(ct, signInAgain); }
             finally { _hub.Gate.Release(); }
         }
 
-        private async Task<string?> EnsureReadyCoreAsync(CancellationToken ct)
+        private async Task<string?> EnsureReadyCoreAsync(CancellationToken ct, bool signInAgain = false)
         {
             if (_hub.BlockedFor(Owner) is { } blocked) return blocked;
 
@@ -143,6 +166,13 @@ namespace Baird.Services
                 }
                 _hub.PageOwner = Owner;
                 return null;
+            }
+
+            if (_signInFailure is { } signInFailure)
+            {
+                if (!signInAgain) return signInFailure;
+                _signInFailure = null;
+                NeedsVerificationCode = false;
             }
 
             var sw = Stopwatch.StartNew();
@@ -182,7 +212,8 @@ namespace Baird.Services
                     await Task.Delay(delay, ct);
                     while (!ct.IsCancellationRequested)
                     {
-                        if (_hub.ActivePlayback == null && (!Browser.IsRunning || _memberConfirmedPid != Browser.ProcessId))
+                        // After a failed sign-in it waits for the viewer (a play): retrying could send them a code each time.
+                        if (_hub.ActivePlayback == null && !NeedsSignIn && (!Browser.IsRunning || _memberConfirmedPid != Browser.ProcessId))
                         {
                             try
                             {
@@ -225,15 +256,22 @@ namespace Baird.Services
                 if (state.SignedOut)
                 {
                     if (Credentials == null)
-                        return "Not signed in to Netflix and no NETFLIX_USER/NETFLIX_PASS in ~/.baird/config.ini.";
+                        return SignInFailed("Netflix is not signed in on this Baird, and no NETFLIX_USER/NETFLIX_PASS are in ~/.baird/config.ini.");
                     if (signInTried)
-                        return "Not signed in to Netflix; signing in with the configured credentials did not work.";
+                        return SignInFailed("Netflix is not signed in on this Baird: signing in with the configured credentials did not work.");
                     signInTried = true;
                     AddLog($"Not signed in; signing in as {Credentials.User} (password not logged).");
-                    await Browser.NavigateAsync("https://www.netflix.com/login", ct);
+                    await Browser.NavigateAsync(LoginUrl, ct);
                     var submit = await Browser.SubmitCredentialsAsync(Credentials.User, Credentials.Password, ct);
                     AddLog($"Sign-in: {submit.Detail}");
                     await Task.Delay(SettleDelay, ct);
+                    if (await Browser.CheckAuthStatusAsync(ct) is { Kind: NetflixPageKind.MfaRequired } verify)
+                    {
+                        // Stay on this page: leaving it would throw away the code Netflix just sent.
+                        AddLog($"Netflix asks for a verification code ({verify.Url}); the next play asks the viewer for it.");
+                        NeedsVerificationCode = true;
+                        return SignInFailed(VerificationCodeMessage);
+                    }
                     await Browser.NavigateAsync(BrowseUrl, ct);
                     continue;
                 }
@@ -258,6 +296,105 @@ namespace Baird.Services
                     return null;
                 }
             }
+        }
+
+        private string SignInFailed(string reason)
+        {
+            _signInFailure = reason;
+            return reason;
+        }
+
+        /// <summary>
+        /// Types the code the viewer was sent into Netflix's verification step. Null when Netflix took it and the browser is ready;
+        /// else why not (<see cref="NeedsVerificationCode"/> stays true when the step is still showing, so the code can be typed again).
+        /// </summary>
+        public async Task<string?> SubmitVerificationCodeAsync(string code, CancellationToken ct)
+        {
+            await _hub.Gate.WaitAsync(ct);
+            try
+            {
+                if (!NeedsVerificationCode) return _signInFailure ?? await EnsureReadyCoreAsync(ct);
+                AddLog($"Sending the verification code ({code.Length} digits)."); // never the code itself
+                if (!await Browser.SubmitMfaPinAsync(code, ct))
+                {
+                    NeedsVerificationCode = false;
+                    return SignInFailed("Baird could not find where to type the code on Netflix's page.");
+                }
+                await Task.Delay(SettleDelay, ct);
+                if (await Browser.CheckAuthStatusAsync(ct) is { Kind: NetflixPageKind.MfaRequired })
+                {
+                    AddLog("Netflix still shows its verification step: the code was not accepted.");
+                    return CodeRefusedMessage;
+                }
+                AddLog("Netflix accepted the verification code.");
+                NeedsVerificationCode = false;
+                _signInFailure = null;
+                return await EnsureReadyCoreAsync(ct);
+            }
+            finally { _hub.Gate.Release(); }
+        }
+
+        /// <summary>
+        /// Shows Netflix's sign-in page on the screen, above Baird, for the VIEWER to sign in with their keyboard (Baird types
+        /// nothing; a verification code goes into Netflix's page too), and waits until the page says they are signed in, they press
+        /// Back (Escape), or <see cref="HandSignInTimeout"/> passes. Then Baird is put back on top and the browser gets ready as
+        /// usual (profile, idle page). Null when signed in and ready, else why not, for the viewer.
+        /// </summary>
+        public async Task<string?> SignInByHandAsync(CancellationToken ct)
+        {
+            await _hub.Gate.WaitAsync(ct);
+            try
+            {
+                if (_hub.BlockedFor(Owner) is { } blocked) return blocked;
+                if (!Browser.IsRunning)
+                {
+                    var launchFailure = await _hub.EnsureRunningAsync(LoginUrl, ct);
+                    if (launchFailure != null) return launchFailure;
+                }
+                _hub.PageOwner = Owner;
+                IsPlaybackActive = true; // search and the other services stay away while the page is on screen
+                try
+                {
+                    if (!await Browser.NavigateAsync(LoginUrl, ct)) return "The browser did not open Netflix's sign-in page.";
+                    await Browser.RevealWindowAsync(ct);
+                    AddLog("Netflix's sign-in page is on the screen for the viewer.");
+
+                    var sw = Stopwatch.StartNew();
+                    while (true)
+                    {
+                        if (sw.Elapsed >= HandSignInTimeout)
+                        {
+                            AddLog($"Nobody signed in to Netflix within {HandSignInTimeout.TotalMinutes:F0} minutes.");
+                            return "Netflix sign-in took too long, so Baird came back.";
+                        }
+                        await Task.Delay(PollInterval, ct);
+                        if (await Browser.WatchNetflixSignInAsync(ct) is not { } seen) continue; // navigating
+                        if (seen.BackPressed)
+                        {
+                            AddLog("The viewer pressed Back on Netflix's sign-in page.");
+                            return "Netflix sign-in cancelled.";
+                        }
+                        if (!seen.SignedOut && (seen.IsMember || seen.Profiles.Count > 0))
+                        {
+                            AddLog($"The viewer signed in to Netflix ({sw.Elapsed.TotalSeconds:F0} s).");
+                            break;
+                        }
+                    }
+                }
+                finally
+                {
+                    using var hide = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    try { await Browser.HideWindowAsync(hide.Token); } catch (Exception ex) { AddLog($"Could not put Baird back on top: {ex.Message}"); }
+                    IsPlaybackActive = false;
+                }
+
+                _signInFailure = null;
+                NeedsVerificationCode = false;
+                _memberConfirmedPid = 0; // check the member and pick the profile from the start
+                return await EnsureReadyCoreAsync(ct);
+            }
+            catch (OperationCanceledException) { return "Netflix sign-in cancelled."; }
+            finally { _hub.Gate.Release(); }
         }
 
         public async ValueTask DisposeAsync()

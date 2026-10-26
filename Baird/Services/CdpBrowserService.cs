@@ -67,6 +67,11 @@ namespace Baird.Services
         Task<string> ClearSiteDataAsync(string origin, CancellationToken ct = default);
         Task<bool> NavigateAsync(string url, CancellationToken ct = default);
         Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default);
+        /// <summary>
+        /// <see cref="ReadNetflixSessionStateAsync"/> while the viewer signs in by hand on the raised page, plus whether they pressed
+        /// Back (Escape) to give up.
+        /// </summary>
+        Task<NetflixSessionState?> WatchNetflixSignInAsync(CancellationToken ct = default);
         Task<string?> PostNetflixGraphQlAsync(string requestBody, CancellationToken ct = default);
         Task<string?> CaptureNetflixSearchRequestAsync(string searchTerm, CancellationToken ct = default);
         Task<string?> SelectNetflixProfileAsync(string? preferredName, CancellationToken ct = default);
@@ -446,9 +451,7 @@ namespace Baird.Services
         /// <summary>
         /// Reads the Netflix session from an app page (e.g. /browse): signed out, member, and the "Who's watching?" picker.
         /// </summary>
-        public async Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default)
-        {
-            const string script = @"(function() {
+        private const string NetflixSessionStateScript = @"(function() {
                 let ms = null;
                 try { ms = window.netflix.reactContext.models.userInfo.data.membershipStatus || null; } catch (e) { }
                 const signedOut = ms === 'ANONYMOUS' || !!document.querySelector('input[name=""password""]') || !!document.querySelector('[data-uia=""header-signin-link""]');
@@ -456,7 +459,31 @@ namespace Baird.Services
                 return { url: location.href, signedOut: signedOut, member: ms === 'CURRENT_MEMBER', profiles: profiles };
             })()";
 
+        public async Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default) =>
+            ParseNetflixSessionState(await EvaluateInPageAsync(NetflixSessionStateScript, ct));
+
+        public async Task<NetflixSessionState?> WatchNetflixSignInAsync(CancellationToken ct = default)
+        {
+            // The key listener is put back on every read, since the sign-in pages navigate.
+            const string script = @"(function() {
+                if (!window.__bairdNetflixBack) {
+                    window.__bairdNetflixBack = true;
+                    window.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape' || e.key === 'BrowserBack' || e.key === 'GoBack') { e.preventDefault(); window.__bairdNetflixCancelled = true; }
+                    }, true);
+                }
+                const state = " + NetflixSessionStateScript + @";
+                state.cancelled = !!window.__bairdNetflixCancelled;
+                return state;
+            })()";
             var r = await EvaluateInPageAsync(script, ct);
+            return ParseNetflixSessionState(r) is { } state
+                ? state with { BackPressed = r!.Value.TryGetProperty("cancelled", out var c) && c.ValueKind == JsonValueKind.True }
+                : null;
+        }
+
+        private static NetflixSessionState? ParseNetflixSessionState(JsonElement? r)
+        {
             if (r is not { ValueKind: JsonValueKind.Object } o) return null;
             var profiles = new List<string>();
             if (o.TryGetProperty("profiles", out var pa) && pa.ValueKind == JsonValueKind.Array)

@@ -12,7 +12,7 @@ namespace Baird.Services
     /// Plays Disney+ titles for Baird's normal video player: the twin of <see cref="NetflixPlaybackEngine"/>. The video plays in
     /// the shared browser behind Baird's (transparent) window; Baird keeps the keys and this engine turns them into commands to
     /// Disney+'s player over CDP. It reads the title's page to find what to play (for a series, the next episode for this
-    /// profile) and its real length, runs the proven playback flow (<see cref="DisneySpikeViewModel"/>), polls the video, and
+    /// profile) and its real length, runs the proven playback flow (<see cref="DisneyPlaybackFlow"/>), polls the video, and
     /// returns the browser to its idle page when playback stops. Disney+ resumes at its own saved place, so a start position is ignored.
     /// </summary>
     public sealed class DisneyPlaybackEngine : IBrowserPlaybackEngine, IPromptingEngine
@@ -26,10 +26,10 @@ namespace Baird.Services
         private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(5);
 
         private readonly DisneyService _service;
-        private readonly Func<DisneySpikeViewModel> _createFlow;
+        private readonly Func<DisneyPlaybackFlow> _createFlow;
         private readonly object _commandLock = new();
         private Task _commands = Task.CompletedTask;
-        private DisneySpikeViewModel? _flow;
+        private DisneyPlaybackFlow? _flow;
         private CancellationTokenSource? _pollCts;
         private int _generation;
         private int _missingPolls;
@@ -45,7 +45,7 @@ namespace Baird.Services
         private DateTime _lastPositionAt = DateTime.UtcNow;
         private volatile PlaybackState _state = PlaybackState.Idle;
 
-        public DisneyPlaybackEngine(DisneyService service, Func<DisneySpikeViewModel> createFlow)
+        public DisneyPlaybackEngine(DisneyService service, Func<DisneyPlaybackFlow> createFlow)
         {
             _service = service;
             _createFlow = createFlow;
@@ -345,12 +345,12 @@ namespace Baird.Services
 
         private void OnFlowChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName != nameof(DisneySpikeViewModel.State) || sender is not DisneySpikeViewModel flow) return;
+            if (e.PropertyName != nameof(DisneyPlaybackFlow.State) || sender is not DisneyPlaybackFlow flow) return;
             var text = flow.State switch
             {
-                DisneySpikeState.SigningIn => "Starting Disney+…",
-                DisneySpikeState.Launching => "Opening the title…",
-                DisneySpikeState.BufferingVideo => "Loading the video…",
+                DisneyPlaybackFlowState.SigningIn => "Starting Disney+…",
+                DisneyPlaybackFlowState.Launching => "Opening the title…",
+                DisneyPlaybackFlowState.BufferingVideo => "Loading the video…",
                 _ => null,
             };
             if (text != null) SetStatus(text);
