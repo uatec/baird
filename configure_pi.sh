@@ -290,7 +290,7 @@ echo "[Remote] Done (takes effect after reboot)."
 
 # --- 8. Boot splash: one picture from power-on until Baird's start-up animation ---
 # The firmware rainbow goes; Plymouth shows the Baird wordmark on black (splash.png is the first frame of Baird's intro,
-# rendered by its test); the desktop that shows between Plymouth and Baird is the same picture, with no taskbar or icons.
+# rendered by its test); the desktop that shows between Plymouth and Baird is the same picture, taskbar hidden, no icons.
 SPLASH_DIR="$(cd "$(dirname "$0")" && pwd)/boot-splash"
 [ -d "$SPLASH_DIR" ] || SPLASH_DIR="$(cd "$(dirname "$0")" && pwd)/pi/boot-splash"
 if [ -f "$SPLASH_DIR/splash.png" ]; then
@@ -329,14 +329,18 @@ show_mounts=0
 DESKTOP_CONF
             chown "$TARGET_USER:$TARGET_USER" "$USER_HOME/.config/pcmanfm/default/desktop-items-$n.conf"
         done
-        # labwc runs the user's autostart instead of the system one: the same, without the taskbar (wf-panel-pi).
-        cat > "$USER_HOME/.config/labwc/autostart" <<'AUTOSTART'
-# Managed by Baird configure_pi.sh: /etc/xdg/labwc/autostart without the taskbar.
-/usr/bin/lwrespawn /usr/bin/pcmanfm-pi &
-/usr/bin/kanshi &
-/usr/bin/lxsession-xdg-autostart
-AUTOSTART
-        chown "$TARGET_USER:$TARGET_USER" "$USER_HOME/.config/labwc/autostart"
+        # The taskbar (started by the system's labwc autostart, which also runs) hides itself and shows no pop-ups.
+        install -d -o "$TARGET_USER" -g "$TARGET_USER" "$USER_HOME/.config/wf-panel-pi"
+        cat > "$USER_HOME/.config/wf-panel-pi/wf-panel-pi.ini" <<'PANEL'
+# Managed by Baird configure_pi.sh: the taskbar stays out of sight (Baird is full screen; this is the boot gap).
+[panel]
+autohide=true
+autohide_duration=0
+notify_enable=false
+PANEL
+        chown -R "$TARGET_USER:$TARGET_USER" "$USER_HOME/.config/wf-panel-pi"
+        # An earlier version wrote a user labwc autostart; labwc runs it as well as the system one (pcmanfm twice).
+        if grep -q "Managed by Baird" "$USER_HOME/.config/labwc/autostart" 2>/dev/null; then rm -f "$USER_HOME/.config/labwc/autostart"; fi
     fi
     echo "[Splash] Done (takes effect after reboot)."
 else

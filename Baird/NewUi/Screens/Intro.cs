@@ -18,6 +18,8 @@ namespace Baird.NewUi.Screens
     {
         public static readonly TimeSpan Duration = TimeSpan.FromSeconds(2.2);
         public static readonly TimeSpan FadeOut = TimeSpan.FromMilliseconds(600);
+        /// <summary>After the window's first frames, a moment for the compositor to put it on screen.</summary>
+        public static readonly TimeSpan SettleDelay = TimeSpan.FromMilliseconds(300);
         public const string Asset = "avares://Baird/Assets/Lottie/baird-intro.json";
 
         public TextBlock Wordmark { get; } = new()
@@ -54,8 +56,15 @@ namespace Baird.NewUi.Screens
             _done = done;
             // Start once the window has actually drawn (the Pi is busy at start-up): the clock must not run while
             // nothing is on screen, or the disc is missed.
-            if (TopLevel.GetTopLevel(this) is { } top)
-                top.RequestAnimationFrame(_ => top.RequestAnimationFrame(_ => Begin()));
+            var top = TopLevel.GetTopLevel(this);
+            void AfterFirstFrames() => top!.RequestAnimationFrame(_ => top.RequestAnimationFrame(_ => DispatcherTimer.RunOnce(Begin, SettleDelay)));
+            if (top is Window { IsVisible: false } w)
+            {
+                // Not on screen yet (the compositor maps the window a moment after it opens): wait for it.
+                void Opened(object? s, EventArgs e) { w.Opened -= Opened; AfterFirstFrames(); }
+                w.Opened += Opened;
+            }
+            else if (top != null) AfterFirstFrames();
             else Begin();
         }
 
