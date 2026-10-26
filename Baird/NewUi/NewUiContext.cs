@@ -68,7 +68,7 @@ namespace Baird.NewUi
             Reminders = new Reminders(null, now);
         }
 
-        private string PlaceLabel() => Nav.State.Pages.Count > 0 ? Nav.State.Pages[^1].Name : Nav.State.Place switch
+        private string PlaceLabel() => Nav.State.Pages.Count > 0 ? Nav.State.Pages[^1].Label : Nav.State.Place switch
         {
             Place.LiveTv => "Live TV",
             Place.Search => "Search",
@@ -108,7 +108,10 @@ namespace Baird.NewUi
         }
 
         /// <summary>A show or film's page: seasons, episodes, where it streams, requests.</summary>
-        public void OpenShow(CatalogueTitle title) => Nav.OpenPage(new PageRef("show", title));
+        public void OpenShow(CatalogueTitle title) => Nav.OpenPage(new PageRef("show", title, title.Name));
+
+        /// <summary>The guide, lit on a channel at a time (a programme, so a reminder can be set). Wired by the shell.</summary>
+        public Action<string, DateTimeOffset> OpenGuide { get; set; } = (_, _) => { };
 
         public Channel? NeighbourChannel(int step)
         {

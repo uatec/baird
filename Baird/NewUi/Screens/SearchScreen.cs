@@ -51,6 +51,9 @@ namespace Baird.NewUi.Screens
         private readonly Panel _root = new() { Width = 1920, Height = 1080 };
         private readonly TextBlock _queryText = new() { FontSize = 36, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 560 };
         private readonly TextBlock _status = new() { FontSize = T.Small, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, Width = 700 };
+        /// <summary>"Nothing called …": in the results column, where the results would be.</summary>
+        private readonly TextBlock _empty = new() { FontSize = 30, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, MaxWidth = 760, LineHeight = 42, Margin = new Thickness(Pad, 40, 0, 0), IsVisible = false };
+        public TextBlock EmptyMessage => _empty;
         private readonly OnScreenKeyboard _kb = new(700);
         private readonly StackPanel _inner = new() { Spacing = RowGap, Margin = new Thickness(Pad, Pad, Pad, 0) };
         private readonly Border _column;
@@ -117,7 +120,7 @@ namespace Baird.NewUi.Screens
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(ColumnLeft, ColumnTop, 0, 0),
-                Child = new Panel { Children = { _inner } },
+                Child = new Panel { Children = { _inner, _empty } },
             };
             _root.Children.Add(left);
             _root.Children.Add(_column);
@@ -162,9 +165,10 @@ namespace Baird.NewUi.Screens
             _queryText.Text = _query.Length > 0 ? _query : "Shows, films, channels, what's on";
             _queryText.Foreground = _query.Length > 0 ? T.Text : T.Text3;
             _queryText.FontSize = _query.Length > 0 ? 36 : 30;
-            _status.Text = _searching ? Waiting()
-                : _query.Trim().Length > 0 && _rows.Count == 0 && _shownQuery == _query.Trim() ? $"Nothing called “{_query.Trim()}” yet. Try fewer letters, or a channel number."
-                : "Digits and DEL on the remote type too. ▸ from the keyboard reaches the results.";
+            var nothing = !_searching && _query.Trim().Length > 0 && _rows.Count == 0 && _shownQuery == _query.Trim();
+            _empty.IsVisible = nothing;
+            if (nothing) _empty.Text = $"Nothing called “{_query.Trim()}” yet. Try fewer letters, or a channel number.";
+            _status.Text = _searching ? Waiting() : "Digits and DEL on the remote type too. ▸ from the keyboard reaches the results.";
         }
 
         /// <summary>While results are still arriving: which library sources haven't answered yet.</summary>
@@ -379,18 +383,34 @@ namespace Baird.NewUi.Screens
         {
             if (h.Kind == HitKind.Recent) { _zone = Zone.Keyboard; SetQuery(h.Card.Label); return; }
             _ctx.Search?.Remember(_query);
+            if (more) { Actions(h); return; }
             switch (h.Kind)
             {
                 case HitKind.Channel when h.Card.Channel != null:
                     _ctx.PlayLive(h.Card.Channel); return;
                 case HitKind.Listing when h.Card.Channel != null && h.Card.Programme is { } p:
-                    if (p.Start <= _ctx.Now() && _ctx.Now() < p.End) _ctx.PlayLive(h.Card.Channel);
-                    else _ctx.Toast($"{p.Title} is on {h.Card.Channel.Name} at {p.Start.LocalDateTime:HH:mm}{(p.Start.LocalDateTime.Date != _ctx.Now().LocalDateTime.Date ? $" on {p.Start.LocalDateTime:dddd}" : "")}.");
+                    // On now: watch it. Later: the guide, lit on it (Remind me is there).
+                    if (p.IsOnAt(_ctx.Now())) _ctx.PlayLive(h.Card.Channel);
+                    else _ctx.OpenGuide(h.Card.Channel.Id, p.Start);
                     return;
             }
-            // A title: a series (or anything held, or that nothing can play) opens its page; a film or episode plays.
-            if (h.Title is { } t && (more || t.Kind == TitleKind.Series || t.Best == null)) { _ctx.OpenShow(t); return; }
+            // A title: a series (or one that nothing can play) opens its page; a film or episode plays.
+            if (h.Title is { } t && (t.Kind == TitleKind.Series || t.Best == null)) { _ctx.OpenShow(t); return; }
             _ctx.Activate(h.Card);
+        }
+
+        /// <summary>Hold OK: a title's or channel's actions; a listing's choices (watch it now, or find it in the guide to be reminded).</summary>
+        private void Actions(SearchHit h)
+        {
+            if (h.Kind == HitKind.Listing && h.Card.Channel is { } ch && h.Card.Programme is { } p)
+            {
+                var choices = new List<Choice>();
+                if (p.IsOnAt(_ctx.Now())) choices.Add(new($"Watch now on {ch.Name}", ch.Number, () => _ctx.PlayLive(ch)));
+                choices.Add(new("Show it in the guide", p.IsOnAt(_ctx.Now()) ? "What's on around it" : "Set a reminder there", () => _ctx.OpenGuide(ch.Id, p.Start)));
+                _ctx.Nav.OpenOverlay(new OverlayRef("choices", new ChoiceList(p.Title, $"{ch.Name} · {Adapters.CatalogueSearch.When(p, _ctx.Now())}", choices)));
+                return;
+            }
+            _ctx.Nav.OpenOverlay(new OverlayRef("itemactions", h.Card));
         }
 
         public async void OnShow()

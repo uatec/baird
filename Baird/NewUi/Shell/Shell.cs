@@ -227,7 +227,7 @@ namespace Baird.NewUi.Shell
             // Where Back goes, on stacked pages.
             if (!_chipFlashing)
             {
-                var below = st.Pages.Count >= 2 ? st.Pages[^2].Name : null;
+                var below = st.Pages.Count >= 2 ? st.Pages[^2].Label : null;
                 string? backTo = page != null && st.Overlay == null ? below ?? (st.Video != null && st.AtVideo ? _d.BackToVideoLabel() : TabLabels[st.Place]) : null;
                 _backChip.Opacity = backTo != null ? 1 : 0;
                 if (backTo != null) _backChipText.Text = $"Back to {backTo}";
