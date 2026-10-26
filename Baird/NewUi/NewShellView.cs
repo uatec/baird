@@ -75,6 +75,7 @@ namespace Baird.NewUi
                 return (eps, series.Name);
             };
             _ctx.OpenGuide = (id, at) => GuideScreen.OpenSchedule(_shell!, nav, id, at);
+            _ctx.Prefetch = new Prefetcher(_ctx.Shows, timers);
             var guideData = new GuideData(home, services.Epg);
             _ctx.Reminders = new Reminders(Reminders.DefaultPath, () => DateTimeOffset.Now);
             _ctx.SetGuideLayout(string.Equals(config["Baird:GuideLayout"], "columns", StringComparison.OrdinalIgnoreCase) ? Model.GuideLayout.Columns : Model.GuideLayout.Rows, save: false);

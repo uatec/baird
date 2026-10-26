@@ -152,6 +152,7 @@ namespace Baird.NewUi.Screens
                 }
                 ((TextBlock)((StackPanel)r.View).Children[0]).Foreground = _lit && i == _pos.Row ? T.Text : T.Text2;
             }
+            _ctx.Prefetch?.Lit((LitElement as Card)?.Data); // a series' page gets ready while its card is lit
             RenderHero();
         }
 

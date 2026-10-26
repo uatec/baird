@@ -74,6 +74,9 @@ namespace Baird.Services
         /// <summary>Netflix is not signed in and Baird could not sign in itself: the viewer has to (by hand, or with a code).</summary>
         public bool NeedsSignIn => _signInFailure != null;
 
+        /// <summary>Baird has seen a signed-in member on a chosen profile in the browser that's running now.</summary>
+        public bool IsSignedIn => _signInFailure == null && Browser.IsRunning && _memberConfirmedPid == Browser.ProcessId;
+
         /// <summary>The browser is on Netflix's verification step after a sign-in, waiting for the code Netflix sent the viewer.</summary>
         public bool NeedsVerificationCode { get; private set; }
 

@@ -18,23 +18,36 @@ namespace Baird.NewUi.Adapters
         private readonly Func<bool> _jellyfin;
         private readonly IJellyseerrService? _seerr;
         private readonly bool _seerrConfigured;
-        private readonly Func<bool?> _netflixSignedIn;
-        private readonly bool _disney;
+        private readonly Func<AccountState> _netflix, _disney;
         private readonly Func<DateTimeOffset> _now;
         private (DateTimeOffset At, bool Ok)? _seerrSeen;
         public static readonly TimeSpan SeerrEvery = TimeSpan.FromMinutes(1);
 
-        /// <param name="netflixSignedIn">null: Netflix isn't set up; false: it needs signing in.</param>
         public SourceStatusReader(Func<int> channels, Func<bool> jellyfinSignedIn, IJellyseerrService? seerr, bool seerrConfigured,
-            Func<bool?> netflixSignedIn, bool disneyConfigured, Func<DateTimeOffset> now)
+            Func<AccountState> netflix, Func<AccountState> disney, Func<DateTimeOffset> now)
         {
             _channels = channels; _jellyfin = jellyfinSignedIn; _seerr = seerr; _seerrConfigured = seerrConfigured;
-            _netflixSignedIn = netflixSignedIn; _disney = disneyConfigured; _now = now;
+            _netflix = netflix; _disney = disney; _now = now;
         }
 
+        /// <summary>
+        /// Netflix: signed in once Baird has seen a member on a profile; "needs signing in" only when Baird tried and
+        /// couldn't. Disney+: signed in once its API token was taken (it signs in at start-up, after ~30 s). Until then
+        /// either is "Set up": nothing has said it isn't signed in.
+        /// </summary>
         public static SourceStatusReader For(LegacyServices s, Func<int> channels, bool seerrConfigured, Func<DateTimeOffset> now) =>
             new(channels, () => s.Jellyfin.IsAuthenticated, s.Seerr, seerrConfigured,
-                () => s.Netflix == null ? null : !s.Netflix.NeedsSignIn, s.DisneyConfigured, now);
+                () => s.Netflix == null ? AccountState.NotSetUp : s.Netflix.NeedsSignIn ? AccountState.NeedsSignIn : s.Netflix.IsSignedIn ? AccountState.SignedIn : AccountState.SetUp,
+                () => s.Disney == null ? AccountState.NotSetUp : s.Disney.Session.HasApiToken ? AccountState.SignedIn : AccountState.SetUp,
+                now);
+
+        private static SourceStatus Account(string name, AccountState state) => state switch
+        {
+            AccountState.SignedIn => new(name, "Signed in", SourceHealth.Ok),
+            AccountState.SetUp => new(name, "Set up", SourceHealth.Ok),
+            AccountState.NeedsSignIn => new(name, "Needs signing in", SourceHealth.Warning),
+            _ => new(name, "Not set up", SourceHealth.Off),
+        };
 
         public async Task<IReadOnlyList<SourceStatus>> ReadAsync(CancellationToken ct = default)
         {
@@ -44,13 +57,8 @@ namespace Baird.NewUi.Adapters
                 n > 0 ? new("Freesat (TvHeadend)", $"{n} channels", SourceHealth.Ok) : new("Freesat (TvHeadend)", "No channels yet", SourceHealth.Warning),
                 _jellyfin() ? new("Jellyfin", "Connected", SourceHealth.Ok) : new("Jellyfin", "Not connected", SourceHealth.Down),
                 await SeerrAsync(ct).ConfigureAwait(false),
-                _netflixSignedIn() switch
-                {
-                    null => new("Netflix", "Not set up", SourceHealth.Off),
-                    true => new("Netflix", "Signed in", SourceHealth.Ok),
-                    false => new("Netflix", "Needs signing in", SourceHealth.Warning),
-                },
-                _disney ? new("Disney+", "Set up", SourceHealth.Ok) : new("Disney+", "Not set up", SourceHealth.Off),
+                Account("Netflix", _netflix()),
+                Account("Disney+", _disney()),
             };
             return list;
         }

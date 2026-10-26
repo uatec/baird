@@ -24,6 +24,73 @@ namespace Baird.NewUi.Adapters
         public ShowData(IDataService data, IJellyseerrService? seerr, CatalogueSearch search)
         {
             _data = data; _seerr = seerr; _search = search;
+            // Watching something changes Resume/Next: what was learnt before is out of date.
+            _data.HistoryUpdated += (_, _) => Forget();
+        }
+
+        // ------------------------------------------------------------------ shared, briefly kept details
+        /// <summary>One title's details being learnt (or learnt): shared by the prefetch and the page, kept briefly.</summary>
+        private sealed class Entry
+        {
+            public Task<ShowDetails> Task = null!;
+            public readonly CancellationTokenSource Cts = new();
+            public ShowDetails? Latest;
+            public Action<ShowDetails>? Progress;
+            public int Waiters;
+            public DateTimeOffset At = DateTimeOffset.UtcNow;
+        }
+        private readonly Dictionary<string, Entry> _cache = new();
+        public static readonly TimeSpan Keep = TimeSpan.FromSeconds(90);
+
+        /// <summary>Drop what's been learnt (after a request, or watching something).</summary>
+        public void Forget() { lock (_cache) foreach (var k in _cache.Where(e => e.Value.Task.IsCompleted).Select(e => e.Key).ToList()) _cache.Remove(k); }
+
+        /// <summary>Has this title's page already been worked out (or is it being)? (tests)</summary>
+        public bool IsKnown(CatalogueTitle t) { lock (_cache) return _cache.ContainsKey(t.Key); }
+
+        /// <summary>
+        /// The show page's details (see <see cref="ComputeAsync"/>), shared: a page opened while its prefetch is running
+        /// joins it (and gets what's known so far at once), and one opened shortly after gets the result straight away.
+        /// <paramref name="fresh"/> asks again (after a request; polling a download). The work stops when nobody waits for it.
+        /// </summary>
+        public async Task<ShowDetails> DetailsAsync(CatalogueTitle title, Action<ShowDetails>? progress = null, CancellationToken ct = default, bool fresh = false)
+        {
+            Entry e;
+            ShowDetails? latest;
+            lock (_cache)
+            {
+                var now = DateTimeOffset.UtcNow;
+                foreach (var k in _cache.Where(x => x.Value.Task.IsCompleted && now - x.Value.At > Keep).Select(x => x.Key).ToList()) _cache.Remove(k);
+                if (fresh || !_cache.TryGetValue(title.Key, out e!) || e.Task.IsCanceled || e.Task.IsFaulted)
+                {
+                    var entry = e = new Entry();
+                    void Report(ShowDetails d)
+                    {
+                        Action<ShowDetails>? listeners;
+                        lock (_cache) { entry.Latest = d; listeners = entry.Progress; }
+                        listeners?.Invoke(d);
+                    }
+                    e.Task = Task.Run(() => ComputeAsync(title, Report, entry.Cts.Token));
+                    _cache[title.Key] = e;
+                }
+                e.Waiters++;
+                if (progress != null) e.Progress += progress;
+                latest = e.Task.IsCompleted ? null : e.Latest;
+            }
+            if (latest != null) progress?.Invoke(latest);
+            try { return await e.Task.WaitAsync(ct).ConfigureAwait(false); }
+            finally
+            {
+                lock (_cache)
+                {
+                    if (progress != null) e.Progress -= progress;
+                    if (--e.Waiters == 0 && !e.Task.IsCompleted && ct.IsCancellationRequested)
+                    {
+                        e.Cts.Cancel(); // nobody wants it any more (the lit card moved on)
+                        if (_cache.TryGetValue(title.Key, out var cur) && cur == e) _cache.Remove(title.Key);
+                    }
+                }
+            }
         }
 
         public bool CanRequest => _seerr != null;
@@ -56,7 +123,7 @@ namespace Baird.NewUi.Adapters
         /// view at once, marked as still checking the library, then each library source that has it as it answers
         /// (each provider is asked separately; a slow one doesn't hold the others back). Returns the final details.
         /// </summary>
-        public async Task<ShowDetails> DetailsAsync(CatalogueTitle title, Action<ShowDetails>? progress = null, CancellationToken ct = default)
+        private async Task<ShowDetails> ComputeAsync(CatalogueTitle title, Action<ShowDetails>? progress, CancellationToken ct)
         {
             var t = title;
             var searching = t.Sources.Count == 0 && t.Kind != TitleKind.Episode;
