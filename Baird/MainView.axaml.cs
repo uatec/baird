@@ -456,6 +456,10 @@ namespace Baird
                 _cecService.InputRegained += onInputRegained;
                 _visualTreeSubscriptions.Add(Disposable.Create(() => _cecService.InputRegained -= onInputRegained));
 
+                // The TV's own remote: keys it passes on over CEC drive Baird like the USB remote's.
+                _visualTreeSubscriptions.Add(new CecRemoteControl(_cecService,
+                    (key, down) => Dispatcher.UIThread.Post(() => RaiseCecRemoteKey(key, down))));
+
                 // Start CEC Service in background so it doesn't block UI startup if it fails/hangs
                 _ = _cecService.StartAsync().ContinueWith(t =>
                 {
@@ -830,6 +834,27 @@ namespace Baird
             e.Handled = true;
             if (e.InitialPressMouseButton == MouseButton.Left)
                 RaiseKeyOnFocus(InputElement.KeyUpEvent, Key.Enter);
+        }
+
+        /// <summary>A key from the TV's remote (over CEC), raised as if pressed on a keyboard.</summary>
+        private void RaiseCecRemoteKey(Key key, bool down)
+        {
+            var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
+            if (topLevel == null)
+            {
+                Console.WriteLine($"[CecRemote] Can't raise {key}: no window yet.");
+                return;
+            }
+
+            // The TV only sends its remote's keys to the input it is showing, so Baird is on screen.
+            if (down && _inputsBlocked)
+            {
+                Console.WriteLine("[CecRemote] Key from the TV while inputs are blocked — the TV is showing Baird, unblocking.");
+                _weAreIntendedActiveSource = true;
+                UnblockInputs();
+            }
+
+            Baird.Controls.SyntheticKeyInput.Raise(topLevel, key, down);
         }
 
         private void RaiseKeyOnFocus(RoutedEvent<KeyEventArgs> keyEvent, Key key)

@@ -127,6 +127,36 @@ output is pinned to 50% by `baird.service` so there is always some sound.
 For the keys to reach Baird, `configure_pi.sh` clears labwc's default bindings for them (Pi volume,
 shutdown dialog) in `~/.config/labwc/rc.xml` and tells logind to ignore the power and sleep keys.
 
+For the keys to reach Baird, labwc must be able to parse `~/.config/labwc/rc.xml`: if it isn't
+well-formed XML (e.g. `--` inside a comment) labwc ignores the whole file and the Pi's power dialog and
+volume keys come back. `configure_pi.sh` checks the file it writes.
+
+### The TV's own remote
+
+When Baird is the input on screen, the TV passes most keys from its own remote on over CEC as *User
+Control Pressed* (`0x44`) / *Released* (`0x45`) frames addressed to Baird. `CecService` raises
+`UserControlReceived` for each, and `CecRemoteControl` turns them into the key presses Baird already
+handles: arrows, OK (Select) → Enter, Exit → BrowserBack, Root Menu → BrowserHome, 0–9, Channel Up/Down →
+PageUp/PageDown, EPG → G, play/pause/stop, rewind/fast forward → Left/Right, subtitles → Apps. Power,
+volume and mute are left to the TV. Keys are raised through `SyntheticKeyInput`, which also runs
+KeyBindings (channel up/down), as Avalonia's keyboard device does. A key with no Released within 550 ms
+is treated as let go (CEC 1.4 §13.13). A key from the TV while inputs are blocked unblocks them — the TV
+only sends keys to the input it is showing.
+
+**Debugging.** Every key the TV sends is logged:
+
+```
+journalctl -t baird -f | grep -E 'CecRemote|Remote-related'
+```
+
+- `[CecRemote] TV (0) pressed 'Up' (0x01) → Up.` — received and raised.
+- `... sent 'Up' to Playback 1 (4), not Baird — ignored.` — the TV thinks another device is on screen.
+- `... pressed 'Red' (0x72) — Baird has no action for it.` — received but unmapped.
+- `[CecService] Remote-related frame: ...` — vendor remote commands or Menu Request, which some TVs use
+  instead of, or before, User Control.
+- Nothing at all — the TV isn't passing keys on (check the TV's CEC/VIERA Link settings). The CEC debug
+  panel shows all raw traffic.
+
 ### Debug panel
 
 A debug screen (accessible in the app) provides manual buttons for every CEC command and a live scrolling log of all CEC traffic with parsed annotations. This is useful for verifying the HDMI-CEC wiring is working and diagnosing TV compatibility issues.

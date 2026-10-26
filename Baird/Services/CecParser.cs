@@ -49,6 +49,8 @@ namespace Baird.Services
             { 0x86, "Set Stream Path" },
             { 0x87, "Device Vendor ID" },
             { 0x89, "Vendor Command" },
+            { 0x8A, "Vendor Remote Button Down" },
+            { 0x8B, "Vendor Remote Button Up" },
             { 0x8C, "Give Device Vendor ID" },
             { 0x8D, "Menu Request" },
             { 0x8E, "Menu Status" },
@@ -193,6 +195,36 @@ namespace Baird.Services
             frame = match.Groups[2].Value.Split(':').Select(b => Convert.ToByte(b, 16)).ToArray();
             return true;
         }
+
+        /// <summary>
+        /// Reads a User Control Pressed (0x44) or Released (0x45) frame: a key on the TV's remote passed on to a
+        /// device. <paramref name="ourAddress"/> is Baird's logical address, to tell keys for Baird from keys for others.
+        /// </summary>
+        public static bool TryParseUserControl(byte[] frame, int ourAddress, out CecUserControlEventArgs userControl)
+        {
+            userControl = new CecUserControlEventArgs();
+            if (frame.Length < 2) return false;
+
+            byte? code;
+            if (frame[1] == 0x44 && frame.Length > 2) code = frame[2];
+            else if (frame[1] == 0x45) code = null;
+            else return false;
+
+            var destination = frame[0] & 0xF;
+            userControl = new CecUserControlEventArgs
+            {
+                Source = frame[0] >> 4,
+                Destination = destination,
+                ForThisDevice = destination == ourAddress,
+                Code = code,
+            };
+            return true;
+        }
+
+        public static string UserControlName(byte code) =>
+            UserControlCodes.TryGetValue(code, out var name) ? name : $"Unknown Key ({code:X2})";
+
+        public static string AddressName(int address) => GetAddressName(address);
 
         private static string ParsePacket(string hexString)
         {
