@@ -408,8 +408,9 @@ namespace Baird.NewUi.Screens
 
 
     /// <summary>
-    /// The end of an episode: "Up next · in 8 s" with the next one, Play now / Back to show (◂ ▸ choose, OK). It plays by
-    /// itself when the countdown ends; Back (or "Back to show") stops and returns to the show.
+    /// The end of an episode (prototype: overlays/endcard.js): "Up next in &lt;show&gt;", the next episode's title, "Season 1,
+    /// episode 2 · 45 min", Play now / Back to &lt;show&gt; (◂ ▸ choose, OK). With autoplay on (Settings) a ring counts down
+    /// and it plays by itself; with it off the card waits. Back (or "Back to …") stops and returns to the show.
     /// </summary>
     public sealed class UpNextCard : IScreen
     {
@@ -418,20 +419,49 @@ namespace Baird.NewUi.Screens
         private readonly ITimers _timers;
         private readonly HomeCard _next;
         private readonly Panel _root = new() { Width = 1920, Height = 1080 };
-        private readonly TextBlock _eyebrow = new() { FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = T.Text2 };
         private readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Spacing = 14 };
+        private readonly Arc _ring = new() { Width = 72, Height = 72, StartAngle = -90, SweepAngle = 0, Stroke = Brushes.White, StrokeThickness = 5 };
+        private readonly TextBlock _count = new() { FontSize = 26, FontWeight = FontWeight.Bold, Foreground = T.Text, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        private readonly string _show;
         private int _left, _button;
         private IDisposable? _tick;
         private bool _done;
 
         public Control View => _root;
+        public string Eyebrow { get; }
+        public string Meta { get; }
+        public string Title { get; }
+        public IReadOnlyList<string> Buttons => new[] { "Play now", $"Back to {_show}" };
+        public bool CountingDown => _ctx.Autoplay;
+        public int SecondsLeft => _left;
 
         public UpNextCard(NewUiContext ctx, ITimers timers, HomeCard next)
         {
             _ctx = ctx; _timers = timers; _next = next;
             _left = (int)Countdown.TotalSeconds;
-            var thumb = new Border { Width = 384, Height = 216, CornerRadius = new CornerRadius(T.RCard), ClipToBounds = true, Background = T.CardBack };
-            if (next.ImageUrl is { Length: > 0 } url) thumb.Child = new Controls.ArtImage(url);
+            _show = ctx.FollowingShow ?? "the show";
+            var info = ctx.FollowingInfo.TryGetValue(next.Id, out var i) ? i : (Title: next.Label, Meta: next.Sublabel ?? "");
+            Eyebrow = ctx.FollowingShow != null ? $"Up next in {ctx.FollowingShow}" : "Up next";
+            Title = info.Title; Meta = info.Meta;
+
+            var thumb = new Grid { Width = 384, Height = 216 };
+            var art = new Border { CornerRadius = new CornerRadius(T.RCard), ClipToBounds = true, Background = T.CardBack };
+            if (next.ImageUrl is { Length: > 0 } url) art.Child = new Controls.ArtImage(url);
+            thumb.Children.Add(art);
+            if (CountingDown)
+                thumb.Children.Add(new Grid
+                {
+                    Width = 96,
+                    Height = 96,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Children =
+                    {
+                        new Ellipse { Fill = new SolidColorBrush(Color.Parse("#99000000")) },
+                        new Arc { Width = 72, Height = 72, StartAngle = 0, SweepAngle = 360, Stroke = new SolidColorBrush(Color.Parse("#40FFFFFF")), StrokeThickness = 5 },
+                        _ring, _count,
+                    },
+                });
             _root.Children.Add(new Border
             {
                 Background = T.Glass,
@@ -449,12 +479,12 @@ namespace Baird.NewUi.Screens
                         thumb,
                         new StackPanel
                         {
-                            Spacing = 10, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 560,
+                            Spacing = 10, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 600,
                             Children =
                             {
-                                _eyebrow,
-                                new TextBlock { Text = next.Label, FontSize = 40, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap },
-                                new TextBlock { Text = next.Sublabel ?? "", FontSize = 22, Foreground = T.Text2, IsVisible = next.Sublabel != null },
+                                new TextBlock { Text = Eyebrow, FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = T.Text2 },
+                                new TextBlock { Text = Title, FontSize = 40, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap },
+                                new TextBlock { Text = Meta, FontSize = 22, Foreground = T.Text2, IsVisible = Meta.Length > 0 },
                                 _buttons,
                             },
                         },
@@ -462,9 +492,10 @@ namespace Baird.NewUi.Screens
                 },
             });
             Draw();
-            Tick();
+            if (CountingDown) Tick();
         }
 
+        // One step a second (not a continuous animation: cheap on the Pi).
         private void Tick() => _tick = _timers.After(TimeSpan.FromSeconds(1), () =>
         {
             if (_done) return;
@@ -475,17 +506,19 @@ namespace Baird.NewUi.Screens
 
         private void Draw()
         {
-            _eyebrow.Text = $"Up next · in {_left} s";
+            var total = Countdown.TotalSeconds;
+            _ring.SweepAngle = 360 * (total - _left) / total;
+            _count.Text = _left.ToString();
             _buttons.Children.Clear();
-            string[] labels = { "▶ Play now", "Back to show" };
-            for (var i = 0; i < labels.Length; i++)
+            var labels = Buttons;
+            for (var i = 0; i < labels.Count; i++)
                 _buttons.Children.Add(new Border
                 {
                     CornerRadius = new CornerRadius(999),
                     Padding = new Thickness(26, 12),
                     Margin = new Thickness(0, 12, 0, 0),
                     Background = i == _button ? T.FocusFill : T.Pill,
-                    Child = new TextBlock { Text = labels[i], FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = i == _button ? T.FocusInk : T.Text },
+                    Child = new TextBlock { Text = (i == 0 ? "▶ " : "") + labels[i], FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = i == _button ? T.FocusInk : T.Text },
                 });
         }
 

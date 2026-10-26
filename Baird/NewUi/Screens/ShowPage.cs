@@ -229,9 +229,21 @@ namespace Baird.NewUi.Screens
         private void PlayEpisode(Episode e)
         {
             if (_details != null)
-                _ctx.Following = _details.Seasons.SelectMany(s => s.Episodes).Where(x => x.State == EpisodeState.Available && x.Source != null).Select(EpisodeCard).ToList();
+            {
+                var playable = _details.Seasons.SelectMany(s => s.Episodes).Where(x => x.State == EpisodeState.Available && x.Source != null).ToList();
+                _ctx.Following = playable.Select(EpisodeCard).ToList();
+                _ctx.FollowingShow = _title.Name;
+                _ctx.FollowingInfo = playable.Zip(_ctx.Following).GroupBy(x => x.Second.Id).ToDictionary(g => g.Key, g => (EpisodeTitle(g.First().First), EpisodeMeta(g.First().First)));
+            }
             _ctx.Activate(EpisodeCard(e));
         }
+
+        /// <summary>"The Variant" (the label without its number).</summary>
+        private static string EpisodeTitle(Episode e) => e.Label.StartsWith($"{e.Number}. ", StringComparison.Ordinal) ? e.Label[$"{e.Number}. ".Length..] : e.Label;
+
+        /// <summary>"Season 1, episode 2 · 45 min".</summary>
+        private static string EpisodeMeta(Episode e) =>
+            $"Season {e.Season}, episode {e.Number}{(e.Source?.Duration is { TotalMinutes: >= 1 } d ? $" · {d.TotalMinutes:0} min" : "")}";
 
         private HomeCard EpisodeCard(Episode e)
         {
@@ -241,7 +253,7 @@ namespace Baird.NewUi.Screens
             {
                 EpisodeState.Requested => e.Download is { } d ? $"dl:{d * 100:0}" : "requested",
                 EpisodeState.Missing => Checking ? null : "missing",
-                _ => null,
+                _ => e.Watched ? "watched" : null,
             };
             var src = e.Source;
             return new HomeCard(CardKind.Episode, src?.ItemId ?? $"{_title.Key}:{e.Code}", e.Label, sub.Length > 0 ? sub : null, e.ImageUrl,
@@ -396,7 +408,7 @@ namespace Baird.NewUi.Screens
                     }
                     return true;
                 case UiAction.HoldOk:
-                    if (_rows[_pos.Row] == RowKind.Seasons) OpenRequest(_details.Seasons[_pos.Col].Number, null);
+                    if (_rows[_pos.Row] == RowKind.Seasons) SeasonActions(_details.Seasons[_pos.Col]);
                     else if (_rows[_pos.Row] == RowKind.Episodes && _pos.Col < _details.Seasons[_season].Episodes.Count)
                         _ctx.Nav.OpenOverlay(new OverlayRef("itemactions", EpisodeCard(_details.Seasons[_season].Episodes[_pos.Col])));
                     else if (_details.Title.Kind != TitleKind.Episode)
@@ -404,6 +416,25 @@ namespace Baird.NewUi.Screens
                     return true;
             }
             return false;
+        }
+
+        /// <summary>Hold OK on a season tab: play it from the start, request it (or what's missing), the show's watchlist.</summary>
+        public void SeasonActions(Season s)
+        {
+            var d = _details!;
+            var choices = new List<Choice>();
+            var first = s.Episodes.FirstOrDefault(e => e.State == EpisodeState.Available && e.Source != null);
+            if (first != null) choices.Add(new($"Play {s.Label.ToLowerInvariant()} from the start", first.Code, () => PlayEpisode(first)));
+            var canRequest = _ctx.Shows?.CanRequest == true && d.Title.Seerr != null && !Checking;
+            if (canRequest && s.State == SeasonState.Missing) choices.Add(new($"Request {s.Label.ToLowerInvariant()}", $"{s.EpisodeCount} episodes", () => Request(new[] { s.Number })));
+            var missing = d.MissingSeasons.ToList();
+            if (canRequest && missing.Count > 1) choices.Add(new("Request all missing seasons", ShowDetails.Label(missing), () => Request(missing)));
+            if (d.Title.Best != null && _ctx.Shows != null)
+                choices.Add(_ctx.Shows.InWatchlist(d.Title)
+                    ? new($"Remove {d.Title.Name} from watchlist", "The whole show", ToggleWatchlist)
+                    : new($"Add {d.Title.Name} to watchlist", "The whole show (Baird's watchlist holds shows and films, not seasons)", ToggleWatchlist));
+            if (choices.Count == 0) { _ctx.Toast($"{s.Label}: {s.StateLabel}."); return; }
+            _ctx.Nav.OpenOverlay(new OverlayRef("choices", new ChoiceList($"{d.Title.Name}, {s.Label.ToLowerInvariant()}", s.StateLabel, choices)));
         }
 
         private void Episode(Episode e)

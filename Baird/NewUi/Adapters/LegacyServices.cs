@@ -17,6 +17,10 @@ namespace Baird.NewUi.Adapters
         public IEpgService Epg => Tvh;
         public IDataService Data { get; }
         public IJellyseerrService Seerr { get; }
+        /// <summary>For Settings' source rows (cheap state only).</summary>
+        public JellyfinService Jellyfin { get; }
+        public NetflixSession? Netflix { get; }
+        public bool DisneyConfigured { get; }
         public ICecService Cec { get; }
         public ScreensaverService Screensaver { get; } = new();
         public IReadOnlyDictionary<string, string> MpvOverrides { get; }
@@ -26,7 +30,8 @@ namespace Baird.NewUi.Adapters
         public LegacyServices(IConfiguration config)
         {
             Tvh = new TvHeadendService(config);
-            var providers = new List<IMediaProvider> { Tvh, new JellyfinService(config), new BbcIPlayerService(), new YouTubeService() };
+            Jellyfin = new JellyfinService(config);
+            var providers = new List<IMediaProvider> { Tvh, Jellyfin, new BbcIPlayerService(), new YouTubeService() };
             var engines = new List<IBrowserPlaybackEngine>();
 
             // One shared browser (one signed-in profile, one tab) for every browser service; one service at a time.
@@ -37,6 +42,7 @@ namespace Baird.NewUi.Adapters
             netflix.Log += m => Console.WriteLine($"[NetflixSession] {m}");
             if (netflixCredentials != null)
             {
+                Netflix = netflix;
                 providers.Add(new NetflixProvider(netflix));
                 netflix.Start(TimeSpan.FromSeconds(10));
                 engines.Add(new NetflixPlaybackEngine(netflix, () => new NetflixPlaybackFlow(netflix.Browser, netflixCredentials) { LogBrowserToJournal = false }));
@@ -47,6 +53,7 @@ namespace Baird.NewUi.Adapters
             disney.Log += m => Console.WriteLine($"[DisneyService] {m}");
             if (disneyCredentials != null)
             {
+                DisneyConfigured = true;
                 providers.Add(new DisneyProvider(disney));
                 disney.Start(TimeSpan.FromSeconds(30));
                 engines.Add(new DisneyPlaybackEngine(disney, () => new DisneyPlaybackFlow(disney) { UseBairdHud = true }));

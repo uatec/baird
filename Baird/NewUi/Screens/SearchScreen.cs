@@ -286,13 +286,58 @@ namespace Baird.NewUi.Screens
             Draw();
         }
 
-        private static Control Element(SearchHit h, Shape shape) => shape switch
+        private Control Element(SearchHit h, Shape shape) => shape switch
         {
             Shape.Chip => new Chip(h.Card.Label),
-            Shape.Top => new Card(h.Card, CardShape.Wide, TopSize),
+            Shape.Top => TopCard(h),
             Shape.Poster => new Card(h.Card, CardShape.Poster),
             _ => new Card(h.Card, CardShape.Wide, WideSize),
         };
+
+        /// <summary>What the top result's pill says: "▶ Play", "⤓ Request", "Requested", "Live", a time.</summary>
+        public static (string Text, bool Live, bool Get) TopPill(SearchHit h, DateTimeOffset now)
+        {
+            if (h.Kind == HitKind.Channel) return ("Live", true, false);
+            if (h.Kind == HitKind.Listing && h.Card.Programme is { } p) return p.IsOnAt(now) ? ("Live", true, false) : ($"{Adapters.CatalogueSearch.When(p, now)}", false, false);
+            if (h.Title is { } t && t.Best == null)
+                return t.Availability switch
+                {
+                    Availability.Get => ("⤓ Request", false, true),
+                    Availability.Requested => ("Requested", false, false),
+                    Availability.Partial or Availability.Library => ("In your library", false, false),
+                    _ => (h.Card.Sublabel?.EndsWith(ShowDetails.Checking) == true ? ShowDetails.Checking : "Not streaming", false, false),
+                };
+            return ("▶ Play", false, false);
+        }
+
+        /// <summary>The top result: big art with its name set on it and a pill saying what OK does (prototype: search.js top-card).</summary>
+        private Control TopCard(SearchHit h)
+        {
+            var card = new Card(h.Card with { Badge = null }, CardShape.Wide, TopSize, fallbackTitle: false); // the name is set on it below
+            var (text, live, get) = TopPill(h, _ctx.Now());
+            card.Overlay(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0.35, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#D0000000"), 0), new GradientStop(Color.Parse("#00000000"), 1) } } });
+            var name = h.Card.Label;
+            card.Overlay(new StackPanel
+            {
+                Spacing = 10,
+                Margin = new Thickness(22, 0, 22, 20),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Children =
+                {
+                    new Border
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(999), Padding = new Thickness(14, 5),
+                        Background = live ? T.Live : get ? T.FocusFill : T.Pill,
+                        Child = new TextBlock { Text = text, FontSize = 20, FontWeight = FontWeight.SemiBold, Foreground = get ? T.FocusInk : T.Text },
+                    },
+                    new TextBlock { Text = name, FontSize = 40, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.WordEllipsis, IsVisible = h.Card.Kind != CardKind.Channel }, // a channel card names itself
+                },
+            });
+            return card;
+        }
+
+        /// <summary>The top result's pill (tests).</summary>
+        public string? TopPillText => _rows.Count > 0 && _rows[0].Shape == Shape.Top ? TopPill(_rows[0].Hits[0], _ctx.Now()).Text : null;
 
         private static Control TopText(SearchHit h)
         {

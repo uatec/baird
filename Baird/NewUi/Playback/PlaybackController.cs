@@ -141,6 +141,7 @@ namespace Baird.NewUi.Playback
             _loadTimer?.Dispose();
             IsLoading = false; Failure = null;
             _loadedAt = _now();
+            _engine.SetSubtitle(SubtitlesOn); // each play gets the subtitles you chose
             Loaded?.Invoke();
             Changed?.Invoke();
         }
@@ -175,8 +176,16 @@ namespace Baird.NewUi.Playback
             Start(Current.Url, Current.Kind == "live" ? null : _start);
         }
 
-        /// <summary>mpv starts with its best subtitle track on ("sid=auto").</summary>
+        /// <summary>Subtitles for what plays (starts from the Settings default; the info bar toggles it).</summary>
         public bool SubtitlesOn { get; private set; } = true;
+
+        /// <summary>Settings: subtitles on or off by default. Setting it also sets what plays from now on.</summary>
+        public bool SubtitlesDefault
+        {
+            get => _subtitlesDefault;
+            set { _subtitlesDefault = value; SubtitlesOn = value; if (Current != null && !IsLoading) _engine.SetSubtitle(value); }
+        }
+        private bool _subtitlesDefault = true;
 
         public void StartOver()
         {

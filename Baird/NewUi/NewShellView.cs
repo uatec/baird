@@ -65,6 +65,19 @@ namespace Baird.NewUi
             _ctx.Reminders = new Reminders(Reminders.DefaultPath, () => DateTimeOffset.Now);
             _ctx.SetGuideLayout(string.Equals(config["Baird:GuideLayout"], "columns", StringComparison.OrdinalIgnoreCase) ? Model.GuideLayout.Columns : Model.GuideLayout.Rows, save: false);
             _ctx.SaveGuideLayout = l => IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "GuideLayout", l == Model.GuideLayout.Columns ? "columns" : "rows");
+            // Settings: subtitles and autoplay (Baird:Subtitles / Baird:Autoplay in config.ini, on unless set to false).
+            static bool Flag(string? v) => v == null || !(v.Equals("false", StringComparison.OrdinalIgnoreCase) || v.Equals("off", StringComparison.OrdinalIgnoreCase) || v == "0");
+            _ctx.Autoplay = Flag(config["Baird:Autoplay"]);
+            playback.SubtitlesDefault = Flag(config["Baird:Subtitles"]);
+            var updates = UpdateService.ForThisMachine(config);
+            var sourceStatus = SourceStatusReader.For(services, () => _ctx.Channels.Count, !string.IsNullOrEmpty(config["JELLYSEERR_API_KEY"]), () => DateTimeOffset.Now);
+            var settingsOptions = new SettingsOptions(
+                () => playback.SubtitlesDefault,
+                v => { playback.SubtitlesDefault = v; IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "Subtitles", v ? "true" : "false"); },
+                () => _ctx.Autoplay,
+                v => { _ctx.Autoplay = v; IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "Autoplay", v ? "true" : "false"); },
+                () => sourceStatus.ReadAsync(),
+                About: $"{updates.Current} · new interface");
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
             _ctx.CycleAudio = () => router.ActiveBrowser == null ? mpv.CycleAudio() : null;
@@ -85,7 +98,7 @@ namespace Baird.NewUi
                     {
                         ApplyScale(v);
                         IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "NewUiSize", v.ToString("0.0", CultureInfo.InvariantCulture));
-                    }, () => _ctx.GuideLayout, l => _ctx.SetGuideLayout(l), UpdateService.ForThisMachine(config)),
+                    }, () => _ctx.GuideLayout, l => _ctx.SetGuideLayout(l), updates, settingsOptions),
                 },
                 CreatePage: p => p.Name == "show" && p.Params is Model.CatalogueTitle t ? new ShowPage(_ctx, t)
                     : p.Name == Shell.Shell.GuidePage ? GuideScreen.ForPage(_ctx, guideData.LoadAsync, timers, p) : new EmptyScreen(),

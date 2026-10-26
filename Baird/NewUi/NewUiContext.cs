@@ -22,6 +22,12 @@ namespace Baird.NewUi
         public event Action<Channel>? Tuning;
         /// <summary>The episodes of the show being watched, in order (set by the show page), for "Up next".</summary>
         public IReadOnlyList<HomeCard> Following { get; set; } = Array.Empty<HomeCard>();
+        /// <summary>The show those episodes belong to ("Up next in …", "Back to …"), and each episode's title and
+        /// "Season 1, episode 2 · 45 min" by card id.</summary>
+        public string? FollowingShow { get; set; }
+        public IReadOnlyDictionary<string, (string Title, string Meta)> FollowingInfo { get; set; } = new Dictionary<string, (string, string)>();
+        /// <summary>Settings: play the next episode by itself after a countdown (off: the end card waits for OK).</summary>
+        public bool Autoplay { get; set; } = true;
         public HomeCard? NextEpisode()
         {
             var id = Playback.Current?.ItemId;
