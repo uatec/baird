@@ -166,10 +166,9 @@ namespace Baird.NewUi.Screens
             // Crossfade the backdrop: the new one fades in over the old, which is removed once it's covered.
             foreach (var old in _heroArt.Children.ToList()) { Motion.Animate(old, T.Slow); old.Opacity = 0; DispatcherTimer.RunOnce(() => _heroArt.Children.Remove(old), T.Slow + TimeSpan.FromMilliseconds(50)); }
             if (_overVideo || string.IsNullOrEmpty(image)) return;
-            var img = new Image { Stretch = Stretch.UniformToFill, Opacity = 0, OpacityMask = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.92) } } };
-            Motion.Animate(img, T.Slow);
-            img.PropertyChanged += (_, e) => { if (e.Property == Image.SourceProperty && img.Source != null) img.Opacity = 1; };
-            AsyncImageLoader.ImageLoader.SetSource(img, image);
+            // Shown whole if it's a portrait poster (on the right, over a dimmed fill), never cropped through a face.
+            var img = new Baird.NewUi.Controls.ArtImage(image) { OpacityMask = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.92) } } };
+            img.Main.Margin = new Thickness(0, 0, 96, 0);
             _heroArt.Children.Add(img);
         }
 
