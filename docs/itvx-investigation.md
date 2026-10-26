@@ -140,3 +140,20 @@ like when woken (none showed while playing untouched; the page shows a scrollbar
 
 **Device registrations:** the probe signed in once in a profile copy, which was then deleted. Baird's own profile will register a second
 device when it first signs in.
+
+## 9. Built (branch `itvx-integration`, 2026-10-26)
+
+| Piece | Where | What it does |
+|---|---|---|
+| Search | `ItvxCatalogue.SearchAsync`, `ItvxProvider.SearchAsync` | Public API over plain HTTP, so it works while anything plays. Drops Premium (`tier: PAID`) and live channels. A programme is a container (`itvx:{slug}/{ccid}`); a film or special plays from its own page (`itvx:ep:{ccid}`). |
+| Episode lists | `ItvxService.GetProgrammeAsync`, `ItvxCatalogue.ParseProgramme`, `ItvxProvider.GetChildrenAsync` | An in-page `fetch` of the programme page from an itv.com page in the shared browser (`ItvxPlayerControl.ProgrammeFetchScript`), which returns the `__NEXT_DATA__` fields Baird reads. Works while ITVX plays (the fetch runs in the playing page); refused while another service plays. Series folders in ITVX's order and labels (`itvx:{slug}/{ccid}\|{series}`); Premium episodes dropped. Reused for 10 minutes. |
+| Sign-in | `ItvxService.SignInAsync`, `ItvxCredentials` (`ITVX_USER`, `ITVX_PASS`) | Only when a page asks (Play lands on `/watch/user/...`). Email, CONTINUE, "Use password instead" (pressed again every 3 s while the code page stays: a press 2 s after it appeared did nothing on the Pi), password, SIGN IN. After a refused password it does not try again in the same run. The session lasts in Baird's browser profile. |
+| Player | `ItvxPlaybackEngine`, `ItvxPlayerControl` | Opens the title page, presses Play, answers "Parental Controls are off", signs in if asked (then opens the title again), waits for a video. Programme = the `blob:` video; advert = any other playing video (the HUD position stays put, seeks are refused). Native seek, pause and play. Leaving the title's URL or the video ending ends the stream. No ad-break handling beyond that (deferred). |
+| Page style | `Resources/itvx-page-style.js` | Only the playing video shows, full screen; no scrollbar, no pointer. |
+| Wiring | `MainView.axaml.cs`, `MainViewModel` (`ItvxEngine`), `VideoPlayer.AddBrowserEngine` | ITVX is always in search; it plays through Baird's normal player in the shared browser. |
+| Autotest | `BAIRD_AUTOTEST=itvx-core` (`pi_autotest.sh itvx-core test 180`) | Search "Vera" (`BAIRD_AUTOTEST_ITVX_QUERY`), first programme, first series, first episode; waits out the adverts (up to 4 min), samples the position and seeks 60 s. |
+
+**On the Pi (test build, real profile):**
+- Run 1: search (7 results), episode list (14 series), Play pressed; the sign-in stopped at the emailed-code page (the "Use password instead" press came too early). Fixed with the retry.
+- Run 2: signed in automatically in 6 s, answered the parental prompt, video 20.7 s after Play. Then a minute of adverts for Vera (so `adRule: NEVER` does not mean no adverts), shown full screen with Baird's overlay on top; Baird's "Opening the programme…" covers the sign-in pages, so the viewer never sees them.
+- Run 3: already signed in; episode list in 372 ms; video 8.2 s after Play.

@@ -407,6 +407,26 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
+        public async Task Play_is_pressed_again_after_the_parental_prompt_when_the_page_does_not_start()
+        {
+            var (b, _, engine) = Engine();
+            engine.PlayPressGap = TimeSpan.FromMilliseconds(30);
+            var page = FakeItvxBrowser.State(Episode, signedIn: true, playButton: true);
+            for (var i = 0; i < 3; i++) b.States.Enqueue(page);                      // early presses do nothing
+            b.States.Enqueue(FakeItvxBrowser.State(Episode, signedIn: true, playButton: true, parental: true));
+            for (var i = 0; i < 40; i++) b.States.Enqueue(page);                     // answered, but the page did not start
+            b.States.Enqueue(FakeItvxBrowser.State(Episode, signedIn: true, video: true, t: 0.2, duration: 5360));
+            b.LastState = FakeItvxBrowser.State(Episode, signedIn: true, video: true, t: 0.7, duration: 5360);
+
+            await engine.PlayAsync(Episode);
+
+            Assert.Equal(PlaybackState.Playing, engine.State);
+            var parental = b.Actions.IndexOf("parental");
+            Assert.True(parental >= 0);
+            Assert.Contains("play", b.Actions.Skip(parental)); // pressed again after the prompt
+        }
+
+        [Fact]
         public async Task An_advert_counts_as_playing_and_leaves_the_position_alone()
         {
             var (b, _, engine) = Engine();

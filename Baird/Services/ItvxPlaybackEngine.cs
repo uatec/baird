@@ -23,9 +23,11 @@ namespace Baird.Services
         /// <summary>Failed polls in a row (no answer, an error, or no reply within <see cref="PollTimeout"/>) before giving up.</summary>
         private const int BadPollsForFailure = 3;
         private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(5);
-        /// <summary>How often, at most, the page's Play button is pressed while nothing plays.</summary>
-        private static readonly TimeSpan PlayPressGap = TimeSpan.FromSeconds(4);
-        private const int MaxPlayPresses = 3;
+        /// <summary>
+        /// Presses of the page's Play button while nothing plays. Measured on the Pi: a press before the page is ready does nothing, and
+        /// after "Parental Controls are off" is answered the page can go back to its Play button without starting.
+        /// </summary>
+        private const int MaxPlayPresses = 8;
 
         private readonly ItvxService _service;
         private readonly object _commandLock = new();
@@ -58,6 +60,8 @@ namespace Baird.Services
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(500);
         /// <summary>How long the page may take to play a video (a sign-in included) before the play fails.</summary>
         public TimeSpan StartTimeout { get; set; } = TimeSpan.FromSeconds(90);
+        /// <summary>The wait between presses of the page's Play button (and after answering the parental prompt).</summary>
+        public TimeSpan PlayPressGap { get; set; } = TimeSpan.FromSeconds(5);
 
         private string _statusText = "";
         public string StatusText => _statusText;
@@ -166,6 +170,7 @@ namespace Baird.Services
             ItvxPageState? last = null;
             var playPresses = 0;
             var lastPress = TimeSpan.Zero;
+            var lastParental = TimeSpan.FromDays(-1);
             var signedIn = false;
             while (sw.Elapsed < StartTimeout)
             {
@@ -192,12 +197,15 @@ namespace Baird.Services
 
                 if (state.ParentalPrompt)
                 {
+                    if (sw.Elapsed - lastParental < PlayPressGap) continue; // answered: give the page time
+                    lastParental = sw.Elapsed;
+                    lastPress = sw.Elapsed; // the next Play press, if one is needed, waits a full gap
                     var answered = await _service.PageDriver.EvaluateAsync(ItvxPlayerControl.AcceptParentalScript, ct);
                     Console.WriteLine($"[ItvxEngine] Answered the parental-controls prompt ({(answered is { ValueKind: JsonValueKind.String } ? "clicked" : "not there")}).");
                     continue;
                 }
 
-                // A title page does not start by itself: press its Play button (a few times, a few seconds apart).
+                // A title page does not start by itself: press its Play button (again, a few seconds apart, while nothing plays).
                 if (state.PlayButton && !state.AdvertPlaying && (!state.HasVideo || state.Paused) && playPresses < MaxPlayPresses
                     && (playPresses == 0 || sw.Elapsed - lastPress > PlayPressGap))
                 {
