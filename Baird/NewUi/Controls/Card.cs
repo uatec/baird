@@ -26,7 +26,7 @@ namespace Baird.NewUi.Controls
         private readonly StackPanel _text;
         private bool _lit;
 
-        public Card(HomeCard data, CardShape shape, Size? customSize = null)
+        public Card(HomeCard data, CardShape shape, Size? customSize = null, bool fallbackTitle = true)
         {
             Data = data;
             var size = customSize ?? SizeOf(shape);
@@ -35,9 +35,9 @@ namespace Baird.NewUi.Controls
             RenderTransformOrigin = new RelativePoint(0.5, 0.4, RelativeUnit.Relative);
             Motion.Animate(this, T.Fast);
 
-            var layers = new Grid();
+            var layers = _layers = new Grid();
             var isLogo = data.Kind == CardKind.Channel && !string.IsNullOrEmpty(data.ImageUrl);
-            var fallback = (Border)Fallback(data, shape, showTitle: !isLogo);
+            var fallback = (Border)Fallback(data, shape, showTitle: !isLogo && fallbackTitle);
             layers.Children.Add(fallback);
             // What's on, when the guide has a picture of it: fills the card behind the channel's logo.
             if (data.Kind == CardKind.Channel && data.Programme?.ImageUrl is { Length: > 0 } still)
@@ -98,6 +98,18 @@ namespace Baird.NewUi.Controls
             }
             _dim = new Border { Background = Brushes.Black, Opacity = 0 };
             Motion.Animate(_dim, T.Fast);
+            if (data.Badge == "watched")
+                layers.Children.Add(new Border
+                {
+                    Width = 40,
+                    Height = 40,
+                    CornerRadius = new CornerRadius(20),
+                    Background = T.FocusFill,
+                    Margin = new Thickness(12),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Child = new Icon(Icon.Check, 24, T.FocusInk) { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+                });
             layers.Children.Add(_dim);
 
             _art = new Border { Width = size.Width, Height = size.Height, CornerRadius = new CornerRadius(T.RCard), ClipToBounds = true, Background = T.CardBack, BoxShadow = T.CardShadow, Child = layers };
@@ -118,6 +130,11 @@ namespace Baird.NewUi.Controls
             Motion.Animate(_text, T.Fast);
             Children.Add(_text);
         }
+
+        private readonly Grid _layers;
+
+        /// <summary>Something drawn on the artwork (under the dimming), e.g. the top result's name and pill.</summary>
+        public void Overlay(Control c) => _layers.Children.Insert(_layers.Children.IndexOf(_dim), c);
 
         public bool Lit
         {
