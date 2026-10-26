@@ -363,11 +363,7 @@ namespace Baird.NewUi.Adapters
         public async Task<IReadOnlyList<(Channel, Programme)>> ListingsAsync(string query, IReadOnlyList<Channel> channels, DateTimeOffset now, CancellationToken ct = default)
         {
             if (channels.Count == 0) return Array.Empty<(Channel, Programme)>();
-            if (_guide is not { } g || now - g.At > GuideMaxAge)
-            {
-                var schedules = await _epg.GetBulkScheduleAsync(channels.Select(c => c.Id), 40, ct).ConfigureAwait(false);
-                _guide = g = (now, schedules);
-            }
+            var g = await GuideAsync(channels, now, ct).ConfigureAwait(false);
             if (query.All(char.IsDigit)) return Array.Empty<(Channel, Programme)>();
             var found = new List<(Channel, Programme)>();
             foreach (var c in channels)
@@ -378,6 +374,48 @@ namespace Baird.NewUi.Adapters
                 if (best != null) found.Add((c, best));
             }
             return found.OrderBy(f => f.Item2.Start <= now ? 0 : 1).ThenBy(f => f.Item2.Start).Take(9).ToList();
+        }
+
+        private async Task<(DateTimeOffset At, IReadOnlyDictionary<string, IReadOnlyList<EpgProgram>> Schedules)> GuideAsync(IReadOnlyList<Channel> channels, DateTimeOffset now, CancellationToken ct)
+        {
+            if (_guide is { } g && now - g.At <= GuideMaxAge) return g;
+            var schedules = await _epg.GetBulkScheduleAsync(channels.Select(c => c.Id), 40, ct).ConfigureAwait(false);
+            _guide = (now, schedules);
+            return _guide.Value;
+        }
+
+        private static string TitleKey(string title) => new(ProgrammeArt.Clean(title).Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
+        /// <summary>
+        /// The next time a title airs (on now counts), matching the guide's cleaned titles ("The Simpsons (New)" airs
+        /// as "The Simpsons"). Null when it isn't in the guide (or there's no guide).
+        /// </summary>
+        public async Task<(Channel Channel, Programme Programme)?> NextShowingAsync(string name, IReadOnlyList<Channel> channels, DateTimeOffset now, CancellationToken ct = default)
+        {
+            if (channels.Count == 0 || string.IsNullOrWhiteSpace(name)) return null;
+            try
+            {
+                var g = await GuideAsync(channels, now, ct).ConfigureAwait(false);
+                var key = TitleKey(name);
+                (Channel, Programme)? best = null;
+                foreach (var c in channels)
+                {
+                    if (!g.Schedules.TryGetValue(c.Id, out var list)) continue;
+                    var p = list.Select(HomeData.Map).Where(p => p != null && p.End > now && TitleKey(p.Title) == key).OrderBy(p => p!.Start).FirstOrDefault();
+                    if (p != null && (best == null || p.Start < best.Value.Item2.Start)) best = (c, p);
+                }
+                return best;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { Console.WriteLine($"[CatalogueSearch] Showings of {name} failed: {ex.Message}"); return null; }
+        }
+
+        /// <summary>"now", "18:00", "Tomorrow 18:00", "Wed 18:00".</summary>
+        public static string When(Programme p, DateTimeOffset now)
+        {
+            if (p.Start <= now && now < p.End) return "now";
+            var day = p.Start.LocalDateTime.Date;
+            var today = now.LocalDateTime.Date;
+            return day == today ? $"{p.Start.LocalDateTime:HH:mm}" : day == today.AddDays(1) ? $"Tomorrow {p.Start.LocalDateTime:HH:mm}" : $"{p.Start.LocalDateTime:ddd HH:mm}";
         }
 
         // ------------------------------------------------------------------ recent searches

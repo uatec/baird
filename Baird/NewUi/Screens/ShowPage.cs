@@ -54,6 +54,7 @@ namespace Baird.NewUi.Screens
         private readonly CancellationTokenSource _life = new();
         private IDisposable? _poll;
         private bool _moved;
+        private (Channel Channel, Programme Programme)? _onTv;
         private bool Checking => _details?.CheckingLibrary == true && _title.Sources.Count == 0;
 
         public Control View => _root;
@@ -84,6 +85,22 @@ namespace Baird.NewUi.Screens
             SetArt(title.ImageUrl);
             RenderBody();
             Loaded = LoadAsync();
+            OnTvLoaded = LoadOnTvAsync();
+        }
+
+        /// <summary>When the title next airs (from the guide), for the "On TV …" button.</summary>
+        public Task OnTvLoaded { get; }
+
+        private async Task LoadOnTvAsync()
+        {
+            if (_ctx.Search == null || _title.Kind == TitleKind.Episode) return;
+            try
+            {
+                var air = await _ctx.Search.NextShowingAsync(_title.Name, _ctx.Channels, _ctx.Now(), _life.Token);
+                if (air == null) return;
+                OnUi(() => { _onTv = air; if (_details != null) Rebuild(); });
+            }
+            catch (OperationCanceledException) { }
         }
 
         private void SetArt(string? url)
@@ -269,6 +286,8 @@ namespace Baird.NewUi.Screens
             else if (canRequest)
                 list.Add(new("Request…", Icon.Get, true, () => OpenRequest(null, null)));
 
+            if (_onTv is { } air)
+                list.Add(new($"On TV {Adapters.CatalogueSearch.When(air.Programme, _ctx.Now())} · {air.Channel.Name}", Icon.Series, false, () => _ctx.OpenGuide(air.Channel.Id, air.Programme.Start)));
             if (t.Best != null && _ctx.Shows != null)
             {
                 var on = _ctx.Shows.InWatchlist(t);
@@ -380,7 +399,8 @@ namespace Baird.NewUi.Screens
                     if (_rows[_pos.Row] == RowKind.Seasons) OpenRequest(_details.Seasons[_pos.Col].Number, null);
                     else if (_rows[_pos.Row] == RowKind.Episodes && _pos.Col < _details.Seasons[_season].Episodes.Count)
                         _ctx.Nav.OpenOverlay(new OverlayRef("itemactions", EpisodeCard(_details.Seasons[_season].Episodes[_pos.Col])));
-                    else if (_pos.Col < _buttons.Count) _buttons[_pos.Col].Run();
+                    else if (_details.Title.Kind != TitleKind.Episode)
+                        _ctx.Nav.OpenOverlay(new OverlayRef("itemactions", Adapters.CatalogueSearch.CardOf(_details.Title)));
                     return true;
             }
             return false;

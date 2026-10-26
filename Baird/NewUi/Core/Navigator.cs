@@ -7,7 +7,11 @@ namespace Baird.NewUi.Core
     /// <summary>The tabs.</summary>
     public enum Place { Home, LiveTv, Search, Settings }
 
-    public sealed record PageRef(string Name, object? Params = null);
+    /// <summary>A page. <paramref name="Title"/> is what Back chips call it ("Back to The Simpsons"), else its name.</summary>
+    public sealed record PageRef(string Name, object? Params = null, string? Title = null)
+    {
+        public string Label => Title ?? Name;
+    }
     public sealed record OverlayRef(string Name, object? Params = null);
     public sealed record VideoRef(string Kind, object Ref);
 

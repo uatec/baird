@@ -555,7 +555,8 @@ namespace Baird.NewUi.Screens
                 }
                 else if (playable) _items.Add(("Play", () => ctx.Activate(card)));
                 // An episode from watch history doesn't know its show, so it can't open the show's page.
-                if (ctx.Shows != null && card.Kind != CardKind.Episode)
+                var onItsPage = ctx.Nav.State.Pages.LastOrDefault()?.Params is CatalogueTitle shown && shown.Key == Adapters.ShowData.FromCard(card).Key;
+                if (ctx.Shows != null && card.Kind != CardKind.Episode && !onItsPage)
                     _items.Add(("Open the page", () => ctx.OpenShow(Adapters.ShowData.FromCard(card))));
                 if (ctx.Shows != null && card.Source != "Seerr")
                 {

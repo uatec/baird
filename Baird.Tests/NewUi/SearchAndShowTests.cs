@@ -198,7 +198,7 @@ namespace Baird.Tests.NewUi
             var rig = Build();
             var r = await rig.World.Search.SearchAsync("simpsons", CatalogueTests.Channels, DateTimeOffset.UtcNow);
             var page = new ShowPage(rig.Ctx, r.Top!.Title!);
-            await page.Loaded;
+            await page.Loaded; await page.OnTvLoaded;
             Dispatcher.UIThread.RunJobs();
             Show(page.View);
             return (page, rig);
@@ -208,7 +208,7 @@ namespace Baird.Tests.NewUi
         public async Task The_show_page_offers_play_request_and_watchlist_and_its_seasons()
         {
             var (page, _) = await Simpsons();
-            Assert.Equal(new[] { "Play S1 E1", "Request…", "Watchlist" }, page.ButtonLabels);
+            Assert.Equal(new[] { "Play S1 E1", "Request…", "On TV now · Channel 4", "Watchlist" }, page.ButtonLabels);
             Assert.Equal(4, page.Details!.Seasons.Count);
             Assert.Equal("Play S1 E1", ((PillButton)page.LitElement!).Label);
         }
@@ -372,6 +372,103 @@ namespace Baird.Tests.NewUi
             s.OnAction(UiAction.Ok, false);
             Assert.Equal("https://www.netflix.com/watch/1", rig.Home.Engine.Plays.Single().Url);
             Assert.Empty(rig.Home.Toasts);
+        }
+
+        // ------------------------------------------------------------------ actions, the guide, back chips
+        private static async Task<(SearchScreen S, Rig Rig, List<(string Id, DateTimeOffset At)> Guide)> Searched(string q)
+        {
+            var rig = Build();
+            var guide = new List<(string, DateTimeOffset)>();
+            rig.Ctx.OpenGuide = (id, at) => guide.Add((id, at));
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            await Type(s, rig, q);
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false);
+            return (s, rig, guide);
+        }
+
+        [AvaloniaFact]
+        public async Task Hold_ok_on_a_title_or_a_channel_opens_its_actions()
+        {
+            var (s, rig, _) = await Searched("simpsons");
+            s.OnAction(UiAction.HoldOk, false);
+            var o = rig.Ctx.Nav.State.Overlay!;
+            Assert.Equal("itemactions", o.Name);
+            Assert.Equal("The Simpsons", ((HomeCard)o.Params!).Label);
+            Assert.Empty(rig.Ctx.Nav.State.Pages);
+
+            var (s2, rig2, _) = await Searched("104");
+            s2.OnAction(UiAction.HoldOk, false);
+            Assert.Equal("ch4", ((HomeCard)rig2.Ctx.Nav.State.Overlay!.Params!).Channel!.Id);
+        }
+
+        [AvaloniaFact]
+        public async Task A_later_listing_opens_the_guide_on_it_and_hold_ok_offers_watch_or_the_guide()
+        {
+            var (s, rig, guide) = await Searched("hollyoaks");
+            var hit = s.ResultRows[0][0];
+            Assert.Equal(HitKind.Listing, hit.Kind);
+            s.OnAction(UiAction.Ok, false);
+            Assert.Equal(("ch4", hit.Card.Programme!.Start), guide.Single());
+            Assert.Empty(rig.Home.Tuned);
+
+            s.OnAction(UiAction.HoldOk, false);
+            var list = (ChoiceList)rig.Ctx.Nav.State.Overlay!.Params!;
+            Assert.Equal(new[] { "Show it in the guide" }, list.Choices.Select(c => c.Label)); // not on yet: nothing to watch
+
+            var (s2, rig2, _) = await Searched("simpsons");
+            for (var i = 0; i < 4; i++) s2.OnAction(UiAction.Down, false); // the On TV row: on now
+            s2.OnAction(UiAction.HoldOk, false);
+            var now = (ChoiceList)rig2.Ctx.Nav.State.Overlay!.Params!;
+            Assert.Equal(new[] { "Watch now on Channel 4", "Show it in the guide" }, now.Choices.Select(c => c.Label));
+        }
+
+        [AvaloniaFact]
+        public async Task Nothing_found_says_so_in_the_results_column()
+        {
+            var (s, _, _) = await Searched("zzzz");
+            Assert.True(s.EmptyMessage.IsVisible);
+            Assert.Contains("Nothing called “zzzz”", s.EmptyMessage.Text);
+            await Wait(50);
+            var x = new Point(0, 0).Transform(s.EmptyMessage.TransformToVisual(s.View)!.Value).X;
+            Assert.True(x > 96 + 700, $"{x}");
+        }
+
+        [AvaloniaFact]
+        public async Task The_show_page_says_when_it_is_on_tv_and_opens_the_guide_on_it()
+        {
+            var (page, rig) = await Simpsons();
+            var guide = new List<(string, DateTimeOffset)>();
+            rig.Ctx.OpenGuide = (id, at) => guide.Add((id, at));
+            page.OnAction(UiAction.Right, false);
+            page.OnAction(UiAction.Right, false);
+            Assert.Equal("On TV now · Channel 4", ((PillButton)page.LitElement!).Label);
+            page.OnAction(UiAction.Ok, false);
+            Assert.Equal("ch4", guide.Single().Item1);
+        }
+
+        [AvaloniaFact]
+        public async Task Hold_ok_on_the_show_pages_buttons_opens_the_titles_actions_without_reopening_the_page()
+        {
+            var (page, rig) = await Simpsons();
+            rig.Ctx.OpenShow(page.Details!.Title);
+            page.OnAction(UiAction.HoldOk, false);
+            var o = rig.Ctx.Nav.State.Overlay!;
+            Assert.Equal("itemactions", o.Name);
+            var actions = new ItemActions(rig.Ctx, (HomeCard)o.Params!);
+            Assert.DoesNotContain("Open the page", actions.Items);
+            Assert.Contains("Add to watchlist", actions.Items);
+        }
+
+        [AvaloniaFact]
+        public async Task Back_from_what_you_play_on_a_show_page_names_the_show()
+        {
+            var (page, rig) = await Simpsons();
+            var chips = new List<string>();
+            rig.Ctx.FlashBackChip = chips.Add;
+            rig.Ctx.OpenShow(page.Details!.Title);
+            page.OnAction(UiAction.Ok, false);
+            Assert.Equal("The Simpsons", chips.Single());
         }
 
         [AvaloniaFact]
