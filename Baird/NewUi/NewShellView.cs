@@ -58,6 +58,9 @@ namespace Baird.NewUi
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
             var guideData = new GuideData(home, services.Epg);
+            _ctx.Reminders = new Reminders(Reminders.DefaultPath, () => DateTimeOffset.Now);
+            _ctx.SetGuideLayout(string.Equals(config["Baird:GuideLayout"], "columns", StringComparison.OrdinalIgnoreCase) ? Model.GuideLayout.Columns : Model.GuideLayout.Rows, save: false);
+            _ctx.SaveGuideLayout = l => IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "GuideLayout", l == Model.GuideLayout.Columns ? "columns" : "rows");
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
             _ctx.CycleAudio = () => router.ActiveBrowser == null ? mpv.CycleAudio() : null;
@@ -78,14 +81,15 @@ namespace Baird.NewUi
                     {
                         ApplyScale(v);
                         IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "NewUiSize", v.ToString("0.0", CultureInfo.InvariantCulture));
-                    }),
+                    }, () => _ctx.GuideLayout, l => _ctx.SetGuideLayout(l)),
                 },
                 CreatePage: p => p.Name == "show" && p.Params is Model.CatalogueTitle t ? new ShowPage(_ctx, t) : new EmptyScreen(),
                 CreateOverlay: o => o.Name switch
                 {
                     "info" => new InfoBar(_ctx),
                     "channels" => new ChannelList(_ctx, timers),
-                    "actions" => new ActionsPanel(_ctx, () => _shell!.GoPlace(Place.LiveTv)),
+                    "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
+                    "reminder" when o.Params is Model.Reminder r => new ReminderCard(_ctx, r),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
                     _ when o.Params is ChoiceList list => new ChoiceSheet(_ctx, list),
                     _ => new EmptyScreen(),
@@ -151,6 +155,7 @@ namespace Baird.NewUi
                 DispatcherTimer.RunOnce(() => upNextCard.Opacity = 0, TimeSpan.FromSeconds(20));
             };
             nearEnd.Start();
+            new ReminderClock(_ctx.Reminders, nav, timers).Start(); // a minute before a reminder: the card, over whatever is showing
             var saver = new ScreensaverLayer(services.Screensaver);
             _shell.Children.Add(_intro!);       // the start-up animation, over everything until it's done
             _shell.Children.Add(saver.View); // over everything, at native resolution

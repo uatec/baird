@@ -86,26 +86,49 @@ namespace Baird.NewUi.Screens
 
         public void ShowEntry(string text, bool on) { if (on) _entryText.Text = text; _entry.Opacity = on ? 1 : 0; }
 
-        public void SetStrip(IReadOnlyList<string> stops, int current)
+        /// <summary>
+        /// The strip: time stops (the one you're in is marked), then the layout switch. <paramref name="focus"/> is the
+        /// item lit when the strip has focus (the theme's focus fill), else null.
+        /// </summary>
+        public void SetStrip(IReadOnlyList<string> stops, int current, int? focus, string layoutLabel)
         {
-            if (_strip.Children.Count != stops.Count + 1)
+            if (_strip.Children.Count != stops.Count + 2)
             {
                 _strip.Children.Clear();
-                foreach (var s in stops) _strip.Children.Add(new Border { CornerRadius = new CornerRadius(999), Padding = new Thickness(22, 8), Child = new TextBlock { Text = s, FontSize = 23, FontWeight = FontWeight.SemiBold } });
+                foreach (var s in stops) _strip.Children.Add(StripTab(s));
+                var layout = StripTab("");
+                layout.BorderBrush = new SolidColorBrush(Color.Parse("#33FFFFFF"));
+                layout.BorderThickness = new Thickness(1.5);
+                layout.Margin = new Thickness(18, 0, 0, 0);
+                _strip.Children.Add(layout);
                 _strip.Children.Add(new TextBlock { Text = "⏮ ⏭  jump", FontSize = 21, Foreground = T.Text3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) });
             }
-            for (var i = 0; i < stops.Count; i++)
+            ((TextBlock)((Border)_strip.Children[stops.Count]).Child!).Text = layoutLabel;
+            for (var i = 0; i <= stops.Count; i++)
             {
                 var b = (Border)_strip.Children[i];
-                b.Background = i == current ? T.Pill : Brushes.Transparent;
-                ((TextBlock)b.Child!).Foreground = i == current ? T.Text : T.Text2;
+                var lit = focus == i;
+                b.Background = lit ? T.FocusFill : i == current ? T.Pill : Brushes.Transparent;
+                b.RenderTransform = lit ? Motion.Scale(1.06) : Motion.None;
+                b.Classes.Set("focused", lit);
+                ((TextBlock)b.Child!).Foreground = lit ? T.FocusInk : i == current ? T.Text : T.Text2;
             }
         }
 
-        /// <summary>Describe the lit programme. Crossfades only when it changes (ids), so moving never flickers the header.</summary>
-        public void Describe(Channel ch, Programme p, DateTimeOffset now, IReadOnlyList<(string Key, string Label)> keys)
+        /// <summary>The strip's i-th item (stops, then the layout switch).</summary>
+        public Control StripItem(int i) => _strip.Children[i];
+
+        private static Border StripTab(string text)
         {
-            var id = $"{ch.Id}|{p.Id}|{p.IsOnAt(now)}";
+            var b = new Border { CornerRadius = new CornerRadius(999), Padding = new Thickness(22, 8), RenderTransformOrigin = RelativePoint.Center, Child = new TextBlock { Text = text, FontSize = 23, FontWeight = FontWeight.SemiBold } };
+            Motion.Animate(b, T.Fast);
+            return b;
+        }
+
+        /// <summary>Describe the lit programme. Crossfades only when it changes (ids), so moving never flickers the header.</summary>
+        public void Describe(Channel ch, Programme p, DateTimeOffset now, IReadOnlyList<(string Key, string Label)> keys, bool reminded = false)
+        {
+            var id = $"{ch.Id}|{p.Id}|{p.IsOnAt(now)}|{reminded}";
             if (_shownInfo == id) return;
             _shownInfo = id;
 
@@ -113,6 +136,14 @@ namespace Baird.NewUi.Screens
             eyebrow.Children.Add(new TextBlock { Text = $"{ch.Number}  {ch.Name}", FontSize = 26, FontWeight = FontWeight.SemiBold, Foreground = T.Text, VerticalAlignment = VerticalAlignment.Center });
             if (!p.NoInfo) eyebrow.Children.Add(new TextBlock { Text = $"{DayWord(p.Start, now)} {Hhmm(p.Start)}–{Hhmm(p.End)}", FontSize = 26, Foreground = T.Text2, VerticalAlignment = VerticalAlignment.Center });
             if (p.IsOnAt(now) || p.NoInfo) eyebrow.Children.Add(Pill("Live", T.Live));
+            if (reminded)
+            {
+                var pill = Pill("Reminder set", T.Pill);
+                var inner = (TextBlock)pill.Child!;
+                pill.Child = null;
+                pill.Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new Avalonia.Controls.Shapes.Path { Data = GuideCell.BellShape, Fill = T.Mine, Width = 18, Height = 18, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center }, inner } };
+                eyebrow.Children.Add(pill);
+            }
             var layer = new StackPanel { Spacing = 0 };
             layer.Children.Add(eyebrow);
             layer.Children.Add(new TextBlock { Text = p.NoInfo ? ch.Name : p.Title, FontSize = 72, FontWeight = FontWeight.Bold, LetterSpacing = -1.5, Foreground = T.Text, Margin = new Thickness(0, 18, 0, 6), TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 1060 });

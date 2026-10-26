@@ -37,10 +37,27 @@ namespace Baird.NewUi
         /// <summary>Show pages' data and requests (null until wired: series cards then toast).</summary>
         public ShowData? Shows { get; set; }
         public ITimers Timers { get; set; } = new DispatcherTimers();
+        /// <summary>The viewer's reminders (in memory unless the composition root gives it a file).</summary>
+        public Reminders Reminders { get; set; }
+
+        /// <summary>The guide's layout (Settings and the guide's strip both switch it).</summary>
+        public GuideLayout GuideLayout { get; private set; }
+        /// <summary>Persists the guide layout (the composition root writes Baird:GuideLayout; tests leave it a no-op).</summary>
+        public Action<GuideLayout> SaveGuideLayout { get; set; } = _ => { };
+        public event Action? GuideLayoutChanged;
+
+        public void SetGuideLayout(GuideLayout layout, bool save = true)
+        {
+            if (GuideLayout == layout) return;
+            GuideLayout = layout;
+            if (save) SaveGuideLayout(layout);
+            GuideLayoutChanged?.Invoke();
+        }
 
         public NewUiContext(Navigator nav, PlaybackController playback, HomeData home, Func<DateTimeOffset> now)
         {
             Nav = nav; Playback = playback; Home = home; Now = now;
+            Reminders = new Reminders(null, now);
         }
 
         private string PlaceLabel() => Nav.State.Pages.Count > 0 ? Nav.State.Pages[^1].Name : Nav.State.Place switch
