@@ -37,7 +37,8 @@ namespace Baird.NewUi.Controls
 
             var layers = new Grid();
             var isLogo = data.Kind == CardKind.Channel && !string.IsNullOrEmpty(data.ImageUrl);
-            layers.Children.Add(Fallback(data, shape, showTitle: !isLogo));
+            var fallback = (Border)Fallback(data, shape, showTitle: !isLogo);
+            layers.Children.Add(fallback);
             // What's on, when the guide has a picture of it: fills the card behind the channel's logo.
             if (data.Kind == CardKind.Channel && data.Programme?.ImageUrl is { Length: > 0 } still)
             {
@@ -59,7 +60,15 @@ namespace Baird.NewUi.Controls
                     ? new Image { Stretch = Stretch.Uniform, Opacity = 0, MaxHeight = 92, MaxWidth = 220, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 34, 0, 0) }
                     : new Image { Stretch = Stretch.UniformToFill, Opacity = 0 };
                 Motion.Animate(img, T.Slow);
-                img.PropertyChanged += (_, e) => { if (e.Property == Image.SourceProperty && img.Source != null) img.Opacity = 1; };
+                var tintFromLogo = isLogo && !hasStill;
+                img.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property != Image.SourceProperty || img.Source == null) return;
+                    img.Opacity = 1;
+                    // Last step of the artwork fallback: no picture of what's on, so the card takes the channel's colours.
+                    if (tintFromLogo && img.Source is Avalonia.Media.Imaging.Bitmap logo && BrandColour.Of(logo) is { } brand)
+                        fallback.Background = BrandGradient(brand);
+                };
                 AsyncImageLoader.ImageLoader.SetSource(img, data.ImageUrl);
                 layers.Children.Add(img);
             }
@@ -133,6 +142,23 @@ namespace Baird.NewUi.Controls
         };
 
         /// <summary>No artwork: a tinted card with the title set large (the agreed fallback).</summary>
+        /// <summary>A rich gradient in a channel's brand colour (never plain black).</summary>
+        public static IBrush BrandGradient(Color brand)
+        {
+            var hsv = brand.ToHsv();
+            return new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0.85, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(0.15, 1, RelativeUnit.Relative),
+                GradientStops =
+                {
+                    new GradientStop(HsvColor.FromAhsv(1, hsv.H, 0.7, 0.5).ToRgb(), 0),
+                    new GradientStop(HsvColor.FromAhsv(1, (hsv.H + 20) % 360, 0.75, 0.22).ToRgb(), 0.6),
+                    new GradientStop(HsvColor.FromAhsv(1, (hsv.H + 30) % 360, 0.8, 0.1).ToRgb(), 1),
+                },
+            };
+        }
+
         private static Control Fallback(HomeCard d, CardShape shape, bool showTitle)
         {
             var hue = 0; foreach (var c in d.Id) hue = (hue * 31 + c) % 360;

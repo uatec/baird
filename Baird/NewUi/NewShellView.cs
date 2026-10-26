@@ -53,7 +53,7 @@ namespace Baird.NewUi
             var router = new EngineRouter(mpv, services.BrowserEngines);
             var playback = new PlaybackController(router, a => Dispatcher.UIThread.Post(a), timers, () => DateTimeOffset.Now,
                 (id, pos, dur) => _ = history.SaveAsync(id, pos, dur), mpv.ConfigureForSource);
-            var home = new HomeData(services.Data, services.Epg, services.Seerr);
+            var home = new HomeData(services.Data, services.Epg, services.Seerr, new ProgrammeArt(services.Seerr, ProgrammeArt.DefaultPath));
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);

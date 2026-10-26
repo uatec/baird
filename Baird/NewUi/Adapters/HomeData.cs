@@ -21,9 +21,29 @@ namespace Baird.NewUi.Adapters
         private readonly IJellyseerrService? _seerr;
         private static readonly TimeSpan EpgTimeout = TimeSpan.FromSeconds(4);
 
-        public HomeData(IDataService data, IEpgService epg, IJellyseerrService? seerr)
+        private readonly ProgrammeArt? _art;
+        /// <summary>How long On now waits for pictures it has to look up (cached after the first time).</summary>
+        public static readonly TimeSpan ArtBudget = TimeSpan.FromSeconds(3);
+
+        public HomeData(IDataService data, IEpgService epg, IJellyseerrService? seerr, ProgrammeArt? art = null)
         {
-            _data = data; _epg = epg; _seerr = seerr;
+            _data = data; _epg = epg; _seerr = seerr; _art = art;
+        }
+
+        /// <summary>Fills in a picture for programmes the guide has none for, within <see cref="ArtBudget"/>.</summary>
+        public async Task<Programme?[]> WithArtAsync(Programme?[] programmes)
+        {
+            if (_art == null) return programmes;
+            using var cts = new CancellationTokenSource(ArtBudget);
+            var looked = programmes.Select(async p =>
+            {
+                if (p == null || !string.IsNullOrEmpty(p.ImageUrl)) return p;
+                try { return await _art.ForAsync(p, cts.Token).ConfigureAwait(false) is { } url ? p with { ImageUrl = url } : p; }
+                catch { return p; }
+            });
+            var all = Task.WhenAll(looked);
+            var done = await Task.WhenAny(all, Task.Delay(ArtBudget + TimeSpan.FromMilliseconds(200))).ConfigureAwait(false);
+            return done == all ? await all.ConfigureAwait(false) : programmes;
         }
 
         public static PlayVia ViaOf(string source) =>
@@ -55,7 +75,7 @@ namespace Baird.NewUi.Adapters
         public async Task<IReadOnlyList<HomeCard>> OnNowAsync(DateTimeOffset now)
         {
             var channels = await ChannelsAsync().ConfigureAwait(false);
-            var programmes = await Task.WhenAll(channels.Select(c => CurrentProgrammeAsync(c.Id))).ConfigureAwait(false);
+            var programmes = await WithArtAsync(await Task.WhenAll(channels.Select(c => CurrentProgrammeAsync(c.Id))).ConfigureAwait(false)).ConfigureAwait(false);
             return channels.Select((c, k) =>
             {
                 var p = programmes[k];
