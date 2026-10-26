@@ -1,0 +1,5 @@
+# TMDB artwork is not committed (copyright, size). Recreate it:
+#   node tools/fetch-art.mjs && node tools/fetch-episodes.mjs && tools/make-ambient.sh
+assets/art/*.jpg
+assets/art/*.png
+assets/art/ambient/
