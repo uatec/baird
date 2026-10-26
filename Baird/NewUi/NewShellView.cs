@@ -124,6 +124,11 @@ namespace Baird.NewUi
             {
                 top.AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
                 top.AddHandler(KeyUpEvent, OnKeyUp, RoutingStrategies.Tunnel);
+                // Remote-only: no pointer; the air-mouse remote's buttons are OK, Back and Home.
+                top.Cursor = new Cursor(StandardCursorType.None);
+                top.AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Tunnel);
+                top.AddHandler(PointerReleasedEvent, OnPointerReleased, RoutingStrategies.Tunnel);
+                top.AddHandler(PointerWheelChangedEvent, (_, e) => e.Handled = true, RoutingStrategies.Tunnel);
             }
         }
 
@@ -133,6 +138,8 @@ namespace Baird.NewUi
             {
                 top.RemoveHandler(KeyDownEvent, OnKeyDown);
                 top.RemoveHandler(KeyUpEvent, OnKeyUp);
+                top.RemoveHandler(PointerPressedEvent, OnPointerPressed);
+                top.RemoveHandler(PointerReleasedEvent, OnPointerReleased);
             }
             base.OnDetachedFromVisualTree(e);
         }
@@ -158,6 +165,26 @@ namespace Baird.NewUi
                 _holdTick.Stop();
                 if (_hold.Up() is { } ok) Dispatch(ok, false);
             }
+        }
+
+        private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            e.Handled = true;
+            var kind = e.GetCurrentPoint(null).Properties.PointerUpdateKind;
+            Console.WriteLine($"[NewUi] Remote button: {kind}");
+            switch (InputMap.MapButton(kind))
+            {
+                case UiAction.Ok: _hold.Down(); _holdTick.Start(); break; // decided on release, like the OK key
+                case { } action: Dispatch(action, false); break;
+            }
+        }
+
+        private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
+        {
+            e.Handled = true;
+            if (InputMap.MapButton(e.GetCurrentPoint(null).Properties.PointerUpdateKind) != UiAction.Ok) return;
+            _holdTick.Stop();
+            if (_hold.Up() is { } ok) Dispatch(ok, false);
         }
 
         private void Dispatch(UiAction action, bool repeat)

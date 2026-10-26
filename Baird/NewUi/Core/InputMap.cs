@@ -64,6 +64,15 @@ namespace Baird.NewUi.Core
             return Keys.TryGetValue(key, out var a) ? a : null;
         }
 
+        /// <summary>The remote is also an air mouse: OK arrives as the left button, Back and Home as the others.</summary>
+        public static UiAction? MapButton(PointerUpdateKind kind) => kind switch
+        {
+            PointerUpdateKind.LeftButtonPressed or PointerUpdateKind.LeftButtonReleased => UiAction.Ok,
+            PointerUpdateKind.RightButtonPressed or PointerUpdateKind.XButton1Pressed => UiAction.Back,
+            PointerUpdateKind.MiddleButtonPressed or PointerUpdateKind.XButton2Pressed => UiAction.Home,
+            _ => null,
+        };
+
         public static int? DigitOf(UiAction a) => a >= UiAction.Digit0 && a <= UiAction.Digit9 ? a - UiAction.Digit0 : null;
     }
 

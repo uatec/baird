@@ -123,6 +123,18 @@ namespace Baird.Tests.NewUi
 
     public class InputMapTests
     {
+        [Theory]
+        [InlineData(Avalonia.Input.PointerUpdateKind.LeftButtonPressed, UiAction.Ok)]
+        [InlineData(Avalonia.Input.PointerUpdateKind.RightButtonPressed, UiAction.Back)]
+        [InlineData(Avalonia.Input.PointerUpdateKind.XButton1Pressed, UiAction.Back)]
+        [InlineData(Avalonia.Input.PointerUpdateKind.MiddleButtonPressed, UiAction.Home)]
+        [InlineData(Avalonia.Input.PointerUpdateKind.XButton2Pressed, UiAction.Home)]
+        public void The_air_mouse_remotes_buttons_are_ok_back_and_home(Avalonia.Input.PointerUpdateKind button, UiAction expected)
+            => Assert.Equal(expected, InputMap.MapButton(button));
+
+        [Fact]
+        public void Other_pointer_changes_are_not_actions() => Assert.Null(InputMap.MapButton(Avalonia.Input.PointerUpdateKind.Other));
+
         private readonly InputMap _map = new();
         [Theory]
         [InlineData(Key.Enter, UiAction.Ok)]
