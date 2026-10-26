@@ -36,8 +36,8 @@ namespace Baird.Tests.Services
         [InlineData(0x20, Key.D0)]
         [InlineData(0x25, Key.D5)]
         [InlineData(0x29, Key.D9)]
-        [InlineData(0x30, Key.PageUp)]
-        [InlineData(0x31, Key.PageDown)]
+        [InlineData(0x30, Key.PageDown)] // swapped: see CecRemoteControl
+        [InlineData(0x31, Key.PageUp)]
         [InlineData(0x53, Key.G)]
         public void TvRemoteKeys_MapToTheKeysBairdHandles(byte code, Key expected)
         {

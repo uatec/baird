@@ -138,7 +138,8 @@ Control Pressed* (`0x44`) / *Released* (`0x45`) frames addressed to Baird. `CecS
 `UserControlReceived` for each, and `CecRemoteControl` (wired in both the classic `MainView` and the
 new UI's `NewShellView`) turns them into the key presses Baird already
 handles: arrows, OK (Select) → Enter, Exit → BrowserBack, Root Menu → BrowserHome, 0–9, Channel Up/Down →
-PageUp/PageDown, EPG → G, play/pause/stop, rewind/fast forward → Left/Right. Power,
+PageDown/PageUp (swapped: Baird's PageUp is the next channel in its list, which ran the wrong way for the
+Panasonic), EPG → G, play/pause/stop, rewind/fast forward → Left/Right. Power,
 volume and mute are left to the TV. Keys are raised through `SyntheticKeyInput`, which also runs
 KeyBindings (channel up/down), as Avalonia's keyboard device does. A key with no Released within 550 ms
 is treated as let go (CEC 1.4 §13.13). A key from the TV while inputs are blocked unblocks them — the TV
@@ -153,6 +154,9 @@ journalctl -t baird -f | grep -E 'CecRemote|Remote-related'
 - `[CecRemote] TV (0) pressed 'Up' (0x01) → Up.` — received and raised.
 - `... sent 'Up' to Playback 1 (4), not Baird — ignored.` — the TV thinks another device is on screen.
 - `... pressed 'Red' (0x72) — Baird has no action for it.` — received but unmapped.
+- `[CecService] Frame for Baird: ...` — any other message the TV sends Baird. Play (`0x41`) and Deck
+  Control (`0x42`) are also turned into Play/Pause/Stop/Rewind/Fast Forward key presses, since some TVs
+  send their transport keys that way.
 - `[CecService] Remote-related frame: ...` — vendor remote commands or Menu Request, which some TVs use
   instead of, or before, User Control.
 - Nothing at all — the TV isn't passing keys on (check the TV's CEC/VIERA Link settings). The CEC debug
@@ -228,3 +232,9 @@ The flag is read and written inside `Dispatcher.UIThread.Post` closures but `Cha
 - **`cec-client`** from [libcec](https://github.com/Pulse-Eight/libcec) — must be on `PATH`
   - Raspberry Pi OS: `sudo apt install cec-utils`
   - The service starts silently without it and all operations become no-ops
+
+### Panasonic (VIERA Link) findings, 2026-10-26
+
+The TV passed on OK, the arrows, Channel Up/Down and Exit (Back) as User Control. Play/Pause, Subtitles,
+Home and Guide produced no User Control frame at all: the TV keeps Home and Guide for its own menus. The
+"Frame for Baird" log shows whether the transport keys come some other way.
