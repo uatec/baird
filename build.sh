@@ -28,4 +28,5 @@ cp update_ytdlp.sh "$OUTPUT_DIR/linux-arm64/"
 cp baird-updater.service "$OUTPUT_DIR/linux-arm64/"
 cp baird-updater.timer "$OUTPUT_DIR/linux-arm64/"
 cp configure_pi.sh "$OUTPUT_DIR/linux-arm64/"
+cp -r pi/boot-splash "$OUTPUT_DIR/linux-arm64/boot-splash"
 

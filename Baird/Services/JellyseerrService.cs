@@ -193,6 +193,94 @@ namespace Baird.Services
             }
         }
 
+        public async Task<JellyseerrMediaStatus?> GetMediaStatusAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var endpoint = mediaType == "movie" ? $"api/v1/movie/{tmdbId}" : $"api/v1/tv/{tmdbId}";
+                var response = await _httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[JellyseerrService] Status of {mediaType} {tmdbId} failed: {response.StatusCode}");
+                    return null;
+                }
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                return ParseMediaStatus(json);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine($"[JellyseerrService] Status of {mediaType} {tmdbId} error: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>Reads a movie/tv details response: TMDB's seasons (specials excluded), mediaInfo's per-season status and downloads.</summary>
+        public static JellyseerrMediaStatus ParseMediaStatus(string json)
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            static int Int(JsonElement e, string name, int fallback = 0) =>
+                e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : fallback;
+            static long Long(JsonElement e, string name) =>
+                e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64() : 0;
+
+            var status = 1;
+            var seasonStatus = new Dictionary<int, int>();
+            var downloads = new List<JellyseerrDownload>();
+            if (root.TryGetProperty("mediaInfo", out var info) && info.ValueKind == JsonValueKind.Object)
+            {
+                status = Int(info, "status", 1);
+                if (info.TryGetProperty("seasons", out var ss) && ss.ValueKind == JsonValueKind.Array)
+                    foreach (var s in ss.EnumerateArray()) seasonStatus[Int(s, "seasonNumber")] = Int(s, "status", 1);
+                if (info.TryGetProperty("downloadStatus", out var ds) && ds.ValueKind == JsonValueKind.Array)
+                    foreach (var d in ds.EnumerateArray())
+                    {
+                        int? season = null, episode = null;
+                        if (d.TryGetProperty("episode", out var ep) && ep.ValueKind == JsonValueKind.Object)
+                        {
+                            season = Int(ep, "seasonNumber");
+                            episode = Int(ep, "episodeNumber");
+                        }
+                        downloads.Add(new JellyseerrDownload(season, episode, Long(d, "size"), Long(d, "sizeLeft")));
+                    }
+            }
+
+            var seasons = new List<JellyseerrSeason>();
+            if (root.TryGetProperty("seasons", out var tmdbSeasons) && tmdbSeasons.ValueKind == JsonValueKind.Array)
+                foreach (var s in tmdbSeasons.EnumerateArray())
+                {
+                    var n = Int(s, "seasonNumber");
+                    if (n <= 0) continue; // specials
+                    seasons.Add(new JellyseerrSeason(n, Int(s, "episodeCount"), seasonStatus.TryGetValue(n, out var st) ? st : 1));
+                }
+            return new JellyseerrMediaStatus(status, seasons, downloads);
+        }
+
+        public async Task<JellyseerrRequestResponse> RequestSeasonsAsync(int mediaId, string mediaType, IReadOnlyList<int>? seasons, CancellationToken cancellationToken = default)
+        {
+            if (mediaType != "tv" || seasons == null || seasons.Count == 0) return await CreateRequestAsync(mediaId, mediaType, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var json = $"{{\"mediaType\":\"tv\",\"mediaId\":{mediaId},\"seasons\":[{string.Join(",", seasons)}]}}";
+                var response = await _httpClient.PostAsync("api/v1/request", new StringContent(json, Encoding.UTF8, "application/json"), cancellationToken).ConfigureAwait(false);
+                var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[JellyseerrService] Season request failed: {response.StatusCode} - {SecretRedactor.Redact(body)}");
+                    return new JellyseerrRequestResponse { Success = false, Message = $"Failed to create request: {response.StatusCode}" };
+                }
+                using var doc = JsonDocument.Parse(body);
+                var id = doc.RootElement.TryGetProperty("id", out var idProp) ? idProp.GetInt32() : 0;
+                Console.WriteLine($"[JellyseerrService] Requested seasons {string.Join(",", seasons)} of tv {mediaId} (request {id})");
+                return new JellyseerrRequestResponse { Success = true, Message = "Requested", RequestId = id };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[JellyseerrService] Season request error: {ex.Message}");
+                return new JellyseerrRequestResponse { Success = false, Message = $"Error: {ex.Message}" };
+            }
+        }
+
         public async Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken cancellationToken = default)
         {
             try

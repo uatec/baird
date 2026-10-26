@@ -273,7 +273,11 @@ namespace Baird.Services
             }
 
             // Chromium grabs keyboard focus when it opens; remember Baird's window so focus can go back to it.
-            var previousActive = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? RunShellOutput("xdotool", "getactivewindow") : null;
+            // Baird's own window (by our process), not "whatever is active": after a reboot something else can be active,
+            // and handing focus back to that would leave the browser on top of Baird.
+            var previousActive = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                ? FindLargestWindow($"search --pid {Environment.ProcessId}", 640) ?? RunShellOutput("xdotool", "getactivewindow")
+                : null;
             _bairdWindowId = previousActive;
 
             try
@@ -965,7 +969,8 @@ namespace Baird.Services
             RunShellCommand("wmctrl", "-x -r baird-netflix -b remove,fullscreen");
             if (!string.IsNullOrEmpty(_bairdWindowId))
             {
-                RunShellCommand("xdotool", $"windowactivate {_bairdWindowId}");
+                // Raise as well as focus: under labwc/XWayland focus alone can leave the browser stacked above Baird.
+                RunShellCommand("xdotool", $"windowraise {_bairdWindowId} windowactivate {_bairdWindowId}");
                 Log("[CDP] Window stacking: Baird raised above the browser.");
             }
             else
@@ -1007,7 +1012,7 @@ namespace Baird.Services
             }
             else if (!string.IsNullOrEmpty(previousActive))
             {
-                RunShellCommand("xdotool", $"windowactivate {previousActive}");
+                RunShellCommand("xdotool", $"windowraise {previousActive} windowactivate {previousActive}");
                 Log("[CDP] Window stacking: browser stays behind Baird; focus returned to Baird.");
             }
             else
@@ -1017,9 +1022,12 @@ namespace Baird.Services
         }
 
         /// <summary>The browser's main X window (largest window of class baird-netflix), or null if none is big enough yet.</summary>
-        private static string? FindBrowserWindowId(int minWidth)
+        private static string? FindBrowserWindowId(int minWidth) => FindLargestWindow("search --class baird-netflix", minWidth);
+
+        /// <summary>The biggest window an xdotool search finds (apps also make tiny helper windows).</summary>
+        private static string? FindLargestWindow(string search, int minWidth)
         {
-            var ids = RunShellOutput("xdotool", "search --class baird-netflix");
+            var ids = RunShellOutput("xdotool", search);
             if (ids == null) return null;
 
             string? best = null;

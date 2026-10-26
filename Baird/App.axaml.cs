@@ -51,9 +51,11 @@ namespace Baird
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 // Desktop development support
+                var uiMode = Baird.Services.UiModes.Read(Configuration);
+                Console.WriteLine($"[App] Interface: {uiMode}");
                 desktop.MainWindow = new Window
                 {
-                    Content = new MainView(Configuration),
+                    Content = Baird.Services.UiModes.Build<Control>(uiMode, () => new Baird.NewUi.NewShellView(Configuration), () => new MainView(Configuration)),
                     Title = "Baird",
                     Background = Brushes.Black,
                 };
@@ -89,12 +91,17 @@ namespace Baird
                 if (!string.IsNullOrEmpty(fullScreenEnv) && bool.TryParse(fullScreenEnv, out bool isFullScreen) && isFullScreen)
                 {
                     desktop.MainWindow.WindowState = WindowState.FullScreen;
+                    // Start at the TV's size, so the first frame (the boot picture) doesn't appear small, then jump.
+                    desktop.MainWindow.Width = 1920;
+                    desktop.MainWindow.Height = 1080;
+                    desktop.MainWindow.Position = new PixelPoint(0, 0);
                 }
             }
             else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
             {
                 // Framebuffer support
-                singleViewPlatform.MainView = new MainView(Configuration);
+                singleViewPlatform.MainView = Baird.Services.UiModes.Read(Configuration) == Baird.Services.UiMode.New
+                    ? new Baird.NewUi.NewShellView(Configuration) : new MainView(Configuration);
             }
 
             base.OnFrameworkInitializationCompleted();

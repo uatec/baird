@@ -263,6 +263,24 @@ namespace Baird.Services
             }
         }
 
+        /// <summary>An episode's series (id and name), or null for anything that isn't an episode.</summary>
+        public async Task<(string Id, string Name)?> GetSeriesOfAsync(string episodeId)
+        {
+            if (!IsJellyfinId(episodeId)) return null;
+            await EnsureAuthenticatedAsync();
+            if (!IsAuthenticated) return null;
+            try
+            {
+                var json = await _httpClient.GetStringAsync($"Users/{_userId}/Items/{episodeId}").ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(json);
+                var r = doc.RootElement;
+                return r.TryGetProperty("SeriesId", out var id) && id.GetString() is { Length: > 0 } sid
+                    && r.TryGetProperty("SeriesName", out var name) && name.GetString() is { Length: > 0 } sname
+                    ? (sid, sname) : null;
+            }
+            catch (Exception ex) { Console.WriteLine($"[JellyfinService] Series lookup failed for {episodeId}: {ex.Message}"); return null; }
+        }
+
         public async Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id)
         {
             if (!IsJellyfinId(id)) return Enumerable.Empty<MediaItemData>();

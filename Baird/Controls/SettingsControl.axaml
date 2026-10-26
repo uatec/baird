@@ -53,6 +53,14 @@
             <!-- Header -->
             <StackPanel Grid.Row="0" Margin="0,0,0,30">
                 <TextBlock Text="Settings" FontSize="28" FontWeight="Bold" Foreground="White" />
+                <!-- Interface: Classic / New. OK (or Left/Right) switches, saves and restarts Baird into that mode. -->
+                <StackPanel Orientation="Horizontal" Margin="0,20,0,0" Spacing="50">
+                    <TextBlock Text="Interface" Classes="SettingName" />
+                    <Border Classes="SettingContainer" Focusable="True" Name="InterfaceToggle" KeyDown="Interface_KeyDown">
+                        <TextBlock Text="{Binding UiModeText}" Foreground="White" FontSize="20" Margin="15,8" />
+                    </Border>
+                    <TextBlock Text="Press OK to switch (Baird restarts)" Foreground="#888" FontSize="16" VerticalAlignment="Center" />
+                </StackPanel>
             </StackPanel>
 
             <!-- Settings List -->

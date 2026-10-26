@@ -1,0 +1,8 @@
+# The boot splash: splash.png (rendered from Baird's intro, frame 0) filling the screen, nothing else.
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+splash = Image("splash.png");
+scaled = splash.Scale(Window.GetWidth(), Window.GetHeight());
+sprite = Sprite(scaled);
+sprite.SetX(Window.GetX());
+sprite.SetY(Window.GetY());

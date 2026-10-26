@@ -1,0 +1,311 @@
+{
+  "loki": {
+    "tmdb": "tv/84958",
+    "backdrop": "loki-backdrop.jpg",
+    "poster": "loki-poster.jpg",
+    "logo": "loki-logo.png",
+    "s1": [
+      "loki-s1e1.jpg",
+      "loki-s1e2.jpg",
+      "loki-s1e3.jpg",
+      "loki-s1e4.jpg",
+      "loki-s1e5.jpg",
+      "loki-s1e6.jpg"
+    ]
+  },
+  "simpsons": {
+    "tmdb": "tv/456",
+    "backdrop": "simpsons-backdrop.jpg",
+    "poster": "simpsons-poster.jpg",
+    "logo": "simpsons-logo.png",
+    "s6": [
+      "simpsons-s6e1.jpg",
+      "simpsons-s6e2.jpg",
+      "simpsons-s6e3.jpg",
+      "simpsons-s6e4.jpg",
+      "simpsons-s6e5.jpg",
+      "simpsons-s6e6.jpg",
+      "simpsons-s6e7.jpg",
+      "simpsons-s6e8.jpg",
+      "simpsons-s6e9.jpg",
+      "simpsons-s6e10.jpg",
+      "simpsons-s6e11.jpg",
+      "simpsons-s6e12.jpg",
+      "simpsons-s6e13.jpg",
+      "simpsons-s6e14.jpg",
+      "simpsons-s6e15.jpg",
+      "simpsons-s6e16.jpg",
+      "simpsons-s6e17.jpg",
+      "simpsons-s6e18.jpg",
+      "simpsons-s6e19.jpg",
+      "simpsons-s6e20.jpg",
+      "simpsons-s6e21.jpg",
+      "simpsons-s6e22.jpg",
+      "simpsons-s6e23.jpg",
+      "simpsons-s6e24.jpg",
+      "simpsons-s6e25.jpg"
+    ]
+  },
+  "casper": {
+    "tmdb": "movie/8839",
+    "backdrop": "casper-backdrop.jpg",
+    "poster": "casper-poster.jpg",
+    "logo": "casper-logo.png"
+  },
+  "planet-earth-3": {
+    "tmdb": "tv/116156",
+    "backdrop": "planet-earth-3-backdrop.jpg",
+    "poster": "planet-earth-3-poster.jpg",
+    "logo": "planet-earth-3-logo.png",
+    "s1": [
+      "planet-earth-3-s1e1.jpg",
+      "planet-earth-3-s1e2.jpg",
+      "planet-earth-3-s1e3.jpg",
+      "planet-earth-3-s1e4.jpg",
+      "planet-earth-3-s1e5.jpg",
+      "planet-earth-3-s1e6.jpg",
+      "planet-earth-3-s1e7.jpg",
+      "planet-earth-3-s1e8.jpg"
+    ]
+  },
+  "severance": {
+    "tmdb": "tv/95396",
+    "backdrop": "severance-backdrop.jpg",
+    "poster": "severance-poster.jpg",
+    "logo": "severance-logo.png"
+  },
+  "stranger-things": {
+    "tmdb": "tv/66732",
+    "backdrop": "stranger-things-backdrop.jpg",
+    "poster": "stranger-things-poster.jpg",
+    "logo": "stranger-things-logo.png"
+  },
+  "the-crown": {
+    "tmdb": "tv/65494",
+    "backdrop": "the-crown-backdrop.jpg",
+    "poster": "the-crown-poster.jpg",
+    "logo": "the-crown-logo.png"
+  },
+  "doctor-who": {
+    "tmdb": "tv/57243",
+    "backdrop": "doctor-who-backdrop.jpg",
+    "poster": "doctor-who-poster.jpg",
+    "logo": "doctor-who-logo.png"
+  },
+  "blade-runner-2049": {
+    "tmdb": "movie/335984",
+    "backdrop": "blade-runner-2049-backdrop.jpg",
+    "poster": "blade-runner-2049-poster.jpg",
+    "logo": "blade-runner-2049-logo.png"
+  },
+  "paddington-2": {
+    "tmdb": "movie/346648",
+    "backdrop": "paddington-2-backdrop.jpg",
+    "poster": "paddington-2-poster.jpg",
+    "logo": "paddington-2-logo.png"
+  },
+  "dune-2": {
+    "tmdb": "movie/693134",
+    "backdrop": "dune-2-backdrop.jpg",
+    "poster": "dune-2-poster.jpg",
+    "logo": "dune-2-logo.png"
+  },
+  "slow-horses": {
+    "tmdb": "tv/95480",
+    "backdrop": "slow-horses-backdrop.jpg",
+    "poster": "slow-horses-poster.jpg",
+    "logo": "slow-horses-logo.png"
+  },
+  "andor": {
+    "tmdb": "tv/83867",
+    "backdrop": "andor-backdrop.jpg",
+    "poster": "andor-poster.jpg",
+    "logo": "andor-logo.png"
+  },
+  "the-last-of-us": {
+    "tmdb": "tv/100088",
+    "backdrop": "the-last-of-us-backdrop.jpg",
+    "poster": "the-last-of-us-poster.jpg",
+    "logo": "the-last-of-us-logo.png"
+  },
+  "sinners": {
+    "tmdb": "movie/1233413",
+    "backdrop": "sinners-backdrop.jpg",
+    "poster": "sinners-poster.jpg",
+    "logo": "sinners-logo.png"
+  },
+  "alien": {
+    "tmdb": "movie/348",
+    "backdrop": "alien-backdrop.jpg",
+    "poster": "alien-poster.jpg",
+    "logo": "alien-logo.png"
+  },
+  "the-bear": {
+    "tmdb": "tv/136315",
+    "backdrop": "the-bear-backdrop.jpg",
+    "poster": "the-bear-poster.jpg",
+    "logo": "the-bear-logo.png"
+  },
+  "eastenders": {
+    "tmdb": "tv/1871",
+    "backdrop": "eastenders-backdrop.jpg",
+    "poster": "eastenders-poster.jpg",
+    "logo": "eastenders-logo.png"
+  },
+  "gogglebox": {
+    "tmdb": "tv/91291",
+    "backdrop": "gogglebox-backdrop.jpg",
+    "poster": "gogglebox-poster.jpg"
+  },
+  "match-of-the-day": {
+    "tmdb": "tv/224",
+    "backdrop": "match-of-the-day-backdrop.jpg",
+    "poster": "match-of-the-day-poster.jpg",
+    "logo": "match-of-the-day-logo.png"
+  },
+  "grand-designs": {
+    "tmdb": "tv/1831",
+    "backdrop": "grand-designs-backdrop.jpg",
+    "poster": "grand-designs-poster.jpg",
+    "logo": "grand-designs-logo.png"
+  },
+  "gardeners-world": {
+    "tmdb": "tv/15188",
+    "backdrop": "gardeners-world-backdrop.jpg",
+    "poster": "gardeners-world-poster.jpg",
+    "logo": "gardeners-world-logo.png"
+  },
+  "pointless": {
+    "tmdb": "tv/30810",
+    "backdrop": "pointless-backdrop.jpg",
+    "poster": "pointless-poster.jpg",
+    "logo": "pointless-logo.png"
+  },
+  "bbc-news": {
+    "tmdb": "tv/3521",
+    "backdrop": "bbc-news-backdrop.jpg"
+  },
+  "the-one-show": {
+    "tmdb": "tv/1514",
+    "backdrop": "the-one-show-backdrop.jpg",
+    "poster": "the-one-show-poster.jpg",
+    "logo": "the-one-show-logo.png"
+  },
+  "question-time": {
+    "tmdb": "tv/13354",
+    "backdrop": "question-time-backdrop.jpg",
+    "poster": "question-time-poster.jpg"
+  },
+  "house-of-games": {
+    "tmdb": "tv/114054",
+    "backdrop": "house-of-games-backdrop.jpg",
+    "poster": "house-of-games-poster.jpg"
+  },
+  "emmerdale": {
+    "tmdb": "tv/2527",
+    "backdrop": "emmerdale-backdrop.jpg",
+    "poster": "emmerdale-poster.jpg",
+    "logo": "emmerdale-logo.png"
+  },
+  "coronation-street": {
+    "tmdb": "tv/291",
+    "backdrop": "coronation-street-backdrop.jpg",
+    "poster": "coronation-street-poster.jpg",
+    "logo": "coronation-street-logo.png"
+  },
+  "hollyoaks": {
+    "tmdb": "tv/966",
+    "backdrop": "hollyoaks-backdrop.jpg",
+    "poster": "hollyoaks-poster.jpg",
+    "logo": "hollyoaks-logo.png"
+  },
+  "family-guy": {
+    "tmdb": "tv/1434",
+    "backdrop": "family-guy-backdrop.jpg",
+    "poster": "family-guy-poster.jpg",
+    "logo": "family-guy-logo.png"
+  },
+  "top-gear": {
+    "tmdb": "tv/45",
+    "backdrop": "top-gear-backdrop.jpg",
+    "poster": "top-gear-poster.jpg",
+    "logo": "top-gear-logo.png"
+  },
+  "taskmaster": {
+    "tmdb": "tv/63404",
+    "backdrop": "taskmaster-backdrop.jpg",
+    "poster": "taskmaster-poster.jpg",
+    "logo": "taskmaster-logo.png"
+  },
+  "qi": {
+    "tmdb": "tv/1554",
+    "backdrop": "qi-backdrop.jpg",
+    "poster": "qi-poster.jpg",
+    "logo": "qi-logo.png"
+  },
+  "bluey": {
+    "tmdb": "tv/82728",
+    "backdrop": "bluey-backdrop.jpg",
+    "poster": "bluey-poster.jpg",
+    "logo": "bluey-logo.png"
+  },
+  "blue-peter": {
+    "tmdb": "tv/548",
+    "backdrop": "blue-peter-backdrop.jpg",
+    "poster": "blue-peter-poster.jpg"
+  },
+  "antiques-roadshow": {
+    "tmdb": "tv/2042",
+    "backdrop": "antiques-roadshow-backdrop.jpg",
+    "poster": "antiques-roadshow-poster.jpg",
+    "logo": "antiques-roadshow-logo.png"
+  },
+  "strictly": {
+    "tmdb": "tv/1711",
+    "backdrop": "strictly-backdrop.jpg",
+    "poster": "strictly-poster.jpg",
+    "logo": "strictly-logo.png"
+  },
+  "great-british-bake-off": {
+    "tmdb": "tv/87012",
+    "backdrop": "great-british-bake-off-backdrop.jpg",
+    "poster": "great-british-bake-off-poster.jpg",
+    "logo": "great-british-bake-off-logo.png"
+  },
+  "mock-the-week": {
+    "tmdb": "tv/797",
+    "backdrop": "mock-the-week-backdrop.jpg",
+    "poster": "mock-the-week-poster.jpg",
+    "logo": "mock-the-week-logo.png"
+  },
+  "police-interceptors": {
+    "tmdb": "tv/7734",
+    "backdrop": "police-interceptors-backdrop.jpg",
+    "poster": "police-interceptors-poster.jpg",
+    "logo": "police-interceptors-logo.png"
+  },
+  "only-connect": {
+    "tmdb": "tv/8425",
+    "backdrop": "only-connect-backdrop.jpg",
+    "poster": "only-connect-poster.jpg",
+    "logo": "only-connect-logo.png"
+  },
+  "mission-impossible": {
+    "tmdb": "movie/353081",
+    "backdrop": "mission-impossible-backdrop.jpg",
+    "poster": "mission-impossible-poster.jpg",
+    "logo": "mission-impossible-logo.png"
+  },
+  "jurassic-park": {
+    "tmdb": "movie/329",
+    "backdrop": "jurassic-park-backdrop.jpg",
+    "poster": "jurassic-park-poster.jpg",
+    "logo": "jurassic-park-logo.png"
+  },
+  "shogun": {
+    "tmdb": "tv/126308",
+    "backdrop": "shogun-backdrop.jpg",
+    "poster": "shogun-poster.jpg",
+    "logo": "shogun-logo.png"
+  }
+}

@@ -293,6 +293,65 @@ HandleSuspendKey=ignore
 LOGIND_CONF
 echo "[Remote] Done (takes effect after reboot)."
 
+# --- 8. Boot splash: one picture from power-on until Baird's start-up animation ---
+# The firmware rainbow goes; Plymouth shows the Baird wordmark on black (splash.png is the first frame of Baird's intro,
+# rendered by its test); the desktop that shows between Plymouth and Baird is the same picture, taskbar hidden, no icons.
+SPLASH_DIR="$(cd "$(dirname "$0")" && pwd)/boot-splash"
+[ -d "$SPLASH_DIR" ] || SPLASH_DIR="$(cd "$(dirname "$0")" && pwd)/pi/boot-splash"
+if [ -f "$SPLASH_DIR/splash.png" ]; then
+    if ! grep -q "^disable_splash=1" "$BOOT_CONFIG"; then
+        echo "[Splash] Turning off the firmware rainbow (disable_splash=1)..."
+        # Before any [section] / os_prefix lines, so it applies to every boot.
+        sed -i '0,/^\[/s//disable_splash=1\n[/' "$BOOT_CONFIG"
+        grep -q "^disable_splash=1" "$BOOT_CONFIG" || sed -i '1i disable_splash=1' "$BOOT_CONFIG"
+    fi
+    if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+        install -d /usr/share/plymouth/themes/baird
+        install -m 644 "$SPLASH_DIR/baird.plymouth" "$SPLASH_DIR/baird.script" "$SPLASH_DIR/splash.png" /usr/share/plymouth/themes/baird/
+        plymouth-set-default-theme baird
+        echo "[Splash] Plymouth theme: $(plymouth-set-default-theme)"
+    else
+        echo "[Splash] Plymouth isn't installed; skipping the boot theme."
+    fi
+    install -d /usr/share/baird
+    install -m 644 "$SPLASH_DIR/splash.png" /usr/share/baird/splash.png
+    if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+        USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+        install -d -o "$TARGET_USER" -g "$TARGET_USER" "$USER_HOME/.config/pcmanfm/default" "$USER_HOME/.config/labwc"
+        for n in 0 1; do
+            cat > "$USER_HOME/.config/pcmanfm/default/desktop-items-$n.conf" <<'DESKTOP_CONF'
+# Managed by Baird configure_pi.sh: the desktop is Baird's boot splash (seen only while Baird starts).
+[*]
+wallpaper_mode=center
+wallpaper_common=1
+wallpaper=/usr/share/baird/splash.png
+desktop_bg=#000000000000
+desktop_fg=#000000000000
+desktop_shadow=#000000000000
+show_documents=0
+show_trash=0
+show_mounts=0
+DESKTOP_CONF
+            chown "$TARGET_USER:$TARGET_USER" "$USER_HOME/.config/pcmanfm/default/desktop-items-$n.conf"
+        done
+        # The taskbar (started by the system's labwc autostart, which also runs) hides itself and shows no pop-ups.
+        install -d -o "$TARGET_USER" -g "$TARGET_USER" "$USER_HOME/.config/wf-panel-pi"
+        cat > "$USER_HOME/.config/wf-panel-pi/wf-panel-pi.ini" <<'PANEL'
+# Managed by Baird configure_pi.sh: the taskbar stays out of sight (Baird is full screen; this is the boot gap).
+[panel]
+autohide=true
+autohide_duration=0
+notify_enable=false
+PANEL
+        chown -R "$TARGET_USER:$TARGET_USER" "$USER_HOME/.config/wf-panel-pi"
+        # An earlier version wrote a user labwc autostart; labwc runs it as well as the system one (pcmanfm twice).
+        if grep -q "Managed by Baird" "$USER_HOME/.config/labwc/autostart" 2>/dev/null; then rm -f "$USER_HOME/.config/labwc/autostart"; fi
+    fi
+    echo "[Splash] Done (takes effect after reboot)."
+else
+    echo "[Splash] boot-splash files not found next to this script; skipping."
+fi
+
 echo ""
 echo "=== Configuration complete ==="
 echo "Please reboot the Raspberry Pi for all changes to take effect:"
