@@ -192,18 +192,38 @@ namespace Baird.NewUi.Adapters
         {
             try
             {
-                var children = (await _data.GetChildrenAsync(src.ItemId).ConfigureAwait(false)).ToList();
+                var children = (await ChildrenWithPagesAsync(src.ItemId).ConfigureAwait(false)).ToList();
                 if (children.Count == 0) return Array.Empty<LibrarySeason>();
                 var folders = children.Where(c => c.Type == Baird.Services.MediaType.Brand).ToList();
                 if (folders.Count == 0) return new[] { new LibrarySeason(1, "Season 1", children, src.Service) };
                 return await Task.WhenAll(folders.Select(async (f, i) =>
                 {
-                    var eps = (await _data.GetChildrenAsync(f.Id).ConfigureAwait(false)).Where(e => e.Type != Baird.Services.MediaType.Brand).ToList();
+                    var eps = (await ChildrenWithPagesAsync(f.Id).ConfigureAwait(false)).Where(e => e.Type != Baird.Services.MediaType.Brand).ToList();
+                    // A YouTube channel's seasons are its playlists, which have names rather than numbers.
+                    if (f.Source == YouTubeService.SourceName) return new LibrarySeason(i + 1, f.Name, eps, src.Service);
                     var n = SeasonNumberOf(f.Name, i + 1);
                     return new LibrarySeason(n, n == 0 ? "Specials" : $"Season {n}", eps, src.Service);
                 })).ConfigureAwait(false);
             }
             catch (Exception ex) { Console.WriteLine($"[ShowData] Seasons of {t.Name} from {src.Service} failed: {ex.Message}"); return Array.Empty<LibrarySeason>(); }
+        }
+
+        /// <summary>
+        /// A YouTube folder's first two pages (its 100 newest videos); anything else as it comes. A folder's pages are asked for
+        /// together. A channel's own id lists its seasons, or (with no playlists) its videos: only then is a second page wanted.
+        /// The show page has no "load more" yet, so the rest of a long channel isn't listed.
+        /// </summary>
+        private async Task<IEnumerable<MediaItemViewModel>> ChildrenWithPagesAsync(string id)
+        {
+            if (!YouTubeService.IsChannelId(id)) return await _data.GetChildrenAsync(id).ConfigureAwait(false);
+            if (id.Contains('|'))
+            {
+                var pages = await Task.WhenAll(_data.GetChildrenAsync(id), _data.GetChildrenAsync(id + "@2")).ConfigureAwait(false);
+                return pages.SelectMany(p => p);
+            }
+            var first = (await _data.GetChildrenAsync(id).ConfigureAwait(false)).ToList();
+            if (first.Count < YouTubeService.PageSize || first.Any(c => c.Type == Baird.Services.MediaType.Brand)) return first;
+            return first.Concat(await _data.GetChildrenAsync(id + "@2").ConfigureAwait(false));
         }
 
         private static Episode EpisodeOf(MediaItemViewModel m, int season, int number)
@@ -240,7 +260,7 @@ namespace Baird.NewUi.Adapters
                 for (var e = eps.Count + 1; e <= count; e++)
                     eps.Add(new Episode(n, e, $"{e}. Episode {e}", null, null, Pending(e), Download: Dl(e)));
 
-                var label = n == 0 ? "Specials" : $"Season {n}";
+                var label = lib?.Label ?? (n == 0 ? "Specials" : $"Season {n}");
                 if (lib != null && lib.Episodes.Count > 0)
                 {
                     var partial = count > lib.Episodes.Count;
