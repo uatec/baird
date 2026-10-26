@@ -55,6 +55,8 @@ namespace Baird.Tests.ViewModels
 
         public Func<NetflixSessionState?>? SessionSequence { get; set; }
         public Func<string, string?>? GraphQlReply { get; set; }
+        public string? CookieHeader { get; set; }
+        public Task<string?> GetNetflixCookieHeaderAsync(CancellationToken ct = default) => Task.FromResult(CookieHeader);
         public List<string> GraphQlBodies { get; } = new();
         public string? CaptureResult { get; set; }
         public int CaptureCalls { get; private set; }

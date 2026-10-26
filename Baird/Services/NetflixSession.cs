@@ -50,6 +50,56 @@ namespace Baird.Services
         /// <summary>The shared browser (also used by Disney+).</summary>
         public BrowserHub Hub => _hub;
 
+        // ---- Search without the browser (while another service plays in the shared tab) ----------------------------------------
+        /// <summary>For the direct API call (tests replace it).</summary>
+        public System.Net.Http.HttpClient DirectHttp { get; set; } = new() { Timeout = TimeSpan.FromSeconds(10) };
+        /// <summary>Whether the last direct search worked (null until one has been tried).</summary>
+        public bool? DirectSearchWorks { get; private set; }
+        /// <summary>The browser's signed-in cookies, taken after a search in the browser; kept in memory only.</summary>
+        private string? _cookieHeader;
+        private const string BrowserUserAgent = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+        /// <summary>
+        /// Searches by calling Netflix's API directly with the browser's cookies, for when the shared tab is busy playing another
+        /// service. Netflix may refuse calls that don't come from its page; then it says so and returns no results.
+        /// </summary>
+        public async Task<NetflixSearchOutcome> SearchDirectAsync(string term, CancellationToken ct)
+        {
+            if (_cookieHeader == null) return new(null, "No Netflix cookies yet (they're taken after a search while nothing plays).", 0);
+            var query = NetflixSearchQuery.Load(QueryCachePath);
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, "https://www.netflix.com/graphql")
+                {
+                    Content = new System.Net.Http.StringContent(query.BodyFor(term), System.Text.Encoding.UTF8, "application/json"),
+                };
+                req.Headers.TryAddWithoutValidation("Cookie", _cookieHeader);
+                req.Headers.TryAddWithoutValidation("Origin", "https://www.netflix.com");
+                req.Headers.TryAddWithoutValidation("Referer", "https://www.netflix.com/search");
+                req.Headers.TryAddWithoutValidation("User-Agent", BrowserUserAgent);
+                using var res = await DirectHttp.SendAsync(req, ct);
+                var body = await res.Content.ReadAsStringAsync(ct);
+                if (!res.IsSuccessStatusCode)
+                {
+                    DirectSearchWorks = false;
+                    AddLog($"Direct API refused: HTTP {(int)res.StatusCode}");
+                    return new(null, $"Netflix refused the direct search (HTTP {(int)res.StatusCode}).", sw.ElapsedMilliseconds);
+                }
+                var reply = NetflixSearchParser.Parse(body);
+                DirectSearchWorks = reply.Ok;
+                AddLog(reply.Ok ? $"Direct API: {reply.Results.Count} results in {sw.ElapsedMilliseconds} ms" : $"Direct API error {reply.ErrorCode}: {reply.ErrorMessage}");
+                return reply.Ok ? new(reply, null, sw.ElapsedMilliseconds) : new(reply, $"Netflix direct search error {reply.ErrorCode}: {reply.ErrorMessage}", sw.ElapsedMilliseconds);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                DirectSearchWorks = false;
+                AddLog($"Direct API failed: {ex.Message}");
+                return new(null, $"Netflix direct search failed: {ex.Message}", sw.ElapsedMilliseconds);
+            }
+        }
+
         /// <summary>True while a Netflix playback flow owns the browser; search then answers with a failure instead of disturbing it.</summary>
         public bool IsPlaybackActive
         {
@@ -130,6 +180,8 @@ namespace Baird.Services
                     AddLog(reply.Ok ? $"API: {reply.Results.Count} results in {sw.ElapsedMilliseconds} ms" : $"API error {reply.ErrorCode}: {reply.ErrorMessage}");
                 }
 
+                // Keep the signed-in cookies, so search can ask Netflix directly while the tab plays something else.
+                if (reply.Ok) _cookieHeader = await Browser.GetNetflixCookieHeaderAsync(ct) ?? _cookieHeader;
                 return reply.Ok
                     ? new(reply, null, sw.ElapsedMilliseconds)
                     : new(reply, $"Netflix search API error {reply.ErrorCode}: {reply.ErrorMessage}", sw.ElapsedMilliseconds);
