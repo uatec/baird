@@ -277,7 +277,13 @@ namespace Baird.NewUi.Screens
             if (!p.NoInfo)
             {
                 items.Add(new("All showings", "Other times and channels", () => OpenShowings(p)));
-                items.Add(new("Open the series", "Arrives with show pages", () => { }, Enabled: false));
+                if (_ctx.Shows != null)
+                    items.Add(new("Open the series", "Seasons, episodes and where to watch", () =>
+                    {
+                        _actions.Close();
+                        var name = Adapters.ProgrammeArt.Clean(p.Title);
+                        _ctx.OpenShow(new CatalogueTitle($"series:{name}", TitleKind.Series, name, null, p.ImageUrl, p.Synopsis, Array.Empty<TitleSource>()));
+                    }));
             }
             _actions.Open(p.NoInfo ? ch.Name : p.Title, p.NoInfo ? "No information" : $"{ch.Name}, {GuideHeader.Hhmm(p.Start)}–{GuideHeader.Hhmm(p.End)}", items);
         }

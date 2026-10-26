@@ -188,7 +188,7 @@ namespace Baird.NewUi.Screens
                     _ctx.Activate(_rowList[_pos.Row].Cards[_pos.Col].Data);
                     return true;
                 case UiAction.HoldOk:
-                    _ctx.Toast("More actions arrive with the next phases. For now, OK plays.");
+                    _ctx.Nav.OpenOverlay(new OverlayRef("itemactions", _rowList[_pos.Row].Cards[_pos.Col].Data));
                     return true;
             }
             return false;

@@ -378,7 +378,9 @@ namespace Baird.NewUi.Screens
                     return true;
                 case UiAction.HoldOk:
                     if (_rows[_pos.Row] == RowKind.Seasons) OpenRequest(_details.Seasons[_pos.Col].Number, null);
-                    else _ctx.Toast("More actions arrive with a later phase. OK plays or requests.");
+                    else if (_rows[_pos.Row] == RowKind.Episodes && _pos.Col < _details.Seasons[_season].Episodes.Count)
+                        _ctx.Nav.OpenOverlay(new OverlayRef("itemactions", EpisodeCard(_details.Seasons[_season].Episodes[_pos.Col])));
+                    else if (_pos.Col < _buttons.Count) _buttons[_pos.Col].Run();
                     return true;
             }
             return false;

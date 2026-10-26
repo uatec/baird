@@ -94,6 +94,7 @@ namespace Baird.NewUi
                     "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
                     "reminder" when o.Params is Model.Reminder r => new ReminderCard(_ctx, r),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
+                    "itemactions" when o.Params is Model.HomeCard card => new ItemActions(_ctx, card, id => GuideScreen.OpenSchedule(_shell!, id, DateTimeOffset.Now)),
                     "upnext" when o.Params is Model.HomeCard next => new UpNextCard(_ctx, timers, next),
                     _ when o.Params is ChoiceList list => new ChoiceSheet(_ctx, list),
                     _ => new EmptyScreen(),

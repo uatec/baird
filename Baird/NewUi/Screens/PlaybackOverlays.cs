@@ -507,4 +507,109 @@ namespace Baird.NewUi.Screens
 
         public void Destroy() { _done = true; _tick?.Dispose(); }
     }
+
+    /// <summary>
+    /// Hold OK on a card (Home, a show's episode, a search result): Resume/Play, Play from the start, Open the page,
+    /// watchlist; for a channel, Watch now and This channel's schedule. A glass panel from the right.
+    /// </summary>
+    public sealed class ItemActions : IScreen
+    {
+        private readonly NewUiContext _ctx;
+        private readonly HomeCard _card;
+        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly StackPanel _list = new() { Spacing = 8 };
+        private readonly List<(string Label, Action Run)> _items = new();
+        private int _index;
+
+        public Control View => _root;
+        public IReadOnlyList<string> Items => _items.Select(i => i.Label).ToList();
+        public Control? LitElement => _list.Children.Count > _index ? _list.Children[_index] as Control : null;
+
+        public ItemActions(NewUiContext ctx, HomeCard card, Action<string>? openSchedule = null)
+        {
+            _ctx = ctx; _card = card;
+            var playable = card.Via != PlayVia.None && card.StreamUrl != null && card.Kind != CardKind.Series;
+            if (card.Kind == CardKind.Channel && card.Channel is { } ch)
+            {
+                _items.Add(("Watch now", () => ctx.PlayLive(ch)));
+                if (openSchedule != null) _items.Add(("This channel's schedule", () => openSchedule(ch.Id)));
+            }
+            else
+            {
+                if (playable && card.Resume > TimeSpan.Zero)
+                {
+                    _items.Add(("Resume", () => ctx.Activate(card)));
+                    _items.Add(("Play from the start", () => ctx.PlayItem(card with { Resume = TimeSpan.Zero })));
+                }
+                else if (playable) _items.Add(("Play", () => ctx.Activate(card)));
+                // An episode from watch history doesn't know its show, so it can't open the show's page.
+                if (ctx.Shows != null && card.Kind != CardKind.Episode)
+                    _items.Add(("Open the page", () => ctx.OpenShow(Adapters.ShowData.FromCard(card))));
+                if (ctx.Shows != null && card.Source != "Seerr")
+                {
+                    var title = Adapters.ShowData.FromCard(card);
+                    var inList = ctx.Shows.InWatchlist(title);
+                    _items.Add((inList ? "Remove from watchlist" : "Add to watchlist", async () =>
+                    {
+                        var now = await ctx.Shows.ToggleWatchlistAsync(title);
+                        ctx.Toast(now ? $"{card.Label} is in your watchlist." : $"{card.Label} is off your watchlist.");
+                    }
+                    ));
+                }
+                else if (card.Source == "Seerr") _items.Add(("Open the page to request it", () => ctx.Activate(card)));
+            }
+            _root.Children.Add(new Border
+            {
+                Width = 640,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Background = T.Glass,
+                Padding = new Thickness(48, 120, 48, 48),
+                Child = new StackPanel
+                {
+                    Spacing = 28,
+                    Children =
+                    {
+                        new TextBlock { Text = card.Kind == CardKind.Channel ? card.Programme?.Title ?? card.Label : card.Label, FontSize = 34, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap },
+                        new TextBlock { Text = card.Kind == CardKind.Channel ? card.Label : card.Sublabel ?? "", FontSize = 22, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap },
+                        _list,
+                    },
+                },
+            });
+            Draw();
+        }
+
+        private void Draw()
+        {
+            _list.Children.Clear();
+            for (var i = 0; i < _items.Count; i++)
+            {
+                var lit = i == _index;
+                _list.Children.Add(new Border
+                {
+                    CornerRadius = new CornerRadius(16),
+                    Padding = new Thickness(26, 18),
+                    Background = lit ? T.FocusFill : Brushes.Transparent,
+                    Child = new TextBlock { Text = _items[i].Label, FontSize = 28, FontWeight = FontWeight.SemiBold, Foreground = lit ? T.FocusInk : T.Text },
+                });
+            }
+        }
+
+        public bool OnAction(UiAction a, bool repeat)
+        {
+            switch (a)
+            {
+                case UiAction.Up or UiAction.Down:
+                    if (_items.Count == 0) return true;
+                    _index = Math.Clamp(_index + (a == UiAction.Up ? -1 : 1), 0, _items.Count - 1); Draw(); return true;
+                case UiAction.Ok:
+                    if (_items.Count == 0) return true;
+                    var run = _items[_index].Run;
+                    if (_ctx.Nav.State.Overlay?.Name == "itemactions") _ctx.Nav.CloseOverlay();
+                    run();
+                    return true;
+                case UiAction.Left or UiAction.Right: return true;
+            }
+            return false;
+        }
+    }
 }
