@@ -20,6 +20,9 @@ namespace Baird.NewUi
         /// <summary>Channels in number order (from On now), for Pg± and number entry.</summary>
         public IReadOnlyList<Channel> Channels { get; set; } = Array.Empty<Channel>();
         public event Action<Channel>? Tuning;
+        /// <summary>Up next changed (an item was taken off it): Home refreshes the row.</summary>
+        public event Action? UpNextChanged;
+        public void RaiseUpNextChanged() => UpNextChanged?.Invoke();
         /// <summary>The episodes of the show being watched, in order (set by the show page), for "Up next".</summary>
         public IReadOnlyList<HomeCard> Following { get; set; } = Array.Empty<HomeCard>();
         /// <summary>The show those episodes belong to ("Up next in …", "Back to …"), and each episode's title and

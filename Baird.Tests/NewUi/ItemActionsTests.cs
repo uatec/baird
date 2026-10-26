@@ -21,6 +21,7 @@ namespace Baird.Tests.NewUi
             var home = new HomeScreen(rig.Ctx);
             await home.LoadAsync();
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            home.OnAction(UiAction.Down, false); // On now (not Up next)
             home.OnAction(UiAction.HoldOk, false);
             Assert.Equal("itemactions", rig.Ctx.Nav.State.Overlay?.Name);
             Assert.IsType<HomeCard>(rig.Ctx.Nav.State.Overlay!.Params);
@@ -59,5 +60,24 @@ namespace Baird.Tests.NewUi
             Assert.Contains("Open the page", new ItemActions(rig.Ctx, Film(TimeSpan.Zero)).Items);
             Assert.DoesNotContain("Open the page", new ItemActions(rig.Ctx, Episode()).Items);
         }
-    }
+    
+        [AvaloniaFact]
+        public void Up_next_items_can_be_removed_from_up_next()
+        {
+            var rig = HomeScreenTests.Context();
+            Assert.Contains("Remove from Up next", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40)), fromUpNext: true).Items);
+            Assert.DoesNotContain("Remove from Up next", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40))).Items);
+        }
+
+        [AvaloniaFact]
+        public async Task Holding_ok_on_an_up_next_card_offers_removal()
+        {
+            var rig = HomeScreenTests.Context();
+            var home = new HomeScreen(rig.Ctx);
+            await home.LoadAsync();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            home.OnAction(UiAction.HoldOk, false);
+            Assert.Equal("itemactions-upnext", rig.Ctx.Nav.State.Overlay?.Name);
+        }
+}
 }

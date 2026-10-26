@@ -56,7 +56,7 @@ namespace Baird.NewUi
             var router = new EngineRouter(mpv, services.BrowserEngines);
             var playback = new PlaybackController(router, a => Dispatcher.UIThread.Post(a), timers, () => DateTimeOffset.Now,
                 (id, pos, dur) => _ = history.SaveAsync(id, pos, dur), mpv.ConfigureForSource);
-            var home = new HomeData(services.Data, services.Epg, services.Seerr, new ProgrammeArt(services.Seerr, ProgrammeArt.DefaultPath));
+            var home = new HomeData(services.Data, services.Epg, services.Seerr, new ProgrammeArt(services.Seerr, ProgrammeArt.DefaultPath)) { HiddenPath = HomeData.DefaultHiddenPath };
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
@@ -124,6 +124,7 @@ namespace Baird.NewUi
                     "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, nav, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
                     "reminder" when o.Params is Model.Reminder r => new ReminderCard(_ctx, r),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
+                    "itemactions-upnext" when o.Params is Model.HomeCard upNext => new ItemActions(_ctx, upNext, id => GuideScreen.OpenSchedule(_shell!, nav, id, DateTimeOffset.Now), fromUpNext: true),
                     "itemactions" when o.Params is Model.HomeCard card => new ItemActions(_ctx, card, id => GuideScreen.OpenSchedule(_shell!, nav, id, DateTimeOffset.Now)),
                     "upnext" when o.Params is Model.HomeCard next => new UpNextCard(_ctx, timers, next),
                     _ when o.Params is ChoiceList list => new ChoiceSheet(_ctx, list),

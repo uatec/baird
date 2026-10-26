@@ -59,12 +59,50 @@ namespace Baird.NewUi.Adapters
                 null, m.Source, m.StreamUrl is { Length: > 0 } ? ViaOf(m.Source) : PlayVia.None, m.StreamUrl, m.LastPosition, Synopsis: m.Synopsis);
 
         /// <summary>What you're part-way through (not live channels), most recent first.</summary>
+        /// <summary>Items taken off Up next (id → when), so they stay off until watched again. Null = not remembered.</summary>
+        public string? HiddenPath { get; init; }
+        public static string DefaultHiddenPath => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".baird", "up-next-hidden.json");
+        private Dictionary<string, string>? _hidden;
+
+        private Dictionary<string, string> Hidden()
+        {
+            if (_hidden != null) return _hidden;
+            try
+            {
+                _hidden = HiddenPath != null && System.IO.File.Exists(HiddenPath)
+                    ? System.Text.Json.JsonSerializer.Deserialize(System.IO.File.ReadAllText(HiddenPath), BairdJsonContext.Default.DictionaryStringString) ?? new()
+                    : new();
+            }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Couldn't read hidden Up next items: {ex.Message}"); _hidden = new(); }
+            return _hidden;
+        }
+
+        /// <summary>Takes an item off Up next (it comes back if it's watched again later).</summary>
+        public Task HideFromUpNextAsync(string id)
+        {
+            var hidden = Hidden();
+            hidden[id] = DateTime.Now.ToString("o", System.Globalization.CultureInfo.InvariantCulture);
+            try
+            {
+                if (HiddenPath != null)
+                {
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(HiddenPath)!);
+                    System.IO.File.WriteAllText(HiddenPath, System.Text.Json.JsonSerializer.Serialize(hidden, BairdJsonContext.Default.DictionaryStringString));
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Couldn't save hidden Up next items: {ex.Message}"); }
+            return Task.CompletedTask;
+        }
+
+        private bool IsHidden(string id, DateTime lastWatched) =>
+            Hidden().TryGetValue(id, out var at) && DateTime.TryParse(at, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var when) && when >= lastWatched;
+
         public async Task<IReadOnlyList<HomeCard>> UpNextAsync()
         {
             try
             {
                 var items = await _data.GetContinueWatchingAsync().ConfigureAwait(false);
-                return items.Where(i => !i.IsLive && i.Type != MediaType.Channel)
+                return items.Where(i => !i.IsLive && i.Type != MediaType.Channel && !IsHidden(i.Id, i.History?.LastWatched ?? DateTime.MinValue))
                     .OrderByDescending(i => i.History?.LastWatched ?? DateTime.MinValue)
                     .Select(ItemCard).ToList();
             }
