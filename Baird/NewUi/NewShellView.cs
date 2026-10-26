@@ -51,6 +51,7 @@ namespace Baird.NewUi
                 (id, pos, dur) => _ = history.SaveAsync(id, pos, dur));
             var home = new HomeData(services.Data, services.Epg, services.Seerr);
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now);
+            var guideData = new GuideData(home, services.Epg);
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
 
@@ -60,7 +61,7 @@ namespace Baird.NewUi
                 CreatePlace: p => p switch
                 {
                     Place.Home => new HomeScreen(_ctx),
-                    Place.LiveTv => new LiveTvPlaceholder(_ctx),
+                    Place.LiveTv => new GuideScreen(_ctx, guideData.LoadAsync, timers),
                     Place.Search => new SearchPlaceholder(),
                     _ => new SettingsScreen(() => UiMode.New, mode => { UiModes.Save(mode); AppRestarter.ForThisProcess().Restart(); }, scale, v =>
                     {
@@ -92,6 +93,22 @@ namespace Baird.NewUi
             };
             playback.Loaded += ident.Loaded;
             nav.Changed += () => { if (nav.State.Overlay != null || !nav.State.AtVideo) ident.Hide(); };
+            // The guide's preview: the one video surface is scaled into the preview's frame (a transform; it is never
+            // re-parented, as mpv dies with its GL context) and back to full screen when the guide goes.
+            surface.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative);
+            Shell.Motion.Animate(surface, Shell.Motion.Med);
+            void FrameVideo()
+            {
+                var frame = GuideScreen.ShowsPreview(nav.State, playback.Current != null) && !surface.ShowingBrowser;
+                var r = GuideHeader.PreviewRect;
+                var tl = frame ? _shell.Stage.TranslatePoint(r.TopLeft, surface) : null;
+                var br = frame ? _shell.Stage.TranslatePoint(r.BottomRight, surface) : null;
+                surface.RenderTransform = tl is { } a && br is { } b && surface.Bounds.Width > 0
+                    ? GuideScreen.PreviewTransform(new Rect(a, b), surface.Bounds.Size)
+                    : Shell.Motion.None;
+            }
+            nav.Changed += FrameVideo;
+            playback.Changed += FrameVideo;
             playback.Changed += () =>
             {
                 surface.HasVideo = playback.Current != null;
