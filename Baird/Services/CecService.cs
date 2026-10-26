@@ -45,6 +45,7 @@ namespace Baird.Services
         public event EventHandler? TvPowerOn;
         public event EventHandler? InputLost;
         public event EventHandler? InputRegained;
+        public event EventHandler<CecUserControlEventArgs>? UserControlReceived;
 
         public bool IsAvailable => _cecProcess != null && !_cecProcess.HasExited;
 
@@ -190,6 +191,16 @@ namespace Baird.Services
             if (!incoming)
             {
                 _logicalAddress = frame[0] >> 4;
+            }
+            else if (CecParser.TryParseUserControl(frame, _logicalAddress, out var userControl))
+            {
+                UserControlReceived?.Invoke(this, userControl);
+            }
+            else if (frame[1] is 0x89 or 0x8A or 0x8B or 0x8D or 0xA0)
+            {
+                // Some TVs pass remote keys as vendor commands rather than User Control, and some only pass keys
+                // once the device answers Menu Request. Logged so a TV whose keys don't arrive can be diagnosed.
+                Console.WriteLine($"[CecService] Remote-related frame: {CecParser.ParseLine(line)}");
             }
             else if (frame[0] >> 4 == 0 && frame[1] == 0x90 && frame.Length > 2)
             {

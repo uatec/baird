@@ -53,5 +53,34 @@ namespace Baird.Tests.Services
         {
             Assert.False(CecParser.TryParseFrame(line, out _, out _));
         }
+
+        [Theory]
+        [InlineData(new byte[] { 0x08, 0x44, 0x01 }, 8, true, (byte)0x01)]
+        [InlineData(new byte[] { 0x04, 0x44, 0x01 }, 8, false, (byte)0x01)]
+        public void TryParseUserControl_ReadsPressedKeyAndWhetherItIsForUs(byte[] frame, int ourAddress, bool forUs, byte code)
+        {
+            Assert.True(CecParser.TryParseUserControl(frame, ourAddress, out var userControl));
+            Assert.Equal(0, userControl.Source);
+            Assert.Equal(frame[0] & 0xF, userControl.Destination);
+            Assert.Equal(forUs, userControl.ForThisDevice);
+            Assert.Equal(code, userControl.Code);
+        }
+
+        [Fact]
+        public void TryParseUserControl_ReadsReleaseWithoutACode()
+        {
+            Assert.True(CecParser.TryParseUserControl(new byte[] { 0x08, 0x45 }, 8, out var userControl));
+            Assert.True(userControl.ForThisDevice);
+            Assert.Null(userControl.Code);
+        }
+
+        [Theory]
+        [InlineData(new byte[] { 0x08, 0x90, 0x00 })]
+        [InlineData(new byte[] { 0x08, 0x44 })]
+        [InlineData(new byte[] { 0x08 })]
+        public void TryParseUserControl_RejectsOtherFrames(byte[] frame)
+        {
+            Assert.False(CecParser.TryParseUserControl(frame, 8, out _));
+        }
     }
 }

@@ -11,11 +11,13 @@ namespace Baird.Tests.Mocks
         public event EventHandler? TvPowerOn;
         public event EventHandler? InputLost;
         public event EventHandler? InputRegained;
+        public event EventHandler<CecUserControlEventArgs>? UserControlReceived;
 
         public bool IsAvailable => false;
 
         public void SimulateTvStandby() => TvStandby?.Invoke(this, EventArgs.Empty);
         public void SimulateTvPowerOn() => TvPowerOn?.Invoke(this, EventArgs.Empty);
+        public void SimulateUserControl(CecUserControlEventArgs e) => UserControlReceived?.Invoke(this, e);
 
         public Task StartAsync() => Task.CompletedTask;
         public Task<bool> TogglePowerAsync() => Task.FromResult(true);

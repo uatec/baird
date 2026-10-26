@@ -19,6 +19,7 @@ namespace Baird.Tests.NewUi
             public event EventHandler? TvPowerOn;
             public event EventHandler? InputLost;
             public event EventHandler? InputRegained;
+            public event EventHandler<CecUserControlEventArgs>? UserControlReceived { add { } remove { } }
             public bool IsAvailable { get; set; } = true;
             public void Standby() => TvStandby?.Invoke(this, EventArgs.Empty);
             public void PoweredOn() => TvPowerOn?.Invoke(this, EventArgs.Empty);
