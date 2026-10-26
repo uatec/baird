@@ -65,9 +65,29 @@ namespace Baird.NewUi.Screens
             _tick.Tick += (_, _) => { if (_root.IsEffectivelyVisible) Draw(); };
             _root.AttachedToVisualTree += (_, _) => _tick.Start();
             _root.DetachedFromVisualTree += (_, _) => _tick.Stop();
-            ctx.Playback.Changed += () => { if (_model != null) Draw(); };
-            ctx.Reminders.Changed += () => { if (_model != null) Draw(); };
+            ctx.Playback.Changed += Redraw;
+            ctx.Reminders.Changed += Redraw;
             ctx.GuideLayoutChanged += Relayout;
+        }
+
+        /// <summary>The guide as a page over the video (≡ while watching), lit on <see cref="PageRef.Params"/>'s channel if given.</summary>
+        public static GuideScreen ForPage(NewUiContext ctx, Func<DateTimeOffset, Task<GuideModel>> load, ITimers timers, PageRef page)
+        {
+            var g = new GuideScreen(ctx, load, timers);
+            if ((page.Params as string ?? ctx.Playback.Current?.Channel?.Id) is { } ch) g.Focus(ch, ctx.Now());
+            return g;
+        }
+
+        private void Redraw() { if (_model != null) Draw(); }
+
+        /// <summary>A page is destroyed when popped: let go of the context's events.</summary>
+        public void Destroy()
+        {
+            _ctx.Playback.Changed -= Redraw;
+            _ctx.Reminders.Changed -= Redraw;
+            _ctx.GuideLayoutChanged -= Relayout;
+            _tick.Stop();
+            _entryTimer?.Dispose();
         }
 
         public Control View => _root;
@@ -87,7 +107,9 @@ namespace Baird.NewUi.Screens
 
         /// <summary>Whether the shell should frame the playing video into the guide's preview.</summary>
         public static bool ShowsPreview(NavState st, bool playing) =>
-            playing && st.Place == Place.LiveTv && st.Pages.Count == 0 && !(st.Video != null && st.AtVideo);
+            playing && (st.Pages.Count > 0
+                ? st.Pages[^1].Name == Shell.Shell.GuidePage
+                : st.Place == Place.LiveTv && !(st.Video != null && st.AtVideo));
 
         /// <summary>Scale and move a full-window surface of <paramref name="surface"/> size onto <paramref name="target"/> (origin top-left).</summary>
         public static ITransform PreviewTransform(Rect target, Size surface)
@@ -108,9 +130,14 @@ namespace Baird.NewUi.Screens
             Draw();
         }
 
-        /// <summary>"This channel's schedule" (from the video's actions): the guide, lit on that channel at now.</summary>
-        public static void OpenSchedule(Shell.Shell shell, string? channelId, DateTimeOffset now)
+        /// <summary>
+        /// "This channel's schedule": the guide lit on that channel at now — over the video as a page when watching
+        /// (Back returns to the picture), else the Live TV place.
+        /// </summary>
+        public static void OpenSchedule(Shell.Shell shell, Navigator nav, string? channelId, DateTimeOffset now)
         {
+            var st = nav.State;
+            if (st.Video != null && st.AtVideo && st.Pages.Count == 0) { nav.OpenPage(new PageRef(Shell.Shell.GuidePage, channelId)); return; }
             shell.GoPlace(Place.LiveTv);
             if (channelId != null && shell.PlaceScreen(Place.LiveTv) is GuideScreen g) g.Focus(channelId, now);
         }
@@ -200,6 +227,7 @@ namespace Baird.NewUi.Screens
                 case UiAction.Back when _entry != null: EndEntry(); return true;
                 case UiAction.Ok or UiAction.PlayPause: Activate(Lit); return true;
                 case UiAction.HoldOk: OpenActions(Lit); return true;
+                case UiAction.Guide: _strip = CurrentStop(Stops()); Draw(); return true; // ≡ in the guide: the strip
             }
             return false;
         }

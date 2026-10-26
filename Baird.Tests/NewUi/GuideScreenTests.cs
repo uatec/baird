@@ -366,6 +366,13 @@ namespace Baird.Tests.NewUi
             Assert.True(GuideScreen.ShowsPreview(nav.State, playing: true));
             nav.SetPlace(Place.Home);
             Assert.False(GuideScreen.ShowsPreview(nav.State, playing: true));
+            nav.Play(new VideoRef("live", "ch1"));
+            nav.OpenPage(new PageRef("guide")); // ≡ while watching: the guide over the video
+            Assert.True(GuideScreen.ShowsPreview(nav.State, playing: true));
+            nav.OpenPage(new PageRef("show"));
+            Assert.False(GuideScreen.ShowsPreview(nav.State, playing: true));
+            nav.Back(); nav.Back();
+            Assert.False(GuideScreen.ShowsPreview(nav.State, playing: true)); // the bare picture again
         }
 
         [AvaloniaFact]
@@ -405,10 +412,54 @@ namespace Baird.Tests.NewUi
             ((Window)TopLevel.GetTopLevel(r.Guide.View)!).Content = null; // the shell hosts it now
             var shell = new Baird.NewUi.Shell.Shell(new Baird.NewUi.Shell.ShellDeps(new Border(), nav,
                 p => p == Place.LiveTv ? r.Guide : new EmptyScreen(), _ => new EmptyScreen(), _ => new EmptyScreen(), (_, _) => true, () => "x"));
-            GuideScreen.OpenSchedule(shell, "ch9", Now);
+            nav.ToVideo();
+            nav.Back(); // off the video, on the Live TV place (as from a channel card's actions)
+            GuideScreen.OpenSchedule(shell, nav, "ch9", Now);
             Assert.Equal(Place.LiveTv, nav.State.Place);
             Assert.False(nav.State.AtVideo);
             Assert.Equal((9, "Show 9.1"), (r.Guide.Pos.Ch, r.Guide.Lit.Title)); // 17:50–18:20 covers 18:10
+        }
+
+        [AvaloniaFact]
+        public async Task This_channels_schedule_while_watching_opens_the_guide_over_the_video()
+        {
+            var r = await Shown();
+            r.Ctx.PlayLive(r.Model.Channels[9].Channel);
+            var nav = r.Ctx.Nav;
+            ((Window)TopLevel.GetTopLevel(r.Guide.View)!).Content = null;
+            var shell = new Baird.NewUi.Shell.Shell(new Baird.NewUi.Shell.ShellDeps(new Border(), nav,
+                p => p == Place.LiveTv ? r.Guide : new EmptyScreen(), _ => new EmptyScreen(), _ => new EmptyScreen(), (_, _) => true, () => "x"));
+            GuideScreen.OpenSchedule(shell, nav, "ch9", Now);
+            var st = nav.State;
+            Assert.True(st.AtVideo);
+            var page = Assert.Single(st.Pages);
+            Assert.Equal(("guide", (object?)"ch9"), (page.Name, page.Params));
+            Assert.True(GuideScreen.ShowsPreview(st, playing: true));
+        }
+
+        [AvaloniaFact]
+        public async Task A_guide_page_opens_lit_on_its_channel_and_lets_back_go_to_the_video()
+        {
+            var r = await Shown(load: false);
+            var page = GuideScreen.ForPage(r.Ctx, _ => Task.FromResult(r.Model), r.Timers, new PageRef("guide", "ch12"));
+            await page.LoadAsync();
+            Assert.Equal((12, "Show 12.1"), (page.Pos.Ch, page.Lit.Title));
+            Assert.False(page.OnAction(UiAction.Back, false));
+            page.Destroy();
+            r.Ctx.SetGuideLayout(GuideLayout.Columns); // no longer listening
+            Assert.Equal(GuideLayout.Rows, page.Layout);
+        }
+
+        [AvaloniaFact]
+        public async Task The_guide_key_inside_the_guide_lights_the_strip()
+        {
+            var r = await Shown();
+            Press(r.Guide, UiAction.Down, 3);
+            Press(r.Guide, UiAction.Guide);
+            Assert.True(r.Guide.StripFocused);
+            Assert.Equal(3, r.Guide.Pos.Ch);
+            Press(r.Guide, UiAction.Down);
+            Assert.False(r.Guide.StripFocused);
         }
 
         [AvaloniaFact]

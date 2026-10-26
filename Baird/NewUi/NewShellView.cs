@@ -86,15 +86,16 @@ namespace Baird.NewUi
                         IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "NewUiSize", v.ToString("0.0", CultureInfo.InvariantCulture));
                     }, () => _ctx.GuideLayout, l => _ctx.SetGuideLayout(l), UpdateService.ForThisMachine(config)),
                 },
-                CreatePage: p => p.Name == "show" && p.Params is Model.CatalogueTitle t ? new ShowPage(_ctx, t) : new EmptyScreen(),
+                CreatePage: p => p.Name == "show" && p.Params is Model.CatalogueTitle t ? new ShowPage(_ctx, t)
+                    : p.Name == Shell.Shell.GuidePage ? GuideScreen.ForPage(_ctx, guideData.LoadAsync, timers, p) : new EmptyScreen(),
                 CreateOverlay: o => o.Name switch
                 {
                     "info" => new InfoBar(_ctx),
                     "channels" => new ChannelList(_ctx, timers),
-                    "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
+                    "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, nav, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
                     "reminder" when o.Params is Model.Reminder r => new ReminderCard(_ctx, r),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
-                    "itemactions" when o.Params is Model.HomeCard card => new ItemActions(_ctx, card, id => GuideScreen.OpenSchedule(_shell!, id, DateTimeOffset.Now)),
+                    "itemactions" when o.Params is Model.HomeCard card => new ItemActions(_ctx, card, id => GuideScreen.OpenSchedule(_shell!, nav, id, DateTimeOffset.Now)),
                     "upnext" when o.Params is Model.HomeCard next => new UpNextCard(_ctx, timers, next),
                     _ when o.Params is ChoiceList list => new ChoiceSheet(_ctx, list),
                     _ => new EmptyScreen(),
@@ -257,7 +258,7 @@ namespace Baird.NewUi
             if (voiceKey != Key.None)
                 _voice = new VoiceSearch(new WhisperSpeechToTextService(config), text =>
                 {
-                    _shell.GoPlace(Place.Search);
+                    _shell.ShowPlace(Place.Search); // already on Search: stay put (no re-entry, focus kept)
                     if (_shell.PlaceScreen(Place.Search) is SearchScreen search) search.SetQuery(text);
                 }, _shell.Toast);
             // Motion budget measurement: BAIRD_AV_LOG=true logs dropped frames every 5 s with what's on screen.
