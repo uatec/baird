@@ -187,9 +187,9 @@ async function main() {
     const r = await js('({ rows: document.querySelectorAll(".sh-row").length, chans: new Set([...document.querySelectorAll(".sh-ch")].map(e => e.textContent.split(" ")[0])).size, repeat: document.body.innerText.includes("Repeat") })');
     return (r.rows > 3 && r.chans > 1 && r.repeat) || r;
   });
-  await check('R2 Andor: two season tabs, season 2 can be requested', async () => {
+  await check('R2 Andor: two season tabs, and a Request… button for the missing season', async () => {
     await open(`${BASE}#show=andor`);
-    const r = await js('({ tabs: document.querySelectorAll(".season-tab").length, req: [...document.querySelectorAll(".btn")].some(b => b.textContent.includes("Request season 2")) })');
+    const r = await js('({ tabs: document.querySelectorAll(".season-tab").length, req: [...document.querySelectorAll(".btn")].some(b => b.textContent.includes("Request…")) })');
     return (r.tabs === 2 && r.req) || r;
   });
   await check('R2 channel list opens on the current channel, then moves one step', async () => {
