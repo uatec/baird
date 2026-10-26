@@ -66,6 +66,8 @@ namespace Baird.NewUi.Shell
             foreach (var p in Tabs)
                 _tabBar.Children.Add(new Border { CornerRadius = new CornerRadius(999), Padding = new Thickness(26, 10), Child = new TextBlock { Text = TabLabels[p], FontSize = 27, FontWeight = FontWeight.SemiBold }, Tag = p });
             Motion.Animate(_tabBar, Motion.Med);
+            foreach (var tab in _tabBar.Children.OfType<Border>()) { tab.RenderTransformOrigin = RelativePoint.Center; Motion.Animate(tab, T.Fast); }
+            Motion.Animate(_placeHost, T.Fast);
 
             _backChip = new Border
             {
@@ -93,6 +95,8 @@ namespace Baird.NewUi.Shell
                 Child = _toastText,
             };
             Motion.Animate(_toast, Motion.Med);
+            _toast.RenderTransform = Motion_Translate(-20);
+            _backChip.RenderTransform = Avalonia.Media.Transformation.TransformOperations.Parse("translate(-16px, 0px)");
 
             Stage.Children.Add(_placeHost);
             Stage.Children.Add(_pageHost);
@@ -136,8 +140,9 @@ namespace Baird.NewUi.Shell
         {
             _toastText.Text = text;
             _toast.Opacity = 1;
+            _toast.RenderTransform = Motion.None;   // slides down into place…
             _toastTimer?.Dispose();
-            _toastTimer = DispatcherTimer.RunOnce(() => _toast.Opacity = 0, TimeSpan.FromSeconds(3.2));
+            _toastTimer = DispatcherTimer.RunOnce(() => { _toast.Opacity = 0; _toast.RenderTransform = Motion_Translate(-20); }, TimeSpan.FromSeconds(3.2));
         }
 
         /// <summary>Entering the video: briefly say where Back will go.</summary>
@@ -145,6 +150,7 @@ namespace Baird.NewUi.Shell
         {
             _backChipText.Text = $"Back to {to}";
             _backChip.Opacity = 1;
+            _backChip.RenderTransform = Motion.None;
             _chipFlashing = true;
             _chipTimer?.Dispose();
             _chipTimer = DispatcherTimer.RunOnce(() => { _chipFlashing = false; _backChip.Opacity = 0; Render(); }, TimeSpan.FromSeconds(2.6));
@@ -203,11 +209,13 @@ namespace Baird.NewUi.Shell
                 if (_overlay != null)
                 {
                     var old = _overlay; var v = old.View;
+                    var (ox, oy) = old.EnterFrom;
                     old.Destroy();
-                    Motion.Exit(v, 0, 14, () => _overlayHost.Children.Remove(v));
+                    // It leaves the way it came (a short way: the next one is already arriving).
+                    Motion.Exit(v, ox * 0.5, oy * 0.35, () => _overlayHost.Children.Remove(v));
                 }
                 _overlay = st.Overlay != null ? _d.CreateOverlay(st.Overlay) : null;
-                if (_overlay != null) { _overlayHost.Children.Add(_overlay.View); Motion.Enter(_overlay.View, 0, 40); _overlay.OnShow(); }
+                if (_overlay != null) { _overlayHost.Children.Add(_overlay.View); var (ex, ey) = _overlay.EnterFrom; Motion.Enter(_overlay.View, ex, ey); _overlay.OnShow(); }
                 _shownOverlayRef = st.Overlay;
             }
 
@@ -220,6 +228,7 @@ namespace Baird.NewUi.Shell
                 var current = p == st.Place;
                 var lit = TabFocus && current && st.Overlay == null;
                 tab.Background = lit ? T.FocusFill : current ? T.Pill : Brushes.Transparent;
+                tab.RenderTransform = lit ? Motion.Scale(1.08) : Motion.None;
                 ((TextBlock)tab.Child!).Foreground = lit ? T.FocusInk : current ? T.Text : T.Text2;
                 tab.Classes.Set("focused", lit);
             }
@@ -230,9 +239,12 @@ namespace Baird.NewUi.Shell
                 var below = st.Pages.Count >= 2 ? st.Pages[^2].Label : null;
                 string? backTo = page != null && st.Overlay == null ? below ?? (st.Video != null && st.AtVideo ? _d.BackToVideoLabel() : TabLabels[st.Place]) : null;
                 _backChip.Opacity = backTo != null ? 1 : 0;
+                _backChip.RenderTransform = backTo != null ? Motion.None : Avalonia.Media.Transformation.TransformOperations.Parse("translate(-16px, 0px)");
                 if (backTo != null) _backChipText.Text = $"Back to {backTo}";
             }
             _clock.IsVisible = !(st.Video != null && st.AtVideo && page == null);
+            // With the tab bar lit, the place's content steps back.
+            _placeHost.Opacity = TabFocus && placeVisible ? 0.75 : 1;
         }
 
         private static ITransform Motion_Translate(double y) => Avalonia.Media.Transformation.TransformOperations.Parse($"translate(0px, {y}px)");

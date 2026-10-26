@@ -30,6 +30,7 @@ namespace Baird.NewUi.Screens
         private bool _done;
 
         public Control View => _root;
+        public (double X, double Y) EnterFrom => (0, -60);
         public Control? LitElement => _buttons[_focus];
         /// <summary>Everything the card says (tests).</summary>
         public string Text => $"{_eyebrow.Text}\n{_title.Text}\n{_then.Text}";

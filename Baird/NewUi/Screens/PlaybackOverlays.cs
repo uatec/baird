@@ -270,11 +270,14 @@ namespace Baird.NewUi.Screens
 
         public Control View => _root;
         public IReadOnlyList<string> Items => _items.Select(i => i.Label).ToList();
+        public (double X, double Y) EnterFrom => (80, 0);
         public Control? LitElement => _list.Children.Count > _index ? _list.Children[_index] as Control : null;
 
         public ActionsPanel(NewUiContext ctx, Action openGuide)
         {
             _ctx = ctx; _openGuide = openGuide;
+            // Dim what's behind, so the panel reads as on top of it.
+            _root.Children.Add(new Border { Background = new SolidColorBrush(Color.Parse("#66000000")), IsHitTestVisible = false });
             _root.Children.Add(new Border
             {
                 Width = 640,
@@ -535,6 +538,7 @@ namespace Baird.NewUi.Screens
 
         public Control View => _root;
         public IReadOnlyList<string> Items => _items.Select(i => i.Label).ToList();
+        public (double X, double Y) EnterFrom => (80, 0);
         public Control? LitElement => _list.Children.Count > _index ? _list.Children[_index] as Control : null;
 
         public ItemActions(NewUiContext ctx, HomeCard card, Action<string>? openSchedule = null)
@@ -571,6 +575,8 @@ namespace Baird.NewUi.Screens
                 }
                 else if (card.Source == "Seerr") _items.Add(("Open the page to request it", () => ctx.Activate(card)));
             }
+            // Dim what's behind, so the panel reads as on top of it.
+            _root.Children.Add(new Border { Background = new SolidColorBrush(Color.Parse("#66000000")), IsHitTestVisible = false });
             _root.Children.Add(new Border
             {
                 Width = 640,

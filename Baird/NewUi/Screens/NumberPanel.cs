@@ -32,6 +32,7 @@ namespace Baird.NewUi.Screens
         private IDisposable? _timer;
 
         public Control View => _root;
+        public (double X, double Y) EnterFrom => (0, 0);
         public string Text { get; private set; } = "";
         public Channel? Match { get; private set; }
         public string? Error { get; private set; }

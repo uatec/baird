@@ -37,6 +37,7 @@ namespace Baird.NewUi.Screens
         private IDisposable? _rest, _idle, _firstStep;
 
         public Control View => _root;
+        public (double X, double Y) EnterFrom => (-80, 0);
         public Channel? Lit => _channels.Count > 0 ? _channels[_index] : null;
         public Control? LitElement => _rows.Children.OfType<Control>().FirstOrDefault(c => c.Tag is true);
 

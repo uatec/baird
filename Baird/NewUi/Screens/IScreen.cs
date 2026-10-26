@@ -15,5 +15,7 @@ namespace Baird.NewUi.Screens
         void Destroy() { }
         /// <summary>The lit element, if any (tests check there is exactly one and it is on screen).</summary>
         Control? LitElement => null;
+        /// <summary>Where it slides in from as an overlay (the info bar rises; the channel list comes from the left…).</summary>
+        (double X, double Y) EnterFrom => (0, 40);
     }
 }

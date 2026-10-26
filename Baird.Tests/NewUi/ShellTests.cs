@@ -113,5 +113,27 @@ namespace Baird.Tests.NewUi
             var y = (double)scroller.Tag!;
             Assert.True(900 + y + 324 + 324 * 0.07 + 8 <= 1030.5, $"shifted by {y}");
         }
+
+        private sealed class LeftScreen : IScreen
+        {
+            public Control View { get; } = new Border { Width = 600, Height = 1080 };
+            public (double X, double Y) EnterFrom => (-80, 0);
+            public bool OnAction(UiAction a, bool repeat) => true;
+        }
+
+        [AvaloniaFact]
+        public void An_overlay_arrives_from_its_own_side()
+        {
+            var nav = new Navigator();
+            var left = new LeftScreen();
+            var shell = new Shell(new ShellDeps(new Border(), nav, p => new FakeScreen(p.ToString()), pr => new FakeScreen(pr.Name), o => o.Name == "channels" ? left : new FakeScreen(o.Name), (_, _) => true, () => "x"));
+            var w = new Window { Width = 1920, Height = 1080, Content = shell }; w.Show();
+            nav.Play(new VideoRef("live", "bbc1"));
+            nav.OpenOverlay(new OverlayRef("channels"));
+            var t = left.View.RenderTransform?.Value;
+            Assert.NotNull(t);
+            Assert.Equal(-80, t!.Value.M31);
+            Assert.Equal(0, t.Value.M32);
+        }
     }
 }
