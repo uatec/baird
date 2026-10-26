@@ -1,0 +1,44 @@
+@font-face {
+  font-family: 'Instrument Sans';
+  src: url('../assets/fonts/instrument-sans-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-stretch: 75% 100%;
+  font-display: block;
+}
+
+:root {
+  --ground: #000;
+  --text: #f5f5f7;
+  --text-2: rgba(245, 245, 247, .62);
+  --text-3: rgba(245, 245, 247, .38);
+  --live: #ff3b30;
+  --mine: #ffcc66;
+  --glass: rgba(30, 30, 34, .62);
+  --glass-solid: rgba(28, 28, 32, .94);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, .10), 0 30px 80px rgba(0, 0, 0, .55);
+  --focus-fill: #f5f5f7;
+  --focus-ink: #0a0a0c;
+
+  --safe-x: 96px;
+  --safe-y: 54px;
+
+  --t-hero: 112px;
+  --t-title: 64px;
+  --t-h2: 40px;
+  --t-h3: 30px;
+  --t-body: 26px;
+  --t-small: 22px;
+
+  --r-card: 14px;
+  --r-panel: 28px;
+  --r-pill: 999px;
+
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --fast: 220ms;
+  --med: 320ms;
+  --slow: 600ms;
+
+  --font: 'Instrument Sans', -apple-system, 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
+}
+
+#stage { font-family: var(--font); font-size: var(--t-body); letter-spacing: -.005em; -webkit-font-smoothing: antialiased; background: var(--ground); }
