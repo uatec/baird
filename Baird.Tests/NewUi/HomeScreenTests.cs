@@ -197,5 +197,35 @@ namespace Baird.Tests.NewUi
             Dispatcher.UIThread.RunJobs();
             Assert.DoesNotContain(Cards(home.View), c => c.Data.Badge == "playing");
         }
+
+        [AvaloniaFact]
+        public async Task Coming_back_to_home_while_something_plays_doesnt_rebuild_or_move_the_highlight_needlessly()
+        {
+            var (home, rig, _) = await Shown();
+            home.OnAction(UiAction.Ok, false);              // play the first Up next card
+            rig.Ctx.Nav.Back();
+            home.OnShow();
+            Dispatcher.UIThread.RunJobs();
+            home.OnAction(UiAction.Down, false);            // the owner moves on…
+            home.OnAction(UiAction.Right, false);
+            var lit = ((Card)home.LitElement!).Data.Id;
+            var before = Cards(home.View).ToList();
+            await home.RefreshOnNowAsync();                 // …and refreshes find nothing new
+            await Task.Delay(50); Dispatcher.UIThread.RunJobs();
+            Assert.Equal(lit, ((Card)home.LitElement!).Data.Id);
+            Assert.Equal(before, Cards(home.View).ToList()); // same card objects: not rebuilt
+        }
+
+        [AvaloniaFact]
+        public async Task A_rebuild_keeps_the_same_card_lit()
+        {
+            var (home, rig, _) = await Shown();
+            home.OnAction(UiAction.Down, false);
+            home.OnAction(UiAction.Right, false);
+            var lit = ((Card)home.LitElement!).Data.Id;
+            home.Build(home.CurrentRows());
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(lit, ((Card)home.LitElement!).Data.Id);
+        }
     }
 }

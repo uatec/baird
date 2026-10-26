@@ -309,6 +309,15 @@ namespace Baird.NewUi
                 };
                 av.Start();
             }
+            // Freeze diagnostics: a watchdog notices the UI thread not answering and writes ~/.baird/freezes/freeze-*.txt.
+            var crumbs = Diagnostics.Breadcrumbs.Shared;
+            nav.Changed += () => crumbs.Add($"screen {DescribeScreen()}{(nav.State.Video != null ? " (video behind)" : "")}");
+            playback.Loaded += () => crumbs.Add($"playing {playback.Current?.Title}");
+            playback.Ended += () => crumbs.Add($"ended {playback.Current?.Title}");
+            playback.Changed += () => { if (playback.Failure is { } f) crumbs.Add($"playback failed: {f}"); };
+            new Diagnostics.FreezeWatchdog(a => Dispatcher.UIThread.Post(a, DispatcherPriority.Send), () => DateTime.Now, Diagnostics.FreezeWatchdog.DefaultDir, crumbs,
+                () => $"screen {DescribeScreen()}; playing {(playback.Current is { } c ? $"{c.Kind} '{c.Title}'{(playback.IsLoading ? " (loading)" : "")}{(playback.IsPaused ? " (paused)" : "")} via {(router.ActiveBrowser?.Name ?? "mpv")}" : "nothing")}; " +
+                      $"intro {(_intro != null ? "showing" : "done")}; screensaver {(saver.IsActive ? "on" : "off")}").Start();
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
                 inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn);
             _ = System.Threading.Tasks.Task.Run(() => services.Screensaver.InitializeAsync());
@@ -417,9 +426,18 @@ namespace Baird.NewUi
 
         private readonly ToggleGate _toggles = new();
 
+        private string DescribeScreen()
+        {
+            var st = _ctx.Nav.State;
+            return st.Overlay?.Name ?? (st.Pages.Count > 0 ? st.Pages[^1].Name : st.AtVideo ? "video" : st.Place.ToString());
+        }
+
         private void Dispatch(UiAction action, bool repeat)
         {
             if (!_toggles.Pass(action, repeat, DateTime.UtcNow)) return;
+            var crumbs = Diagnostics.Breadcrumbs.Shared;
+            if (!repeat) crumbs.Add($"key {action}");
+            using var _ = crumbs.Doing($"{action}{(repeat ? " (held)" : "")} on {DescribeScreen()}");
             try { _shell.OnAction(action, repeat); }
             catch (Exception ex) { Console.WriteLine($"[NewUi] {action} failed: {ex}"); }
         }
