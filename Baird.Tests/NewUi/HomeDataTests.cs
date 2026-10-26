@@ -150,7 +150,7 @@ namespace Baird.Tests.NewUi
             await new HistoryWriter(data).SaveAsync("ep1", TimeSpan.FromMinutes(12), TimeSpan.FromMinutes(50));
             Assert.Contains(("ep1", TimeSpan.FromMinutes(12)), history.Upserts);
         }
-    
+
         [Fact]
         public async Task Hiding_an_item_takes_it_off_up_next_until_it_is_watched_again()
         {
@@ -168,5 +168,5 @@ namespace Baird.Tests.NewUi
             }
             finally { System.IO.File.Delete(path); }
         }
-}
+    }
 }

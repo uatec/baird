@@ -625,7 +625,8 @@ namespace Baird.NewUi.Screens
                         await ctx.Home.HideFromUpNextAsync(card.Id);
                         ctx.RaiseUpNextChanged();
                         ctx.Toast($"{card.Label} is off Up next. It comes back if you watch it again.");
-                    }));
+                    }
+                    ));
             }
             // Dim what's behind, so the panel reads as on top of it.
             _root.Children.Add(new Border { Background = new SolidColorBrush(Color.Parse("#66000000")), IsHitTestVisible = false });

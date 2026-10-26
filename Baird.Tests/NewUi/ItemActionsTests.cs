@@ -60,7 +60,7 @@ namespace Baird.Tests.NewUi
             Assert.Contains("Open the page", new ItemActions(rig.Ctx, Film(TimeSpan.Zero)).Items);
             Assert.DoesNotContain("Open the page", new ItemActions(rig.Ctx, Episode()).Items);
         }
-    
+
         [AvaloniaFact]
         public void Up_next_items_can_be_removed_from_up_next()
         {
@@ -79,5 +79,5 @@ namespace Baird.Tests.NewUi
             home.OnAction(UiAction.HoldOk, false);
             Assert.Equal("itemactions-upnext", rig.Ctx.Nav.State.Overlay?.Name);
         }
-}
+    }
 }
