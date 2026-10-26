@@ -54,7 +54,7 @@ namespace Baird.NewUi
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
 
-            var scale = double.TryParse(config["Baird:UiScale"], NumberStyles.Float, CultureInfo.InvariantCulture, out var s) && s > 0 ? s : 1.0;
+            var scale = double.TryParse(config["Baird:NewUiSize"], NumberStyles.Float, CultureInfo.InvariantCulture, out var s) && s > 0 ? s : 1.0;
             _shell = new Shell.Shell(new Shell.ShellDeps(
                 surface, nav,
                 CreatePlace: p => p switch
@@ -65,7 +65,7 @@ namespace Baird.NewUi
                     _ => new SettingsScreen(() => UiMode.New, mode => { UiModes.Save(mode); AppRestarter.ForThisProcess().Restart(); }, scale, v =>
                     {
                         ApplyScale(v);
-                        IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "UiScale", v.ToString("0.0", CultureInfo.InvariantCulture));
+                        IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "NewUiSize", v.ToString("0.0", CultureInfo.InvariantCulture));
                     }),
                 },
                 CreatePage: _ => new EmptyScreen(),
