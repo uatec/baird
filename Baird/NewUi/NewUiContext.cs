@@ -20,6 +20,14 @@ namespace Baird.NewUi
         /// <summary>Channels in number order (from On now), for Pg± and number entry.</summary>
         public IReadOnlyList<Channel> Channels { get; set; } = Array.Empty<Channel>();
         public event Action<Channel>? Tuning;
+        /// <summary>An on-demand item started (the shell shows its loading card).</summary>
+        public event Action<HomeCard>? Starting;
+        /// <summary>OK on the video answers the service's prompt ("Skip intro") if one is up.</summary>
+        public Func<bool> TryActivatePrompt { get; set; } = () => false;
+        /// <summary>What OK does about the current failure ("sign in to Channel 4"), if anything.</summary>
+        public Func<string?> FailureAction { get; set; } = () => null;
+        /// <summary>Does it: null when the title can be played again now, else why not.</summary>
+        public Func<System.Threading.Tasks.Task<string?>> RunFailureAction { get; set; } = () => System.Threading.Tasks.Task.FromResult<string?>(null);
         /// <summary>What's on the channel being watched (refreshed when tuning), for the ident and the info bar.</summary>
         public Programme? Programme { get; set; }
 
@@ -53,6 +61,7 @@ namespace Baird.NewUi
             if (cur?.ItemId == card.Id && !Nav.State.AtVideo) { Nav.ToVideo(); return; }
             var from = PlaceLabel();
             Playback.PlayItem(card.Id, card.StreamUrl!, card.Resume, card.Label);
+            Starting?.Invoke(card);
             Nav.Play(new VideoRef("vod", card.Id));
             FlashBackChip(from);
         }
@@ -61,8 +70,7 @@ namespace Baird.NewUi
         public void Activate(HomeCard card)
         {
             if (card.Kind == CardKind.Channel && card.Channel != null) { PlayLive(card.Channel); return; }
-            if (card.Via == PlayVia.Browser) { Toast($"{card.Source} plays in the new interface from phase 2. Switch to Classic in Settings to watch it now."); return; }
-            if (card.Via == PlayVia.Mpv && card.StreamUrl != null && card.Kind != CardKind.Series) { PlayItem(card); return; }
+            if (card.Via != PlayVia.None && card.StreamUrl != null && card.Kind != CardKind.Series) { PlayItem(card); return; }
             if (card.Source == "Seerr") { Toast($"Requesting {card.Label} arrives with show pages (phase 5)."); return; }
             Toast($"{card.Label}'s page, with its seasons and episodes, arrives in phase 5.");
         }

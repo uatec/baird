@@ -138,6 +138,8 @@ namespace Baird.Tests.NewUi
         {
             Assert.Equal(PlayVia.Browser, HomeData.ViaOf("Netflix"));
             Assert.Equal(PlayVia.Browser, HomeData.ViaOf("Disney+"));
+            Assert.Equal(PlayVia.Browser, HomeData.ViaOf("ITVX"));
+            Assert.Equal(PlayVia.Browser, HomeData.ViaOf("Channel 4"));
             Assert.Equal(PlayVia.Mpv, HomeData.ViaOf("Jellyfin: x"));
         }
 

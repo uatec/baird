@@ -102,6 +102,33 @@ namespace Baird.Tests.NewUi
             Assert.Equal(new[] { "rel -30", "rel -120" }, rig.Engine.Calls.Where(c => c.StartsWith("rel")));
         }
 
+        [Fact]
+        public void Ok_answers_the_services_prompt_when_one_is_up()
+        {
+            var (keys, rig) = Watching(Bbc1);
+            var answered = 0;
+            rig.Ctx.TryActivatePrompt = () => { answered++; return true; };
+            keys.OnAction(UiAction.Ok, false);
+            Assert.Equal(1, answered);
+            Assert.Null(rig.Ctx.Nav.State.Overlay);
+        }
+
+        [Fact]
+        public async Task Ok_on_a_failure_that_offers_a_fix_runs_it_and_plays_again()
+        {
+            var (keys, rig) = Watching(Bbc1);
+            rig.Timers.Advance(PlaybackController.TuneDebounce);
+            for (var i = 0; i <= PlaybackController.MaxRetries; i++) rig.Timers.Advance(PlaybackController.LoadTimeout);
+            Assert.NotNull(rig.Ctx.Playback.Failure);
+            var plays = rig.Engine.Plays.Count;
+            rig.Ctx.FailureAction = () => "sign in to Channel 4";
+            rig.Ctx.RunFailureAction = () => Task.FromResult<string?>(null);
+            keys.OnAction(UiAction.Ok, false);
+            await Task.Yield();
+            Assert.Equal(plays + 1, rig.Engine.Plays.Count);
+            Assert.Null(rig.Ctx.Playback.Failure);
+        }
+
         [AvaloniaFact]
         public async Task The_tuning_ident_stays_up_at_least_a_moment_even_if_the_stream_loads_at_once()
         {

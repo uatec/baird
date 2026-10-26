@@ -33,6 +33,7 @@ namespace Baird.NewUi.Playback
         private readonly ITimers _timers;
         private readonly Func<DateTimeOffset> _now;
         private readonly Action<string, TimeSpan, TimeSpan>? _save;
+        private readonly Action<bool>? _configure;
 
         private IDisposable? _loadTimer, _tuneTimer;
         private int _retries;
@@ -59,9 +60,20 @@ namespace Baird.NewUi.Playback
         /// <summary>The first frame of a newly loaded stream is on its way (tuning can end).</summary>
         public event Action? Loaded;
 
-        public PlaybackController(IPlaybackEngine engine, Action<Action> post, ITimers timers, Func<DateTimeOffset> now, Action<string, TimeSpan, TimeSpan>? save)
+        /// <param name="configure">Sets mpv up for the source before each play (true = live: deinterlace, no loudnorm).</param>
+        public PlaybackController(IPlaybackEngine engine, Action<Action> post, ITimers timers, Func<DateTimeOffset> now, Action<string, TimeSpan, TimeSpan>? save,
+            Action<bool>? configure = null)
         {
-            _engine = engine; _post = post; _timers = timers; _now = now; _save = save;
+            _engine = engine; _post = post; _timers = timers; _now = now; _save = save; _configure = configure;
+            if (engine is EngineRouter router)
+                router.Failed += (_, reason) => _post(() =>
+                {
+                    _loadTimer?.Dispose();
+                    IsLoading = false;
+                    Failure = reason;
+                    Console.WriteLine($"[Playback] {Current?.Title}: {reason}");
+                    Changed?.Invoke();
+                });
             _engine.FileLoaded += (_, _) => _post(OnLoaded);
             _engine.StreamEnded += (_, _) => _post(OnEnded);
             _engine.PauseStateChanged += (_, paused) => _post(() => { IsPaused = paused; Changed?.Invoke(); });
@@ -93,8 +105,11 @@ namespace Baird.NewUi.Playback
         {
             _retries = 0; _start = start;
             IsLoading = true;
+            _configure?.Invoke(Current?.Kind == "live");
             _engine.Play(url, start);
-            ArmLoadTimer();
+            // Browser services (Netflix, Disney+, ITVX, Channel 4) have their own timeouts and failures.
+            if (_engine is EngineRouter r && r.BrowserFor(url) != null) _loadTimer?.Dispose();
+            else ArmLoadTimer();
             Changed?.Invoke();
         }
 
@@ -150,6 +165,14 @@ namespace Baird.NewUi.Playback
             }
             SaveCurrent();
             Ended?.Invoke();
+        }
+
+        /// <summary>Play the current item again (after a failure was fixed, e.g. signing in).</summary>
+        public void Replay()
+        {
+            if (Current == null) return;
+            Failure = null;
+            Start(Current.Url, Current.Kind == "live" ? null : _start);
         }
 
         public void TogglePause()

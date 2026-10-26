@@ -93,13 +93,12 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public void Browser_items_toast_until_phase_2()
+        public void Browser_items_play_like_any_other()
         {
             var rig = Context();
-            rig.Ctx.Activate(new HomeCard(CardKind.Series, "nf1", "Stranger Things", null, null, null, null, "Netflix", PlayVia.Browser, "https://netflix/x"));
-            Assert.Contains("phase 2", rig.Toasts.Single());
-            Assert.Empty(rig.Engine.Plays);
-            Assert.False(rig.Ctx.Nav.State.AtVideo);
+            rig.Ctx.Activate(new HomeCard(CardKind.Episode, "nf1", "Stranger Things", null, null, null, null, "Netflix", PlayVia.Browser, "https://www.netflix.com/watch/1"));
+            Assert.Equal("https://www.netflix.com/watch/1", rig.Engine.Plays.Single().Url);
+            Assert.True(rig.Ctx.Nav.State.AtVideo);
         }
 
         [AvaloniaFact]

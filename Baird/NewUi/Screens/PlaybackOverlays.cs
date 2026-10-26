@@ -52,22 +52,36 @@ namespace Baird.NewUi.Screens
             Children.Add(_card);
         }
 
-        public void Show(Channel ch, Programme? now)
+        public void Show(Channel ch, Programme? now) =>
+            Present(ch.Number, ch.Name, now != null ? $"{now.Title} · until {now.End.LocalDateTime:HH:mm}" : "No programme information", spinner: true, cap: TimeSpan.FromSeconds(12));
+
+        /// <summary>An on-demand title loading: its name and the current step ("Signing in to Netflix…"). Up until it loads.</summary>
+        public void ShowStatus(string title, string status) => Present("", title, status, spinner: true, cap: null);
+
+        /// <summary>A play that failed: stays up (dimmed picture) until the viewer moves on.</summary>
+        public void ShowFailure(string title, string message) => Present("", title, message, spinner: false, cap: null);
+
+        private void Present(string number, string name, string sub, bool spinner, TimeSpan? cap)
         {
-            _num.Text = ch.Number;
-            _name.Text = ch.Name;
-            _prog.Text = now != null ? $"{now.Title} · until {now.End.LocalDateTime:HH:mm}" : "No programme information";
+            _num.Text = number;
+            _num.IsVisible = number.Length > 0;
+            _name.Text = name;
+            _prog.Text = sub;
+            _prog.TextWrapping = TextWrapping.Wrap;
+            _prog.MaxWidth = 1100;
+            _spinner.IsVisible = spinner;
             _shownAt = DateTime.UtcNow; _loaded = false;
             _dim.Opacity = 0.75; _card.Opacity = 1;
             _hide?.Dispose();
+            _hide = null;
             if (_spin == null)
             {
                 _spin = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
                 _spin.Tick += (_, _) => _spinner.StartAngle = (_spinner.StartAngle + 12) % 360;
             }
-            if (!Motion.Lite) _spin.Start();
-            // Never stay up forever (a failed tune shows its own message).
-            _hide = DispatcherTimer.RunOnce(Hide, TimeSpan.FromSeconds(12));
+            if (spinner && !Motion.Lite) _spin.Start(); else _spin.Stop();
+            // A tune never stays up forever (a failed one shows its own message).
+            if (cap is { } c) _hide = DispatcherTimer.RunOnce(Hide, c);
         }
 
         /// <summary>The stream has loaded: fade once the minimum time has passed, so the ident never flashes.</summary>
@@ -175,5 +189,77 @@ namespace Baird.NewUi.Screens
         }
 
         public void Destroy() { _tick.Stop(); _idle?.Dispose(); }
+    }
+
+    /// <summary>
+    /// The service asked for a code it sent the viewer (Netflix after a sign-in): type it with the number keys, ◂ deletes,
+    /// OK sends it, Back gives up on the play.
+    /// </summary>
+    public sealed class CodeEntry : IScreen
+    {
+        public const int Length = 6;
+        private readonly Func<string?> _request;
+        private readonly Func<string, System.Threading.Tasks.Task> _submit;
+        private readonly Action _cancel;
+        private readonly Panel _root = new() { Width = 1920, Height = 1080, Background = new SolidColorBrush(Color.Parse("#B3000000")) };
+        private readonly TextBlock _ask = new() { FontSize = 30, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, MaxWidth = 1100, TextAlignment = TextAlignment.Center };
+        private readonly StackPanel _boxes = new() { Orientation = Orientation.Horizontal, Spacing = 18, HorizontalAlignment = HorizontalAlignment.Center };
+        private string _code = "";
+        public string Code => _code;
+        public Control View => _root;
+
+        public CodeEntry(Func<string?> request, Func<string, System.Threading.Tasks.Task> submit, Action cancel)
+        {
+            _request = request; _submit = submit; _cancel = cancel;
+            _root.Children.Add(new Border
+            {
+                Background = T.Glass,
+                CornerRadius = new CornerRadius(T.RPanel),
+                Padding = new Thickness(60, 48),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new StackPanel
+                {
+                    Spacing = 34,
+                    Children =
+                    {
+                        _ask, _boxes,
+                        new TextBlock { Text = "Type it with the number keys · ◂ deletes · OK sends · Back cancels", FontSize = 22, Foreground = T.Text2, HorizontalAlignment = HorizontalAlignment.Center },
+                    },
+                },
+            });
+            Draw();
+        }
+
+        public void Refresh() => Draw();
+
+        private void Draw()
+        {
+            _ask.Text = _request() ?? "Enter the code you were sent";
+            _boxes.Children.Clear();
+            for (var i = 0; i < Length; i++)
+                _boxes.Children.Add(new Border
+                {
+                    Width = 84,
+                    Height = 104,
+                    CornerRadius = new CornerRadius(14),
+                    Background = new SolidColorBrush(Color.Parse("#26FFFFFF")),
+                    BorderBrush = i == _code.Length ? Brushes.White : Brushes.Transparent,
+                    BorderThickness = new Thickness(3),
+                    Child = new TextBlock { Text = i < _code.Length ? _code[i].ToString() : "", FontSize = 52, FontWeight = FontWeight.Bold, Foreground = T.Text, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+                });
+        }
+
+        public bool OnAction(UiAction a, bool repeat)
+        {
+            if (InputMap.DigitOf(a) is { } d) { if (_code.Length < Length) _code += d; Draw(); return true; }
+            switch (a)
+            {
+                case UiAction.Left or UiAction.Del: if (_code.Length > 0) _code = _code[..^1]; Draw(); return true;
+                case UiAction.Ok: if (_code.Length > 0) { var code = _code; _code = ""; Draw(); _ = _submit(code); } return true;
+                case UiAction.Back: _cancel(); return true;
+            }
+            return true; // nothing else gets past the question
+        }
     }
 }

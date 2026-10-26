@@ -27,7 +27,8 @@ namespace Baird.NewUi.Adapters
         }
 
         public static PlayVia ViaOf(string source) =>
-            source.StartsWith("Netflix", StringComparison.OrdinalIgnoreCase) || source.StartsWith("Disney", StringComparison.OrdinalIgnoreCase) ? PlayVia.Browser : PlayVia.Mpv;
+            source.StartsWith("Netflix", StringComparison.OrdinalIgnoreCase) || source.StartsWith("Disney", StringComparison.OrdinalIgnoreCase)
+            || source == ItvxProvider.SourceName || source == Channel4Provider.SourceName ? PlayVia.Browser : PlayVia.Mpv;
 
         private static HomeCard ItemCard(MediaItemViewModel m) =>
             new(m.Type == MediaType.Brand ? CardKind.Series : !string.IsNullOrWhiteSpace(m.Subtitle) ? CardKind.Episode : CardKind.Film,

@@ -27,6 +27,8 @@ namespace Baird.NewUi.Playback
             {
                 case UiAction.Ok:
                     if (p.Current == null) return false;
+                    if (_ctx.TryActivatePrompt()) return true;
+                    if (p.Failure != null && _ctx.FailureAction() != null) { _ = RunFailureActionAsync(); return true; }
                     _ctx.Nav.OpenOverlay(new OverlayRef("info"));
                     return true;
                 case UiAction.PlayPause: p.TogglePause(); return true;
@@ -40,6 +42,22 @@ namespace Baird.NewUi.Playback
                     return true;
             }
             return false;
+        }
+
+        private bool _running;
+
+        private async System.Threading.Tasks.Task RunFailureActionAsync()
+        {
+            if (_running) return;
+            _running = true;
+            try
+            {
+                var why = await _ctx.RunFailureAction();
+                if (why == null) _ctx.Playback.Replay();
+                else _ctx.Toast(why);
+            }
+            catch (Exception ex) { _ctx.Toast(ex.Message); }
+            finally { _running = false; }
         }
 
         private void Digit(int d)

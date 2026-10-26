@@ -182,5 +182,38 @@ namespace Baird.Tests.NewUi
             Assert.NotNull(c.Failure);
             Assert.True(e.Plays.Count <= 4, $"{e.Plays.Count} plays");
         }
+
+        [Fact]
+        public void Mpv_is_set_up_for_live_or_on_demand_before_each_play()
+        {
+            var e = new FakeEngine(); var t = new FakeTimers(); var configured = new List<bool>();
+            var c = new PlaybackController(e, a => a(), t, () => t.Now, null, configured.Add);
+            c.PlayLive(Ch("101"));
+            t.Advance(PlaybackController.TuneDebounce);
+            c.PlayItem("film", "http://jf/film", TimeSpan.Zero, "Film");
+            Assert.Equal(new[] { true, false }, configured);
+        }
+
+        [Fact]
+        public void A_browser_service_gets_no_load_timeout_retries()
+        {
+            var e = new FakeEngine(); var nf = new EngineRouterTests.FakeBrowser("Netflix", "https://www.netflix.com/"); var t = new FakeTimers();
+            var c = new PlaybackController(new EngineRouter(e, new[] { nf }), a => a(), t, () => t.Now, null);
+            c.PlayItem("nf1", "https://www.netflix.com/watch/1", TimeSpan.Zero, "Stranger Things");
+            t.Advance(TimeSpan.FromMinutes(2));
+            Assert.Single(nf.Calls, x => x.StartsWith("play"));
+            Assert.Null(c.Failure);
+        }
+
+        [Fact]
+        public void A_browser_services_failure_is_shown()
+        {
+            var e = new FakeEngine(); var nf = new EngineRouterTests.FakeBrowser("Netflix", "https://www.netflix.com/"); var t = new FakeTimers();
+            var c = new PlaybackController(new EngineRouter(e, new[] { nf }), a => a(), t, () => t.Now, null);
+            c.PlayItem("nf1", "https://www.netflix.com/watch/1", TimeSpan.Zero, "Stranger Things");
+            nf.Fail("Netflix asked for a verification code.");
+            Assert.Equal("Netflix asked for a verification code.", c.Failure);
+            Assert.False(c.IsLoading);
+        }
     }
 }

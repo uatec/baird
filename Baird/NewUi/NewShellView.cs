@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Baird.Mpv;
 using Baird.NewUi.Adapters;
 using Baird.NewUi.Core;
+using Baird.NewUi.Lifecycle;
 using Baird.NewUi.Playback;
 using Baird.NewUi.Screens;
 using Baird.Services;
@@ -28,6 +29,7 @@ namespace Baird.NewUi
         private readonly Shell.Shell _shell;
         private readonly NewUiContext _ctx;
         private Key? _lastKey;
+        private readonly TvLifecycle _life;
 
         public NewShellView(IConfiguration config)
         {
@@ -47,12 +49,17 @@ namespace Baird.NewUi
             var nav = new Navigator();
             var history = new HistoryWriter(services.Data);
             var timers = new DispatcherTimers();
-            var playback = new PlaybackController(mpv, a => Dispatcher.UIThread.Post(a), timers, () => DateTimeOffset.Now,
-                (id, pos, dur) => _ = history.SaveAsync(id, pos, dur));
+            var router = new EngineRouter(mpv, services.BrowserEngines);
+            var playback = new PlaybackController(router, a => Dispatcher.UIThread.Post(a), timers, () => DateTimeOffset.Now,
+                (id, pos, dur) => _ = history.SaveAsync(id, pos, dur), mpv.ConfigureForSource);
             var home = new HomeData(services.Data, services.Epg, services.Seerr);
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now);
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
+            _ctx.TryActivatePrompt = () => router.PromptText != null && router.ActivatePrompt();
+            _ctx.FailureAction = () => router.FailureAction;
+            _ctx.RunFailureAction = () => router.RunFailureActionAsync();
+            CodeEntry? codeEntry = null;
 
             var scale = double.TryParse(config["Baird:NewUiSize"], NumberStyles.Float, CultureInfo.InvariantCulture, out var s) && s > 0 ? s : 1.0;
             _shell = new Shell.Shell(new Shell.ShellDeps(
@@ -69,13 +76,58 @@ namespace Baird.NewUi
                     }),
                 },
                 CreatePage: _ => new EmptyScreen(),
-                CreateOverlay: o => o.Name == "info" ? new InfoBar(_ctx) : new EmptyScreen(),
+                CreateOverlay: o => o.Name switch
+                {
+                    "info" => new InfoBar(_ctx),
+                    "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
+                    _ => new EmptyScreen(),
+                },
                 VideoAction: videoActions.OnAction,
                 BackToVideoLabel: () => playback.Current?.Title ?? "what's playing"));
             _ctx.Toast = _shell.Toast;
             _ctx.FlashBackChip = _shell.FlashBackChip;
             _shell.Stage.Children.Insert(0, ident); // over the picture, under everything else
+            var promptText = new TextBlock { FontSize = 28, FontWeight = FontWeight.SemiBold, Foreground = Baird.NewUi.Theme.T.FocusInk };
+            var prompt = new Border
+            {
+                Background = Baird.NewUi.Theme.T.FocusFill,
+                CornerRadius = new CornerRadius(999),
+                Padding = new Thickness(30, 14),
+                Opacity = 0,
+                IsHitTestVisible = false,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 96, 120),
+                Child = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 14, Children = { promptText, new TextBlock { Text = "OK", FontSize = 22, Foreground = Baird.NewUi.Theme.T.FocusInk, Opacity = 0.6, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center } } },
+            };
+            Shell.Motion.Animate(prompt, Baird.NewUi.Theme.T.Fast);
+            _shell.Stage.Children.Insert(1, prompt);
+            var saver = new ScreensaverLayer(services.Screensaver);
+            _shell.Children.Add(saver.View); // over everything, at native resolution
             ApplyScale(scale);
+
+            // Questions a browser service puts on the video: a prompt ("Skip intro") or a code it sent the viewer.
+            router.QuestionChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+            {
+                promptText.Text = router.PromptText ?? "";
+                prompt.Opacity = router.PromptText != null && nav.State.AtVideo ? 1 : 0;
+                if (router.CodeRequest != null)
+                {
+                    ident.Hide();
+                    if (nav.State.Overlay?.Name != "code") nav.OpenOverlay(new OverlayRef("code"));
+                    else codeEntry?.Refresh();
+                }
+                else if (nav.State.Overlay?.Name == "code") nav.CloseOverlay();
+            });
+            router.StatusChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+            {
+                if (playback.IsLoading && playback.Current is { Kind: "vod" } cur && router.ActiveBrowser != null && router.StatusText is { Length: > 0 } st)
+                    ident.ShowStatus(cur.Title, st);
+            });
+            _ctx.Starting += card =>
+            {
+                if (router.BrowserFor(card.StreamUrl) is { } b) ident.ShowStatus(card.Label, router.StatusText is { Length: > 0 } st ? st : $"Starting {b.Name}…");
+            };
 
             _ctx.Tuning += async ch =>
             {
@@ -91,12 +143,25 @@ namespace Baird.NewUi
                 catch (Exception ex) { Console.WriteLine($"[NewUi] What's on {ch.Name} failed: {ex.Message}"); }
             };
             playback.Loaded += ident.Loaded;
-            nav.Changed += () => { if (nav.State.Overlay != null || !nav.State.AtVideo) ident.Hide(); };
+            nav.Changed += () =>
+            {
+                if (nav.State.Overlay != null || !nav.State.AtVideo) ident.Hide();
+                if (!nav.State.AtVideo) prompt.Opacity = 0;
+            };
             playback.Changed += () =>
             {
                 surface.HasVideo = playback.Current != null;
+                // A browser service plays in the window behind Baird: let it show through once it's playing.
+                var browser = router.ActiveBrowser != null && playback.Current != null && !playback.IsLoading && playback.Failure == null;
+                surface.ShowingBrowser = browser;
+                if (TopLevel.GetTopLevel(this) is Window w) w.Background = browser ? Brushes.Transparent : Brushes.Black;
                 surface.RequestNextFrameRendering();
-                if (playback.Failure != null) { ident.Hide(); _shell.Toast(playback.Failure); }
+                if (playback.Failure is { } why && playback.Current is { } cur)
+                {
+                    if (nav.State.AtVideo && router.FailureAction is { } fix) ident.ShowFailure(cur.Title, $"{why}\nPress OK to {fix}.");
+                    else if (nav.State.AtVideo && router.ActiveBrowser != null) ident.ShowFailure(cur.Title, why);
+                    else { ident.Hide(); _shell.Toast(why); }
+                }
             };
             playback.Ended += () =>
             {
@@ -105,6 +170,11 @@ namespace Baird.NewUi
                 surface.HasVideo = false;
                 surface.RequestNextFrameRendering();
             };
+
+            _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
+                inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn);
+            _ = System.Threading.Tasks.Task.Run(() => services.Screensaver.InitializeAsync());
+            _life.Start();
 
             Content = _shell;
             _holdTick.Tick += (_, _) => { if (_hold.Tick() is { } held) Dispatch(held, false); };
@@ -144,8 +214,21 @@ namespace Baird.NewUi
             base.OnDetachedFromVisualTree(e);
         }
 
+        private static RemoteInput TvInputOf(KeyEventArgs e) => e.Key switch
+        {
+            Key.VolumeUp => RemoteInput.VolumeUp,
+            Key.VolumeDown => RemoteInput.VolumeDown,
+            Key.VolumeMute => RemoteInput.Mute,
+            // XF86PowerOff has no Avalonia Key (it arrives as Key.None): match the physical key.
+            Key.Sleep => RemoteInput.Power,
+            _ when e.PhysicalKey is PhysicalKey.Power or PhysicalKey.Sleep => RemoteInput.Power,
+            _ => RemoteInput.Other,
+        };
+
         private void OnKeyDown(object? sender, KeyEventArgs e)
         {
+            // TV first: power/volume go to the TV; a key that wakes the screensaver or the TV does nothing else.
+            if (_life.HandleInput(TvInputOf(e))) { e.Handled = true; return; }
             if (_input.Map(e.Key) is not { } action) return;
             e.Handled = true;
             var repeat = _lastKey == e.Key;
@@ -172,6 +255,7 @@ namespace Baird.NewUi
             e.Handled = true;
             var kind = e.GetCurrentPoint(null).Properties.PointerUpdateKind;
             Console.WriteLine($"[NewUi] Remote button: {kind}");
+            if (_life.HandleInput(RemoteInput.Other)) return;
             switch (InputMap.MapButton(kind))
             {
                 case UiAction.Ok: _hold.Down(); _holdTick.Start(); break; // decided on release, like the OK key
@@ -192,5 +276,15 @@ namespace Baird.NewUi
             try { _shell.OnAction(action, repeat); }
             catch (Exception ex) { Console.WriteLine($"[NewUi] {action} failed: {ex}"); }
         }
+    }
+
+    /// <summary>The playback controller as the TV lifecycle sees it.</summary>
+    internal sealed class PlaybackPausable : IPausable
+    {
+        private readonly PlaybackController _p;
+        public PlaybackPausable(PlaybackController p) => _p = p;
+        public bool IsPlaying => _p.Current != null && !_p.IsPaused && !_p.IsLoading;
+        public void Pause() { if (IsPlaying) _p.TogglePause(); }
+        public void Resume() { if (_p.Current != null && _p.IsPaused) _p.TogglePause(); }
     }
 }
