@@ -518,5 +518,52 @@ namespace Baird.Tests.NewUi
             Assert.Equal(7, t.Seerr!.TmdbId);
             Assert.Empty(rig.Home.Toasts);
         }
+
+        [AvaloniaFact]
+        public async Task A_real_keyboard_types_into_the_query_and_backspace_deletes()
+        {
+            var rig = Build();
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            Assert.True(s.AcceptsText);
+            s.TypeText("A"); s.TypeText("l"); s.TypeText("i"); s.TypeText("x");
+            s.TypeText(null);
+            Assert.Equal("Ali", s.Query);
+            rig.Home.Timers.Advance(SearchScreen.Debounce);
+            await s.RunAsync();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Alien", s.ResultRows[0][0].Title!.Name);
+        }
+
+        [AvaloniaFact]
+        public void Typing_while_a_result_is_lit_goes_back_to_the_query()
+        {
+            var rig = Build();
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            s.SetQuery("al");
+            Dispatcher.UIThread.RunJobs();
+            s.OnAction(UiAction.Right, false);
+            s.TypeText("i");
+            Assert.Equal("ali", s.Query);
+        }
+
+        [AvaloniaFact]
+        public void The_caret_sits_right_after_the_last_letter_and_before_the_hint_when_empty()
+        {
+            var rig = Build();
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+
+            static double X(Control c, Control root) => c.TranslatePoint(new Point(0, 0), root)!.Value.X;
+
+            Assert.True(X(s.Caret, s.View) < X(s.QueryText, s.View)); // empty: caret, then the hint
+
+            s.TypeText("Alien");
+            Dispatcher.UIThread.RunJobs();
+            var textEnd = X(s.QueryText, s.View) + s.QueryText.Bounds.Width;
+            var gap = X(s.Caret, s.View) - textEnd;
+            Assert.InRange(gap, 0, 3); // no space-sized gap between the last letter and the caret
+        }
     }
 }

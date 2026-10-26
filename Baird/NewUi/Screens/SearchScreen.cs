@@ -50,6 +50,11 @@ namespace Baird.NewUi.Screens
         private readonly ITimers _timers;
         private readonly Panel _root = new() { Width = 1920, Height = 1080 };
         private readonly TextBlock _queryText = new() { FontSize = 36, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 560 };
+        // The caret sits right after the last letter, or before the hint while nothing is typed.
+        private readonly Border _caret = new() { Width = 3, Height = 40, Background = T.Text, VerticalAlignment = VerticalAlignment.Center };
+        private readonly StackPanel _entry = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        internal TextBlock QueryText => _queryText;
+        internal Border Caret => _caret;
         private readonly TextBlock _status = new() { FontSize = T.Small, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, Width = 700 };
         /// <summary>"Nothing called …": in the results column, where the results would be.</summary>
         private readonly TextBlock _empty = new() { FontSize = 30, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, MaxWidth = 760, LineHeight = 42, Margin = new Thickness(Pad, 40, 0, 0), IsVisible = false };
@@ -105,7 +110,7 @@ namespace Baird.NewUi.Screens
                 {
                     Orientation = Orientation.Horizontal,
                     Spacing = 18,
-                    Children = { new Icon(Icon.Search, 34, T.Text2) { VerticalAlignment = VerticalAlignment.Center }, _queryText, new Border { Width = 3, Height = 40, Background = T.Text, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(-14, 0, 0, 0) } },
+                    Children = { new Icon(Icon.Search, 34, T.Text2) { VerticalAlignment = VerticalAlignment.Center }, _entry },
                 },
             };
             var left = new StackPanel { Width = 700, Spacing = 30, Margin = new Thickness(T.SafeX, 140, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Children = { field, _kb, _status } };
@@ -142,6 +147,15 @@ namespace Baird.NewUi.Screens
             Changed();
         }
 
+        public bool AcceptsText => true;
+
+        /// <summary>A real keyboard types straight into the query, wherever the remote's focus is on this screen.</summary>
+        public void TypeText(string? text)
+        {
+            if (_zone != Zone.Keyboard) { _zone = Zone.Keyboard; Draw(); }
+            Type(text);
+        }
+
         private void Voice() => _ctx.Toast("Hold the remote's voice button and speak, then let go. (It needs VOICE_COMMAND_KEY in config.ini.) Or type with the keyboard or the remote's digits.");
 
         /// <summary>Set the query (and search straight away), e.g. from a recent search.</summary>
@@ -165,10 +179,13 @@ namespace Baird.NewUi.Screens
             _queryText.Text = _query.Length > 0 ? _query : "Shows, films, channels, what's on";
             _queryText.Foreground = _query.Length > 0 ? T.Text : T.Text3;
             _queryText.FontSize = _query.Length > 0 ? 36 : 30;
+            _entry.Children.Clear();
+            if (_query.Length > 0) { _caret.Margin = new Thickness(2, 0, 0, 0); _entry.Children.Add(_queryText); _entry.Children.Add(_caret); }
+            else { _caret.Margin = new Thickness(0, 0, 10, 0); _entry.Children.Add(_caret); _entry.Children.Add(_queryText); }
             var nothing = !_searching && _query.Trim().Length > 0 && _rows.Count == 0 && _shownQuery == _query.Trim();
             _empty.IsVisible = nothing;
             if (nothing) _empty.Text = $"Nothing called “{_query.Trim()}” yet. Try fewer letters, or a channel number.";
-            _status.Text = _searching ? Waiting() : _query.Length > 0 && _ctx.SearchNote() is { } note ? note : "Digits and DEL on the remote type too. ▸ from the keyboard reaches the results.";
+            _status.Text = _searching ? Waiting() : _query.Length > 0 && _ctx.SearchNote() is { } note ? note : "Digits and DEL on the remote type too, and so does a keyboard. ▸ from the keyboard reaches the results.";
         }
 
         /// <summary>While results are still arriving: which library sources haven't answered yet.</summary>

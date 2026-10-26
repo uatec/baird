@@ -30,5 +30,29 @@ namespace Baird.Tests.NewUi
             Assert.True(CecRemoteControl.TryMapKey(code, out var key));
             Assert.Equal(expected, new InputMap().Map(key));
         }
+
+        [Theory]
+        [InlineData(Key.A, "a", "a")]
+        [InlineData(Key.A, "A", "A")]
+        [InlineData(Key.Space, " ", " ")]
+        [InlineData(Key.H, "h", "h")]
+        [InlineData(Key.D1, "1", "1")]
+        public void A_printable_key_is_typed_text(Key key, string symbol, string expected)
+        {
+            Assert.True(InputMap.TryText(key, KeyModifiers.None, symbol, out var text));
+            Assert.Equal(expected, text);
+        }
+
+        [Fact]
+        public void Backspace_deletes_and_remote_and_control_keys_are_not_text()
+        {
+            Assert.True(InputMap.TryText(Key.Back, KeyModifiers.None, "\b", out var del));
+            Assert.Null(del);
+            Assert.False(InputMap.TryText(Key.Enter, KeyModifiers.None, "\r", out _));
+            Assert.False(InputMap.TryText(Key.Escape, KeyModifiers.None, "\u001b", out _));
+            Assert.False(InputMap.TryText(Key.Up, KeyModifiers.None, null, out _));
+            Assert.False(InputMap.TryText(Key.BrowserBack, KeyModifiers.None, null, out _));
+            Assert.False(InputMap.TryText(Key.C, KeyModifiers.Control, "c", out _));
+        }
     }
 }

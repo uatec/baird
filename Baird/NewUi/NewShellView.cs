@@ -391,6 +391,13 @@ namespace Baird.NewUi
             if (_voice != null && e.Key == _voiceKey) { e.Handled = true; _ = _voice.PressAsync(); return; }
             // TV first: power/volume go to the TV; a key that wakes the screensaver or the TV does nothing else.
             if (_life.HandleInput(TvInputOf(e))) { e.Handled = true; return; }
+            // A real keyboard on a text field types (H, G, Space… would otherwise be Home, Guide, pause).
+            if (_shell.AcceptsText && InputMap.TryText(e.Key, e.KeyModifiers, e.KeySymbol, out var typed))
+            {
+                e.Handled = true;
+                _shell.TypeText(typed);
+                return;
+            }
             if (_input.Map(e.Key) is not { } action) return;
             e.Handled = true;
             var repeat = _lastKey == e.Key;
