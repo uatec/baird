@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Baird
+Description=The Baird wordmark on black: the first frame of Baird's start-up animation
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/baird
+ScriptFile=/usr/share/plymouth/themes/baird/baird.script

@@ -30,6 +30,7 @@ namespace Baird.NewUi
         private readonly NewUiContext _ctx;
         private Key? _lastKey;
         private readonly TvLifecycle _life;
+        private Intro? _intro = new();
 
         public NewShellView(IConfiguration config)
         {
@@ -147,6 +148,7 @@ namespace Baird.NewUi
             };
             nearEnd.Start();
             var saver = new ScreensaverLayer(services.Screensaver);
+            _shell.Children.Add(_intro!);       // the start-up animation, over everything until it's done
             _shell.Children.Add(saver.View); // over everything, at native resolution
             ApplyScale(scale);
 
@@ -235,6 +237,7 @@ namespace Baird.NewUi
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
+            _intro?.Play(() => { _shell.Children.Remove(_intro); _intro = null; });
             if (TopLevel.GetTopLevel(this) is { } top)
             {
                 top.AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
@@ -272,6 +275,8 @@ namespace Baird.NewUi
 
         private void OnKeyDown(object? sender, KeyEventArgs e)
         {
+            // A key during the start-up animation skips it, and does nothing else.
+            if (_intro != null && !_intro.IsFinishing) { _intro.Skip(); e.Handled = true; return; }
             // TV first: power/volume go to the TV; a key that wakes the screensaver or the TV does nothing else.
             if (_life.HandleInput(TvInputOf(e))) { e.Handled = true; return; }
             if (_input.Map(e.Key) is not { } action) return;
