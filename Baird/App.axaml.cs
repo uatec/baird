@@ -91,6 +91,10 @@ namespace Baird
                 if (!string.IsNullOrEmpty(fullScreenEnv) && bool.TryParse(fullScreenEnv, out bool isFullScreen) && isFullScreen)
                 {
                     desktop.MainWindow.WindowState = WindowState.FullScreen;
+                    // Start at the TV's size, so the first frame (the boot picture) doesn't appear small, then jump.
+                    desktop.MainWindow.Width = 1920;
+                    desktop.MainWindow.Height = 1080;
+                    desktop.MainWindow.Position = new PixelPoint(0, 0);
                 }
             }
             else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)

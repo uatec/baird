@@ -16,7 +16,9 @@ namespace Baird.NewUi.Screens
     /// </summary>
     public sealed class Intro : Panel
     {
-        public static readonly TimeSpan Duration = TimeSpan.FromSeconds(2.2);
+        public static readonly TimeSpan Duration = TimeSpan.FromSeconds(2.5);   // the animation's length
+        /// <summary>If the animation never reports it's done (slow to load, or can't play), the intro ends anyway.</summary>
+        public static readonly TimeSpan Fallback = TimeSpan.FromSeconds(4.5);
         public static readonly TimeSpan FadeOut = TimeSpan.FromMilliseconds(600);
         /// <summary>After the window's first frames, a moment for the compositor to put it on screen.</summary>
         public static readonly TimeSpan SettleDelay = TimeSpan.FromMilliseconds(300);
@@ -33,7 +35,7 @@ namespace Baird.NewUi.Screens
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        private readonly Avalonia.Labs.Lottie.Lottie _disc = new(new Uri("avares://Baird/")) { Path = Asset, RepeatCount = 1, AutoPlay = false, Stretch = Stretch.Uniform };
+        private readonly Avalonia.Labs.Lottie.Lottie _disc = new(new Uri("avares://Baird/")) { RepeatCount = 1, AutoPlay = true, Stretch = Stretch.Uniform };
         private Action? _done;
         private IDisposable? _timer;
         private bool _finishing;
@@ -71,9 +73,12 @@ namespace Baird.NewUi.Screens
         private void Begin()
         {
             if (_finishing) return;
-            try { _disc.Start(); }
+            // Load it now it's on screen: it starts itself once loaded (the Pi is slow at start-up) and the intro ends
+            // when it does; the splash frame (identical to the boot picture) holds until then.
+            _disc.AnimationCompleted += (_, _) => Dispatcher.UIThread.Post(Finish);
+            try { _disc.Path = Asset; }
             catch (Exception ex) { Console.WriteLine($"[Intro] The animation couldn't play: {ex.Message}"); }
-            _timer = DispatcherTimer.RunOnce(Finish, Duration);
+            _timer = DispatcherTimer.RunOnce(Finish, Fallback);
         }
 
         /// <summary>A key during the intro: go straight to Home.</summary>
