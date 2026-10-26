@@ -159,5 +159,43 @@ namespace Baird.Tests.NewUi
             home.Reset();
             Assert.Equal("Casper", ((Card)home.LitElement!).Data.Label);
         }
+
+        [AvaloniaFact]
+        public async Task Whats_playing_is_the_first_card_and_lit_so_one_ok_goes_back_to_it()
+        {
+            var (home, rig, _) = await Shown();
+            home.OnAction(UiAction.Right, false);
+            home.OnAction(UiAction.Ok, false);                 // play the second Up next card
+            var playing = rig.Ctx.Playback.Current!.ItemId;
+            var plays = rig.Engine.Plays.Count;
+            rig.Ctx.Nav.Back();                                 // back to Home over the video
+            home.OnShow();
+            Dispatcher.UIThread.RunJobs();
+            var lit = (Card)home.LitElement!;
+            Assert.Equal(playing, lit.Data.Id);
+            Assert.Equal("playing", lit.Data.Badge);
+            Assert.Single(Cards(home.View), c => c.Data.Id == playing); // not twice
+            home.OnAction(UiAction.Ok, false);
+            Assert.True(rig.Ctx.Nav.State.AtVideo);
+            Assert.Equal(plays, rig.Engine.Plays.Count);        // carried on, not restarted
+        }
+
+        [AvaloniaFact]
+        public async Task A_channel_being_watched_is_first_too_and_goes_when_playback_stops()
+        {
+            var (home, rig, _) = await Shown();
+            home.OnAction(UiAction.Down, false);
+            var ch = ((Card)home.LitElement!).Data.Channel!;
+            home.OnAction(UiAction.Ok, false);
+            rig.Ctx.Nav.Back();
+            home.OnShow();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(ch.Id, ((Card)home.LitElement!).Data.Channel?.Id);
+            rig.Ctx.Playback.Stop();
+            rig.Ctx.Nav.Stop();
+            home.OnShow();
+            Dispatcher.UIThread.RunJobs();
+            Assert.DoesNotContain(Cards(home.View), c => c.Data.Badge == "playing");
+        }
     }
 }

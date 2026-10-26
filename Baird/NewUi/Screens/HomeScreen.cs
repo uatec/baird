@@ -97,8 +97,21 @@ namespace Baird.NewUi.Screens
             }));
         }
 
+        /// <summary>What's playing goes first in the first row, so one OK from Home goes back to it.</summary>
+        private IEnumerable<(string Title, string Eyebrow, CardShape Shape, IReadOnlyList<HomeCard> Cards)> WithNowPlaying(
+            IEnumerable<(string Title, string Eyebrow, CardShape Shape, IReadOnlyList<HomeCard> Cards)> rows)
+        {
+            var list = rows.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Where(c => c.Badge != "playing").ToList())).ToList();
+            if (_ctx.NowPlaying is not { } now) return list;
+            if (list.Count == 0 || list[0].Shape != CardShape.Wide) list.Insert(0, ("Up next", "Up next", CardShape.Wide, Array.Empty<HomeCard>()));
+            var first = list[0];
+            list[0] = (first.Title, first.Item2, first.Shape, first.Item4.Where(c => c.Id != now.Id).Prepend(now).ToList());
+            return list;
+        }
+
         public void Build(IEnumerable<(string Title, string Eyebrow, CardShape Shape, IReadOnlyList<HomeCard> Cards)> rows)
         {
+            rows = WithNowPlaying(rows);
             _rowList = rows.Where(r => r.Cards.Count > 0).Select(r =>
             {
                 var row = new Row { Title = r.Title, Eyebrow = r.Eyebrow, Shape = r.Shape };
@@ -200,7 +213,19 @@ namespace Baird.NewUi.Screens
             return false;
         }
 
-        public void OnShow() { _overVideo = _ctx.Nav.State.Video != null; _heroKey = null; _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync(); Layout(); }
+        public void OnShow()
+        {
+            _overVideo = _ctx.Nav.State.Video != null;
+            _heroKey = null;
+            // Put what's playing (or take what stopped) at the front of the first row, lit when something plays.
+            if (_rowList.Count > 0)
+            {
+                Build(_rowList.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Select(c => c.Data).ToList())).ToList());
+                if (_ctx.NowPlaying != null) { _pos = (0, 0); _memory.Clear(); }
+            }
+            _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync();
+            Layout();
+        }
         public void OnFocusIn() { _lit = true; Layout(); }
         public void OnFocusOut() { _lit = false; Layout(); }
 

@@ -82,6 +82,7 @@ namespace Baird.NewUi.Controls
                 layers.Children.Add(new TextBlock { Text = data.Label, FontSize = 22, FontWeight = FontWeight.SemiBold, Foreground = T.Text, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(16, 0, 16, 30) });
             }
             if (data.Badge == "live") layers.Children.Add(Pill("● Live", T.Live, T.Text, HorizontalAlignment.Left));
+            if (data.Badge == "playing") layers.Children.Add(Pill(data.Kind == CardKind.Channel ? "● Live · Now playing" : "▶ Now playing", data.Kind == CardKind.Channel ? T.Live : T.FocusFill, data.Kind == CardKind.Channel ? T.Text : T.FocusInk, HorizontalAlignment.Left));
             if (data.Badge == "get") layers.Children.Add(Pill("⤓ Request", T.FocusFill, T.FocusInk, HorizontalAlignment.Right));
             if (data.Badge == "requested") layers.Children.Add(Pill("Requested", T.Pill, T.Text, HorizontalAlignment.Right));
             if (data.Badge == "partial") layers.Children.Add(Pill("Partly available", T.Pill, T.Text, HorizontalAlignment.Right));

@@ -76,12 +76,28 @@ namespace Baird.NewUi
             _ => "Home",
         };
 
+        private HomeCard? _nowPlaying;
+
+        /// <summary>What's playing, as a card (badge "playing"), for the front of Home's first row; null when nothing plays.</summary>
+        public HomeCard? NowPlaying
+        {
+            get
+            {
+                var cur = Playback.Current;
+                if (cur == null || _nowPlaying == null) return null;
+                if (cur.Kind == "live" ? _nowPlaying.Channel?.Id != cur.Channel?.Id : _nowPlaying.Id != cur.ItemId) return null;
+                return _nowPlaying.Kind == CardKind.Channel ? _nowPlaying with { Programme = Programme ?? _nowPlaying.Programme, Sublabel = Programme?.Title ?? _nowPlaying.Sublabel } : _nowPlaying;
+            }
+        }
+
         public void PlayLive(Channel channel)
         {
             var cur = Playback.Current;
             if (cur?.Channel?.Id == channel.Id && !Nav.State.AtVideo) { Nav.ToVideo(); return; }
             var from = PlaceLabel();
             Playback.PlayLive(channel);
+            _nowPlaying = new HomeCard(CardKind.Channel, channel.Id, $"{channel.Number}  {channel.Name}", null, channel.LogoUrl, null, "playing",
+                "TV", PlayVia.Mpv, channel.StreamUrl, Channel: channel);
             Tuning?.Invoke(channel);
             Nav.Play(new VideoRef("live", channel.Id), keepOverlay: Nav.State.AtVideo && Nav.State.Overlay != null);
             if (!Nav.State.AtVideo || Nav.State.Overlay == null) FlashBackChip(from);
@@ -93,6 +109,7 @@ namespace Baird.NewUi
             if (cur?.ItemId == card.Id && !Nav.State.AtVideo) { Nav.ToVideo(); return; }
             var from = PlaceLabel();
             Playback.PlayItem(card.Id, card.StreamUrl!, card.Resume, card.Label);
+            _nowPlaying = card with { Badge = "playing", Progress = null };
             Starting?.Invoke(card);
             Nav.Play(new VideoRef("vod", card.Id));
             FlashBackChip(from);
