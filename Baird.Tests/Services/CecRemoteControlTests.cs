@@ -39,6 +39,8 @@ namespace Baird.Tests.Services
         [InlineData(0x30, Key.PageDown)] // swapped: see CecRemoteControl
         [InlineData(0x31, Key.PageUp)]
         [InlineData(0x53, Key.G)]
+        [InlineData(0x72, Key.BrowserHome)] // Red
+        [InlineData(0x73, Key.G)]           // Green
         public void TvRemoteKeys_MapToTheKeysBairdHandles(byte code, Key expected)
         {
             Assert.True(CecRemoteControl.TryMapKey(code, out var key));
@@ -103,7 +105,7 @@ namespace Baird.Tests.Services
         public void UnmappedKey_RaisesNothing()
         {
             var (cec, keys, _) = Create();
-            cec.SimulateUserControl(Press(0x72)); // Red
+            cec.SimulateUserControl(Press(0x74)); // Yellow
             Assert.Empty(keys);
         }
 

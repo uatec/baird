@@ -139,7 +139,7 @@ Control Pressed* (`0x44`) / *Released* (`0x45`) frames addressed to Baird. `CecS
 new UI's `NewShellView`) turns them into the key presses Baird already
 handles: arrows, OK (Select) → Enter, Exit → BrowserBack, Root Menu → BrowserHome, 0–9, Channel Up/Down →
 PageDown/PageUp (swapped: Baird's PageUp is the next channel in its list, which ran the wrong way for the
-Panasonic), EPG → G, play/pause/stop, rewind/fast forward → Left/Right. Power,
+Panasonic), EPG → G, Red → Home and Green → Guide (the Panasonic keeps its own Home and Guide keys), play/pause/stop, rewind/fast forward → Left/Right. Power,
 volume and mute are left to the TV. Keys are raised through `SyntheticKeyInput`, which also runs
 KeyBindings (channel up/down), as Avalonia's keyboard device does. A key with no Released within 550 ms
 is treated as let go (CEC 1.4 §13.13). A key from the TV while inputs are blocked unblocks them — the TV
@@ -153,7 +153,7 @@ journalctl -t baird -f | grep -E 'CecRemote|Remote-related'
 
 - `[CecRemote] TV (0) pressed 'Up' (0x01) → Up.` — received and raised.
 - `... sent 'Up' to Playback 1 (4), not Baird — ignored.` — the TV thinks another device is on screen.
-- `... pressed 'Red' (0x72) — Baird has no action for it.` — received but unmapped.
+- `... pressed 'Yellow' (0x74) — Baird has no action for it.` — received but unmapped.
 - `[CecService] Frame for Baird: ...` — any other message the TV sends Baird. Play (`0x41`) and Deck
   Control (`0x42`) are also turned into Play/Pause/Stop/Rewind/Fast Forward key presses, since some TVs
   send their transport keys that way.

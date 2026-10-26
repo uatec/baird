@@ -24,6 +24,8 @@ namespace Baird.Tests.NewUi
         [InlineData(0x44, UiAction.PlayPause)]
         [InlineData(0x46, UiAction.PlayPause)]
         [InlineData(0x53, UiAction.Guide)]
+        [InlineData(0x72, UiAction.Home)]
+        [InlineData(0x73, UiAction.Guide)]
         [InlineData(0x61, UiAction.PlayPause)]
         public void TvRemoteKey_MapsToTheNewUiAction(byte code, UiAction expected)
         {

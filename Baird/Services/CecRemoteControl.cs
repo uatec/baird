@@ -52,6 +52,9 @@ namespace Baird.Services
             { 0x48, Key.Left },               // Rewind: seeks back in the player
             { 0x49, Key.Right },              // Fast Forward: seeks forward in the player
             { 0x53, Key.G },                  // EPG (Guide)
+            // The Panasonic keeps its Home and Guide keys for its own menus, so the colour keys stand in (owner, 2026-10-26).
+            { 0x72, Key.BrowserHome },        // Red → Home
+            { 0x73, Key.G },                  // Green → Guide
             { 0x61, Key.MediaPlayPause },     // Pause-Play Function
         };
 
