@@ -11,6 +11,7 @@ using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Baird.NewUi.Core;
 using Baird.NewUi.Model;
+using Baird.NewUi.Playback;
 using Baird.NewUi.Shell;
 using Baird.NewUi.Theme;
 
@@ -393,4 +394,117 @@ namespace Baird.NewUi.Screens
         }
     }
 
+
+    /// <summary>
+    /// The end of an episode: "Up next · in 8 s" with the next one, Play now / Back to show (◂ ▸ choose, OK). It plays by
+    /// itself when the countdown ends; Back (or "Back to show") stops and returns to the show.
+    /// </summary>
+    public sealed class UpNextCard : IScreen
+    {
+        public static readonly TimeSpan Countdown = TimeSpan.FromSeconds(8);
+        private readonly NewUiContext _ctx;
+        private readonly ITimers _timers;
+        private readonly HomeCard _next;
+        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly TextBlock _eyebrow = new() { FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = T.Text2 };
+        private readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Spacing = 14 };
+        private int _left, _button;
+        private IDisposable? _tick;
+        private bool _done;
+
+        public Control View => _root;
+
+        public UpNextCard(NewUiContext ctx, ITimers timers, HomeCard next)
+        {
+            _ctx = ctx; _timers = timers; _next = next;
+            _left = (int)Countdown.TotalSeconds;
+            var thumb = new Border { Width = 384, Height = 216, CornerRadius = new CornerRadius(T.RCard), ClipToBounds = true, Background = T.CardBack };
+            if (next.ImageUrl is { Length: > 0 } url) thumb.Child = new Controls.ArtImage(url);
+            _root.Children.Add(new Border
+            {
+                Background = T.Glass,
+                CornerRadius = new CornerRadius(T.RPanel),
+                Padding = new Thickness(36),
+                Margin = new Thickness(0, 0, 96, 96),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Child = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 32,
+                    Children =
+                    {
+                        thumb,
+                        new StackPanel
+                        {
+                            Spacing = 10, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 560,
+                            Children =
+                            {
+                                _eyebrow,
+                                new TextBlock { Text = next.Label, FontSize = 40, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap },
+                                new TextBlock { Text = next.Sublabel ?? "", FontSize = 22, Foreground = T.Text2, IsVisible = next.Sublabel != null },
+                                _buttons,
+                            },
+                        },
+                    },
+                },
+            });
+            Draw();
+            Tick();
+        }
+
+        private void Tick() => _tick = _timers.After(TimeSpan.FromSeconds(1), () =>
+        {
+            if (_done) return;
+            if (--_left <= 0) { PlayNow(); return; }
+            Draw();
+            Tick();
+        });
+
+        private void Draw()
+        {
+            _eyebrow.Text = $"Up next · in {_left} s";
+            _buttons.Children.Clear();
+            string[] labels = { "▶ Play now", "Back to show" };
+            for (var i = 0; i < labels.Length; i++)
+                _buttons.Children.Add(new Border
+                {
+                    CornerRadius = new CornerRadius(999),
+                    Padding = new Thickness(26, 12),
+                    Margin = new Thickness(0, 12, 0, 0),
+                    Background = i == _button ? T.FocusFill : T.Pill,
+                    Child = new TextBlock { Text = labels[i], FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = i == _button ? T.FocusInk : T.Text },
+                });
+        }
+
+        private void PlayNow()
+        {
+            if (_done) return;
+            _done = true; _tick?.Dispose();
+            if (_ctx.Nav.State.Overlay?.Name == "upnext") _ctx.Nav.CloseOverlay();
+            _ctx.Activate(_next);
+        }
+
+        private void BackToShow()
+        {
+            if (_done) return;
+            _done = true; _tick?.Dispose();
+            _ctx.Playback.Stop();
+            _ctx.Nav.Stop();
+        }
+
+        public bool OnAction(UiAction a, bool repeat)
+        {
+            switch (a)
+            {
+                case UiAction.Left or UiAction.Right: _button = a == UiAction.Left ? 0 : 1; Draw(); return true;
+                case UiAction.Ok: if (_button == 0) PlayNow(); else BackToShow(); return true;
+                case UiAction.Next: PlayNow(); return true;
+                case UiAction.Back: BackToShow(); return true;
+            }
+            return true;
+        }
+
+        public void Destroy() { _done = true; _tick?.Dispose(); }
+    }
 }

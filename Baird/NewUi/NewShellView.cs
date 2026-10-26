@@ -91,6 +91,7 @@ namespace Baird.NewUi
                     "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
                     "reminder" when o.Params is Model.Reminder r => new ReminderCard(_ctx, r),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
+                    "upnext" when o.Params is Model.HomeCard next => new UpNextCard(_ctx, timers, next),
                     _ when o.Params is ChoiceList list => new ChoiceSheet(_ctx, list),
                     _ => new EmptyScreen(),
                 },
@@ -237,6 +238,12 @@ namespace Baird.NewUi
             };
             playback.Ended += () =>
             {
+                // The end of an episode: offer the next one (the card plays it by itself after a countdown).
+                if (playback.Current is { Kind: "vod" } && _ctx.NextEpisode() is { } next)
+                {
+                    nav.OpenOverlay(new OverlayRef("upnext", next));
+                    return;
+                }
                 playback.Stop();
                 nav.Stop();
                 surface.HasVideo = false;

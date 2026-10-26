@@ -20,6 +20,14 @@ namespace Baird.NewUi
         /// <summary>Channels in number order (from On now), for Pg± and number entry.</summary>
         public IReadOnlyList<Channel> Channels { get; set; } = Array.Empty<Channel>();
         public event Action<Channel>? Tuning;
+        /// <summary>The episodes of the show being watched, in order (set by the show page), for "Up next".</summary>
+        public IReadOnlyList<HomeCard> Following { get; set; } = Array.Empty<HomeCard>();
+        public HomeCard? NextEpisode()
+        {
+            var id = Playback.Current?.ItemId;
+            var i = Following.ToList().FindIndex(c => c.Id == id);
+            return i >= 0 && i + 1 < Following.Count ? Following[i + 1] : null;
+        }
         /// <summary>An on-demand item started (the shell shows its loading card).</summary>
         public event Action<HomeCard>? Starting;
         /// <summary>OK on the video answers the service's prompt ("Skip intro") if one is up.</summary>

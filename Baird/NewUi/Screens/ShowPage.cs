@@ -208,6 +208,14 @@ namespace Baird.NewUi.Screens
                 _epTrack.Children.Add(new TextBlock { Text = "No episodes listed for this season.", FontSize = T.Body, Foreground = T.Text2 });
         }
 
+        /// <summary>Plays an episode, telling the player the show's order so the end card can offer the next one.</summary>
+        private void PlayEpisode(Episode e)
+        {
+            if (_details != null)
+                _ctx.Following = _details.Seasons.SelectMany(s => s.Episodes).Where(x => x.State == EpisodeState.Available && x.Source != null).Select(EpisodeCard).ToList();
+            _ctx.Activate(EpisodeCard(e));
+        }
+
         private HomeCard EpisodeCard(Episode e)
         {
             var next = _details?.Next?.Episode;
@@ -241,7 +249,7 @@ namespace Baird.NewUi.Screens
             }
             if (t.Kind == TitleKind.Series && d.Seasons.Count > 0)
             {
-                if (d.Next is { } n) list.Add(new(n.Label, Icon.Play, true, () => _ctx.Activate(EpisodeCard(n.Episode))));
+                if (d.Next is { } n) list.Add(new(n.Label, Icon.Play, true, () => PlayEpisode(n.Episode)));
                 var downloading = d.Seasons.Where(s => s.State == SeasonState.Requested).ToList();
                 if (list.Count == 0 && downloading.Count > 0)
                 {
@@ -380,7 +388,7 @@ namespace Baird.NewUi.Screens
         {
             switch (e.State)
             {
-                case EpisodeState.Available when e.Source != null: _ctx.Activate(EpisodeCard(e)); break;
+                case EpisodeState.Available when e.Source != null: PlayEpisode(e); break;
                 case EpisodeState.Available: _ctx.Toast($"Seerr says {e.Code} is in your library, but Baird can't find it to play yet."); break;
                 case EpisodeState.Requested:
                     _ctx.Toast(e.Download is { } d ? $"{e.Code} is downloading ({d * 100:0}%). It appears in Up next when it's ready." : $"{e.Code} is requested. It appears in Up next when it's ready.");

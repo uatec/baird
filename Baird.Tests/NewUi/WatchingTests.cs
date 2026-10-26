@@ -212,5 +212,54 @@ namespace Baird.Tests.NewUi
             panel.OnAction(UiAction.Ok, false);
             Assert.Contains("seek 0", rig.Engine.Calls);
         }
+
+        private static HomeCard Ep(string id, string label) => new(CardKind.Episode, id, label, null, null, null, null, "Jellyfin", PlayVia.Mpv, $"http://jf/{id}");
+
+        [Fact]
+        public void The_next_episode_is_the_one_after_whats_playing_in_the_shows_order()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.Following = new[] { Ep("e1", "Glorious Purpose"), Ep("e2", "The Variant"), Ep("e3", "Lamentis") };
+            rig.Ctx.PlayItem(rig.Ctx.Following[1]);
+            Assert.Equal("e3", rig.Ctx.NextEpisode()?.Id);
+            rig.Ctx.PlayItem(rig.Ctx.Following[2]);
+            Assert.Null(rig.Ctx.NextEpisode());
+        }
+
+        [AvaloniaFact]
+        public void The_up_next_card_counts_down_and_plays_the_next_episode()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.Following = new[] { Ep("e1", "Glorious Purpose"), Ep("e2", "The Variant") };
+            rig.Ctx.PlayItem(rig.Ctx.Following[0]);
+            rig.Ctx.Nav.OpenOverlay(new OverlayRef("upnext"));
+            var card = new UpNextCard(rig.Ctx, rig.Timers, rig.Ctx.Following[1]);
+            for (var i = 0; i < UpNextCard.Countdown.TotalSeconds - 1; i++) rig.Timers.Advance(TimeSpan.FromSeconds(1));
+            Assert.Equal("e1", rig.Ctx.Playback.Current?.ItemId);
+            rig.Timers.Advance(TimeSpan.FromSeconds(1));
+            Assert.Equal("e2", rig.Ctx.Playback.Current?.ItemId);
+            Assert.Null(rig.Ctx.Nav.State.Overlay);
+        }
+
+        [AvaloniaFact]
+        public void Ok_on_up_next_plays_now_and_back_goes_back_to_the_show()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.Following = new[] { Ep("e1", "Glorious Purpose"), Ep("e2", "The Variant") };
+            rig.Ctx.PlayItem(rig.Ctx.Following[0]);
+            rig.Ctx.Nav.OpenOverlay(new OverlayRef("upnext"));
+            var card = new UpNextCard(rig.Ctx, rig.Timers, rig.Ctx.Following[1]);
+            card.OnAction(UiAction.Ok, false);
+            Assert.Equal("e2", rig.Ctx.Playback.Current?.ItemId);
+
+            rig.Ctx.Nav.OpenOverlay(new OverlayRef("upnext"));
+            var again = new UpNextCard(rig.Ctx, rig.Timers, rig.Ctx.Following[1]);
+            again.OnAction(UiAction.Right, false); // "Back to show"
+            again.OnAction(UiAction.Ok, false);
+            Assert.Null(rig.Ctx.Playback.Current);
+            Assert.False(rig.Ctx.Nav.State.AtVideo);
+            for (var i = 0; i < UpNextCard.Countdown.TotalSeconds; i++) rig.Timers.Advance(TimeSpan.FromSeconds(1));
+            Assert.Null(rig.Ctx.Playback.Current);
+        }
     }
 }
