@@ -129,18 +129,6 @@
                 <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
                     <controls:SettingsControl/>
                 </DataTemplate>
-                <DataTemplate DataType="{x:Type vm:NetflixSearchSpikeViewModel}">
-                    <controls:NetflixSearchSpikeControl/>
-                </DataTemplate>
-                <DataTemplate DataType="{x:Type vm:NetflixSpikeViewModel}">
-                    <controls:NetflixSpikeControl/>
-                </DataTemplate>
-                <DataTemplate DataType="{x:Type vm:DisneySearchSpikeViewModel}">
-                    <controls:DisneySearchSpikeControl/>
-                </DataTemplate>
-                <DataTemplate DataType="{x:Type vm:DisneySpikeViewModel}">
-                    <controls:DisneySpikeControl/>
-                </DataTemplate>
                 <DataTemplate DataType="{x:Type vm:LottieSpikeViewModel}">
                     <controls:LottieSpikeControl/>
                 </DataTemplate>

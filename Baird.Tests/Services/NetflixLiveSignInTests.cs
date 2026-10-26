@@ -30,7 +30,7 @@ namespace Baird.Tests.Services
             var creds = NetflixCredentials.FromConfiguration(cfg);
             Assert.NotNull(creds);
 
-            var vm = new NetflixSpikeViewModel(creds)
+            var vm = new NetflixPlaybackFlow(creds)
             {
                 ProfileDir = Environment.GetEnvironmentVariable("BAIRD_NETFLIX_TEST_PROFILE") ?? Path.Combine(Path.GetTempPath(), "baird-nf-signin-" + Guid.NewGuid().ToString("N")),
                 BufferingTimeout = TimeSpan.FromSeconds(15)
@@ -49,7 +49,7 @@ namespace Baird.Tests.Services
 
             Assert.DoesNotContain(creds!.Password, vm.StatusMessage);
             Assert.DoesNotContain(vm.LogEntries, l => l.Contains(creds.Password));
-            Assert.True(vm.State != NetflixSpikeState.NotLoggedIn && vm.State != NetflixSpikeState.Failed, vm.StatusMessage);
+            Assert.True(vm.State != NetflixPlaybackFlowState.NotLoggedIn && vm.State != NetflixPlaybackFlowState.Failed, vm.StatusMessage);
         }
     }
 }

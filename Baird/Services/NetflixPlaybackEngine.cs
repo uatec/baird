@@ -11,10 +11,13 @@ namespace Baird.Services
     /// <summary>
     /// Plays Netflix titles for Baird's normal video player. The video plays in the shared Netflix browser behind Baird's
     /// (transparent) window; Baird keeps the keys and this engine turns them into commands to Netflix's player over CDP.
-    /// It runs the proven playback flow (<see cref="NetflixSpikeViewModel"/>) on the browser that <see cref="NetflixSession"/>
+    /// It runs the proven playback flow (<see cref="NetflixPlaybackFlow"/>) on the browser that <see cref="NetflixSession"/>
     /// keeps open, polls the video, and returns the browser to its idle page when playback stops.
+    /// <para>When Netflix asks for a verification code (after Baird's sign-in, or on the title), the play waits on
+    /// <see cref="CodeRequest"/> for the viewer to type it, then carries on. When Netflix is not signed in and Baird cannot sign in
+    /// itself, the failure offers OK to sign in by hand on the TV (<see cref="FailureAction"/>).</para>
     /// </summary>
-    public sealed class NetflixPlaybackEngine : IBrowserPlaybackEngine
+    public sealed class NetflixPlaybackEngine : ICodeEntryEngine, IFailureActionEngine
     {
         private const string WatchPrefix = "https://www.netflix.com/watch/";
         /// <summary>Polls in a row without a video, off the watch page, before playback counts as ended.</summary>
@@ -27,12 +30,17 @@ namespace Baird.Services
         /// <summary>Failed polls in a row (no answer, an error, or no reply within <see cref="PollTimeout"/>) before giving up.</summary>
         private const int BadPollsForFailure = 2;
         private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(5);
+        /// <summary>Codes Netflix may refuse in one play before it fails (Netflix locks the account after a few wrong ones).</summary>
+        private const int CodeTries = 3;
+        private const string FirstCodeRequest = NetflixSession.VerificationCodeMessage;
+        private const string NotSignedInMessage = "Netflix is not signed in on this Baird.";
+        private static readonly string CodesRefusedMessage = $"Netflix refused the verification code {CodeTries} times.";
 
         private readonly NetflixSession _session;
-        private readonly Func<NetflixSpikeViewModel> _createFlow;
+        private readonly Func<NetflixPlaybackFlow> _createFlow;
         private readonly object _commandLock = new();
         private Task _commands = Task.CompletedTask;
-        private NetflixSpikeViewModel? _flow;
+        private NetflixPlaybackFlow? _flow;
         private CancellationTokenSource? _pollCts;
         private int _generation;
         private int _missingPolls;
@@ -40,11 +48,15 @@ namespace Baird.Services
         private Task _stopping = Task.CompletedTask;
         private bool _failedRaised;
         private bool _paused;
+        private int _codeTries;
+        /// <summary>The code asked for is for the session's own sign-in (else for the flow's verification step on the title).</summary>
+        private bool _codeForSession;
+        private string? _url;
         private double _position;
         private double _duration;
         private volatile PlaybackState _state = PlaybackState.Idle;
 
-        public NetflixPlaybackEngine(NetflixSession session, Func<NetflixSpikeViewModel> createFlow)
+        public NetflixPlaybackEngine(NetflixSession session, Func<NetflixPlaybackFlow> createFlow)
         {
             _session = session;
             _createFlow = createFlow;
@@ -72,6 +84,11 @@ namespace Baird.Services
         /// <summary>Netflix could not play (the reason, for the viewer). Raised once per play.</summary>
         public event EventHandler<string>? Failed;
 
+        private volatile string? _codeRequest;
+        /// <summary>Netflix's verification step is waiting for the code the viewer was sent (the text says so), else null.</summary>
+        public string? CodeRequest => _codeRequest;
+        public event EventHandler? CodeRequestChanged;
+
         public void Play(string url, double? startSeconds = null) => _ = PlayAsync(url); // Netflix resumes at its own place
 
         public async Task PlayAsync(string url)
@@ -79,10 +96,15 @@ namespace Baird.Services
             if (_flow != null || _state != PlaybackState.Idle) _ = StopAsync();
             var stopping = _stopping; // the browser must be back on its idle page before it opens the next title
             var generation = Interlocked.Increment(ref _generation);
+            _url = url;
             _failedRaised = false;
+            _failureAction = null;
             _missingPolls = 0;
             _badPolls = 0;
             _paused = false;
+            _codeTries = 0;
+            _codeForSession = false;
+            SetCodeRequest(null);
             Volatile.Write(ref _position, 0);
             Volatile.Write(ref _duration, 0);
             _state = PlaybackState.Loading;
@@ -104,33 +126,24 @@ namespace Baird.Services
                 string? failure;
                 using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2)))
                 {
-                    try { failure = await _session.EnsureReadyAsync(cts.Token); }
+                    // The viewer is here now: a sign-in that failed in the background is tried again (it may ask them for a code).
+                    try { failure = await _session.EnsureReadyAsync(cts.Token, signInAgain: true); }
                     catch (OperationCanceledException) { failure = "The Netflix browser did not get ready within 2 minutes."; }
                 }
                 if (generation != _generation) return;
                 if (failure != null)
                 {
-                    Fail(generation, failure);
+                    if (_session.NeedsVerificationCode)
+                    {
+                        _codeForSession = true;
+                        AskForCode();
+                        return;
+                    }
+                    Fail(generation, failure, offerSignIn: _session.NeedsSignIn);
                     return;
                 }
 
-                var flow = _createFlow();
-                flow.UseBairdHud = true;
-                flow.KeepBrowserOpen = true;
-                flow.TargetUrl = url;
-                flow.PropertyChanged += OnFlowChanged;
-                flow.PlaybackConfirmed += OnPlaybackConfirmed;
-                _flow = flow;
-
-                await flow.LaunchPlaybackFlowAsync();
-                if (generation != _generation || _state != PlaybackState.Loading) return;
-
-                // The flow settled without the video playing: it says why.
-                var reason = flow.IsMfaRequired
-                    ? "Netflix asked for a verification code. Open the Netflix Spike tab in the menu, start playback there and enter the code, then play this again."
-                    : flow.StatusMessage is { Length: > 0 } m ? m : "Netflix did not start the video.";
-                await ReleaseFlowAsync(generation);
-                Fail(generation, reason);
+                await StartFlowAsync(url, generation);
             }
             catch (Exception ex)
             {
@@ -141,6 +154,121 @@ namespace Baird.Services
             }
         }
 
+        /// <summary>The browser is ready (signed in, profile chosen): runs the playback flow on the title.</summary>
+        private async Task StartFlowAsync(string url, int generation)
+        {
+            var flow = _createFlow();
+            flow.UseBairdHud = true;
+            flow.KeepBrowserOpen = true;
+            flow.TargetUrl = url;
+            flow.PropertyChanged += OnFlowChanged;
+            flow.PlaybackConfirmed += OnPlaybackConfirmed;
+            _flow = flow;
+
+            await flow.LaunchPlaybackFlowAsync();
+            await SettleAsync(flow, generation);
+        }
+
+        /// <summary>
+        /// The flow returned: the video plays (nothing to do), Netflix wants a verification code (ask the viewer, keeping the
+        /// browser on that page), or it failed and says why.
+        /// </summary>
+        private async Task SettleAsync(NetflixPlaybackFlow flow, int generation)
+        {
+            if (generation != _generation || _state != PlaybackState.Loading) return;
+            if (flow.IsMfaRequired && _codeTries < CodeTries)
+            {
+                AskForCode();
+                return;
+            }
+
+            if (flow.State == NetflixPlaybackFlowState.NotLoggedIn) Console.WriteLine($"[NetflixEngine] {flow.StatusMessage}");
+            var signInProblem = flow.IsMfaRequired || flow.State == NetflixPlaybackFlowState.NotLoggedIn;
+            var reason = flow.IsMfaRequired ? CodesRefusedMessage
+                : flow.State == NetflixPlaybackFlowState.NotLoggedIn ? NotSignedInMessage
+                : flow.StatusMessage is { Length: > 0 } m ? m : "Netflix did not start the video.";
+            await ReleaseFlowAsync(generation);
+            Fail(generation, reason, offerSignIn: signInProblem);
+        }
+
+        private void AskForCode()
+        {
+            Console.WriteLine($"[NetflixEngine] Netflix asks for a verification code (try {_codeTries + 1} of {CodeTries}).");
+            SetCodeRequest(_codeTries == 0 ? FirstCodeRequest : "That code did not work. Type the code Netflix sent you again.");
+        }
+
+        public async Task SubmitCodeAsync(string code)
+        {
+            var generation = _generation;
+            var flow = _flow;
+            if (_codeRequest == null || _state != PlaybackState.Loading || string.IsNullOrWhiteSpace(code)) return;
+            if (!_codeForSession && flow == null) return;
+            _codeTries++;
+            SetCodeRequest(null);
+            SetStatus("Checking the code…");
+            Console.WriteLine($"[NetflixEngine] Sending the verification code ({code.Length} digits)."); // never the code itself
+            try
+            {
+                if (_codeForSession)
+                {
+                    // Netflix stopped Baird's own sign-in to ask for the code: the browser is still on that page.
+                    string? failure;
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2)))
+                    {
+                        try { failure = await _session.SubmitVerificationCodeAsync(code, cts.Token); }
+                        catch (OperationCanceledException) { failure = "Netflix did not answer within 2 minutes."; }
+                    }
+                    if (generation != _generation) return;
+                    if (failure == null)
+                    {
+                        _codeForSession = false;
+                        await StartFlowAsync(_url!, generation);
+                        return;
+                    }
+                    if (_session.NeedsVerificationCode && _codeTries < CodeTries)
+                    {
+                        AskForCode();
+                        return;
+                    }
+                    Fail(generation, _session.NeedsVerificationCode ? CodesRefusedMessage : failure, offerSignIn: true);
+                    return;
+                }
+
+                flow!.MfaPin = code;
+                await flow.SubmitMfaAsync();
+                await SettleAsync(flow, generation);
+            }
+            catch (Exception ex)
+            {
+                if (generation != _generation) return;
+                Console.WriteLine($"[NetflixEngine] Sending the code failed: {ex}");
+                await ReleaseFlowAsync(generation);
+                Fail(generation, $"Netflix could not take the code: {ex.Message}");
+            }
+        }
+
+        /// <summary>What OK offers on the failure screen when Netflix is not signed in (or refused the codes).</summary>
+        public const string SignInAction = "sign in to Netflix";
+
+        private volatile string? _failureAction;
+        public string? FailureAction => _failureAction;
+
+        /// <summary>
+        /// Shows Netflix's sign-in page for the viewer (see <see cref="NetflixSession.SignInByHandAsync"/>). Null when they signed
+        /// in and the title can be played again; else why not (and OK offers the sign-in again).
+        /// </summary>
+        public async Task<string?> RunFailureActionAsync(CancellationToken ct = default)
+        {
+            if (_failureAction != SignInAction) return "There is nothing to do.";
+            _failureAction = null;
+            await _stopping; // the failed play is still giving the browser back
+            Console.WriteLine("[NetflixEngine] Showing Netflix's sign-in page for the viewer.");
+            var outcome = await _session.SignInByHandAsync(ct);
+            Console.WriteLine($"[NetflixEngine] Sign-in by hand: {outcome ?? "signed in"}");
+            if (outcome != null) _failureAction = SignInAction;
+            return outcome;
+        }
+
         public void Stop() => _ = StopAsync();
 
         /// <summary>Stops at once (Idle); the browser's return to its idle page completes with the task.</summary>
@@ -149,6 +277,7 @@ namespace Baird.Services
             var generation = Interlocked.Increment(ref _generation);
             if (_state != PlaybackState.Idle) Console.WriteLine("[NetflixEngine] Stopping; the browser goes back to its idle page.");
             _state = PlaybackState.Idle;
+            SetCodeRequest(null);
             var previous = _stopping;
             return _stopping = StopAfterAsync(previous, generation);
         }
@@ -243,12 +372,12 @@ namespace Baird.Services
 
         private void OnFlowChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName != nameof(NetflixSpikeViewModel.State) || sender is not NetflixSpikeViewModel flow) return;
+            if (e.PropertyName != nameof(NetflixPlaybackFlow.State) || sender is not NetflixPlaybackFlow flow) return;
             var text = flow.State switch
             {
-                NetflixSpikeState.Idle or NetflixSpikeState.LaunchingHiddenBrowser => "Starting Netflix…",
-                NetflixSpikeState.CheckingAuth or NetflixSpikeState.SigningIn or NetflixSpikeState.SignedIn => "Signing in to Netflix…",
-                NetflixSpikeState.BufferingVideo => "Loading the video…",
+                NetflixPlaybackFlowState.Idle or NetflixPlaybackFlowState.LaunchingHiddenBrowser => "Starting Netflix…",
+                NetflixPlaybackFlowState.CheckingAuth or NetflixPlaybackFlowState.SigningIn or NetflixPlaybackFlowState.SignedIn => "Signing in to Netflix…",
+                NetflixPlaybackFlowState.BufferingVideo => "Loading the video…",
                 _ => null,
             };
             if (text != null) SetStatus(text);
@@ -316,15 +445,25 @@ namespace Baird.Services
             if (generation == _generation) _session.IsPlaybackActive = false;
         }
 
-        private void Fail(int generation, string reason)
+        /// <param name="offerSignIn">A sign-in problem: OK on the failure screen offers Netflix's sign-in page (<see cref="SignInAction"/>).</param>
+        private void Fail(int generation, string reason, bool offerSignIn = false)
         {
             if (generation != _generation) return; // a newer play or a stop came since
+            if (offerSignIn) _failureAction = SignInAction;
             _session.IsPlaybackActive = false;
             _state = PlaybackState.Idle;
+            SetCodeRequest(null);
             if (_failedRaised) return;
             _failedRaised = true;
             Console.WriteLine($"[NetflixEngine] Cannot play: {reason}");
             Failed?.Invoke(this, reason);
+        }
+
+        private void SetCodeRequest(string? text)
+        {
+            if (_codeRequest == text) return;
+            _codeRequest = text;
+            CodeRequestChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private void SetStatus(string text)

@@ -28,11 +28,12 @@ namespace Baird.Tests.Services
                 SessionSequence = () => new NetflixSessionState("https://www.netflix.com/browse", false, true, Array.Empty<string>()),
             };
             var session = new NetflixSession(svc, null) { PollInterval = TimeSpan.FromMilliseconds(5), SettleDelay = TimeSpan.FromMilliseconds(5) };
-            var engine = new NetflixPlaybackEngine(session, () => new NetflixSpikeViewModel(svc)
+            var engine = new NetflixPlaybackEngine(session, () => new NetflixPlaybackFlow(svc)
             {
                 PollInterval = TimeSpan.FromMilliseconds(5),
                 AuthCheckTimeout = TimeSpan.FromMilliseconds(200),
                 BufferingTimeout = TimeSpan.FromMilliseconds(300),
+                MfaSubmitGrace = TimeSpan.FromMilliseconds(20),
             })
             {
                 PollInterval = TimeSpan.FromHours(1), // tests poll by hand
@@ -194,19 +195,153 @@ namespace Baird.Tests.Services
             await engine.WhenCommandsDoneAsync();
         }
 
+        private static AuthPageStatus VerifyPage() => new("https://www.netflix.com/verify", "Verify", false, true, false, 0);
+
         [Fact]
-        public async Task VerificationStep_FailsWithAReasonTheViewerCanActOn()
+        public async Task VerificationStep_AsksTheViewerForTheCode_InsteadOfFailing()
+        {
+            var (svc, session, engine) = Engine();
+            svc.AuthStatusToReturn = VerifyPage();
+            var reasons = new List<string>();
+            engine.Failed += (_, r) => reasons.Add(r);
+            var requests = 0;
+            engine.CodeRequestChanged += (_, _) => requests++;
+
+            await engine.PlayAsync(WatchUrl);
+
+            Assert.Empty(reasons);
+            Assert.Equal(1, requests);
+            Assert.Contains("verification code", engine.CodeRequest);
+            Assert.DoesNotContain("best-effort", engine.CodeRequest);
+            Assert.Equal(PlaybackState.Loading, engine.State);
+            Assert.True(session.IsPlaybackActive); // the browser stays on the verification page, waiting for the code
+            Assert.False(svc.SubmitMfaCalled);
+        }
+
+        [Fact]
+        public async Task Code_IsSentToThePage_AndThePlayCarriesOn()
         {
             var (svc, _, engine) = Engine();
-            svc.AuthStatusToReturn = new AuthPageStatus("https://www.netflix.com/verify", "Verify", false, true, false, 0);
+            svc.AuthStatusToReturn = VerifyPage();
+            var loaded = 0;
+            engine.FileLoaded += (_, _) => loaded++;
+            await engine.PlayAsync(WatchUrl);
+
+            svc.AuthStatusToReturn = new AuthPageStatus(WatchUrl, "t", false, false, false, 0); // Netflix accepts it
+            await engine.SubmitCodeAsync("123456");
+
+            Assert.Equal("123456", svc.LastSubmittedPin);
+            Assert.Null(engine.CodeRequest);
+            Assert.Equal(1, loaded);
+            Assert.Equal(PlaybackState.Playing, engine.State);
+        }
+
+        [Fact]
+        public async Task WrongCode_AsksAgain_ThenFailsAfterThreeTries()
+        {
+            var (svc, session, engine) = Engine();
+            svc.AuthStatusToReturn = VerifyPage(); // Netflix keeps showing its verification page, with no video
+            svc.VideoSequence = NoVideo;
+            var reasons = new List<string>();
+            engine.Failed += (_, r) => reasons.Add(r);
+            await engine.PlayAsync(WatchUrl);
+
+            await engine.SubmitCodeAsync("111111");
+            Assert.Contains("did not work", engine.CodeRequest);
+            Assert.Empty(reasons);
+            await engine.SubmitCodeAsync("222222");
+            Assert.NotNull(engine.CodeRequest);
+            await engine.SubmitCodeAsync("333333");
+
+            Assert.Null(engine.CodeRequest);
+            Assert.Single(reasons);
+            Assert.Contains("verification code", reasons[0]);
+            Assert.Equal(PlaybackState.Idle, engine.State);
+            Assert.False(session.IsPlaybackActive);
+        }
+
+        [Fact]
+        public async Task CodeForBairdsOwnSignIn_IsAskedAtPlayTime_AndThePlayCarriesOn()
+        {
+            var (svc, _, _) = Engine();
+            svc.SessionSequence = NetflixSessionTests.SignedOut;
+            svc.AuthStatusToReturn = NetflixSessionTests.VerifyPage(); // Netflix answers the sign-in with its verification step
+            var signIn = new NetflixSession(svc, new NetflixCredentials("viewer@example.com", "secret"))
+            { PollInterval = TimeSpan.FromMilliseconds(5), SettleDelay = TimeSpan.FromMilliseconds(5) };
+            var e2 = new NetflixPlaybackEngine(signIn, () => new NetflixPlaybackFlow(svc)
+            { PollInterval = TimeSpan.FromMilliseconds(5), AuthCheckTimeout = TimeSpan.FromMilliseconds(200), BufferingTimeout = TimeSpan.FromMilliseconds(300) })
+            { PollInterval = TimeSpan.FromHours(1) };
+            var reasons = new List<string>();
+            e2.Failed += (_, r) => reasons.Add(r);
+
+            await e2.PlayAsync(WatchUrl);
+            Assert.Empty(reasons);
+            Assert.Equal(NetflixSession.VerificationCodeMessage, e2.CodeRequest);
+
+            svc.AuthStatusToReturn = new AuthPageStatus(WatchUrl, "t", false, false, false, 0);
+            svc.SessionSequence = NetflixSessionTests.Member;
+            await e2.SubmitCodeAsync("654321");
+
+            Assert.Equal("654321", svc.LastSubmittedPin);
+            Assert.Empty(reasons);
+            Assert.Equal(PlaybackState.Playing, e2.State);
+        }
+
+        [Fact]
+        public async Task NotSignedIn_OffersOKToSignInByHand_AndThenTheTitleCanPlay()
+        {
+            var (svc, _, _) = Engine();
+            svc.SessionSequence = NetflixSessionTests.SignedOut; // no credentials configured
+            var session = new NetflixSession(svc, null) { PollInterval = TimeSpan.FromMilliseconds(5), SettleDelay = TimeSpan.FromMilliseconds(5) };
+            var engine = new NetflixPlaybackEngine(session, () => new NetflixPlaybackFlow(svc)) { PollInterval = TimeSpan.FromHours(1) };
             var reasons = new List<string>();
             engine.Failed += (_, r) => reasons.Add(r);
 
             await engine.PlayAsync(WatchUrl);
-
             Assert.Single(reasons);
-            Assert.Contains("Netflix Spike", reasons[0]);
-            Assert.DoesNotContain("best-effort", reasons[0]);
+            Assert.Equal(NetflixPlaybackEngine.SignInAction, engine.FailureAction);
+
+            svc.SignInWatchSequence = NetflixSessionTests.Member; // the viewer signs in on Netflix's page
+            svc.SessionSequence = NetflixSessionTests.Member;
+            Assert.Null(await engine.RunFailureActionAsync());
+            Assert.True(svc.RevealWindowCalled);
+            Assert.Null(engine.FailureAction);
+        }
+
+        [Fact]
+        public async Task RefusedCodes_OfferOKToSignInByHand()
+        {
+            var (svc, _, engine) = Engine();
+            svc.AuthStatusToReturn = VerifyPage();
+            svc.VideoSequence = NoVideo;
+            await engine.PlayAsync(WatchUrl);
+            for (var i = 0; i < 3; i++) await engine.SubmitCodeAsync("111111");
+
+            Assert.Equal(NetflixPlaybackEngine.SignInAction, engine.FailureAction);
+        }
+
+        [Fact]
+        public async Task OtherFailures_OfferNothing()
+        {
+            var (_, _, engine) = Engine(video: () => null);
+            await engine.PlayAsync(WatchUrl);
+
+            Assert.Null(engine.FailureAction);
+        }
+
+        [Fact]
+        public async Task Stop_WhileAskingForTheCode_ClearsTheRequest()
+        {
+            var (svc, session, engine) = Engine();
+            svc.AuthStatusToReturn = VerifyPage();
+            await engine.PlayAsync(WatchUrl);
+
+            await engine.StopAsync();
+
+            Assert.Null(engine.CodeRequest);
+            Assert.False(session.IsPlaybackActive);
+            await engine.SubmitCodeAsync("123456"); // too late: nothing is sent
+            Assert.False(svc.SubmitMfaCalled);
         }
 
         [Fact]

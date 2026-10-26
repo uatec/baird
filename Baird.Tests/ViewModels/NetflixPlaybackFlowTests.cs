@@ -59,6 +59,10 @@ namespace Baird.Tests.ViewModels
         public string? CaptureResult { get; set; }
         public int CaptureCalls { get; private set; }
         public Task<NetflixSessionState?> ReadNetflixSessionStateAsync(CancellationToken ct = default) => Task.FromResult(SessionSequence?.Invoke());
+        /// <summary>What the page says while the viewer signs in by hand (falls back to <see cref="SessionSequence"/>).</summary>
+        public Func<NetflixSessionState?>? SignInWatchSequence { get; set; }
+        public Task<NetflixSessionState?> WatchNetflixSignInAsync(CancellationToken ct = default) =>
+            Task.FromResult((SignInWatchSequence ?? SessionSequence)?.Invoke());
         public Task<string?> PostNetflixGraphQlAsync(string requestBody, CancellationToken ct = default)
         {
             GraphQlBodies.Add(requestBody);
@@ -159,7 +163,7 @@ namespace Baird.Tests.ViewModels
         }
     }
 
-    public class NetflixSpikeViewModelTests
+    public class NetflixPlaybackFlowTests
     {
         private static VideoPlaybackStatus Video(double t) =>
             new(true, t, 4, false, 300, "https://www.netflix.com/watch/1", "Netflix");
@@ -167,7 +171,7 @@ namespace Baird.Tests.ViewModels
         private static AuthPageStatus Auth(string url, bool login = false, bool mfa = false, bool video = false, double t = 0) =>
             new(url, "t", login, mfa, video, t);
 
-        private static NetflixSpikeViewModel Vm(MockCdpBrowserService svc) => new(svc)
+        private static NetflixPlaybackFlow Vm(MockCdpBrowserService svc) => new(svc)
         {
             UseBairdHud = false,
             PollInterval = TimeSpan.FromMilliseconds(5),
@@ -186,8 +190,7 @@ namespace Baird.Tests.ViewModels
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(NetflixSpikeState.NotLoggedIn, vm.State);
-            Assert.True(vm.IsProblem);
+            Assert.Equal(NetflixPlaybackFlowState.NotLoggedIn, vm.State);
             Assert.Contains("NOT LOGGED IN", vm.StatusMessage);
             Assert.False(svc.PollVideoCalled);
             Assert.True(svc.StopCalled);
@@ -202,7 +205,7 @@ namespace Baird.Tests.ViewModels
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(NetflixSpikeState.Failed, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Failed, vm.State);
             Assert.Contains("no such binary", vm.StatusMessage);
             Assert.False(svc.CheckAuthCalled);
         }
@@ -219,7 +222,7 @@ namespace Baird.Tests.ViewModels
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(NetflixSpikeState.Failed, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Failed, vm.State);
             Assert.False(svc.RevealWindowCalled);
         }
 
@@ -236,10 +239,10 @@ namespace Baird.Tests.ViewModels
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Playing, vm.State);
         }
 
-        private static async Task<(MockCdpBrowserService svc, NetflixSpikeViewModel vm)> PlayingVm()
+        private static async Task<(MockCdpBrowserService svc, NetflixPlaybackFlow vm)> PlayingVm()
         {
             double t = 0;
             var svc = new MockCdpBrowserService
@@ -249,7 +252,7 @@ namespace Baird.Tests.ViewModels
             };
             var vm = Vm(svc);
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Playing, vm.State);
             return (svc, vm);
         }
 
@@ -261,7 +264,7 @@ namespace Baird.Tests.ViewModels
             svc.RaisePageSignal("{\"type\":\"exit\"}");
 
             Assert.True(svc.StopCalled);
-            Assert.Equal(NetflixSpikeState.Stopped, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Stopped, vm.State);
         }
 
         [Fact]
@@ -276,7 +279,7 @@ namespace Baird.Tests.ViewModels
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Playing, vm.State);
             Assert.False(svc.RevealWindowCalled);
             Assert.Equal(1, confirmed);
             Assert.Contains("baird-page-style", svc.LastInjectedScript);
@@ -293,7 +296,7 @@ namespace Baird.Tests.ViewModels
             svc.RaisePageSignal(payload);
 
             Assert.False(svc.StopCalled);
-            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Playing, vm.State);
         }
 
         [Fact]
@@ -323,10 +326,10 @@ namespace Baird.Tests.ViewModels
 
             await vm.StartSignInAsync();
             Assert.True(svc.LastLaunchVisible);
-            Assert.Equal(NetflixSpikeState.SigningIn, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.SigningIn, vm.State);
 
             await vm.CompleteSignInAsync();
-            Assert.Equal(NetflixSpikeState.SigningIn, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.SigningIn, vm.State);
             Assert.Contains("Still on a login page", vm.StatusMessage);
         }
 
@@ -343,7 +346,7 @@ namespace Baird.Tests.ViewModels
             svc.AuthStatusToReturn = Auth("https://www.netflix.com/browse");
             await vm.CompleteSignInAsync();
 
-            Assert.Equal(NetflixSpikeState.SignedIn, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.SignedIn, vm.State);
             Assert.True(svc.StopCalled);
             Assert.True(vm.CanLaunch);
         }
@@ -361,52 +364,39 @@ namespace Baird.Tests.ViewModels
         public void InitialState_ShouldBeIdle_WithDefaultUrl()
         {
             var mockService = new MockCdpBrowserService();
-            var vm = new NetflixSpikeViewModel(mockService);
+            var vm = new NetflixPlaybackFlow(mockService);
 
-            Assert.Equal(NetflixSpikeState.Idle, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Idle, vm.State);
             Assert.True(vm.IsIdle);
             Assert.True(vm.CanLaunch);
             Assert.False(vm.CanStop);
             Assert.Equal("https://www.netflix.com/watch/80107105", vm.TargetUrl);
-            Assert.Equal("____", vm.MfaPinDisplay);
-        }
-
-        [Fact]
-        public void SelectPresetCommand_ShouldUpdateTargetUrl()
-        {
-            var mockService = new MockCdpBrowserService();
-            var vm = new NetflixSpikeViewModel(mockService);
-
-            vm.SelectPresetCommand.Execute("https://example.com/test.mp4").Subscribe();
-
-            Assert.Equal("https://example.com/test.mp4", vm.TargetUrl);
         }
 
         [Fact]
         public void PinManipulation_ShouldWorkCorrectly()
         {
             var mockService = new MockCdpBrowserService();
-            var vm = new NetflixSpikeViewModel(mockService);
+            var vm = new NetflixPlaybackFlow(mockService);
 
             vm.AppendMfaPin("1");
             vm.AppendMfaPin("2");
             vm.AppendMfaPin("3");
             Assert.Equal("123", vm.MfaPin);
-            Assert.Equal("123", vm.MfaPinDisplay);
 
             vm.BackspaceMfaPin();
             Assert.Equal("12", vm.MfaPin);
 
-            vm.ClearMfaCommand.Execute().Subscribe();
+            vm.BackspaceMfaPin();
+            vm.BackspaceMfaPin();
             Assert.Equal("", vm.MfaPin);
-            Assert.Equal("____", vm.MfaPinDisplay);
         }
 
         [Fact]
         public async Task LaunchFlow_WithSimulatedMfa_ShouldTransitionToMfaRequired()
         {
             var mockService = new MockCdpBrowserService();
-            var vm = new NetflixSpikeViewModel(mockService)
+            var vm = new NetflixPlaybackFlow(mockService)
             {
                 IsSimulateMfaEnabled = true
             };
@@ -414,7 +404,7 @@ namespace Baird.Tests.ViewModels
             await vm.LaunchPlaybackFlowAsync();
 
             Assert.True(mockService.LaunchCalled);
-            Assert.Equal(NetflixSpikeState.MfaRequired, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.MfaRequired, vm.State);
             Assert.True(vm.IsMfaRequired);
             Assert.True(vm.CanStop);
         }
@@ -428,7 +418,7 @@ namespace Baird.Tests.ViewModels
                 VideoSequence = () => Video(t += 0.5)
             };
 
-            var vm = new NetflixSpikeViewModel(mockService)
+            var vm = new NetflixPlaybackFlow(mockService)
             {
                 UseBairdHud = false,
                 IsSimulateMfaEnabled = true,
@@ -436,7 +426,7 @@ namespace Baird.Tests.ViewModels
             };
 
             await vm.LaunchPlaybackFlowAsync();
-            Assert.Equal(NetflixSpikeState.MfaRequired, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.MfaRequired, vm.State);
 
             vm.AppendMfaPin("4");
             vm.AppendMfaPin("8");
@@ -445,7 +435,7 @@ namespace Baird.Tests.ViewModels
 
             await vm.SubmitMfaAsync();
 
-            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Playing, vm.State);
             Assert.True(vm.IsPlaying);
             Assert.True(mockService.InjectOverlayCalled);
             Assert.True(mockService.RevealWindowCalled);
@@ -455,12 +445,12 @@ namespace Baird.Tests.ViewModels
         public async Task StopCommand_ShouldTerminateBrowserAndSetStopped()
         {
             var mockService = new MockCdpBrowserService();
-            var vm = new NetflixSpikeViewModel(mockService);
+            var vm = new NetflixPlaybackFlow(mockService);
 
             await vm.StopPlaybackAsync();
 
             Assert.True(mockService.StopCalled);
-            Assert.Equal(NetflixSpikeState.Stopped, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Stopped, vm.State);
             Assert.True(vm.IsStopped);
             Assert.True(vm.CanLaunch);
         }
@@ -518,7 +508,7 @@ namespace Baird.Tests.ViewModels
         private static AuthPageStatus LoginPage() => new("https://www.netflix.com/gb/login", "Sign In", true, false, false, 0, "ANONYMOUS", false);
         private static AuthPageStatus BrowsePage() => new("https://www.netflix.com/browse", "Netflix", false, false, false, 0, "CURRENT_MEMBER", false);
 
-        private static void AssertNoSecret(NetflixSpikeViewModel vm)
+        private static void AssertNoSecret(NetflixPlaybackFlow vm)
         {
             Assert.DoesNotContain(Secret, vm.StatusMessage);
             Assert.DoesNotContain(vm.LogEntries, l => l.Contains(Secret));
@@ -529,12 +519,12 @@ namespace Baird.Tests.ViewModels
         public async Task LoginPage_WithoutCredentials_ReportsNotLoggedInAndHowToConfigure()
         {
             var svc = new MockCdpBrowserService { AuthStatusToReturn = LoginPage() };
-            var vm = new NetflixSpikeViewModel(svc);
+            var vm = new NetflixPlaybackFlow(svc);
 
             await vm.LaunchPlaybackFlowAsync();
 
             Assert.False(vm.HasCredentials);
-            Assert.Equal(NetflixSpikeState.NotLoggedIn, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.NotLoggedIn, vm.State);
             Assert.Contains("NETFLIX_USER", vm.StatusMessage);
             Assert.Contains("NETFLIX_PASS", vm.StatusMessage);
             Assert.Equal(0, svc.SubmitCredentialsCalls);
@@ -545,13 +535,13 @@ namespace Baird.Tests.ViewModels
         {
             int reads = 0;
             var svc = new MockCdpBrowserService { AuthSequence = () => reads++ < 1 ? LoginPage() : BrowsePage() };
-            var vm = new NetflixSpikeViewModel(svc, new NetflixCredentials("me@example.com", Secret)) { BufferingTimeout = TimeSpan.FromMilliseconds(300) };
+            var vm = new NetflixPlaybackFlow(svc, new NetflixCredentials("me@example.com", Secret)) { BufferingTimeout = TimeSpan.FromMilliseconds(300) };
 
             await vm.LaunchPlaybackFlowAsync();
 
             Assert.Equal(1, svc.SubmitCredentialsCalls);
             Assert.Equal(vm.TargetUrl, svc.LastNavigatedUrl); // after sign-in it opens the requested title
-            Assert.NotEqual(NetflixSpikeState.NotLoggedIn, vm.State);
+            Assert.NotEqual(NetflixPlaybackFlowState.NotLoggedIn, vm.State);
             AssertNoSecret(vm);
         }
 
@@ -559,11 +549,11 @@ namespace Baird.Tests.ViewModels
         public async Task LoginPage_WithRejectedCredentials_ReportsNetflixErrorAndDoesNotRetry()
         {
             var svc = new MockCdpBrowserService { AuthStatusToReturn = LoginPage(), LoginError = "Incorrect password." };
-            var vm = new NetflixSpikeViewModel(svc, new NetflixCredentials("me@example.com", Secret)) { SignInTimeout = TimeSpan.FromMilliseconds(500), PollInterval = TimeSpan.FromMilliseconds(50) };
+            var vm = new NetflixPlaybackFlow(svc, new NetflixCredentials("me@example.com", Secret)) { SignInTimeout = TimeSpan.FromMilliseconds(500), PollInterval = TimeSpan.FromMilliseconds(50) };
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(NetflixSpikeState.NotLoggedIn, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.NotLoggedIn, vm.State);
             Assert.Contains("Incorrect password.", vm.StatusMessage);
             Assert.Contains("me@example.com", vm.StatusMessage);
             Assert.Equal(1, svc.SubmitCredentialsCalls); // never hammer Netflix with a wrong password
@@ -574,11 +564,11 @@ namespace Baird.Tests.ViewModels
         public async Task LoginForm_CannotBeFilled_FailsWithReason()
         {
             var svc = new MockCdpBrowserService { AuthStatusToReturn = LoginPage(), SubmitResult = () => new(false, "login form did not appear") };
-            var vm = new NetflixSpikeViewModel(svc, new NetflixCredentials("me@example.com", Secret));
+            var vm = new NetflixPlaybackFlow(svc, new NetflixCredentials("me@example.com", Secret));
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(NetflixSpikeState.Failed, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Failed, vm.State);
             Assert.Contains("login form did not appear", vm.StatusMessage);
             AssertNoSecret(vm);
         }
@@ -609,14 +599,14 @@ namespace Baird.Tests.ViewModels
             var err = new AuthPageStatus("https://www.netflix.com/watch/80107105", "Netflix", false, false, false, 0, "CURRENT_MEMBER", false,
                 "E100", "This title is not available to watch instantly. Please try another title.");
             var svc = new MockCdpBrowserService { AuthStatusToReturn = err };
-            var vm = new NetflixSpikeViewModel(svc) { ErrorRetryGrace = TimeSpan.Zero };
+            var vm = new NetflixPlaybackFlow(svc) { ErrorRetryGrace = TimeSpan.Zero };
 
             await vm.LaunchPlaybackFlowAsync();
 
-            Assert.Equal(NetflixSpikeState.Failed, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Failed, vm.State);
             Assert.Contains("E100", vm.StatusMessage);
             Assert.Contains("not available to watch instantly", vm.StatusMessage);
-            Assert.Contains("NETFLIX_TARGET_URL", vm.StatusMessage);
+            Assert.Contains("Try another title", vm.StatusMessage);
             Assert.Contains("site data", vm.StatusMessage);
             Assert.Equal(1, svc.WarmUpCalls); // exactly one site-data clear + reload before giving up
             Assert.False(svc.RevealWindowCalled);
@@ -634,13 +624,13 @@ namespace Baird.Tests.ViewModels
             svc.AuthSequence = () => svc.WarmUpCalls > 0 ? ok : err;
             // After the reload the video really plays: currentTime advances between polls.
             svc.VideoSequence = () => new VideoPlaybackStatus(true, t += 0.5, 4, false, 1400, "https://www.netflix.com/watch/80107105", "Netflix");
-            var vm = new NetflixSpikeViewModel(svc) { PollInterval = TimeSpan.FromMilliseconds(5), BufferingTimeout = TimeSpan.FromSeconds(3) };
+            var vm = new NetflixPlaybackFlow(svc) { PollInterval = TimeSpan.FromMilliseconds(5), BufferingTimeout = TimeSpan.FromSeconds(3) };
 
             await vm.LaunchPlaybackFlowAsync();
 
             Assert.Equal(1, svc.WarmUpCalls);
             Assert.Equal(vm.TargetUrl, svc.LastNavigatedUrl); // reloaded the title after the warm-up
-            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Playing, vm.State);
         }
 
         [Fact]
@@ -655,12 +645,12 @@ namespace Baird.Tests.ViewModels
             // The reloaded page keeps showing the OLD error for several polls (still loading), then really plays.
             svc.AuthSequence = () => ++polls < 8 ? err : ok;
             svc.VideoSequence = () => polls < 8 ? null : new VideoPlaybackStatus(true, t += 0.5, 4, false, 1400, "u", "Netflix");
-            var vm = new NetflixSpikeViewModel(svc) { PollInterval = TimeSpan.FromMilliseconds(5), ErrorRetryGrace = TimeSpan.FromSeconds(5), BufferingTimeout = TimeSpan.FromSeconds(5) };
+            var vm = new NetflixPlaybackFlow(svc) { PollInterval = TimeSpan.FromMilliseconds(5), ErrorRetryGrace = TimeSpan.FromSeconds(5), BufferingTimeout = TimeSpan.FromSeconds(5) };
 
             await vm.LaunchPlaybackFlowAsync();
 
             Assert.Equal(1, svc.WarmUpCalls);
-            Assert.Equal(NetflixSpikeState.Playing, vm.State);
+            Assert.Equal(NetflixPlaybackFlowState.Playing, vm.State);
         }
     }
 }

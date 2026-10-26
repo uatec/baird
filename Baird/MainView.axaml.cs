@@ -74,6 +74,11 @@ namespace Baird
             // The mouse is off by default (Baird is driven by the remote); BAIRD_MOUSE=true brings it back for desktop development.
             _mouseEnabled = bool.TryParse(config["BAIRD_MOUSE"], out var mouse) && mouse;
 
+            // Hover states come from hit-testing, which runs before any handler can swallow the event, so a pointer that is
+            // hidden but still moving would flicker the buttons it passes over. Nothing under the window is hit-testable;
+            // the window itself still gets the clicks (see OnGlobalPointerPressed).
+            if (!_mouseEnabled) IsHitTestVisible = false;
+
             var tvh = new TvHeadendService(config);
             _providers.Add(tvh);
             _epgService = tvh;
@@ -111,6 +116,20 @@ namespace Baird
             }
             else Console.WriteLine("[MainView] Disney+ not in search: no DISNEY_USER/DISNEY_PASS in config.ini.");
 
+            // Channel 4's search and episode lists are public (plain HTTP), so it is always in search. Playing needs the shared browser
+            // signed in, by the viewer (Channel 4 refuses automated sign-ins): the player offers "Press OK to sign in" when it is not.
+            var channel4Service = new Channel4Service(netflixSession.Hub, new Channel4Catalogue());
+            channel4Service.Log += m => Console.WriteLine($"[Channel4Service] {m}");
+            _providers.Add(new Channel4Provider(channel4Service.Catalogue));
+
+            // ITVX's search is public (plain HTTP), so it is always in search. Its programme pages and playing need the shared browser
+            // (www.itv.com answers only real browsers); it signs in with ITVX_USER/ITVX_PASS when a page asks, not at start-up.
+            var itvxCredentials = ItvxCredentials.FromConfiguration(config);
+            var itvxService = new ItvxService(netflixSession.Hub, new ItvxCatalogue(), itvxCredentials);
+            itvxService.Log += m => Console.WriteLine($"[ItvxService] {m}");
+            _providers.Add(new ItvxProvider(itvxService.Catalogue, itvxService));
+            if (itvxCredentials == null) Console.WriteLine("[MainView] ITVX has no ITVX_USER/ITVX_PASS in config.ini: it will not be able to sign in to play.");
+
             _cecService = new CecService();
             _historyService = new JsonHistoryService();
             var watchlistService = new JsonWatchlistService();
@@ -138,7 +157,7 @@ namespace Baird
             // Create DataService encapsulating providers and history
             _dataService = new DataService(_providers, _historyService, watchlistService, mediaItemCache, mediaDataCache);
 
-            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession, disneyService);
+            _viewModel = new MainViewModel(config, _dataService, searchHistoryService, _screensaverService, _cecService, _jellyseerrService, _epgService, netflixSession, disneyService, channel4Service, itvxService);
 
             DataContext = _viewModel;
 
@@ -187,9 +206,16 @@ namespace Baird
                     if (!_mouseEnabled)
                     {
                         // Remote-only: hide the pointer and swallow every mouse event before it reaches a control.
+                        // The remote's buttons arrive as mouse buttons, which are turned into Enter, Back and Home.
                         topLevel.Cursor = new Cursor(StandardCursorType.None);
-                        SwallowPointerEvents(topLevel, InputElement.PointerPressedEvent, InputElement.PointerReleasedEvent,
-                            InputElement.PointerMovedEvent, InputElement.PointerWheelChangedEvent);
+                        SwallowPointerEvents(topLevel, InputElement.PointerMovedEvent, InputElement.PointerWheelChangedEvent);
+                        topLevel.AddHandler(InputElement.PointerPressedEvent, OnGlobalPointerPressed, RoutingStrategies.Tunnel);
+                        topLevel.AddHandler(InputElement.PointerReleasedEvent, OnGlobalPointerReleased, RoutingStrategies.Tunnel);
+                        _visualTreeSubscriptions.Add(Disposable.Create(() =>
+                        {
+                            topLevel.RemoveHandler(InputElement.PointerPressedEvent, OnGlobalPointerPressed);
+                            topLevel.RemoveHandler(InputElement.PointerReleasedEvent, OnGlobalPointerReleased);
+                        }));
                     }
 
                     // Existing InputCoordinator (Bubbling)
@@ -321,6 +347,8 @@ namespace Baird
                         // Netflix plays in the browser behind Baird: the window goes transparent while it shows.
                         player.NetflixEngine = _viewModel.NetflixEngine;
                         player.AddBrowserEngine(_viewModel.DisneyEngine);
+                        player.AddBrowserEngine(_viewModel.Channel4Engine);
+                        player.AddBrowserEngine(_viewModel.ItvxEngine);
                         _visualTreeSubscriptions.Add(player.GetObservable(Controls.VideoPlayer.IsShowingBrowserProperty).Subscribe(showing =>
                         {
                             if (TopLevel.GetTopLevel(this) is not Window window) return;
@@ -336,7 +364,7 @@ namespace Baird
 
                         EventHandler onHistoryRequested = (sender, args) =>
                         {
-                            Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.OpenMainMenu());
+                            Avalonia.Threading.Dispatcher.UIThread.Post(() => _viewModel.GoToHistory());
                         };
                         player.HistoryRequested += onHistoryRequested;
                         _visualTreeSubscriptions.Add(Disposable.Create(() => player.HistoryRequested -= onHistoryRequested));
@@ -775,6 +803,42 @@ namespace Baird
             }
         }
 
+        // The remote is an air mouse: OK arrives as the left button, Back and Home as the others.
+        private void OnGlobalPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            e.Handled = true;
+            var kind = e.GetCurrentPoint(null).Properties.PointerUpdateKind;
+            Console.WriteLine($"[MainView] Remote mouse button: {kind}");
+            switch (kind)
+            {
+                case PointerUpdateKind.LeftButtonPressed:
+                    RaiseKeyOnFocus(InputElement.KeyDownEvent, Key.Enter);
+                    break;
+                case PointerUpdateKind.RightButtonPressed:
+                case PointerUpdateKind.XButton1Pressed:
+                    RaiseKeyOnFocus(InputElement.KeyDownEvent, Key.Escape);
+                    break;
+                case PointerUpdateKind.MiddleButtonPressed:
+                case PointerUpdateKind.XButton2Pressed:
+                    RaiseKeyOnFocus(InputElement.KeyDownEvent, Key.BrowserHome);
+                    break;
+            }
+        }
+
+        private void OnGlobalPointerReleased(object? sender, PointerReleasedEventArgs e)
+        {
+            e.Handled = true;
+            if (e.InitialPressMouseButton == MouseButton.Left)
+                RaiseKeyOnFocus(InputElement.KeyUpEvent, Key.Enter);
+        }
+
+        private void RaiseKeyOnFocus(RoutedEvent<KeyEventArgs> keyEvent, Key key)
+        {
+            var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
+            var target = topLevel?.FocusManager?.GetFocusedElement() as Interactive ?? topLevel;
+            target?.RaiseEvent(new KeyEventArgs { RoutedEvent = keyEvent, Key = key, Source = target });
+        }
+
         private static void SwallowPointerEvent(object? sender, RoutedEventArgs e) => e.Handled = true;
 
         private void InputCoordinator(object? sender, KeyEventArgs e)
@@ -796,11 +860,11 @@ namespace Baird
                 return;
             }
 
-            // HomePage key — close all menus and return to video player
+            // HomePage key — close the guide and open the History tab
             if (e.Key == Key.BrowserHome)
             {
                 _viewModel.IsEpgActive = false;
-                _viewModel.GoHome();
+                _viewModel.GoToHistory();
                 e.Handled = true;
                 return;
             }
