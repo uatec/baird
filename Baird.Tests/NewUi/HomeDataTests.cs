@@ -150,5 +150,23 @@ namespace Baird.Tests.NewUi
             await new HistoryWriter(data).SaveAsync("ep1", TimeSpan.FromMinutes(12), TimeSpan.FromMinutes(50));
             Assert.Contains(("ep1", TimeSpan.FromMinutes(12)), history.Upserts);
         }
+
+        [Fact]
+        public async Task Hiding_an_item_takes_it_off_up_next_until_it_is_watched_again()
+        {
+            var (_, history, epg, data) = Build();
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "baird-hidden-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                var home = new HomeData(data, epg, null) { HiddenPath = path };
+                Assert.Contains(await home.UpNextAsync(), c => c.Id == "film1");
+                await home.HideFromUpNextAsync("film1");
+                Assert.DoesNotContain(await home.UpNextAsync(), c => c.Id == "film1");
+                Assert.DoesNotContain(await new HomeData(data, epg, null) { HiddenPath = path }.UpNextAsync(), c => c.Id == "film1"); // remembered
+                history.Items.Single(h => h.Id == "film1").LastWatched = DateTime.Now.AddMinutes(5);           // watched again
+                Assert.Contains(await home.UpNextAsync(), c => c.Id == "film1");
+            }
+            finally { System.IO.File.Delete(path); }
+        }
     }
 }

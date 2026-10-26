@@ -108,20 +108,22 @@ namespace Baird.NewUi.Screens
             _art.Children.Clear();
             if (string.IsNullOrEmpty(url)) return;
             var img = new Image { Stretch = Stretch.UniformToFill, Opacity = 0, OpacityMask = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.3), new GradientStop(Colors.Transparent, 0.95) } } };
+            _art.Children.Add(img);
+            // Prefetched while its card was lit: there at once, no fade.
+            if (ImageCache.TryGet(url, out var cached) && cached != null) { img.Source = cached; img.Opacity = 0.75; Motion.Animate(img, T.Slow); return; }
             Motion.Animate(img, T.Slow);
             img.PropertyChanged += (_, e) => { if (e.Property == Image.SourceProperty && img.Source != null) img.Opacity = 0.75; };
             AsyncImageLoader.ImageLoader.SetSource(img, url);
-            _art.Children.Add(img);
         }
 
         // ------------------------------------------------------------------ data
-        private async Task LoadAsync()
+        private async Task LoadAsync(bool fresh = false)
         {
             if (_ctx.Shows == null) return;
             try
             {
                 // What Seerr knows shows at once; each library source that has it fills in as it answers.
-                var d = await _ctx.Shows.DetailsAsync(_title, partial => OnUi(() => Apply(partial)), _life.Token);
+                var d = await _ctx.Shows.DetailsAsync(_title, partial => OnUi(() => Apply(partial)), _life.Token, fresh);
                 OnUi(() => Apply(d));
             }
             catch (OperationCanceledException) { }
@@ -153,7 +155,7 @@ namespace Baird.NewUi.Screens
             Rebuild();
             _poll?.Dispose();
             var downloading = d.Seasons.Any(s => s.State == SeasonState.Requested || s.Episodes.Any(e => e.State == EpisodeState.Requested)) || d.FilmState == SeasonState.Requested;
-            if (downloading) _poll = _ctx.Timers.After(Poll, () => { Loaded = LoadAsync(); });
+            if (downloading) _poll = _ctx.Timers.After(Poll, () => { Loaded = LoadAsync(fresh: true); });
         }
 
         // ------------------------------------------------------------------ building
@@ -357,7 +359,7 @@ namespace Baird.NewUi.Screens
             {
                 var (ok, message) = await _ctx.Shows.RequestAsync(_details, seasons, _life.Token);
                 OnUi(() => _ctx.Toast(message));
-                if (ok) { Loaded = LoadAsync(); await Loaded; }
+                if (ok) { Loaded = LoadAsync(fresh: true); await Loaded; }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { Console.WriteLine($"[ShowPage] Request failed: {ex.Message}"); }
@@ -374,6 +376,7 @@ namespace Baird.NewUi.Screens
             _epTrack.RenderTransform = TransformOperations.Parse($"translate({-Math.Max(0, col - 1) * EpStep}px, 0px)");
             // The lit item is always wholly on screen: the episodes lift the page up.
             _content.RenderTransform = TransformOperations.Parse($"translate(0px, {(onEps ? -150 : 0)}px)");
+            if (_rows[_pos.Row] == RowKind.Seasons && _details != null) _ctx.Prefetch?.Season(_details, _season); // the seasons either side
         }
 
         public bool OnAction(UiAction a, bool repeat)

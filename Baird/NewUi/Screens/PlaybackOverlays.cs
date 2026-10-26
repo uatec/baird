@@ -586,7 +586,7 @@ namespace Baird.NewUi.Screens
         public (double X, double Y) EnterFrom => (80, 0);
         public Control? LitElement => _list.Children.Count > _index ? _list.Children[_index] as Control : null;
 
-        public ItemActions(NewUiContext ctx, HomeCard card, Action<string>? openSchedule = null)
+        public ItemActions(NewUiContext ctx, HomeCard card, Action<string>? openSchedule = null, bool fromUpNext = false)
         {
             _ctx = ctx; _card = card;
             var playable = card.Via != PlayVia.None && card.StreamUrl != null && card.Kind != CardKind.Series;
@@ -619,6 +619,14 @@ namespace Baird.NewUi.Screens
                     ));
                 }
                 else if (card.Source == "Seerr") _items.Add(("Open the page to request it", () => ctx.Activate(card)));
+                if (fromUpNext && card.Badge != "playing")
+                    _items.Add(("Remove from Up next", async () =>
+                    {
+                        await ctx.Home.HideFromUpNextAsync(card.Id);
+                        ctx.RaiseUpNextChanged();
+                        ctx.Toast($"{card.Label} is off Up next. It comes back if you watch it again.");
+                    }
+                    ));
             }
             // Dim what's behind, so the panel reads as on top of it.
             _root.Children.Add(new Border { Background = new SolidColorBrush(Color.Parse("#66000000")), IsHitTestVisible = false });

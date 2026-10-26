@@ -20,7 +20,9 @@ namespace Baird.NewUi.Adapters
         /// <summary>For Settings' source rows (cheap state only).</summary>
         public JellyfinService Jellyfin { get; }
         public NetflixSession? Netflix { get; }
-        public bool DisneyConfigured { get; }
+        public bool DisneyConfigured => Disney != null;
+        /// <summary>Disney+ when it's set up (its credentials are in config.ini).</summary>
+        public DisneyService? Disney { get; }
         public ICecService Cec { get; }
         public ScreensaverService Screensaver { get; } = new();
         public IReadOnlyDictionary<string, string> MpvOverrides { get; }
@@ -53,7 +55,7 @@ namespace Baird.NewUi.Adapters
             disney.Log += m => Console.WriteLine($"[DisneyService] {m}");
             if (disneyCredentials != null)
             {
-                DisneyConfigured = true;
+                Disney = disney;
                 providers.Add(new DisneyProvider(disney));
                 disney.Start(TimeSpan.FromSeconds(30));
                 engines.Add(new DisneyPlaybackEngine(disney, () => new DisneyPlaybackFlow(disney) { UseBairdHud = true }));

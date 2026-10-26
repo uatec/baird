@@ -72,6 +72,7 @@ namespace Baird.NewUi.Screens
             _root.Children.Add(_hero);
             _root.Children.Add(_rows);
             _ = LoadAsync();
+            _ctx.UpNextChanged += () => _ = RefreshUpNextAsync();
             // Keep On now current while Home is up (programmes change all day).
             var refresh = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
             refresh.Tick += (_, _) => { if (_root.IsEffectivelyVisible && _root.GetVisualRoot() != null) _ = RefreshOnNowAsync(); };
@@ -163,6 +164,7 @@ namespace Baird.NewUi.Screens
                 }
                 ((TextBlock)((StackPanel)r.View).Children[0]).Foreground = _lit && i == _pos.Row ? T.Text : T.Text2;
             }
+            _ctx.Prefetch?.Lit((LitElement as Card)?.Data); // a series' page gets ready while its card is lit
             RenderHero();
         }
 
@@ -241,7 +243,7 @@ namespace Baird.NewUi.Screens
                     _ctx.Activate(_rowList[_pos.Row].Cards[_pos.Col].Data);
                     return true;
                 case UiAction.HoldOk:
-                    _ctx.Nav.OpenOverlay(new OverlayRef("itemactions", _rowList[_pos.Row].Cards[_pos.Col].Data));
+                    _ctx.Nav.OpenOverlay(new OverlayRef(_rowList[_pos.Row].Title == "Up next" ? "itemactions-upnext" : "itemactions", _rowList[_pos.Row].Cards[_pos.Col].Data));
                     return true;
             }
             return false;
