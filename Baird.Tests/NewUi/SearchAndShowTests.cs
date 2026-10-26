@@ -472,6 +472,41 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task Thirty_three_season_tabs_scroll_so_the_lit_one_is_always_wholly_on_screen()
+        {
+            var rig = Build();
+            rig.World.Seerr.Status[95396] = new Baird.Services.JellyseerrMediaStatus(1,
+                Enumerable.Range(1, 33).Select(n => new Baird.Services.JellyseerrSeason(n, 22, 1)).ToArray(), Array.Empty<Baird.Services.JellyseerrDownload>());
+            var page = new ShowPage(rig.Ctx, ShowDataFor("tmdb:tv:95396", "Severance", "get", CardKind.Series));
+            Show(page.View);
+            await page.Loaded;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(33, page.Details!.Seasons.Count);
+            page.OnAction(UiAction.Down, false);
+            for (var i = 0; i < 24; i++) page.OnAction(UiAction.Right, false); // season 25
+            Assert.Equal(24, page.SeasonIndex);
+            await Wait(700);
+            var tab = (SeasonTab)page.LitElement!;
+            var m = tab.TransformToVisual(page.View)!.Value;
+            Assert.InRange(new Point(0, 0).Transform(m).X, 0, 1920);
+            Assert.InRange(new Point(tab.Bounds.Width, 0).Transform(m).X, 0, 1920);
+            Assert.True(page.TabScroll > 0);
+            for (var i = 0; i < 24; i++) page.OnAction(UiAction.Left, false); // and back to the start
+            Assert.Equal(0, page.TabScroll);
+        }
+
+        [Fact]
+        public void The_strip_moves_as_little_as_it_can_and_never_past_its_ends()
+        {
+            var widths = Enumerable.Repeat(150.0, 33).ToList();
+            Assert.Equal(0, ShowPage.StripScroll(widths, 12, 3, 0, 1728, 20));
+            var at25 = ShowPage.StripScroll(widths, 12, 24, 0, 1728, 20);
+            Assert.Equal(24 * 162 + 150 + 20 - 1728, at25); // its right edge (and lift) just inside the view
+            Assert.Equal(at25, ShowPage.StripScroll(widths, 12, 20, at25, 1728, 20)); // a tab already in view: no move
+            Assert.Equal(33 * 150 + 32 * 12 - 1728 + 20, ShowPage.StripScroll(widths, 12, 32, 0, 1728, 20));
+        }
+
+        [AvaloniaFact]
         public void Series_and_seerr_cards_on_home_open_their_page_instead_of_a_toast()
         {
             var rig = Build();

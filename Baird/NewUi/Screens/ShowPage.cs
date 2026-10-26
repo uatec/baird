@@ -41,7 +41,7 @@ namespace Baird.NewUi.Screens
         private readonly StackPanel _body = new() { Width = 1000, Spacing = 0, Margin = new Thickness(T.SafeX, 96, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         private readonly StackPanel _buttonsRow = new() { Orientation = Orientation.Horizontal, Spacing = 18, Margin = new Thickness(0, 30, 0, 0), Height = 76 };
         private readonly StackPanel _lower = new() { Spacing = 24, Margin = new Thickness(0, LowerTop, 0, 0), VerticalAlignment = VerticalAlignment.Top };
-        private readonly StackPanel _tabs = new() { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(T.SafeX, 0, 0, 0), Height = 72 };
+        private readonly StackPanel _tabs = new() { Orientation = Orientation.Horizontal, Spacing = TabSpacing, Margin = new Thickness(T.SafeX, 0, 0, 0), Height = 72, HorizontalAlignment = HorizontalAlignment.Left };
         private readonly StackPanel _epTrack = new() { Orientation = Orientation.Horizontal, Spacing = 36, Margin = new Thickness(T.SafeX, 0, 0, 0) };
         private List<ButtonDef> _buttons = new();
         private List<PillButton> _buttonEls = new();
@@ -81,6 +81,7 @@ namespace Baird.NewUi.Screens
             _lower.Children.Add(new Panel { Children = { _epTrack } });
             Motion.Animate(_content, Motion.Med);
             Motion.Animate(_epTrack, Motion.Med);
+            Motion.Animate(_tabs, Motion.Med);
             _root.Children.Add(_content);
             SetArt(title.ImageUrl);
             RenderBody();
@@ -366,10 +367,44 @@ namespace Baird.NewUi.Screens
         }
 
         // ------------------------------------------------------------------ drawing
+        private double _tabScroll;
+        private const double TabSpacing = 12;
+        /// <summary>How far the season strip has slid left (tests).</summary>
+        public double TabScroll => _tabScroll;
+
+        /// <summary>
+        /// Many seasons (The Simpsons has 33) run past the edge: slide the strip just enough that the lit tab (else the
+        /// current season's) is wholly on screen, like a row of cards. Moves a transform only; nothing is rebuilt.
+        /// </summary>
+        private void ScrollTabs()
+        {
+            if (_tabEls.Count == 0) { _tabScroll = 0; _tabs.RenderTransform = Motion.None; return; }
+            var widths = _tabEls.Select(t => { if (t.DesiredSize.Width <= 0) t.Measure(Size.Infinity); return t.DesiredSize.Width; }).ToList();
+            var focus = _rows[_pos.Row] == RowKind.Seasons ? _pos.Col : _season;
+            _tabScroll = StripScroll(widths, TabSpacing, focus, _tabScroll, 1920 - 2 * T.SafeX, 20);
+            _tabs.RenderTransform = TransformOperations.Parse($"translate({-_tabScroll}px, 0px)");
+        }
+
+        /// <summary>
+        /// The scroll that keeps item <paramref name="index"/> (with <paramref name="pad"/> for its lift) inside a view
+        /// <paramref name="view"/> wide, moving as little as possible from <paramref name="current"/>; never past either end.
+        /// </summary>
+        public static double StripScroll(IReadOnlyList<double> widths, double spacing, int index, double current, double view, double pad)
+        {
+            var x = widths.Take(index).Sum() + spacing * index;
+            var w = widths[index];
+            var total = widths.Sum() + spacing * Math.Max(0, widths.Count - 1);
+            var scroll = current;
+            if (x - pad < scroll) scroll = x - pad;
+            if (x + w + pad > scroll + view) scroll = x + w + pad - view;
+            return Math.Clamp(scroll, 0, Math.Max(0, total - view + pad));
+        }
+
         private void Draw()
         {
             for (var i = 0; i < _buttonEls.Count; i++) _buttonEls[i].Lit = _rows[_pos.Row] == RowKind.Buttons && i == _pos.Col && _details != null;
             for (var i = 0; i < _tabEls.Count; i++) { _tabEls[i].Lit = _rows[_pos.Row] == RowKind.Seasons && i == _pos.Col; _tabEls[i].Current = i == _season; }
+            ScrollTabs();
             var onEps = _rows[_pos.Row] == RowKind.Episodes;
             for (var i = 0; i < _epEls.Count; i++) { _epEls[i].Lit = onEps && i == _pos.Col; _epEls[i].Dimmed = onEps && i != _pos.Col; }
             var col = onEps ? _pos.Col : _memory.TryGetValue(2, out var m) ? m : 0;
