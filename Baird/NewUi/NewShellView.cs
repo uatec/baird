@@ -30,6 +30,8 @@ namespace Baird.NewUi
         private readonly NewUiContext _ctx;
         private Key? _lastKey;
         private readonly TvLifecycle _life;
+        private readonly Key _voiceKey;
+        private readonly VoiceSearch? _voice;
         private Intro? _intro = new();
 
         public NewShellView(IConfiguration config)
@@ -37,6 +39,7 @@ namespace Baird.NewUi
             Background = Brushes.Transparent;
             var voiceKey = int.TryParse(config["VOICE_COMMAND_KEY"], out var vk) && vk != 0 ? (Key)vk : Key.None;
             _input = new InputMap(voiceKey);
+            _voiceKey = voiceKey;
 
             var services = new LegacyServices(config);
             var mpv = new MpvPlayer(services.MpvOverrides);
@@ -250,6 +253,12 @@ namespace Baird.NewUi
                 surface.RequestNextFrameRendering();
             };
 
+            if (voiceKey != Key.None)
+                _voice = new VoiceSearch(new WhisperSpeechToTextService(config), text =>
+                {
+                    _shell.GoPlace(Place.Search);
+                    if (_shell.PlaceScreen(Place.Search) is SearchScreen search) search.SetQuery(text);
+                }, _shell.Toast);
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
                 inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn);
             _ = System.Threading.Tasks.Task.Run(() => services.Screensaver.InitializeAsync());
@@ -309,6 +318,8 @@ namespace Baird.NewUi
         {
             // A key during the start-up animation skips it, and does nothing else.
             if (_intro != null && !_intro.IsFinishing) { _intro.Skip(); e.Handled = true; return; }
+            // The voice key: hold to talk, let go to search.
+            if (_voice != null && e.Key == _voiceKey) { e.Handled = true; _ = _voice.PressAsync(); return; }
             // TV first: power/volume go to the TV; a key that wakes the screensaver or the TV does nothing else.
             if (_life.HandleInput(TvInputOf(e))) { e.Handled = true; return; }
             if (_input.Map(e.Key) is not { } action) return;
@@ -322,6 +333,7 @@ namespace Baird.NewUi
 
         private void OnKeyUp(object? sender, KeyEventArgs e)
         {
+            if (_voice != null && e.Key == _voiceKey) { e.Handled = true; _ = _voice.ReleaseAsync(); return; }
             if (_lastKey == e.Key) _lastKey = null;
             if (_input.Map(e.Key) is not { } action) return;
             e.Handled = true;

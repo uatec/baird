@@ -139,7 +139,7 @@ namespace Baird.NewUi.Screens
             Changed();
         }
 
-        private void Voice() => _ctx.Toast("Voice search needs the speech service, which the new interface doesn't use yet. Type with the keyboard or the remote's digits.");
+        private void Voice() => _ctx.Toast("Hold the remote's voice button and speak, then let go. (It needs VOICE_COMMAND_KEY in config.ini.) Or type with the keyboard or the remote's digits.");
 
         /// <summary>Set the query (and search straight away), e.g. from a recent search.</summary>
         public void SetQuery(string q)
