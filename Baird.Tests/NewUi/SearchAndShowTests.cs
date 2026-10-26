@@ -184,12 +184,12 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public void Voice_says_plainly_it_is_not_there_yet()
+        public void A_tap_of_voice_says_how_to_use_it()
         {
             var rig = Build();
             var s = new SearchScreen(rig.Ctx);
             Assert.True(s.OnAction(UiAction.Voice, false));
-            Assert.Contains("Voice search", rig.Home.Toasts.Single());
+            Assert.Contains("Hold the remote's voice button", rig.Home.Toasts.Single());
         }
 
         // ------------------------------------------------------------------ the show page
