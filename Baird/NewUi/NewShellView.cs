@@ -60,6 +60,20 @@ namespace Baird.NewUi
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
+            // An episode started from Home (not its show page): find its show, so the end card can offer the next one.
+            _ctx.FindFollowing = async card =>
+            {
+                if (!card.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase)) return null;
+                if (await services.Jellyfin.GetSeriesOfAsync(card.Id) is not { } series) return null;
+                var title = new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
+                    new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
+                var details = await _ctx.Shows!.DetailsAsync(title);
+                var eps = details.Seasons.SelectMany(s => s.Episodes)
+                    .Where(e => e.State == Model.EpisodeState.Available && e.Source is { StreamUrl: not null })
+                    .Select(e => new Model.HomeCard(Model.CardKind.Episode, e.Source!.ItemId, e.Label, e.Code, e.ImageUrl, null, null, e.Source.Service, e.Source.Via, e.Source.StreamUrl, e.Source.Resume, Synopsis: e.Synopsis))
+                    .ToList();
+                return (eps, series.Name);
+            };
             _ctx.OpenGuide = (id, at) => GuideScreen.OpenSchedule(_shell!, nav, id, at);
             var guideData = new GuideData(home, services.Epg);
             _ctx.Reminders = new Reminders(Reminders.DefaultPath, () => DateTimeOffset.Now);

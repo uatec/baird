@@ -25,9 +25,23 @@ namespace Baird.NewUi
         /// <summary>The show those episodes belong to ("Up next in …", "Back to …"), and each episode's title and
         /// "Season 1, episode 2 · 45 min" by card id.</summary>
         public string? FollowingShow { get; set; }
+        /// <summary>Finds an episode's show and its episodes in order (for Up next when it wasn't started from the show page).</summary>
+        public Func<HomeCard, System.Threading.Tasks.Task<(IReadOnlyList<HomeCard> Episodes, string Show)?>>? FindFollowing { get; set; }
         public IReadOnlyDictionary<string, (string Title, string Meta)> FollowingInfo { get; set; } = new Dictionary<string, (string, string)>();
         /// <summary>Settings: play the next episode by itself after a countdown (off: the end card waits for OK).</summary>
         public bool Autoplay { get; set; } = true;
+        private async System.Threading.Tasks.Task FindFollowingAsync(HomeCard card)
+        {
+            try
+            {
+                if (await FindFollowing!(card) is not { } found || !found.Episodes.Any(c => c.Id == card.Id)) return;
+                if (Playback.Current?.ItemId != card.Id) return; // moved on meanwhile
+                Following = found.Episodes;
+                FollowingShow = found.Show;
+            }
+            catch (Exception ex) { Console.WriteLine($"[NewUi] Couldn't find {card.Label}'s show: {ex.Message}"); }
+        }
+
         public HomeCard? NextEpisode()
         {
             var id = Playback.Current?.ItemId;
@@ -116,6 +130,7 @@ namespace Baird.NewUi
             var from = PlaceLabel();
             Playback.PlayItem(card.Id, card.StreamUrl!, card.Resume, card.Label);
             _nowPlaying = card with { Badge = "playing", Progress = null };
+            if (card.Kind == CardKind.Episode && !Following.Any(c => c.Id == card.Id) && FindFollowing != null) _ = FindFollowingAsync(card);
             Starting?.Invoke(card);
             Nav.Play(new VideoRef("vod", card.Id));
             FlashBackChip(from);

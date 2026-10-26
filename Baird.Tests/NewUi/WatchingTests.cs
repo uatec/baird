@@ -310,5 +310,19 @@ namespace Baird.Tests.NewUi
             rig.Timers.Advance(ChannelList.FirstStep);
             Assert.Equal(Bbc2, list.Lit);
         }
+
+        [Fact]
+        public async Task An_episode_started_from_home_finds_its_shows_order_for_up_next()
+        {
+            var rig = HomeScreenTests.Context();
+            var e1 = Ep("e1", "Glorious Purpose"); var e2 = Ep("e2", "The Variant");
+            var asked = new System.Collections.Generic.List<string>();
+            rig.Ctx.FindFollowing = card => { asked.Add(card.Id); return Task.FromResult<(IReadOnlyList<HomeCard>, string)?>((new[] { e1, e2 }, "Loki")); };
+            rig.Ctx.PlayItem(e1);
+            await Task.Yield();
+            Assert.Equal(new[] { "e1" }, asked);
+            Assert.Equal("e2", rig.Ctx.NextEpisode()?.Id);
+            Assert.Equal("Loki", rig.Ctx.FollowingShow);
+        }
     }
 }
