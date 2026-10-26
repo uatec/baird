@@ -18,6 +18,8 @@ namespace Baird.NewUi.Theme
         public static readonly IBrush Mine = new SolidColorBrush(Color.Parse("#FFCC66"));
         public static readonly IBrush FocusFill = new SolidColorBrush(Color.Parse("#F5F5F7"));
         public static readonly IBrush FocusInk = new SolidColorBrush(Color.Parse("#0A0A0C"));
+        public static readonly IBrush Downloading = new SolidColorBrush(Color.Parse("#8FD3FF"));
+        public static readonly IBrush Missing = new SolidColorBrush(Color.Parse("#FFB38A"));
         public static readonly IBrush Pill = new SolidColorBrush(Color.Parse("#29FFFFFF"));
         public static readonly IBrush CardBack = new SolidColorBrush(Color.Parse("#1A1A1E"));
         /// <summary>Panels over video. There's no live blur of the picture (mpv/Chromium draw it), so glass is a tint.</summary>

@@ -22,6 +22,11 @@ namespace Baird.NewUi
         public event Action<Channel>? Tuning;
         /// <summary>What's on the channel being watched (refreshed when tuning), for the ident and the info bar.</summary>
         public Programme? Programme { get; set; }
+        /// <summary>One search for everything (null until wired: Search then says so).</summary>
+        public CatalogueSearch? Search { get; set; }
+        /// <summary>Show pages' data and requests (null until wired: series cards then toast).</summary>
+        public ShowData? Shows { get; set; }
+        public ITimers Timers { get; set; } = new DispatcherTimers();
 
         public NewUiContext(Navigator nav, PlaybackController playback, HomeData home, Func<DateTimeOffset> now)
         {
@@ -63,9 +68,12 @@ namespace Baird.NewUi
             if (card.Kind == CardKind.Channel && card.Channel != null) { PlayLive(card.Channel); return; }
             if (card.Via == PlayVia.Browser) { Toast($"{card.Source} plays in the new interface from phase 2. Switch to Classic in Settings to watch it now."); return; }
             if (card.Via == PlayVia.Mpv && card.StreamUrl != null && card.Kind != CardKind.Series) { PlayItem(card); return; }
-            if (card.Source == "Seerr") { Toast($"Requesting {card.Label} arrives with show pages (phase 5)."); return; }
-            Toast($"{card.Label}'s page, with its seasons and episodes, arrives in phase 5.");
+            if (Shows != null) { OpenShow(ShowData.FromCard(card)); return; }
+            Toast($"{card.Label}'s page isn't available.");
         }
+
+        /// <summary>A show or film's page: seasons, episodes, where it streams, requests.</summary>
+        public void OpenShow(CatalogueTitle title) => Nav.OpenPage(new PageRef("show", title));
 
         public Channel? NeighbourChannel(int step)
         {

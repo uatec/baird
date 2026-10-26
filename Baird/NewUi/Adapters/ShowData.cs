@@ -193,5 +193,19 @@ namespace Baird.NewUi.Adapters
                 return (false, "The request didn't reach Seerr. Try again in a moment.");
             }
         }
+
+        /// <summary>Is the title (its best source) in the watchlist?</summary>
+        public bool InWatchlist(CatalogueTitle t) => t.Best is { } b && _data.IsOnWatchlist(b.ItemId);
+
+        /// <summary>Add or remove the title (its best source) from the watchlist; returns whether it's now in it.</summary>
+        public async Task<bool> ToggleWatchlistAsync(CatalogueTitle t)
+        {
+            if (t.Best is not { } b) return false;
+            if (_data.IsOnWatchlist(b.ItemId)) { await _data.RemoveFromWatchlistAsync(b.ItemId).ConfigureAwait(false); return false; }
+            var item = await _data.GetItemAsync(b.ItemId).ConfigureAwait(false);
+            if (item == null) return false;
+            await _data.AddToWatchlistAsync(item).ConfigureAwait(false);
+            return true;
+        }
     }
 }

@@ -50,7 +50,9 @@ namespace Baird.NewUi
             var playback = new PlaybackController(mpv, a => Dispatcher.UIThread.Post(a), timers, () => DateTimeOffset.Now,
                 (id, pos, dur) => _ = history.SaveAsync(id, pos, dur));
             var home = new HomeData(services.Data, services.Epg, services.Seerr);
-            _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now);
+            _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
+            _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
+            _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
 
@@ -61,15 +63,15 @@ namespace Baird.NewUi
                 {
                     Place.Home => new HomeScreen(_ctx),
                     Place.LiveTv => new LiveTvPlaceholder(_ctx),
-                    Place.Search => new SearchPlaceholder(),
+                    Place.Search => new SearchScreen(_ctx),
                     _ => new SettingsScreen(() => UiMode.New, mode => { UiModes.Save(mode); AppRestarter.ForThisProcess().Restart(); }, scale, v =>
                     {
                         ApplyScale(v);
                         IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "NewUiSize", v.ToString("0.0", CultureInfo.InvariantCulture));
                     }),
                 },
-                CreatePage: _ => new EmptyScreen(),
-                CreateOverlay: o => o.Name == "info" ? new InfoBar(_ctx) : new EmptyScreen(),
+                CreatePage: p => p.Name == "show" && p.Params is Model.CatalogueTitle t ? new ShowPage(_ctx, t) : new EmptyScreen(),
+                CreateOverlay: o => o.Name == "info" ? new InfoBar(_ctx) : o.Params is ChoiceList list ? new ChoiceSheet(_ctx, list) : new EmptyScreen(),
                 VideoAction: videoActions.OnAction,
                 BackToVideoLabel: () => playback.Current?.Title ?? "what's playing"));
             _ctx.Toast = _shell.Toast;
