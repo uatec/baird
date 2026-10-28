@@ -30,6 +30,7 @@ namespace Baird.Controls
             {
                 // Subscribe to StreamEnded event
                 _player.StreamEnded += OnScreensaverEnded;
+                _player.LimitCache();   // it plays for hours: mpv's default cache held ~150 MB per video that Baird never gave back
 
                 if (DataContext is ScreensaverViewModel vm && vm.CurrentAsset?.VideoUrl != null)
                 {

@@ -65,6 +65,18 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void Every_tenth_line_is_followed_by_the_biggest_mappings()
+        {
+            var smaps = "aaa000-bbb000 rw-p 00000000 00:00 0 \nRss:     3000 kB\neee000-fff000 r-xp 00000000 08:01 12 /usr/lib/libmpv.so\nRss:     2048 kB\n";
+            var path = Path.Combine(_dir, "r.log");
+            var rec = Recorder(path, new Dictionary<string, string> { ["/proc/self/smaps"] = smaps });
+            for (var i = 0; i < ResourceRecorder.MappingsEvery + 1; i++) rec.Record();
+            var lines = File.ReadAllLines(path);
+            Assert.Equal(ResourceRecorder.MappingsEvery + 1 + 2, lines.Length);   // two "maps" lines: the first sample and the eleventh
+            Assert.Contains(lines, l => l.Contains(" maps [anon]=2M /usr/lib/libmpv.so=2M") || l.Contains(" maps /usr/lib/libmpv.so=2M [anon]=2M"));
+        }
+
+        [Fact]
         public void The_biggest_mappings_are_summed_by_name_with_anonymous_ones_grouped()
         {
             const string smaps =
