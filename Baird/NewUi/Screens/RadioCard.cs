@@ -34,14 +34,17 @@ namespace Baird.NewUi.Screens
             _bar.Child = _fill;
             _text = new StackPanel
             {
-                Spacing = 14, VerticalAlignment = VerticalAlignment.Center,
+                Spacing = 14,
+                VerticalAlignment = VerticalAlignment.Center,
                 Children = { _channel, _title, _times, new Border { Height = 4 }, _bar, new Border { Height = 8 }, _synopsis },
             };
             Children.Add(_back);
             Children.Add(_row = new StackPanel
             {
-                Orientation = Orientation.Horizontal, Spacing = 72,
-                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
+                Orientation = Orientation.Horizontal,
+                Spacing = 72,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(T.SafeX + 40, 0, T.SafeX, 0),
                 Children = { _logoBox, _text },
             });
