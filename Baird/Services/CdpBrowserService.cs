@@ -225,6 +225,13 @@ namespace Baird.Services
             return candidates[0]; // Default fallback
         }
 
+        public const int BrowserNiceness = 10;
+        private const string NicePath = "/usr/bin/nice";
+
+        /// <summary>The command line that starts <paramref name="browserPath"/> at lower priority (nice execs, so the process id is the browser's).</summary>
+        internal static (string File, string Arguments) UnderNice(string browserPath, string arguments, string nicePath) =>
+            (nicePath, $"-n {BrowserNiceness} \"{browserPath}\" {arguments}");
+
         /// <summary>
         /// Keeps the browser small on the Pi (8 GB shared with Baird and TvHeadend): it started 16 processes and ~1.3 GB idle, 2 GB at launch.
         /// A cap on each JavaScript heap (measured with a real Chrome: 4192 MB limit becomes 608 MB), no per-site renderer isolation (a streaming
@@ -289,6 +296,12 @@ namespace Baird.Services
                 UseShellExecute = false,
                 CreateNoWindow = false
             };
+
+            // Start under nice: on the Pi the browser's start-up (and Netflix/Disney+ loading their home pages) saturated all four cores
+            // (load ~30) and froze Baird's UI for 15-23 s at every start. At low priority the UI keeps its share; the browser is hidden
+            // behind Baird anyway. Children inherit it; an unprivileged process can't raise it again, so it is a mild 10.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && File.Exists(NicePath))
+                (psi.FileName, psi.Arguments) = UnderNice(browserPath, psi.Arguments, NicePath);
 
             // Don't leak Baird's own runtime environment into the browser: the app's LD_LIBRARY_PATH points at its bundled
             // native libraries (SkiaSharp, HarfBuzz, ...) and .NET host variables are meaningless to Chromium.

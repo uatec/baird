@@ -77,6 +77,34 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void The_cpu_sampler_adds_up_a_programs_processes_and_names_the_busiest()
+        {
+            var t = new DateTime(2026, 10, 28, 12, 0, 0, DateTimeKind.Utc);
+            var ticks = new Dictionary<int, (string Name, long Ticks)> { [1] = ("Baird", 0), [2] = ("chromium", 0), [3] = ("chromium", 0), [4] = ("tvheadend", 0) };
+            var sampler = new CpuSampler(() => ticks.Select(k => (k.Key, k.Value.Name, k.Value.Ticks)), () => t);
+            Assert.Equal("", sampler.Top(3));                          // the first call is only a baseline
+            t = t.AddSeconds(10);
+            ticks[1] = ("Baird", 300);                                 // 3 s of CPU in 10 s: 30%
+            ticks[2] = ("chromium", 400); ticks[3] = ("chromium", 500); // 9 s between two processes: 90%
+            ticks[4] = ("tvheadend", 10);                              // 1%
+            Assert.Equal("chromium=90% Baird=30%", sampler.Top(2));
+            t = t.AddSeconds(10);
+            Assert.Equal("", sampler.Top(2));                          // nothing used since
+        }
+
+        [Fact]
+        public void The_startup_profile_writes_a_cpu_line()
+        {
+            var t = new DateTime(2026, 10, 28, 12, 0, 0, DateTimeKind.Utc); long ticks = 0;
+            var sampler = new CpuSampler(() => new[] { (1, "Baird", ticks) }, () => t);
+            sampler.Top(1);
+            t = t.AddSeconds(10); ticks = 500;
+            var path = Path.Combine(_dir, "r.log");
+            Recorder(path, new()).RecordCpu(sampler);
+            Assert.Contains(" cpu Baird=50%", File.ReadAllText(path));
+        }
+
+        [Fact]
         public void The_biggest_mappings_are_summed_by_name_with_anonymous_ones_grouped()
         {
             const string smaps =

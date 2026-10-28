@@ -34,6 +34,14 @@ namespace Baird.Tests.Services
             Assert.Single(Flags.Where(f => f.StartsWith("--disable-features=")));
         }
 
+        [Fact]
+        public void The_browser_starts_under_nice_with_its_own_arguments_after_it()
+        {
+            var (file, args) = CdpBrowserService.UnderNice("/usr/bin/chromium", "--kiosk \"https://x\"", "/usr/bin/nice");
+            Assert.Equal("/usr/bin/nice", file);
+            Assert.Equal("-n 10 \"/usr/bin/chromium\" --kiosk \"https://x\"", args);
+        }
+
         private static string? Chrome()
         {
             if (!OperatingSystem.IsLinux()) return null;

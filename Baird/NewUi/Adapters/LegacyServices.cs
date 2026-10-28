@@ -46,7 +46,7 @@ namespace Baird.NewUi.Adapters
             {
                 Netflix = netflix;
                 providers.Add(new NetflixProvider(netflix));
-                netflix.Start(TimeSpan.FromSeconds(10));
+                netflix.Start(StartupDelays.Netflix);
                 engines.Add(new NetflixPlaybackEngine(netflix, () => new NetflixPlaybackFlow(netflix.Browser, netflixCredentials) { LogBrowserToJournal = false }));
             }
 
@@ -57,7 +57,7 @@ namespace Baird.NewUi.Adapters
             {
                 Disney = disney;
                 providers.Add(new DisneyProvider(disney));
-                disney.Start(TimeSpan.FromSeconds(30));
+                disney.Start(StartupDelays.Disney);
                 engines.Add(new DisneyPlaybackEngine(disney, () => new DisneyPlaybackFlow(disney) { UseBairdHud = true }));
             }
 

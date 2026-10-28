@@ -84,6 +84,56 @@ namespace Baird.NewUi.Diagnostics
     }
 
     /// <summary>
+    /// Which programs use the CPU: the share of one core each used since the previous sample, grouped by program name (Chromium's
+    /// many processes add up), biggest first. Reads /proc/&lt;pid&gt;/stat through <paramref name="snapshot"/>.
+    /// </summary>
+    public sealed class CpuSampler
+    {
+        private readonly Func<IEnumerable<(int Pid, string Name, long Ticks)>> _snapshot;
+        private readonly Func<DateTime> _now;
+        private readonly int _ticksPerSecond;
+        private Dictionary<int, long> _last = new();
+        private DateTime _lastAt;
+
+        public CpuSampler(Func<IEnumerable<(int Pid, string Name, long Ticks)>> snapshot, Func<DateTime> now, int ticksPerSecond = 100)
+        {
+            _snapshot = snapshot; _now = now; _ticksPerSecond = ticksPerSecond;
+        }
+
+        public static CpuSampler ForThisMachine() => new(ReadProc, () => DateTime.UtcNow);
+
+        private static IEnumerable<(int, string, long)> ReadProc()
+        {
+            foreach (var dir in Directory.EnumerateDirectories("/proc"))
+            {
+                if (!int.TryParse(Path.GetFileName(dir), out var pid)) continue;
+                var stat = Proc.Read(Path.Combine(dir, "stat"));
+                if (stat == null) continue;
+                var open = stat.IndexOf('('); var close = stat.LastIndexOf(')');
+                if (open < 0 || close < open) continue;
+                var rest = stat[(close + 2)..].Split(' ');   // state is rest[0]; utime and stime are fields 14 and 15 overall
+                if (rest.Length > 12 && long.TryParse(rest[11], out var user) && long.TryParse(rest[12], out var sys))
+                    yield return (pid, stat[(open + 1)..close], user + sys);
+            }
+        }
+
+        /// <summary>"name=NN% ..." for the <paramref name="count"/> busiest programs since the last call ("" the first time).</summary>
+        public string Top(int count)
+        {
+            var now = _now(); var current = new Dictionary<int, long>(); var byName = new Dictionary<string, double>();
+            var elapsed = (now - _lastAt).TotalSeconds;
+            foreach (var (pid, name, ticks) in _snapshot())
+            {
+                current[pid] = ticks;
+                if (_last.TryGetValue(pid, out var before) && elapsed > 0 && ticks > before)
+                    byName[name] = byName.GetValueOrDefault(name) + (ticks - before) * 100.0 / (_ticksPerSecond * elapsed);
+            }
+            _last = current; _lastAt = now;
+            return string.Join(" ", byName.OrderByDescending(b => b.Value).Take(count).Select(b => string.Create(CultureInfo.InvariantCulture, $"{b.Key}={b.Value:0}%")));
+        }
+    }
+
+    /// <summary>
     /// Once a minute, appends one line to ~/.baird/resources.log: how much memory Baird and Chromium hold, how much is
     /// left, and whether the system is swapping. It survives reboots (unlike a volatile journal), so after a slowdown the
     /// log shows what grew first. Rotates to resources.log.1 at <see cref="MaxBytes"/>.
@@ -138,6 +188,27 @@ namespace Baird.NewUi.Diagnostics
         /// <summary>Every this many samples, a second line lists the biggest memory mappings, to show what is growing.</summary>
         public const int MappingsEvery = 10;
         private int _samples;
+        private readonly object _fileLock = new();
+
+        /// <summary>For the first <see cref="StartupProfileFor"/> after start, a "cpu" line every <see cref="StartupProfileEvery"/>: the busiest programs.</summary>
+        public static readonly TimeSpan StartupProfileEvery = TimeSpan.FromSeconds(10), StartupProfileFor = TimeSpan.FromMinutes(4);
+
+        public void RecordCpu(CpuSampler sampler)
+        {
+            var top = sampler.Top(4);
+            if (top.Length == 0) return;
+            Append($"{_now():yyyy-MM-dd HH:mm:ss} cpu {top}");
+        }
+
+        private void Append(string text)
+        {
+            lock (_fileLock)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+                if (File.Exists(_path) && new FileInfo(_path).Length > MaxBytes) File.Move(_path, _path + ".1", true);
+                File.AppendAllText(_path, text + "\n");
+            }
+        }
 
         /// <summary>"maps" line: the biggest resident mappings of this process (anonymous ones grouped), from /proc/self/smaps.</summary>
         public string Mappings()
@@ -151,13 +222,23 @@ namespace Baird.NewUi.Diagnostics
         {
             var line = Sample();
             if (++_samples % MappingsEvery == 1 && Mappings() is { Length: > 0 } maps) line += "\n" + maps;
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            if (File.Exists(_path) && new FileInfo(_path).Length > MaxBytes) File.Move(_path, _path + ".1", true);
-            File.AppendAllText(_path, line + "\n");
+            Append(line);
         }
 
         public void Start()
         {
+            // Start-up is when Baird is jerky: show which programs take the CPU then (the busiest since each 10 s ago).
+            new Thread(() =>
+            {
+                var sampler = CpuSampler.ForThisMachine();
+                sampler.Top(1);   // the first call only sets the baseline
+                for (var waited = TimeSpan.Zero; waited < StartupProfileFor; waited += StartupProfileEvery)
+                {
+                    Thread.Sleep(StartupProfileEvery);
+                    try { RecordCpu(sampler); } catch (Exception ex) { Console.WriteLine($"[Resources] Couldn't record CPU: {ex.Message}"); }
+                }
+            })
+            { IsBackground = true, Name = "Baird start-up CPU profile" }.Start();
             new Thread(() =>
             {
                 while (true)
