@@ -275,8 +275,16 @@ namespace Baird.Services
 
         private static MediaItemData Folder(string id, string name, string details, string image) => new()
         {
-            Id = id, Name = name, Details = details, ImageUrl = image, IsLive = false, StreamUrl = "", Source = SourceName,
-            Type = MediaType.Brand, Synopsis = name, Subtitle = name,
+            Id = id,
+            Name = name,
+            Details = details,
+            ImageUrl = image,
+            IsLive = false,
+            StreamUrl = "",
+            Source = SourceName,
+            Type = MediaType.Brand,
+            Synopsis = name,
+            Subtitle = name,
         };
 
         private static string GetStreamUrl(string itemId)
