@@ -144,6 +144,9 @@ namespace Baird.NewUi.Diagnostics
                               $"threads {p.Threads.Count}, CPU {p.TotalProcessorTime.TotalSeconds:0} s, thread pool free {workers} workers / {io} IO, " +
                               $"GC counts {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
                 sb.AppendLine();
+                sb.AppendLine("Memory (the GC heap above can't see native memory):");
+                sb.AppendLine(Proc.NativeMemory());
+                sb.AppendLine();
                 sb.AppendLine($"Last {recent.Count} events:");
                 foreach (var r in recent) sb.AppendLine("  " + r);
 
