@@ -135,9 +135,22 @@ namespace Baird.NewUi.Diagnostics
             return line;
         }
 
+        /// <summary>Every this many samples, a second line lists the biggest memory mappings, to show what is growing.</summary>
+        public const int MappingsEvery = 10;
+        private int _samples;
+
+        /// <summary>"maps" line: the biggest resident mappings of this process (anonymous ones grouped), from /proc/self/smaps.</summary>
+        public string Mappings()
+        {
+            var top = Proc.TopMappings(_read("/proc/self/smaps"), 6);
+            if (top.Count == 0) return "";
+            return $"{_now():yyyy-MM-dd HH:mm:ss} maps " + string.Join(" ", top.Select(m => $"{m.Name}={m.RssKb / 1024}M"));
+        }
+
         public void Record()
         {
             var line = Sample();
+            if (++_samples % MappingsEvery == 1 && Mappings() is { Length: > 0 } maps) line += "\n" + maps;
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
             if (File.Exists(_path) && new FileInfo(_path).Length > MaxBytes) File.Move(_path, _path + ".1", true);
             File.AppendAllText(_path, line + "\n");

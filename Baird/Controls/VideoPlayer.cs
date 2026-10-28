@@ -1030,6 +1030,9 @@ namespace Baird.Controls
             }
         }
 
+        /// <summary>Keeps mpv's demuxer cache small, for a player that stays up for hours (the screensaver). Call before Play.</summary>
+        public void LimitCache() => _mpv?.LimitCache();
+
         public void Play(string url) => StartPlayback(url, null);
 
         public void Play(string url, TimeSpan startTime) => StartPlayback(url, startTime.TotalSeconds);

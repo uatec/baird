@@ -759,6 +759,21 @@ namespace Baird.Mpv
             Post(() => SetOption(name, value));
         }
 
+        /// <summary>Forward and backward demuxer cache for a player that runs for hours (the screensaver).</summary>
+        public const string LeanForwardCache = "32MiB", LeanBackCache = "0";
+
+        /// <summary>
+        /// Shrinks the demuxer cache from mpv's default (150 MiB ahead and 150 MiB behind, per file). Measured on the Pi playing three
+        /// of the screensaver's 2K .mov files in a row: 451 MB resident after two minutes by default, 197 MB with this. The screensaver
+        /// runs for hours, and the default cache was most of Baird's memory growth. Queued ahead of the next Play; [Mpv] overrides in
+        /// config.ini still win.
+        /// </summary>
+        public void LimitCache()
+        {
+            SetUnlessOverridden("demuxer-max-bytes", LeanForwardCache);
+            SetUnlessOverridden("demuxer-max-back-bytes", LeanBackCache);
+        }
+
         /// <summary>Queues a property write unless config.ini's [Mpv] section pins that option.</summary>
         private void SetUnlessOverridden(string name, string value)
         {
