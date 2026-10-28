@@ -152,7 +152,8 @@ namespace Baird.NewUi.Diagnostics
                     try { Record(); } catch (Exception ex) { Console.WriteLine($"[Resources] Couldn't record: {ex.Message}"); }
                     Thread.Sleep(Interval);
                 }
-            }) { IsBackground = true, Name = "Baird resource recorder" }.Start();
+            })
+            { IsBackground = true, Name = "Baird resource recorder" }.Start();
         }
     }
 }
