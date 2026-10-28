@@ -18,7 +18,7 @@ using Baird.NewUi.Theme;
 namespace Baird.NewUi.Screens
 {
     /// <summary>
-    /// Home: a hero that describes the lit card (no buttons of its own), then rows — Up next, On now, Watchlist,
+    /// Home: a hero that describes the lit card (no buttons of its own), then rows — Continue watching, On now, Watchlist,
     /// Discover. ▴ off the top row returns false so the shell lights the tab bar.
     /// </summary>
     public sealed class HomeScreen : IScreen
@@ -101,7 +101,7 @@ namespace Baird.NewUi.Screens
             _ctx.Channels = onNow.Result.Where(c => c.Channel != null).Select(c => c.Channel!).ToList();
             Dispatcher.UIThread.Post(() => Build(new (string, string, CardShape, IReadOnlyList<HomeCard>)[]
             {
-                ("Up next", "Up next", CardShape.Wide, upNext.Result),
+                ("Continue watching", "Continue watching", CardShape.Wide, upNext.Result),
                 ("On now", "On now", CardShape.Wide, onNow.Result),
                 ("Your watchlist", "In your watchlist", CardShape.Poster, watch.Result),
                 ("Discover", "Discover", CardShape.Poster, disc.Result),
@@ -115,7 +115,7 @@ namespace Baird.NewUi.Screens
         {
             var list = rows.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Where(c => c.Badge != "playing").ToList())).ToList();
             if (_ctx.NowPlaying is not { } now) return list;
-            if (list.Count == 0 || list[0].Shape != CardShape.Wide) list.Insert(0, ("Up next", "Up next", CardShape.Wide, Array.Empty<HomeCard>()));
+            if (list.Count == 0 || list[0].Shape != CardShape.Wide) list.Insert(0, ("Continue watching", "Continue watching", CardShape.Wide, Array.Empty<HomeCard>()));
             var first = list[0];
             list[0] = (first.Title, first.Item2, first.Shape, first.Item4.Where(c => c.Id != now.Id).Prepend(now).ToList());
             return list;
@@ -276,7 +276,7 @@ namespace Baird.NewUi.Screens
                     _ctx.Activate(_rowList[_pos.Row].Cards[_pos.Col].Data);
                     return true;
                 case UiAction.HoldOk:
-                    _ctx.Nav.OpenOverlay(new OverlayRef(_rowList[_pos.Row].Title == "Up next" ? "itemactions-upnext" : "itemactions", _rowList[_pos.Row].Cards[_pos.Col].Data));
+                    _ctx.Nav.OpenOverlay(new OverlayRef(_rowList[_pos.Row].Title == "Continue watching" ? "itemactions-upnext" : "itemactions", _rowList[_pos.Row].Cards[_pos.Col].Data));
                     return true;
             }
             return false;
@@ -298,7 +298,7 @@ namespace Baird.NewUi.Screens
         public void OnFocusIn() { _lit = true; Layout(); }
         public void OnFocusOut() { _lit = false; Layout(); }
 
-        /// <summary>The Home key: back to the first card of Up next.</summary>
+        /// <summary>The Home key: back to the first card of Continue watching.</summary>
         public void Reset() { _pos = (0, 0); _memory.Clear(); _lit = true; Layout(); }
 
         /// <summary>What's on changes through the day: refresh On now in place (the lit card stays lit).</summary>
@@ -324,7 +324,7 @@ namespace Baird.NewUi.Screens
 
         private async Task RefreshUpNextAsync()
         {
-            if (_rowList.Count == 0 || _rowList[0].Title != "Up next") return;
+            if (_rowList.Count == 0 || _rowList[0].Title != "Continue watching") return;
             var cards = await _ctx.Home.UpNextAsync();
             Dispatcher.UIThread.Post(() =>
             {

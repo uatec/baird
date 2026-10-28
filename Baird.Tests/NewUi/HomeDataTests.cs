@@ -81,7 +81,7 @@ namespace Baird.Tests.NewUi
             var history = new History();
             history.Items.Add(new HistoryItem { Id = "ep1", LastPosition = TimeSpan.FromMinutes(10), Duration = TimeSpan.FromMinutes(50), LastWatched = DateTime.Now.AddHours(-1) });
             history.Items.Add(new HistoryItem { Id = "film1", LastPosition = TimeSpan.FromMinutes(40), Duration = TimeSpan.FromMinutes(100), LastWatched = DateTime.Now });
-            history.Items.Add(new HistoryItem { Id = "ch1", LastPosition = TimeSpan.FromMinutes(5), Duration = TimeSpan.Zero, LastWatched = DateTime.Now });
+            history.Items.Add(new HistoryItem { Id = "ch1", LastPosition = TimeSpan.FromMinutes(5), Duration = TimeSpan.Zero, LastWatched = DateTime.Now.AddMinutes(-30) });
             var data = new DataService(providers, history, new Watchlist(), new MediaItemCache(), new MockMediaDataCache());
             var epg = new MockEpgService();
             var now = DateTimeOffset.UtcNow;
@@ -90,15 +90,19 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
-        public async Task Up_next_is_unfinished_on_demand_items_most_recent_first_with_progress()
+        public async Task Continue_watching_is_channels_and_unfinished_videos_most_recent_first_with_progress_for_videos()
         {
             var (home, _, _, _) = Build();
             var cards = await home.UpNextAsync();
-            Assert.Equal(new[] { "film1", "ep1" }, cards.Select(c => c.Id));
+            Assert.Equal(new[] { "film1", "ch1", "ep1" }, cards.Select(c => c.Id));
+            Assert.Equal(CardKind.Channel, cards[1].Kind);
+            Assert.Null(cards[1].Progress);
+            Assert.Equal("101", cards[1].Channel!.Number);
+            Assert.Equal("News at Six", cards[1].Sublabel);
             Assert.Equal(CardKind.Film, cards[0].Kind);
             Assert.Equal(0.4, cards[0].Progress!.Value, 3);
-            Assert.Equal(CardKind.Episode, cards[1].Kind);
-            Assert.Equal(TimeSpan.FromMinutes(10), cards[1].Resume);
+            Assert.Equal(CardKind.Episode, cards[2].Kind);
+            Assert.Equal(TimeSpan.FromMinutes(10), cards[2].Resume);
         }
 
         [Fact]
@@ -119,7 +123,7 @@ namespace Baird.Tests.NewUi
         {
             var (home, _, _, _) = Build(withFailing: true);
             Assert.Equal(2, (await home.OnNowAsync(DateTimeOffset.UtcNow)).Count);
-            Assert.Equal(2, (await home.UpNextAsync()).Count);
+            Assert.Equal(3, (await home.UpNextAsync()).Count);
         }
 
         [Fact]

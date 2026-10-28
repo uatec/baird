@@ -62,11 +62,11 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public void Up_next_items_can_be_removed_from_up_next()
+        public void Up_next_items_can_be_forgotten()
         {
             var rig = HomeScreenTests.Context();
-            Assert.Contains("Remove from Up next", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40)), fromUpNext: true).Items);
-            Assert.DoesNotContain("Remove from Up next", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40))).Items);
+            Assert.Contains("Forget this", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40)), fromUpNext: true).Items);
+            Assert.DoesNotContain("Forget this", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40))).Items);
         }
 
         [AvaloniaFact]

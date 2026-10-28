@@ -26,7 +26,8 @@ namespace Baird.NewUi.Playback
         public const int MaxRetries = 3;
         /// <summary>Flicking channels: only the channel you rest on is tuned.</summary>
         public static readonly TimeSpan TuneDebounce = TimeSpan.FromMilliseconds(250);
-        private static readonly TimeSpan MinSaved = TimeSpan.FromSeconds(10);
+        /// <summary>Watching this long puts a channel or video in history (Home's Continue watching); less is just flicking past.</summary>
+        public static readonly TimeSpan WatchedAfter = TimeSpan.FromSeconds(60);
 
         private readonly IPlaybackEngine _engine;
         private readonly Action<Action> _post;
@@ -35,7 +36,8 @@ namespace Baird.NewUi.Playback
         private readonly Action<string, TimeSpan, TimeSpan>? _save;
         private readonly Action<bool>? _configure;
 
-        private IDisposable? _loadTimer, _tuneTimer;
+        private IDisposable? _loadTimer, _tuneTimer, _watchTimer;
+        private bool _watched;
         private int _retries;
         private double? _start;
         private DateTimeOffset? _pausedAt;
@@ -84,6 +86,7 @@ namespace Baird.NewUi.Playback
         public void PlayLive(Channel channel)
         {
             SaveCurrent();
+            ResetWatched();
             Current = new NowPlaying("live", channel.Id, channel.Name, channel.StreamUrl, channel);
             BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; IsLoading = true; _saved = false; _quickDrops = 0;
             _tuneTimer?.Dispose(); _loadTimer?.Dispose();
@@ -94,6 +97,7 @@ namespace Baird.NewUi.Playback
         public void PlayItem(string itemId, string url, TimeSpan resume, string title)
         {
             SaveCurrent();
+            ResetWatched();
             _tuneTimer?.Dispose();
             Current = new NowPlaying("vod", itemId, title, url, null);
             BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; _saved = false;
@@ -141,6 +145,8 @@ namespace Baird.NewUi.Playback
             _loadTimer?.Dispose();
             IsLoading = false; Failure = null;
             _loadedAt = _now();
+            // The minute counts from the first picture; a live stream that re-tunes keeps the same minute.
+            if (_watchTimer == null && !_watched) _watchTimer = _timers.After(WatchedAfter, () => { _watched = true; Persist(); });
             _engine.SetSubtitle(SubtitlesOn); // each play gets the subtitles you chose
             Loaded?.Invoke();
             Changed?.Invoke();
@@ -164,6 +170,7 @@ namespace Baird.NewUi.Playback
                 Changed?.Invoke();
                 return;
             }
+            _watched = true; // played to the end: it counts, however short
             SaveCurrent();
             Ended?.Invoke();
         }
@@ -236,20 +243,31 @@ namespace Baird.NewUi.Playback
         public void Stop()
         {
             SaveCurrent();
+            ResetWatched();
             _tuneTimer?.Dispose(); _loadTimer?.Dispose();
             _engine.Stop();
             Current = null; IsLoading = false;
             Changed?.Invoke();
         }
 
+        private void ResetWatched()
+        {
+            _watchTimer?.Dispose(); _watchTimer = null; _watched = false;
+        }
+
+        /// <summary>Writes the current position to history (channels too: they have no end, so no progress).</summary>
+        private void Persist()
+        {
+            if (Current == null || _save == null) return;
+            _save(Current.ItemId, Position, Current.Kind == "live" ? TimeSpan.Zero : Duration);
+        }
+
+        /// <summary>On leaving: update history, but only for something watched long enough (it was written when the minute passed).</summary>
         private void SaveCurrent()
         {
-            if (Current == null || _saved || _save == null) return;
-            var pos = Position;
-            if (Current.Kind == "vod" && pos < MinSaved) return;
-            if (Current.Kind == "live") return; // live progress isn't resumable; history of channels stays with the classic rules for now
+            if (Current == null || _saved || !_watched) return;
             _saved = true;
-            _save(Current.ItemId, pos, Duration);
+            Persist();
         }
     }
 }

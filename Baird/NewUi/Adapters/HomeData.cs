@@ -58,8 +58,7 @@ namespace Baird.NewUi.Adapters
                 m.History is { } h && !h.IsFinished && h.LastPosition > TimeSpan.Zero ? m.Progress : null,
                 null, m.Source, m.StreamUrl is { Length: > 0 } ? ViaOf(m.Source) : PlayVia.None, m.StreamUrl, m.LastPosition, Synopsis: m.Synopsis);
 
-        /// <summary>What you're part-way through (not live channels), most recent first.</summary>
-        /// <summary>Items taken off Up next (id → when), so they stay off until watched again. Null = not remembered.</summary>
+        /// <summary>Items taken off Continue watching (id → when), so they stay off until watched again. Null = not remembered.</summary>
         public string? HiddenPath { get; init; }
         public static string DefaultHiddenPath => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".baird", "up-next-hidden.json");
         private Dictionary<string, string>? _hidden;
@@ -73,11 +72,11 @@ namespace Baird.NewUi.Adapters
                     ? System.Text.Json.JsonSerializer.Deserialize(System.IO.File.ReadAllText(HiddenPath), BairdJsonContext.Default.DictionaryStringString) ?? new()
                     : new();
             }
-            catch (Exception ex) { Console.WriteLine($"[HomeData] Couldn't read hidden Up next items: {ex.Message}"); _hidden = new(); }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Couldn't read hidden Continue watching items: {ex.Message}"); _hidden = new(); }
             return _hidden;
         }
 
-        /// <summary>Takes an item off Up next (it comes back if it's watched again later).</summary>
+        /// <summary>Takes an item off Continue watching (it comes back if it's watched again later).</summary>
         public Task HideFromUpNextAsync(string id)
         {
             var hidden = Hidden();
@@ -90,23 +89,35 @@ namespace Baird.NewUi.Adapters
                     System.IO.File.WriteAllText(HiddenPath, System.Text.Json.JsonSerializer.Serialize(hidden, BairdJsonContext.Default.DictionaryStringString));
                 }
             }
-            catch (Exception ex) { Console.WriteLine($"[HomeData] Couldn't save hidden Up next items: {ex.Message}"); }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Couldn't save hidden Continue watching items: {ex.Message}"); }
             return Task.CompletedTask;
         }
 
         private bool IsHidden(string id, DateTime lastWatched) =>
             Hidden().TryGetValue(id, out var at) && DateTime.TryParse(at, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var when) && when >= lastWatched;
 
+        /// <summary>Continue watching: what you've watched for a minute or more, most recent first — channels, and videos you haven't finished.</summary>
         public async Task<IReadOnlyList<HomeCard>> UpNextAsync()
         {
             try
             {
-                var items = await _data.GetContinueWatchingAsync().ConfigureAwait(false);
-                return items.Where(i => !i.IsLive && i.Type != MediaType.Channel && !IsHidden(i.Id, i.History?.LastWatched ?? DateTime.MinValue))
-                    .OrderByDescending(i => i.History?.LastWatched ?? DateTime.MinValue)
-                    .Select(ItemCard).ToList();
+                var items = (await _data.GetContinueWatchingAsync().ConfigureAwait(false))
+                    .Where(i => !IsHidden(i.Id, i.History?.LastWatched ?? DateTime.MinValue))
+                    .OrderByDescending(i => i.History?.LastWatched ?? DateTime.MinValue).ToList();
+                var cards = await Task.WhenAll(items.Select(async i => i.IsLive || i.Type == MediaType.Channel ? await ChannelCardAsync(i).ConfigureAwait(false) : ItemCard(i))).ConfigureAwait(false);
+                return cards.Where(c => c != null).Select(c => c!).ToList();
             }
-            catch (Exception ex) { Console.WriteLine($"[HomeData] Up next failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Continue watching failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
+        }
+
+        /// <summary>A channel in Continue watching looks like its On now card (what's on now, no progress bar). Null if it can't be tuned any more.</summary>
+        private async Task<HomeCard?> ChannelCardAsync(MediaItemViewModel m)
+        {
+            if (string.IsNullOrEmpty(m.StreamUrl)) return null;
+            var channel = new Channel(m.Id, m.ChannelNumber ?? "", m.Name, string.IsNullOrEmpty(m.ImageUrl) ? null : m.ImageUrl, m.StreamUrl);
+            var p = await CurrentProgrammeAsync(m.Id).ConfigureAwait(false);
+            var label = string.IsNullOrEmpty(channel.Number) ? channel.Name : $"{channel.Number}  {channel.Name}";
+            return new HomeCard(CardKind.Channel, m.Id, label, p?.Title, channel.LogoUrl, null, "live", "TV", PlayVia.Mpv, channel.StreamUrl, Channel: channel, Programme: p, Synopsis: p?.Synopsis);
         }
 
         /// <summary>Live channels in channel-number order, each with what's on now (when the guide answers in time).</summary>

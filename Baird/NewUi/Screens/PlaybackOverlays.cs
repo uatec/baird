@@ -620,11 +620,11 @@ namespace Baird.NewUi.Screens
                 }
                 else if (card.Source == "Seerr") _items.Add(("Open the page to request it", () => ctx.Activate(card)));
                 if (fromUpNext && card.Badge != "playing")
-                    _items.Add(("Remove from Up next", async () =>
+                    _items.Add(("Forget this", async () =>
                     {
                         await ctx.Home.HideFromUpNextAsync(card.Id);
                         ctx.RaiseUpNextChanged();
-                        ctx.Toast($"{card.Label} is off Up next. It comes back if you watch it again.");
+                        ctx.Toast($"{card.Label} is off Continue watching. It comes back if you watch it again.");
                     }
                     ));
             }

@@ -58,7 +58,7 @@ namespace Baird.Tests.NewUi
             Assert.True(cards.Count >= 5, $"{cards.Count} cards");
             Assert.Single(cards, c => c.Lit);
             Assert.Same(home.LitElement, cards.Single(c => c.Lit));
-            Assert.Equal("Casper", ((Card)home.LitElement!).Data.Label); // Up next, most recent first
+            Assert.Equal("Casper", ((Card)home.LitElement!).Data.Label); // Continue watching, most recent first
         }
 
         [AvaloniaFact]
@@ -164,8 +164,8 @@ namespace Baird.Tests.NewUi
         public async Task Whats_playing_is_the_first_card_and_lit_so_one_ok_goes_back_to_it()
         {
             var (home, rig, _) = await Shown();
-            home.OnAction(UiAction.Right, false);
-            home.OnAction(UiAction.Ok, false);                 // play the second Up next card
+            home.OnAction(UiAction.Right, false); home.OnAction(UiAction.Right, false);
+            home.OnAction(UiAction.Ok, false);                 // play the third Continue watching card (a video; the second is a channel)
             var playing = rig.Ctx.Playback.Current!.ItemId;
             var plays = rig.Engine.Plays.Count;
             rig.Ctx.Nav.Back();                                 // back to Home over the video
@@ -202,7 +202,7 @@ namespace Baird.Tests.NewUi
         public async Task Coming_back_to_home_while_something_plays_doesnt_rebuild_or_move_the_highlight_needlessly()
         {
             var (home, rig, _) = await Shown();
-            home.OnAction(UiAction.Ok, false);              // play the first Up next card
+            home.OnAction(UiAction.Ok, false);              // play the first Continue watching card
             rig.Ctx.Nav.Back();
             home.OnShow();
             Dispatcher.UIThread.RunJobs();

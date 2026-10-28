@@ -117,20 +117,44 @@ namespace Baird.Tests.NewUi
         [Fact]
         public void Switching_items_saves_progress_of_the_one_left_once()
         {
-            var (c, e, _, saved) = Build();
+            var (c, e, t, saved) = Build();
             c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
             e.TimePositionSeconds = 300; e.Duration(3000);
+            t.Advance(PlaybackController.WatchedAfter); saved.Clear();
             c.PlayItem("film1", "http://jf/film1", TimeSpan.Zero, "Casper");
             Assert.Equal(new[] { ("ep1", TimeSpan.FromSeconds(300)) }, saved);
         }
 
         [Fact]
-        public void Under_ten_seconds_is_not_saved()
+        public void Under_a_minute_is_not_saved()
         {
-            var (c, e, _, saved) = Build();
+            var (c, e, t, saved) = Build();
             c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
-            e.TimePositionSeconds = 5; c.Stop();
+            e.TimePositionSeconds = 40; t.Advance(TimeSpan.FromSeconds(59)); c.Stop();
             Assert.Empty(saved);
+        }
+
+        [Fact]
+        public void A_minute_of_a_video_is_saved_as_the_minute_passes_and_again_on_leaving()
+        {
+            var (c, e, t, saved) = Build();
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
+            e.TimePositionSeconds = 60; t.Advance(PlaybackController.WatchedAfter);
+            Assert.Equal(new[] { ("ep1", TimeSpan.FromSeconds(60)) }, saved);
+            e.TimePositionSeconds = 300; c.Stop();
+            Assert.Equal(new[] { ("ep1", TimeSpan.FromSeconds(60)), ("ep1", TimeSpan.FromSeconds(300)) }, saved);
+        }
+
+        [Fact]
+        public void A_channel_rested_on_for_a_minute_is_saved_but_flicking_past_is_not()
+        {
+            var (c, e, t, saved) = Build();
+            c.PlayLive(Ch("1")); t.Advance(PlaybackController.TuneDebounce); e.Loaded();
+            t.Advance(TimeSpan.FromSeconds(5));
+            c.PlayLive(Ch("2")); t.Advance(PlaybackController.TuneDebounce); e.Loaded();
+            Assert.Empty(saved);
+            t.Advance(PlaybackController.WatchedAfter);
+            Assert.Equal(new[] { "ch2" }, saved.Select(s => s.Item1));
         }
 
         [Fact]
