@@ -41,6 +41,8 @@ namespace Baird.Tests.NewUi
         private sealed class Player : IPausable
         {
             public bool IsPlaying { get; set; }
+            public bool? Stream { get; set; }
+            public bool HasStream => Stream ?? IsPlaying;
             public readonly List<string> Calls = new();
             public void Pause() { Calls.Add("pause"); IsPlaying = false; }
             public void Resume() { Calls.Add("resume"); IsPlaying = true; }
@@ -53,17 +55,36 @@ namespace Baird.Tests.NewUi
             public void Deactivate() => IsActive = false;
         }
 
-        private sealed record Rig(TvLifecycle Life, Cec Cec, Player Player, Saver Saver, PlaybackControllerTests.FakeTimers Timers);
-
-        private static Rig Build(bool playing = false, bool inputLock = true)
+        private sealed class Prompt : IStillWatching
         {
-            var cec = new Cec(); var player = new Player { IsPlaying = playing }; var saver = new Saver(); var t = new PlaybackControllerTests.FakeTimers();
-            var life = new TvLifecycle(cec, player, saver, t, () => t.Now.UtcDateTime, a => a(), inputLock);
+            public bool Showing { get; private set; }
+            public void Show() => Showing = true;
+            public void Hide() => Showing = false;
+        }
+
+        private sealed class IdleState : IIdleState
+        {
+            public readonly List<bool> Sets = new();
+            public bool Idle => Sets.Count > 0 && Sets[^1];
+            public void Set(bool idle) => Sets.Add(idle);
+        }
+
+        private sealed record Rig(TvLifecycle Life, Cec Cec, Player Player, Saver Saver, PlaybackControllerTests.FakeTimers Timers, Prompt Prompt, IdleState State)
+        {
+            /// <summary>Time passing a minute at a time, as the lifecycle's own check does.</summary>
+            public void Wait(TimeSpan span) { for (var left = span; left > TimeSpan.Zero; left -= TimeSpan.FromMinutes(1)) Timers.Advance(left < TimeSpan.FromMinutes(1) ? left : TimeSpan.FromMinutes(1)); }
+        }
+
+        private static Rig Build(bool playing = false, bool inputLock = true, bool? stream = null)
+        {
+            var cec = new Cec(); var player = new Player { IsPlaying = playing, Stream = stream }; var saver = new Saver(); var t = new PlaybackControllerTests.FakeTimers();
+            var prompt = new Prompt(); var state = new IdleState();
+            var life = new TvLifecycle(cec, player, saver, t, () => t.Now.UtcDateTime, a => a(), inputLock, prompt, state);
             life.Start();
             Assert.Equal(new[] { "start", "input" }, cec.Calls); // claims the TV at start-up…
             cec.Regained();                                       // …and the TV confirms
             cec.Calls.Clear();
-            return new Rig(life, cec, player, saver, t);
+            return new Rig(life, cec, player, saver, t, prompt, state);
         }
 
         [Fact]
@@ -122,27 +143,116 @@ namespace Baird.Tests.NewUi
             Assert.Empty(r.Player.Calls);
         }
 
+        private static readonly TimeSpan Min = TimeSpan.FromMinutes(1);
+
         [Fact]
-        public void After_two_idle_hours_the_screensaver_starts_and_the_next_key_only_wakes_it()
+        public void In_a_menu_ten_idle_minutes_go_straight_to_the_screensaver_and_the_next_key_only_wakes_it()
+        {
+            var r = Build(playing: false);
+            r.Wait(TvLifecycle.MenuIdle - Min);
+            Assert.False(r.Saver.IsActive);
+            r.Wait(Min);
+            Assert.True(r.Saver.IsActive);
+            Assert.False(r.Prompt.Showing);
+            Assert.True(r.Life.HandleInput(RemoteInput.Other));
+            Assert.False(r.Saver.IsActive);
+            Assert.False(r.Life.HandleInput(RemoteInput.Other));
+        }
+
+        [Fact]
+        public void A_stream_gets_nearly_three_hours_then_a_still_watching_prompt_that_pauses_it()
         {
             var r = Build(playing: true);
-            r.Timers.Advance(TvLifecycle.IdleTimeout);
+            r.Wait(TvLifecycle.StreamIdle - Min);
+            Assert.False(r.Prompt.Showing);
+            Assert.False(r.Saver.IsActive);
+            r.Wait(Min);
+            Assert.True(r.Prompt.Showing);
+            Assert.Equal(new[] { "pause" }, r.Player.Calls);
+            Assert.False(r.Saver.IsActive);
+        }
+
+        [Fact]
+        public void A_paused_stream_counts_as_a_stream_and_is_not_paused_again_or_resumed()
+        {
+            var r = Build(playing: false, stream: true);
+            r.Wait(TvLifecycle.MenuIdle + Min);
+            Assert.False(r.Saver.IsActive);                 // a menu rule must not apply while a stream is loaded
+            r.Wait(TvLifecycle.StreamIdle - TvLifecycle.MenuIdle - Min);   // 2 h 55 min since the last key
+            Assert.True(r.Prompt.Showing);
+            r.Life.HandleInput(RemoteInput.Other);
+            Assert.Empty(r.Player.Calls);
+        }
+
+        [Fact]
+        public void Any_key_at_the_prompt_dismisses_it_resumes_the_stream_and_restarts_the_timer()
+        {
+            var r = Build(playing: true);
+            r.Wait(TvLifecycle.StreamIdle);
+            Assert.True(r.Life.HandleInput(RemoteInput.Other));   // consumed: it only answers the prompt
+            Assert.False(r.Prompt.Showing);
+            Assert.Equal(new[] { "pause", "resume" }, r.Player.Calls);
+            r.Wait(TvLifecycle.PromptWait + Min);
+            Assert.False(r.Saver.IsActive);                       // the old five minutes do not run out
+            r.Wait(TvLifecycle.StreamIdle - TvLifecycle.PromptWait - Min);   // a full new period after the key…
+            Assert.True(r.Prompt.Showing);                        // …it asks again
+        }
+
+        [Fact]
+        public void Five_minutes_without_an_answer_start_the_screensaver_and_a_key_then_resumes_the_stream()
+        {
+            var r = Build(playing: true);
+            r.Wait(TvLifecycle.StreamIdle);
+            r.Wait(TvLifecycle.PromptWait);
+            Assert.False(r.Prompt.Showing);
             Assert.True(r.Saver.IsActive);
             Assert.Equal(new[] { "pause" }, r.Player.Calls);
             Assert.True(r.Life.HandleInput(RemoteInput.Other));
-            Assert.False(r.Saver.IsActive);
             Assert.Equal(new[] { "pause", "resume" }, r.Player.Calls);
-            Assert.False(r.Life.HandleInput(RemoteInput.Other));
+        }
+
+        [Fact]
+        public void When_the_stream_ends_the_menu_rule_applies_from_the_last_key()
+        {
+            var r = Build(playing: true);
+            r.Wait(TimeSpan.FromHours(1));
+            r.Player.IsPlaying = false; r.Player.Stream = false;   // it ran out
+            r.Wait(Min);
+            Assert.True(r.Saver.IsActive);                         // an hour since the last key: well past ten minutes
         }
 
         [Fact]
         public void Activity_keeps_the_screensaver_away()
         {
             var r = Build();
-            r.Timers.Advance(TvLifecycle.IdleTimeout - TimeSpan.FromMinutes(1));
+            r.Wait(TvLifecycle.MenuIdle - Min);
             r.Life.HandleInput(RemoteInput.Other);
-            r.Timers.Advance(TimeSpan.FromMinutes(5));
+            r.Wait(TvLifecycle.MenuIdle - Min);
             Assert.False(r.Saver.IsActive);
+        }
+
+        [Fact]
+        public void The_idle_state_says_idle_for_the_screensaver_and_for_tv_standby_and_active_otherwise()
+        {
+            var r = Build(playing: false);
+            Assert.False(r.State.Idle);                             // active from the start
+            r.Wait(TvLifecycle.MenuIdle);
+            Assert.True(r.State.Idle);                              // screensaver
+            r.Life.HandleInput(RemoteInput.Other);
+            Assert.False(r.State.Idle);
+            r.Cec.Standby();
+            Assert.True(r.State.Idle);                              // the TV is off: nobody to interrupt
+            r.Cec.Regained();
+            Assert.False(r.State.Idle);
+        }
+
+        [Fact]
+        public void A_stream_with_the_prompt_showing_is_not_idle_yet()
+        {
+            var r = Build(playing: true);
+            r.Wait(TvLifecycle.StreamIdle);
+            Assert.True(r.Prompt.Showing);
+            Assert.False(r.State.Idle);
         }
 
         [Fact]

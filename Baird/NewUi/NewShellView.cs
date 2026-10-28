@@ -210,6 +210,8 @@ namespace Baird.NewUi
             new ReminderClock(_ctx.Reminders, nav, timers).Start(); // a minute before a reminder: the card, over whatever is showing
             var saver = new ScreensaverLayer(services.Screensaver);
             _shell.Children.Add(_intro!);       // the start-up animation, over everything until it's done
+            var stillWatching = new StillWatchingPrompt();
+            _shell.Children.Add(stillWatching.View);   // "Still watching?", under only the screensaver
             _shell.Children.Add(saver.View); // over everything, at native resolution
             ApplyScale(scale);
 
@@ -342,7 +344,7 @@ namespace Baird.NewUi
             Diagnostics.ResourceRecorder.ForThisProcess().Start();   // ~/.baird/resources.log, a line a minute
             _cec = services.Cec;
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
-                inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn);
+                inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn, stillWatching, new FileIdleState());
             _ = System.Threading.Tasks.Task.Run(() => services.Screensaver.InitializeAsync());
             _life.Start();
 
@@ -483,6 +485,7 @@ namespace Baird.NewUi
         private readonly PlaybackController _p;
         public PlaybackPausable(PlaybackController p) => _p = p;
         public bool IsPlaying => _p.Current != null && !_p.IsPaused && !_p.IsLoading;
+        public bool HasStream => _p.Current != null;
         public void Pause() { if (IsPlaying) _p.TogglePause(); }
         public void Resume() { if (_p.Current != null && _p.IsPaused) _p.TogglePause(); }
     }
