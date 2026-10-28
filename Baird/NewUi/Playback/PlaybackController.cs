@@ -53,6 +53,8 @@ namespace Baird.NewUi.Playback
         public string? Failure { get; private set; }
         public TimeSpan BehindLive { get; private set; }
         public bool IsPaused { get; private set; }
+        /// <summary>What loaded is sound only (a radio channel): there is no picture to show.</summary>
+        public bool IsAudioOnly { get; private set; }
         public PlaybackState State => _engine.State;
         public TimeSpan Position => TimeSpan.FromSeconds(Math.Max(0, _engine.TimePositionSeconds));
         public TimeSpan Duration => TimeSpan.FromSeconds(Math.Max(0, _engine.DurationSeconds));
@@ -88,7 +90,7 @@ namespace Baird.NewUi.Playback
             SaveCurrent();
             ResetWatched();
             Current = new NowPlaying("live", channel.Id, channel.Name, channel.StreamUrl, channel);
-            BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; IsLoading = true; _saved = false; _quickDrops = 0;
+            BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; IsLoading = true; IsAudioOnly = false; _saved = false; _quickDrops = 0;
             _tuneTimer?.Dispose(); _loadTimer?.Dispose();
             _tuneTimer = _timers.After(TuneDebounce, () => Start(channel.StreamUrl, null));
             Changed?.Invoke();
@@ -100,6 +102,7 @@ namespace Baird.NewUi.Playback
             ResetWatched();
             _tuneTimer?.Dispose();
             Current = new NowPlaying("vod", itemId, title, url, null);
+            IsAudioOnly = false;
             BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; _saved = false;
             _loadTimer?.Dispose();
             Start(url, resume > TimeSpan.Zero ? resume.TotalSeconds : null);
@@ -144,6 +147,7 @@ namespace Baird.NewUi.Playback
         {
             _loadTimer?.Dispose();
             IsLoading = false; Failure = null;
+            IsAudioOnly = _engine.IsAudioOnly;
             _loadedAt = _now();
             // The minute counts from the first picture; a live stream that re-tunes keeps the same minute.
             if (_watchTimer == null && !_watched) _watchTimer = _timers.After(WatchedAfter, () => { _watched = true; Persist(); });
@@ -246,7 +250,7 @@ namespace Baird.NewUi.Playback
             ResetWatched();
             _tuneTimer?.Dispose(); _loadTimer?.Dispose();
             _engine.Stop();
-            Current = null; IsLoading = false;
+            Current = null; IsLoading = false; IsAudioOnly = false;
             Changed?.Invoke();
         }
 

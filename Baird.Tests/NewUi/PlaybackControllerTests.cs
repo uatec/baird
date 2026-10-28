@@ -18,6 +18,7 @@ namespace Baird.Tests.NewUi
             public PlaybackState State { get; set; } = PlaybackState.Idle;
             public double TimePositionSeconds { get; set; }
             public double DurationSeconds { get; set; }
+            public bool IsAudioOnly { get; set; }
             public event EventHandler? FileLoaded;
             public event EventHandler? StreamEnded;
             public event EventHandler<bool>? PauseStateChanged;
@@ -73,6 +74,20 @@ namespace Baird.Tests.NewUi
             Assert.False(c.IsLoading);
             Assert.Equal(PlaybackState.Playing, c.State);
             Assert.Equal("ep1", c.Current!.ItemId);
+        }
+
+        [Fact]
+        public void A_stream_with_no_picture_is_audio_only_until_something_else_plays()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("701")); t.Advance(PlaybackController.TuneDebounce + TimeSpan.FromMilliseconds(1));
+            Assert.False(c.IsAudioOnly); // not known until it has loaded
+            e.IsAudioOnly = true; e.Loaded();
+            Assert.True(c.IsAudioOnly);
+            c.PlayLive(Ch("101"));
+            Assert.False(c.IsAudioOnly); // the new channel starts as a TV one
+            e.IsAudioOnly = false; t.Advance(PlaybackController.TuneDebounce + TimeSpan.FromMilliseconds(1)); e.Loaded();
+            Assert.False(c.IsAudioOnly);
         }
 
         [Fact]

@@ -141,6 +141,14 @@ namespace Baird.NewUi
             _ctx.Toast = _shell.Toast;
             _ctx.FlashBackChip = _shell.FlashBackChip;
             _shell.Stage.Children.Insert(0, ident); // over the picture, under everything else
+            // Radio has no picture: the channel's logo and what's on fill the screen instead (under the ident and every screen).
+            var radio = new RadioCard();
+            radio.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative);
+            Shell.Motion.Animate(radio, Shell.Motion.Med);
+            _shell.Stage.Children.Insert(0, radio);
+            void RefreshRadio() => radio.Update(
+                playback.Current is { Kind: "live", Channel: { } rc } && playback.IsAudioOnly && !playback.IsLoading && playback.Failure == null ? rc : null,
+                _ctx.Programme, DateTimeOffset.Now);
             var promptText = new TextBlock { FontSize = 28, FontWeight = FontWeight.SemiBold, Foreground = Baird.NewUi.Theme.T.FocusInk };
             var prompt = new Border
             {
@@ -182,6 +190,7 @@ namespace Baird.NewUi
                     var fresh = await home.CurrentProgrammeAsync(live.Id);
                     if (playback.Current?.Channel?.Id == live.Id) _ctx.Programme = fresh;
                 }
+                RefreshRadio();
                 var prog = _ctx.Programme;
                 if (playback.Current is not { Kind: "live", Channel: { } ch } || !nav.State.AtVideo || nav.State.Overlay != null || !liveUpNext.ShouldShow(prog, DateTimeOffset.Now))
                 {
@@ -236,6 +245,7 @@ namespace Baird.NewUi
                     var prog = await home.CurrentProgrammeAsync(ch.Id);
                     if (playback.Current?.Channel?.Id != ch.Id) return;
                     _ctx.Programme = prog;
+                    RefreshRadio();
                     if (prog != null && ident.Showing) ident.Show(ch, prog);
                 }
                 catch (Exception ex) { Console.WriteLine($"[NewUi] What's on {ch.Name} failed: {ex.Message}"); }
@@ -260,11 +270,17 @@ namespace Baird.NewUi
                 surface.RenderTransform = tl is { } a && br is { } b && surface.Bounds.Width > 0
                     ? GuideScreen.PreviewTransform(new Rect(a, b), surface.Bounds.Size)
                     : Shell.Motion.None;
+                // The radio card fills the Stage, so the preview frame (in Stage coordinates) is its target as it stands.
+                radio.SetCompact(frame);
+                radio.RenderTransform = frame && radio.Bounds.Width > 0
+                    ? GuideScreen.PreviewTransform(r, radio.Bounds.Size)
+                    : Shell.Motion.None;
             }
             nav.Changed += FrameVideo;
             playback.Changed += FrameVideo;
             playback.Changed += () =>
             {
+                RefreshRadio();
                 surface.HasVideo = playback.Current != null;
                 // A browser service plays in the window behind Baird: let it show through once it's playing.
                 var browser = router.ActiveBrowser != null && playback.Current != null && !playback.IsLoading && playback.Failure == null;

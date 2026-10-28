@@ -19,6 +19,9 @@ namespace Baird.Playback
         event EventHandler<bool>? PauseStateChanged;
         event EventHandler<double>? DurationChanged;
 
+        /// <summary>The loaded stream carries sound but no picture (a radio channel). Known once <see cref="FileLoaded"/> fires.</summary>
+        bool IsAudioOnly => false;
+
         void Play(string url, double? startSeconds = null);
         void Pause();
         void Resume();
