@@ -149,6 +149,21 @@ namespace Baird.Services
             return false;
         }
 
+        /// <summary>
+        /// How long a launch waits for Chromium's DevTools port. A cold start right after the Pi boots took longer than the old 15 s.
+        /// </summary>
+        private static readonly TimeSpan DevToolsStartTimeout = TimeSpan.FromSeconds(60);
+
+        /// <summary>
+        /// A launch that fails after Chromium started must not leave it running: it was never put behind Baird, so its window
+        /// (Netflix's "Who's watching?") stays on top of Baird, and it holds the profile and port so no retry can reconnect.
+        /// </summary>
+        private async Task<bool> FailAndStopAsync(string message)
+        {
+            await StopAsync();
+            return Fail(message);
+        }
+
         public event Action<string>? LogMessage;
 
         private void Log(string msg) => LogMessage?.Invoke(msg);
@@ -301,7 +316,7 @@ namespace Baird.Services
             string? pageWsUrl = null;
             var stopwatch = Stopwatch.StartNew();
 
-            while (stopwatch.Elapsed < TimeSpan.FromSeconds(15) && !ct.IsCancellationRequested)
+            while (stopwatch.Elapsed < DevToolsStartTimeout && !ct.IsCancellationRequested)
             {
                 if (_browserProcess.HasExited)
                 {
@@ -351,7 +366,7 @@ namespace Baird.Services
 
             if (pageWsUrl == null)
             {
-                return Fail($"Timed out after 15s waiting for the DevTools endpoint on port {port}.");
+                return await FailAndStopAsync($"Timed out after {DevToolsStartTimeout.TotalSeconds:F0}s waiting for the DevTools endpoint on port {port}.");
             }
 
             // Connect WebSockets
@@ -378,7 +393,7 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                return Fail($"WebSocket connection error: {ex.Message}");
+                return await FailAndStopAsync($"WebSocket connection error: {ex.Message}");
             }
         }
 
