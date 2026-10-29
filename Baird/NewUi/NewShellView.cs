@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -58,6 +59,14 @@ namespace Baird.NewUi
             var router = new EngineRouter(mpv, services.BrowserEngines);
             var playback = new PlaybackController(router, a => Dispatcher.UIThread.Post(a), timers, () => DateTimeOffset.Now,
                 (id, pos, dur) => _ = history.SaveAsync(id, pos, dur), mpv.ConfigureForSource);
+            // A live channel that won't load may be a wedged tuner: restart TvHeadend (rate-limited), then tune it again.
+            var tuner = TunerRecovery.ForThisMachine();
+            playback.LiveLoadFailed += async failed =>
+            {
+                if (!await tuner.TryRecoverAsync()) return;
+                await Task.Delay(TunerRecovery.Settle);
+                Dispatcher.UIThread.Post(() => { if (playback.Current?.ItemId == failed.ItemId && playback.Failure != null) playback.Replay(); });
+            };
             var home = new HomeData(services.Data, services.Epg, services.Seerr, new ProgrammeArt(services.Seerr, ProgrammeArt.DefaultPath)) { HiddenPath = HomeData.DefaultHiddenPath };
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());

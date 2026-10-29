@@ -65,6 +65,8 @@ namespace Baird.NewUi.Playback
         public event Action? Started;
         /// <summary>The first frame of a newly loaded stream is on its way (tuning can end).</summary>
         public event Action? Loaded;
+        /// <summary>A live channel gave up loading after every retry (the tuner may be wedged); it is still <see cref="Current"/>.</summary>
+        public event Action<NowPlaying>? LiveLoadFailed;
 
         /// <param name="configure">Sets mpv up for the source before each play (true = live: deinterlace, no loudnorm).</param>
         public PlaybackController(IPlaybackEngine engine, Action<Action> post, ITimers timers, Func<DateTimeOffset> now, Action<string, TimeSpan, TimeSpan>? save,
@@ -142,6 +144,7 @@ namespace Baird.NewUi.Playback
                     Failure = $"{Current.Title} isn't loading. Try again, or another channel.";
                     Console.WriteLine($"[Playback] {Failure}");
                     Changed?.Invoke();
+                    if (Current.Kind == "live") LiveLoadFailed?.Invoke(Current);
                 }
             });
         }

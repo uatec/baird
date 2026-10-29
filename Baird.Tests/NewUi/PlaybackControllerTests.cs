@@ -268,5 +268,35 @@ namespace Baird.Tests.NewUi
             Assert.Equal("Netflix asked for a verification code.", c.Failure);
             Assert.False(c.IsLoading);
         }
+
+        [Fact]
+        public void A_live_channel_that_never_loads_reports_it_once_retries_run_out()
+        {
+            var (c, _, t, _) = Build();
+            var failed = new List<string>();
+            c.LiveLoadFailed += n => failed.Add(n.ItemId);
+            c.PlayLive(Ch("101"));
+            t.Advance(PlaybackController.TuneDebounce);
+            for (var i = 0; i < PlaybackController.MaxRetries; i++)
+            {
+                t.Advance(PlaybackController.LoadTimeout);
+                Assert.Empty(failed);
+            }
+            t.Advance(PlaybackController.LoadTimeout);
+            Assert.Equal(new[] { "ch101" }, failed);
+            Assert.NotNull(c.Failure);
+        }
+
+        [Fact]
+        public void A_video_that_never_loads_is_not_a_tuner_problem()
+        {
+            var (c, _, t, _) = Build();
+            var raised = false;
+            c.LiveLoadFailed += _ => raised = true;
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki");
+            for (var i = 0; i <= PlaybackController.MaxRetries; i++) t.Advance(PlaybackController.LoadTimeout);
+            Assert.NotNull(c.Failure);
+            Assert.False(raised);
+        }
     }
 }
