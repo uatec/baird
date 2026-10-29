@@ -61,6 +61,8 @@ namespace Baird.NewUi.Playback
 
         public event Action? Changed;
         public event Action? Ended;
+        /// <summary>The engine has been asked to change stream (after the tune debounce): only now may the picture change.</summary>
+        public event Action? Started;
         /// <summary>The first frame of a newly loaded stream is on its way (tuning can end).</summary>
         public event Action? Loaded;
 
@@ -113,6 +115,7 @@ namespace Baird.NewUi.Playback
             _retries = 0; _start = start;
             IsLoading = true;
             _configure?.Invoke(Current?.Kind == "live");
+            Started?.Invoke();
             _engine.Play(url, start);
             // Browser services (Netflix, Disney+, ITVX, Channel 4) have their own timeouts and failures.
             if (_engine is EngineRouter r && r.BrowserFor(url) != null) _loadTimer?.Dispose();

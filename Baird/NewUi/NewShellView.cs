@@ -241,7 +241,6 @@ namespace Baird.NewUi
             _ctx.Tuning += async ch =>
             {
                 _ctx.Programme = null;
-                ident.Show(ch, null);
                 try
                 {
                     var prog = await home.CurrentProgrammeAsync(ch.Id);
@@ -251,6 +250,11 @@ namespace Baird.NewUi
                     if (prog != null && ident.Showing) ident.Show(ch, prog);
                 }
                 catch (Exception ex) { Console.WriteLine($"[NewUi] What's on {ch.Name} failed: {ex.Message}"); }
+            };
+            // The picture dims only once the stream really changes (not while you flick past), and never under the channel strip.
+            playback.Started += () =>
+            {
+                if (playback.Current is { Kind: "live", Channel: { } ch } && nav.State.AtVideo && nav.State.Overlay == null) ident.Show(ch, _ctx.Programme);
             };
             playback.Loaded += ident.Loaded;
             nav.Changed += () =>

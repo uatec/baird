@@ -116,6 +116,20 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void The_stream_is_only_announced_as_changing_once_the_tuner_is_asked()
+        {
+            var (c, e, t, _) = Build();
+            var started = 0;
+            c.Started += () => started++;
+            c.PlayLive(Ch("101")); t.Advance(TimeSpan.FromMilliseconds(100));
+            c.PlayLive(Ch("102"));
+            Assert.Equal(0, started);                       // flicking past: the picture stays as it is
+            t.Advance(PlaybackController.TuneDebounce + TimeSpan.FromMilliseconds(1));
+            Assert.Equal(1, started);
+            Assert.Single(e.Plays);
+        }
+
+        [Fact]
         public void Pausing_live_tv_counts_time_behind_live_and_seeking_forward_reduces_it()
         {
             var (c, e, t, _) = Build();
