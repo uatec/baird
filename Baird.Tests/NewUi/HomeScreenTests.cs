@@ -217,6 +217,22 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task Coming_back_from_a_page_while_something_plays_keeps_the_card_you_left_on()
+        {
+            var (home, rig, _) = await Shown();
+            home.OnAction(UiAction.Ok, false);              // play the first Continue watching card
+            rig.Ctx.Nav.Back();                             // Home over the video: the playing card is lit
+            home.OnShow();
+            Dispatcher.UIThread.RunJobs();
+            home.OnAction(UiAction.Down, false);
+            home.OnAction(UiAction.Right, false);           // the owner moves to a card in another row…
+            var lit = ((Card)home.LitElement!).Data.Id;
+            home.OnShow();                                  // …opens a page, and Back shows Home again
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(lit, ((Card)home.LitElement!).Data.Id);
+        }
+
+        [AvaloniaFact]
         public async Task A_rebuild_keeps_the_same_card_lit()
         {
             var (home, rig, _) = await Shown();

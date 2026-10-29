@@ -49,6 +49,7 @@ namespace Baird.NewUi.Screens
         private bool _lit = true;
         private bool _overVideo;
         private string? _heroKey;
+        private string? _seenPlaying;
 
         public Control View => _root;
         public Control? LitElement => _lit && _rowList.Count > 0 && _rowList[_pos.Row].Cards.Count > 0 ? _rowList[_pos.Row].Cards[_pos.Col] : null;
@@ -290,7 +291,10 @@ namespace Baird.NewUi.Screens
             if (_rowList.Count > 0)
             {
                 RebuildIfChanged(CurrentRows());
-                if (_ctx.NowPlaying != null && _overVideo) { _pos = (0, 0); _memory.Clear(); }
+                // Light what's playing only when it's new to Home; coming back from a page restores where you were.
+                var playing = _ctx.NowPlaying?.Id;
+                if (playing != null && _overVideo && playing != _seenPlaying) { _pos = (0, 0); _memory.Clear(); }
+                _seenPlaying = playing;
             }
             _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync();
             Layout();
