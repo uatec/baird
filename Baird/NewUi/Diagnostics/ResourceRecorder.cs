@@ -102,6 +102,24 @@ namespace Baird.NewUi.Diagnostics
 
         public static CpuSampler ForThisMachine() => new(ReadProc, () => DateTime.UtcNow);
 
+        /// <summary>Threads of this process (by thread name) instead of programs: is the UI thread the one that is busy?</summary>
+        public static CpuSampler ForThisProcessThreads() => new(ReadThreads, () => DateTime.UtcNow);
+
+        private static IEnumerable<(int, string, long)> ReadThreads()
+        {
+            foreach (var dir in Directory.EnumerateDirectories("/proc/self/task"))
+            {
+                if (!int.TryParse(Path.GetFileName(dir), out var tid)) continue;
+                var stat = Proc.Read(Path.Combine(dir, "stat"));
+                if (stat == null) continue;
+                var open = stat.IndexOf('('); var close = stat.LastIndexOf(')');
+                if (open < 0 || close < open) continue;
+                var rest = stat[(close + 2)..].Split(' ');
+                if (rest.Length > 12 && long.TryParse(rest[11], out var user) && long.TryParse(rest[12], out var sys))
+                    yield return (tid, stat[(open + 1)..close], user + sys);
+            }
+        }
+
         private static IEnumerable<(int, string, long)> ReadProc()
         {
             foreach (var dir in Directory.EnumerateDirectories("/proc"))

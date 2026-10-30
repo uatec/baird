@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Collections.Concurrent;
 using System.IO;
 using Avalonia.Controls;
 
@@ -42,20 +43,36 @@ namespace Baird.NewUi.Diagnostics
     }
 
     /// <summary>
-    /// Opt-in (BAIRD_FPS_PROBE=true): asks for a frame after every frame and appends the <see cref="FrameStats"/> line every 10 s to
-    /// ~/.baird/resources.log. It keeps the UI rendering at full rate even when idle, so the figures are the most the UI can do
+    /// Opt-in (BAIRD_FPS_PROBE=true): asks for a frame after every frame and appends the <see cref="FrameStats"/> line every
+    /// <see cref="Window"/> to ~/.baird/resources.log, after the key presses and screen changes of that window (so a drop can be matched
+    /// to what was being done) and with the busiest threads of this process (is the UI thread the one that is saturated?). It keeps the UI rendering at full rate even when idle, so the figures are the most the UI can do
     /// on this machine, and it costs some CPU: leave it off normally.
     /// </summary>
     public sealed class FrameProbe
     {
         private readonly TopLevel _top;
-        private readonly FrameStats _stats = new(TimeSpan.FromSeconds(10));
+        public static readonly TimeSpan Window = TimeSpan.FromSeconds(5);
+        private readonly FrameStats _stats = new(Window);
+        private readonly ConcurrentQueue<string> _events = new();
+        private readonly Func<string>? _busiest;
         private readonly Func<DateTime> _now;
         private readonly Action<string> _write;
 
-        public FrameProbe(TopLevel top, Func<DateTime> now, Action<string> write) { _top = top; _now = now; _write = write; }
+        public FrameProbe(TopLevel top, Func<DateTime> now, Action<string> write, Func<string>? busiest = null) { _top = top; _now = now; _write = write; _busiest = busiest; }
 
-        public static FrameProbe ForResourcesLog(TopLevel top) => new(top, () => DateTime.Now, text =>
+        /// <summary>Remembers something that happened (any thread); it is written just before the next frames line.</summary>
+        public void Note(string what) => _events.Enqueue(what);
+
+        public static FrameProbe ForResourcesLog(TopLevel top, Breadcrumbs crumbs)
+        {
+            var threads = CpuSampler.ForThisProcessThreads();
+            threads.Top(1);   // baseline
+            var probe = new FrameProbe(top, () => DateTime.Now, Append, () => threads.Top(3));
+            crumbs.Added += probe.Note;
+            return probe;
+        }
+
+        private static void Append(string text)
         {
             try
             {
@@ -64,13 +81,21 @@ namespace Baird.NewUi.Diagnostics
                 File.AppendAllText(path, text + "\n");
             }
             catch (Exception ex) { Console.WriteLine($"[FrameProbe] Couldn't record: {ex.Message}"); }
-        });
+        }
 
         public void Start() => _top.RequestAnimationFrame(OnFrame);
 
         private void OnFrame(TimeSpan at)
         {
-            if (_stats.Frame(at) is { } line) _write($"{_now():yyyy-MM-dd HH:mm:ss} {line}");
+            if (_stats.Frame(at) is { } line)
+            {
+                var day = _now().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                var batch = new System.Text.StringBuilder();
+                while (_events.TryDequeue(out var e)) batch.Append(day).Append(" event ").Append(e).Append('\n');
+                var busy = _busiest?.Invoke() ?? "";
+                batch.Append(_now().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)).Append(' ').Append(line).Append(busy.Length > 0 ? " busiest_threads: " + busy : "");
+                _write(batch.ToString());
+            }
             _top.RequestAnimationFrame(OnFrame);
         }
     }

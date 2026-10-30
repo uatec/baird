@@ -356,7 +356,7 @@ namespace Baird.NewUi
                       $"intro {(_intro != null ? "showing" : "done")}; screensaver {(saver.IsActive ? "on" : "off")}").Start();
             Diagnostics.ResourceRecorder.ForThisProcess().Start();   // ~/.baird/resources.log, a line a minute
             if (bool.TryParse(config["BAIRD_FPS_PROBE"], out var fpsProbe) && fpsProbe)
-                AttachedToVisualTree += (_, e) => Diagnostics.FrameProbe.ForResourcesLog(TopLevel.GetTopLevel(this)!).Start();   // opt-in: UI fps every 10 s, once on screen
+                AttachedToVisualTree += (_, e) => Diagnostics.FrameProbe.ForResourcesLog(TopLevel.GetTopLevel(this)!, crumbs).Start();   // opt-in: UI fps every 5 s with the keys/screens and busiest threads, once on screen
             _cec = services.Cec;
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
                 inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn, stillWatching, new FileIdleState());

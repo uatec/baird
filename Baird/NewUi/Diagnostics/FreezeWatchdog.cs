@@ -22,13 +22,18 @@ namespace Baird.NewUi.Diagnostics
 
         public static Breadcrumbs Shared { get; } = new();
 
+        /// <summary>Raised (outside the lock) with the same text each crumb is stored with, for the frame probe's timeline.</summary>
+        public event Action<string>? Added;
+
         public void Add(string what)
         {
+            var line = $"{DateTime.Now:HH:mm:ss.fff}  {what}";
             lock (_lock)
             {
-                _recent.Enqueue($"{DateTime.Now:HH:mm:ss.fff}  {what}");
+                _recent.Enqueue(line);
                 while (_recent.Count > Size) _recent.Dequeue();
             }
+            Added?.Invoke(line);
         }
 
         /// <summary>Marks an operation as under way until disposed.</summary>

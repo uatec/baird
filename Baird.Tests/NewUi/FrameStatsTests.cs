@@ -34,5 +34,16 @@ namespace Baird.Tests.NewUi
             var stats = new FrameStats(TimeSpan.FromSeconds(10));
             for (var i = 0; i < 100; i++) Assert.Null(stats.Frame(TimeSpan.FromMilliseconds(i * 16)));
         }
+
+        [Fact]
+        public void Breadcrumbs_RaiseAddedWithTheStoredText()
+        {
+            var crumbs = new Breadcrumbs();
+            string? seen = null;
+            crumbs.Added += t => seen = t;
+            crumbs.Add("key Right");
+            Assert.EndsWith("key Right", seen);
+            Assert.EndsWith("key Right", Assert.Single(crumbs.Snapshot().Recent));
+        }
     }
 }
