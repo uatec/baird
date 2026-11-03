@@ -20,9 +20,12 @@ Restart=always
 RestartSec=5
 Environment=DISPLAY=:0
 Environment=BAIRD_FULLSCREEN=True
-# ffmpeg's frame threads each grow their own 64 MB glibc arena and keep it; two arenas hold Baird near 1.3 GB
-# instead of the 3 GB it reached in hours.
+# Native memory: ffmpeg's frame threads each grow a 64 MB glibc arena, and 2K clips have ~0.5 MB packets that glibc's
+# dynamic mmap threshold sends to the brk heap, where they fragment. Capping arenas and pinning the thresholds roughly
+# halved growth on the Pi (it reached 3 GB in hours); some slow growth (~0.4 GB/h) remains, cause not found.
 Environment=MALLOC_ARENA_MAX=2
+Environment=MALLOC_MMAP_THRESHOLD_=131072
+Environment=MALLOC_TRIM_THRESHOLD_=131072
 # This is usually unnecessary in user services as systemd inherits it, 
 # but keeping it doesn't hurt if your setup is unique.
 Environment=XAUTHORITY=/home/%u/.Xauthority
