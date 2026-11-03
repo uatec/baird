@@ -20,6 +20,9 @@ Restart=always
 RestartSec=5
 Environment=DISPLAY=:0
 Environment=BAIRD_FULLSCREEN=True
+# ffmpeg's frame threads each grow their own 64 MB glibc arena and keep it; two arenas hold Baird near 1.3 GB
+# instead of the 3 GB it reached in hours.
+Environment=MALLOC_ARENA_MAX=2
 # This is usually unnecessary in user services as systemd inherits it, 
 # but keeping it doesn't hurt if your setup is unique.
 Environment=XAUTHORITY=/home/%u/.Xauthority
