@@ -1,4 +1,5 @@
 using System;
+using Baird.NewUi.Controls;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -198,7 +199,8 @@ namespace Baird.NewUi.Diagnostics
                 $"{_now():yyyy-MM-dd HH:mm:ss} baird_rss={me.GetValueOrDefault("VmRSS") / 1024}M baird_anon={me.GetValueOrDefault("RssAnon") / 1024}M baird_swap={me.GetValueOrDefault("VmSwap") / 1024}M " +
                 $"gc_heap={heap / 1048576}M threads={threads} chromium_rss={chromiumKb / 1024}M chromium_procs={chromiumCount} " +
                 $"mem_avail={mem.GetValueOrDefault("MemAvailable") / 1024}M swap_used={(mem.GetValueOrDefault("SwapTotal") - mem.GetValueOrDefault("SwapFree")) / 1024}M " +
-                $"swapin={Delta("pswpin")} swapout={Delta("pswpout")} majfault={Delta("pgmajfault")} load={load}");
+                $"swapin={Delta("pswpin")} swapout={Delta("pswpout")} majfault={Delta("pgmajfault")} load={load} " +
+                $"images={BoundedImageLoader.CachedCount} image_mb={BoundedImageLoader.CachedBytes / 1048576}M decoded={BoundedImageLoader.Decoded} evicted={BoundedImageLoader.Evicted} img_failed={BoundedImageLoader.Failed} img_skipped={BoundedImageLoader.FailedSkipped}");
             _lastVm = vm;
             return line;
         }

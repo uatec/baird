@@ -355,6 +355,13 @@ namespace Baird.NewUi
                 () => $"screen {DescribeScreen()}; playing {(playback.Current is { } c ? $"{c.Kind} '{c.Title}'{(playback.IsLoading ? " (loading)" : "")}{(playback.IsPaused ? " (paused)" : "")} via {(router.ActiveBrowser?.Name ?? "mpv")}" : "nothing")}; " +
                       $"intro {(_intro != null ? "showing" : "done")}; screensaver {(saver.IsActive ? "on" : "off")}").Start();
             Diagnostics.ResourceRecorder.ForThisProcess().Start();   // ~/.baird/resources.log, a line a minute
+            // Memory guard: if Baird's memory has grown past the limit while nobody is watching, restart it (systemd brings it back).
+            var lastInput = DateTime.Now;
+            crumbs.Added += line => { if (line.Contains("  key ", StringComparison.Ordinal)) lastInput = DateTime.Now; };
+            var guard = new Diagnostics.MemoryGuard(
+                () => Diagnostics.Proc.KeyValues(Diagnostics.Proc.Read("/proc/self/status")).GetValueOrDefault("RssAnon"),
+                () => playback.Current != null, () => lastInput, () => DateTime.Now, () => AppRestarter.ForThisProcess().Restart());
+            new Avalonia.Threading.DispatcherTimer(TimeSpan.FromMinutes(1), DispatcherPriority.Background, (_, _) => guard.Check()).Start();
             if (bool.TryParse(config["BAIRD_FPS_PROBE"], out var fpsProbe) && fpsProbe)
                 AttachedToVisualTree += (_, e) => Diagnostics.FrameProbe.ForResourcesLog(TopLevel.GetTopLevel(this)!, crumbs).Start();   // opt-in: UI fps every 5 s with the keys/screens and busiest threads, once on screen
             _cec = services.Cec;
