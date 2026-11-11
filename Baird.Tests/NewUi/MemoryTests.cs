@@ -49,19 +49,24 @@ namespace Baird.Tests.NewUi
             return (g, () => restarts);
         }
 
-        [Fact] public void Restarts_when_big_idle_and_not_playing()
+        [Fact]
+        public void Restarts_when_big_idle_and_not_playing()
         { var (g, n) = Make(2000, false, TimeSpan.FromMinutes(11)); Assert.True(g.Check()); Assert.Equal(1, n()); }
 
-        [Fact] public void Not_while_under_the_limit()
+        [Fact]
+        public void Not_while_under_the_limit()
         { var (g, n) = Make(500, false, TimeSpan.FromHours(2)); Assert.False(g.Check()); Assert.Equal(0, n()); }
 
-        [Fact] public void Not_while_playing()
+        [Fact]
+        public void Not_while_playing()
         { var (g, n) = Make(2000, true, TimeSpan.FromHours(2)); Assert.False(g.Check()); Assert.Equal(0, n()); }
 
-        [Fact] public void Not_while_someone_is_using_it()
+        [Fact]
+        public void Not_while_someone_is_using_it()
         { var (g, n) = Make(2000, false, TimeSpan.FromMinutes(2)); Assert.False(g.Check()); Assert.Equal(0, n()); }
 
-        [Fact] public void Asks_only_once()
+        [Fact]
+        public void Asks_only_once()
         { var (g, n) = Make(2000, false, TimeSpan.FromHours(1)); g.Check(); g.Check(); Assert.Equal(1, n()); }
     }
 }
