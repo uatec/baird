@@ -82,7 +82,7 @@ namespace Baird.Tests.NewUi
             Assert.Equal("al1", s.Query);
             s.OnAction(UiAction.Del, false);
             Assert.Equal("al", s.Query);
-            Assert.Empty(s.ResultRows); // not yet: the search waits for a pause in typing
+            Assert.DoesNotContain(s.ResultRows.SelectMany(r => r), h => h.Kind == HitKind.Title); // not yet: the search waits for a pause in typing
             rig.Home.Timers.Advance(SearchScreen.Debounce);
             await s.RunAsync();
             Dispatcher.UIThread.RunJobs();
@@ -594,6 +594,47 @@ namespace Baird.Tests.NewUi
             var textEnd = X(s.QueryText, s.View) + s.QueryText.Bounds.Width;
             var gap = X(s.Caret, s.View) - textEnd;
             Assert.InRange(gap, 0, 3); // no space-sized gap between the last letter and the caret
+        }
+
+        [AvaloniaFact]
+        public async Task The_downloads_tag_lists_downloads_typing_filters_them_and_del_leaves()
+        {
+            var rig = Build();
+            rig.World.Seerr.Asked.Add(CatalogueTests.Asked(95396, "tv", "Severance", 1, mediaStatus: 3));
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            s.OnShow();
+            await Wait(50);
+            Assert.Equal("⤓ Downloads", s.ResultRows[0].Single().Card.Label); // the tag, first, with nothing typed
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false); // off the keyboard to the results
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Up, false);
+            s.OnAction(UiAction.Ok, false);
+            await Wait(50);
+            Assert.True(s.InDownloads);
+            Assert.Equal(new[] { "Severance", "The Simpsons", "Alien" }, s.ResultRows.SelectMany(r => r).Select(h => h.Card.Label));
+
+            await Type(s, rig, "sev");
+            await Wait(50);
+            Assert.Equal(new[] { "Severance" }, s.ResultRows.SelectMany(r => r).Select(h => h.Card.Label));
+
+            for (var i = 0; i < 4; i++) s.OnAction(UiAction.Del, false);
+            Assert.False(s.InDownloads); // DEL with nothing typed leaves the tag
+        }
+
+        [AvaloniaFact]
+        public async Task A_big_library_shows_a_page_of_downloads_at_a_time_and_more_on_the_way_down()
+        {
+            var rig = Build();
+            for (var i = 0; i < 100; i++) rig.World.Jellyfin.Items.Add(CatalogueTests.Item($"f{i}", $"Film {i}"));
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            s.EnterDownloads();
+            await Wait(50);
+            Assert.Equal(48, s.ResultRows.Sum(r => r.Count));
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false);
+            for (var i = 0; i < 11; i++) s.OnAction(UiAction.Down, false);
+            Assert.True(s.ResultRows.Sum(r => r.Count) > 48);
+            Assert.NotNull(s.LitElement);
         }
     }
 }

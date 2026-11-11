@@ -75,6 +75,25 @@ namespace Baird.NewUi.Screens
         private IReadOnlyList<string> _recent = Array.Empty<string>();
         private IReadOnlyList<HomeCard> _popular = Array.Empty<HomeCard>();
 
+        // The Downloads tag: what's requested and everything in Jellyfin, filtered by what's typed.
+        private const string DownloadsTagId = "tag:downloads";
+        private const int DownloadsPage = 48;
+        private bool _inDownloads;
+        private IReadOnlyList<SearchHit>? _dlHits; // null while loading
+        private string _dlFor = "";
+        private int _dlLimit = DownloadsPage;
+        /// <summary>Whether the Downloads tag is on (tests).</summary>
+        public bool InDownloads => _inDownloads;
+        private readonly Border _tag = new()
+        {
+            CornerRadius = new CornerRadius(999),
+            Background = T.FocusFill,
+            Padding = new Thickness(18, 4),
+            Margin = new Thickness(0, 0, 14, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = "⤓ Downloads", FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = T.FocusInk },
+        };
+
         public Control View => _root;
         public string Query => _query;
         public Control? LitElement => _zone switch
@@ -142,6 +161,7 @@ namespace Baird.NewUi.Screens
 
         private void Type(string? text)
         {
+            if (text == null && _query.Length == 0 && _inDownloads) { LeaveDownloads(); return; }
             if (text == null) { if (_query.Length == 0) return; _query = _query[..^1]; }
             else { if (_query.Length >= 60) return; _query += text; }
             Changed();
@@ -167,6 +187,22 @@ namespace Baird.NewUi.Screens
             _ = RunAsync();
         }
 
+        /// <summary>Turn on the Downloads tag: everything requested or in Jellyfin, newest first; typing filters it.</summary>
+        public void EnterDownloads()
+        {
+            _inDownloads = true; _dlHits = null; _dlLimit = DownloadsPage; _query = "";
+            _zone = Zone.Keyboard;
+            DrawField(); Build();
+            _ = RunAsync();
+        }
+
+        private void LeaveDownloads()
+        {
+            _inDownloads = false; _dlHits = null; _cts?.Cancel(); _searching = false;
+            DrawField(); Build();
+            OnShow();
+        }
+
         private void Changed()
         {
             DrawField();
@@ -176,16 +212,23 @@ namespace Baird.NewUi.Screens
 
         private void DrawField()
         {
-            _queryText.Text = _query.Length > 0 ? _query : "Shows, films, channels, what's on";
+            _queryText.Text = _query.Length > 0 ? _query : _inDownloads ? "Filter" : "Shows, films, channels, what's on";
             _queryText.Foreground = _query.Length > 0 ? T.Text : T.Text3;
             _queryText.FontSize = _query.Length > 0 ? 36 : 30;
             _entry.Children.Clear();
+            if (_inDownloads) _entry.Children.Add(_tag);
             if (_query.Length > 0) { _caret.Margin = new Thickness(2, 0, 0, 0); _entry.Children.Add(_queryText); _entry.Children.Add(_caret); }
             else { _caret.Margin = new Thickness(0, 0, 10, 0); _entry.Children.Add(_caret); _entry.Children.Add(_queryText); }
             var nothing = !_searching && _query.Trim().Length > 0 && _rows.Count == 0 && _shownQuery == _query.Trim();
             _empty.IsVisible = nothing;
             if (nothing) _empty.Text = $"Nothing called “{_query.Trim()}” yet. Try fewer letters, or a channel number.";
-            _status.Text = _searching ? Waiting() : _query.Length > 0 && _ctx.SearchNote() is { } note ? note : "Digits and DEL on the remote type too, and so does a keyboard. ▸ from the keyboard reaches the results.";
+            if (_inDownloads)
+            {
+                _empty.IsVisible = _dlHits is { Count: 0 } && !_searching;
+                _empty.Text = _dlFor.Length > 0 ? $"Nothing in Downloads called “{_dlFor}”." : "Nothing requested or downloaded yet.";
+            }
+            _status.Text = _inDownloads ? (_searching && _dlHits == null ? "Reading your downloads…" : "Type to filter. DEL with nothing typed leaves Downloads.")
+                : _searching ? Waiting() : _query.Length > 0 && _ctx.SearchNote() is { } note ? note : "Digits and DEL on the remote type too, and so does a keyboard. ▸ from the keyboard reaches the results.";
         }
 
         /// <summary>While results are still arriving: which library sources haven't answered yet.</summary>
@@ -200,6 +243,7 @@ namespace Baird.NewUi.Screens
         {
             var q = _query.Trim();
             _cts?.Cancel();
+            if (_inDownloads) { await RunDownloadsAsync(q); return; }
             if (q.Length == 0) { _searching = false; Show(SearchResults.Empty); return; }
             if (_ctx.Search == null) { Show(SearchResults.Empty); return; }
             var cts = _cts = new CancellationTokenSource();
@@ -215,6 +259,31 @@ namespace Baird.NewUi.Screens
             catch (Exception ex)
             {
                 Console.WriteLine($"[Search] '{q}' failed: {ex.Message}");
+                OnUi(() => { _searching = false; DrawField(); });
+            }
+        }
+
+        private async Task RunDownloadsAsync(string q)
+        {
+            if (_ctx.Search == null) { _dlHits = Array.Empty<SearchHit>(); Build(); return; }
+            var cts = _cts = new CancellationTokenSource();
+            _searching = true; DrawField();
+            try
+            {
+                var hits = await _ctx.Search.DownloadsAsync(q, cts.Token);
+                OnUi(() =>
+                {
+                    if (cts.IsCancellationRequested || !_inDownloads || _query.Trim() != q) return;
+                    _searching = false;
+                    if (q != _dlFor) _dlLimit = DownloadsPage;
+                    _dlHits = hits; _dlFor = q;
+                    Build();
+                });
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Search] Downloads failed: {ex.Message}");
                 OnUi(() => { _searching = false; DrawField(); });
             }
         }
@@ -237,10 +306,16 @@ namespace Baird.NewUi.Screens
         {
             var q = _query.Trim();
             var sections = new List<(string Title, Shape Shape, List<SearchHit> Hits)>();
-            if (q.Length == 0 || _results.Query.Length == 0)
+            if (_inDownloads)
+            {
+                // Shown a page at a time (thousands of cards would be too heavy); more as you go down.
+                if (_dlHits is { Count: > 0 } dl) sections.Add((_dlFor.Length > 0 ? $"Downloads matching “{_dlFor}”" : "Downloads · newest first", Shape.Poster, dl.Take(_dlLimit).ToList()));
+            }
+            else if (q.Length == 0 || _results.Query.Length == 0)
             {
                 if (q.Length == 0)
                 {
+                    sections.Add(("Browse", Shape.Chip, new() { new SearchHit(HitKind.Recent, new HomeCard(CardKind.Film, DownloadsTagId, "⤓ Downloads", null, null, null, null, "", PlayVia.None)) }));
                     if (_recent.Count > 0) sections.Add(("Recent searches", Shape.Chip, _recent.Select(t => new SearchHit(HitKind.Recent, new HomeCard(CardKind.Film, "recent:" + t, t, null, null, null, null, "", PlayVia.None))).ToList()));
                     if (_popular.Count > 0) sections.Add(("Popular to request", Shape.Poster, _popular.Select(c => new SearchHit(HitKind.Title, c)).ToList()));
                 }
@@ -252,7 +327,7 @@ namespace Baird.NewUi.Screens
                 if (_results.Channels.Count > 0) sections.Add(("Channels", Shape.Wide, _results.Channels.Take(9).ToList()));
                 if (_results.OnTv.Count > 0) sections.Add(("On TV", Shape.Wide, _results.OnTv.Take(9).ToList()));
             }
-            _shownQuery = _results.Query.Length > 0 ? _results.Query : q.Length == 0 ? "" : _shownQuery;
+            _shownQuery = _inDownloads ? "\u0001downloads:" + _dlFor : _results.Query.Length > 0 ? _results.Query : q.Length == 0 ? "" : _shownQuery;
 
             // Nothing new (e.g. a source answered with nothing): leave the cards alone, so nothing flickers.
             var signature = string.Join("|", sections.Select(sec => $"{sec.Title}:{string.Join(",", sec.Hits.Select(h => $"{KeyOf(h)}/{h.Card.Id}/{h.Card.Sublabel}/{h.Card.Badge}/{h.Card.Programme?.Id}"))}"));
@@ -434,6 +509,13 @@ namespace Baird.NewUi.Screens
                 case UiAction.Up or UiAction.Down or UiAction.Left or UiAction.Right:
                     var dir = a switch { UiAction.Up => Dir.Up, UiAction.Down => Dir.Down, UiAction.Left => Dir.Left, _ => Dir.Right };
                     _pos = FocusMath.MoveInRows(_rows.Select(r => r.Els.Count).ToList(), _pos, dir, _memory);
+                    // Downloads: near the bottom of what's shown, show the next page (the lit card stays lit).
+                    if (_inDownloads && dir == Dir.Down && _pos.Row >= _rows.Count - 2 && _dlHits is { } dl && _dlLimit < dl.Count)
+                    {
+                        _dlLimit += DownloadsPage;
+                        Build();
+                        return true;
+                    }
                     Draw();
                     return true;
                 case UiAction.Ok or UiAction.PlayPause or UiAction.HoldOk:
@@ -445,8 +527,9 @@ namespace Baird.NewUi.Screens
 
         private void Activate(SearchHit h, bool more)
         {
+            if (h.Kind == HitKind.Recent && h.Card.Id == DownloadsTagId) { EnterDownloads(); return; }
             if (h.Kind == HitKind.Recent) { _zone = Zone.Keyboard; SetQuery(h.Card.Label); return; }
-            _ctx.Search?.Remember(_query);
+            if (!_inDownloads) _ctx.Search?.Remember(_query);
             if (more) { Actions(h); return; }
             switch (h.Kind)
             {
@@ -479,6 +562,7 @@ namespace Baird.NewUi.Screens
 
         public async void OnShow()
         {
+            if (_inDownloads) { _ = RunAsync(); return; } // what's arrived may have changed
             if (_query.Trim().Length > 0) return;
             try
             {

@@ -347,6 +347,78 @@ namespace Baird.NewUi.Adapters
             return new SearchResults(q, top, titleHits.Where(h => h != top).ToList(), chanHits.Where(h => h != top).ToList(), onTv.Where(h => h != top).ToList(), pending);
         }
 
+        // ------------------------------------------------------------------ downloads
+        private (DateTimeOffset At, IReadOnlyList<SearchHit> Hits)? _downloads;
+        private static readonly TimeSpan DownloadsFor = TimeSpan.FromMinutes(2);
+
+        /// <summary>
+        /// Search's Downloads tag: what's been requested in Seerr and isn't here yet (newest request first), then
+        /// everything in Jellyfin (newest added first), filtered by what's typed. Read once and kept for a couple of minutes.
+        /// </summary>
+        public async Task<IReadOnlyList<SearchHit>> DownloadsAsync(string query, CancellationToken ct = default)
+        {
+            var all = _downloads is { } d && DateTimeOffset.UtcNow - d.At <= DownloadsFor ? d.Hits : await ReadDownloadsAsync(ct).ConfigureAwait(false);
+            var q = query.Trim();
+            if (q.Length == 0) return all;
+            var nq = SearchRelevance.Normalize(q);
+            return all.Where(h => WordsMatch(q, h.Card.Label) || SearchRelevance.Normalize(h.Card.Label).Contains(nq, StringComparison.Ordinal)).ToList();
+        }
+
+        private async Task<IReadOnlyList<SearchHit>> ReadDownloadsAsync(CancellationToken ct)
+        {
+            var asked = _seerr == null ? Task.FromResult(Enumerable.Empty<JellyseerrRequest>())
+                : Within(c => _seerr.GetRequestsAsync(c), Enumerable.Empty<JellyseerrRequest>(), "Seerr requests", ct);
+            var libraries = _data.Providers.OfType<IMediaLibrary>()
+                .Select(l => Within(c => l.GetNewestAsync(c), Enumerable.Empty<MediaItemData>(), "Library listing", ct)).ToList();
+            await Task.WhenAll(libraries.Cast<Task>().Append(asked)).ConfigureAwait(false);
+
+            // The library, newest first: one title per film or series (a dictionary, not Group's pairwise matching: it's thousands).
+            var titles = new List<CatalogueTitle>();
+            var byName = new Dictionary<(TitleKind, string), int>();
+            var items = _data.UnifyAndHydrate(libraries.SelectMany(l => l.Result).Select(m => new MediaItemViewModel(m)));
+            foreach (var m in items)
+            {
+                if (m.IsLive || m.Type is MediaType.Channel or MediaType.Audio || string.IsNullOrWhiteSpace(m.Name)) continue;
+                var kind = m.Type is MediaType.Brand or MediaType.Folder ? TitleKind.Series : TitleKind.Film;
+                var key = (kind, SearchRelevance.Normalize(m.Name));
+                if (byName.ContainsKey(key)) continue;
+                byName[key] = titles.Count;
+                titles.Add(new CatalogueTitle($"{kind}:{key.Item2}:{YearOf(m.Details)}:{m.Id}", kind, m.Name, YearOf(m.Details),
+                    string.IsNullOrEmpty(m.ImageUrl) ? null : m.ImageUrl, string.IsNullOrWhiteSpace(m.Synopsis) ? null : m.Synopsis, new[] { SourceOf(m) }));
+            }
+
+            // Requests: one per title, newest first. Ones that have arrived are their Jellyfin copy; the rest go first.
+            static DateTime When(string s) => DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var d) ? d : DateTime.MinValue;
+            var waiting = new List<SearchHit>();
+            var progress = new Dictionary<int, double>();
+            foreach (var r in asked.Result.OrderByDescending(r => When(r.CreatedAt)).DistinctBy(r => (r.MediaType, r.TmdbId)))
+            {
+                var kind = r.MediaType == "tv" ? TitleKind.Series : r.MediaType == "movie" ? TitleKind.Film : (TitleKind?)null;
+                if (kind == null || string.IsNullOrWhiteSpace(r.Title)) continue;
+                var seerr = new SeerrRef(r.TmdbId, r.MediaType, r.MediaInfoStatus == 0 ? 1 : r.MediaInfoStatus);
+                if (byName.TryGetValue((kind.Value, SearchRelevance.Normalize(r.Title)), out var i))
+                {
+                    titles[i] = titles[i] with { Seerr = seerr };
+                    if (r.MediaInfoStatus == 4 && r.DownloadProgress is { } pp) progress[i] = pp;
+                    continue;
+                }
+                if (r.MediaInfoStatus == 5) continue; // here, under another name: Jellyfin's copy is already listed
+                var t = new CatalogueTitle($"tmdb:{r.MediaType}:{r.TmdbId}", kind.Value, r.Title, null,
+                    r.PosterPath is { Length: > 0 } p ? $"https://image.tmdb.org/t/p/w500{p}" : null, null, Array.Empty<TitleSource>(), seerr);
+                var card = CardOf(t);
+                if (r.DownloadProgress is { } dl) card = card with { Badge = $"dl:{dl:0}" };
+                waiting.Add(new SearchHit(HitKind.Title, card, t));
+            }
+            var library = titles.Select((t, i) =>
+            {
+                var card = CardOf(t);
+                return new SearchHit(HitKind.Title, progress.TryGetValue(i, out var p) ? card with { Badge = $"dl:{p:0}" } : card, t);
+            });
+            IReadOnlyList<SearchHit> hits = waiting.Concat(library).ToList();
+            _downloads = (DateTimeOffset.UtcNow, hits);
+            return hits;
+        }
+
         // ------------------------------------------------------------------ the guide
         /// <summary>Every query word starts a word of the text ("doc wh" finds "Doctor Who").</summary>
         public static bool WordsMatch(string query, string text)

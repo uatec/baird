@@ -12,7 +12,7 @@ using Baird.Models;
 
 namespace Baird.Services
 {
-    public class JellyfinService : IMediaProvider
+    public class JellyfinService : IMediaProvider, IMediaLibrary
     {
         public string Name => "Jellyfin";
         private readonly string _serverUrl;
@@ -199,6 +199,27 @@ namespace Baird.Services
             {
                 Console.WriteLine($"[JellyfinService] Failed to fetch movies: {ex.Message}");
                 Console.WriteLine($"[JellyfinService] StackTrace: {ex.StackTrace}");
+                return Enumerable.Empty<MediaItemData>();
+            }
+        }
+
+        /// <summary>Every film and series, newest added first (Search's Downloads tag).</summary>
+        public async Task<IEnumerable<MediaItemData>> GetNewestAsync(System.Threading.CancellationToken cancellationToken = default)
+        {
+            await EnsureAuthenticatedAsync();
+            if (!IsAuthenticated) return Enumerable.Empty<MediaItemData>();
+            try
+            {
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series&Recursive=true&SortBy=DateCreated,SortName&SortOrder=Descending&Fields=ProductionYear,RunTimeTicks";
+                var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                var result = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult);
+                return result?.Items?.Select(MapJellyfinItem).ToList() ?? Enumerable.Empty<MediaItemData>();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine($"[JellyfinService] Listing the library failed: {ex.Message}");
                 return Enumerable.Empty<MediaItemData>();
             }
         }
