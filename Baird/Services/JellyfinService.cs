@@ -235,32 +235,21 @@ namespace Baird.Services
             }
         }
 
+        /// <summary>One item by id. Null means the server answered and hasn't got it (404); an unreachable or erroring server throws, so callers can tell "gone" from "can't tell".</summary>
         public async Task<MediaItemData?> GetItemAsync(string id)
         {
             if (!IsJellyfinId(id)) return null;
             await EnsureAuthenticatedAsync();
-            if (!IsAuthenticated) return null;
+            if (!IsAuthenticated) throw new InvalidOperationException("Jellyfin is not signed in");
 
-            try
-            {
-                var url = $"Users/{_userId}/Items/{id}?Fields=ProductionYear,RunTimeTicks,ProviderIds";
-                var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
-                if (!response.IsSuccessStatusCode) return null;
+            var url = $"Users/{_userId}/Items/{id}?Fields=ProductionYear,RunTimeTicks,ProviderIds";
+            var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+            response.EnsureSuccessStatusCode();
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                var item = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieItem);
-
-                if (item != null)
-                {
-                    return MapJellyfinItem(item);
-                }
-                return null;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[JellyfinService] Jellyfin GetItemAsync failed for {id}: {ex.Message}");
-                return null;
-            }
+            var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            var item = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieItem);
+            return item == null ? null : MapJellyfinItem(item);
         }
 
         /// <summary>An episode's series (id and name), or null for anything that isn't an episode.</summary>
