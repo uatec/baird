@@ -126,5 +126,27 @@ namespace Baird.Tests.Services
             Assert.Empty(await svc.SearchAsync("x"));
             Assert.Empty(await svc.GetChildrenAsync(YouTubeService.ChannelPrefix + Channel));
         }
+
+        [Theory]
+        [InlineData("disney:ep:8b4a1f96-9a29-45fd-b642-ab99ba2bc0ba")]
+        [InlineData("1bb9cff8cd054644b7f843fa62cac880")]
+        [InlineData("m001abcd")]
+        [InlineData("yt:channel/UCHnyfMqiRRG1u-2MsSQLbXA")]
+        [InlineData("")]
+        public async Task GetItem_ForAnotherProvidersId_StartsNoYtDlp(string id)
+        {
+            var yt = new FakeYtDlp(_ => Array.Empty<string>());
+            Assert.Null(await new YouTubeService(yt.Runner).GetItemAsync(id));
+            Assert.Empty(yt.Calls);
+        }
+
+        [Fact]
+        public async Task GetItem_ForAVideoId_StillLooksItUp()
+        {
+            var yt = new FakeYtDlp(a => a.Any(x => x.StartsWith("ytsearch")) ? new[] { VideoLine } : Array.Empty<string>());
+            var item = await new YouTubeService(yt.Runner).GetItemAsync("9M_QK4stCJU");
+            Assert.Equal("9M_QK4stCJU", item?.Id);
+            Assert.NotEmpty(yt.Calls);
+        }
     }
 }

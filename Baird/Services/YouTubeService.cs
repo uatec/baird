@@ -56,12 +56,16 @@ namespace Baird.Services
             var at = id.LastIndexOf('@');
             if (at > 0 && int.TryParse(id[(at + 1)..], out var p) && p >= 1) { baseId = id[..at]; page = p; }
         }
+        private static readonly Regex VideoId = new("^[A-Za-z0-9_-]{11}$", RegexOptions.Compiled);
+
+        /// <summary>
+        /// Looks up one video by its id. Answers only for a real YouTube video id (11 characters): DataService asks every provider in
+        /// turn about every id it can't find, and each answer here costs two yt-dlp processes. On the Pi, opening Home with a few dozen
+        /// Jellyfin / Disney+ / iPlayer / channel ids to resolve started ~100 of them at once and stalled the UI for a minute or more.
+        /// </summary>
         public Task<MediaItemData?> GetItemAsync(string id)
         {
-            // For now, return null as we don't have a direct lookup without search
-            // Or we could run yt-dlp on the ID?
-            // "https://www.youtube.com/watch?v={id}"
-            // Let's implement a quick lookup
+            if (!VideoId.IsMatch(id)) return Task.FromResult<MediaItemData?>(null);
             return Task.Run(async () =>
             {
                 var items = await SearchAsync(id);
@@ -107,7 +111,17 @@ namespace Baird.Services
             }
         }
 
+        // Each yt-dlp is a Python start-up costing seconds of CPU on the Pi: never more than a couple at once, however many lookups queue up.
+        private static readonly SemaphoreSlim YtDlpSlots = new(2);
+
         private static async Task<IReadOnlyList<string>> RunYtDlpAsync(IReadOnlyList<string> args, CancellationToken ct)
+        {
+            await YtDlpSlots.WaitAsync(ct);
+            try { return await StartYtDlpAsync(args, ct); }
+            finally { YtDlpSlots.Release(); }
+        }
+
+        private static async Task<IReadOnlyList<string>> StartYtDlpAsync(IReadOnlyList<string> args, CancellationToken ct)
         {
             var startInfo = new ProcessStartInfo { FileName = "yt-dlp", RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
             foreach (var a in args) startInfo.ArgumentList.Add(a);
