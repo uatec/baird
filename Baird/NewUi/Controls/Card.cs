@@ -85,6 +85,7 @@ namespace Baird.NewUi.Controls
             if (data.Badge == "playing") layers.Children.Add(Pill(data.Kind == CardKind.Channel ? "● Live · Now playing" : "▶ Now playing", data.Kind == CardKind.Channel ? T.Live : T.FocusFill, data.Kind == CardKind.Channel ? T.Text : T.FocusInk, HorizontalAlignment.Left));
             if (data.Badge == "get") layers.Children.Add(Pill("⤓ Request", T.FocusFill, T.FocusInk, HorizontalAlignment.Right));
             if (data.Badge == "requested") layers.Children.Add(Pill("Requested", T.Pill, T.Text, HorizontalAlignment.Right));
+            if (data.Badge == "ready") layers.Children.Add(Pill("✓ Ready to watch", T.FocusFill, T.FocusInk, HorizontalAlignment.Right));
             if (data.Badge == "partial") layers.Children.Add(Pill("Partly available", T.Pill, T.Text, HorizontalAlignment.Right));
             if (data.Badge == "missing") layers.Children.Add(Pill("Not streaming", T.Pill, T.Text, HorizontalAlignment.Left));
             // Downloading: the percentage, like a film's (episodes too).

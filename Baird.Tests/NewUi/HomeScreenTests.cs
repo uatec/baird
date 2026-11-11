@@ -22,12 +22,12 @@ namespace Baird.Tests.NewUi
     {
         internal sealed record Rig(NewUiContext Ctx, PlaybackControllerTests.FakeEngine Engine, PlaybackControllerTests.FakeTimers Timers, List<string> Toasts, List<Channel> Tuned);
 
-        internal static Rig Context()
+        internal static Rig Context(HomeDataTests.Seerr? seerr = null)
         {
             var engine = new PlaybackControllerTests.FakeEngine();
             var timers = new PlaybackControllerTests.FakeTimers();
             var playback = new PlaybackController(engine, a => a(), timers, () => timers.Now, null);
-            var ctx = new NewUiContext(new Navigator(), playback, HomeDataTests.Build().Home, () => DateTimeOffset.UtcNow);
+            var ctx = new NewUiContext(new Navigator(), playback, HomeDataTests.Build(seerr: seerr).Home, () => DateTimeOffset.UtcNow);
             var toasts = new List<string>();
             var tuned = new List<Channel>();
             ctx.Toast = toasts.Add;
@@ -35,9 +35,9 @@ namespace Baird.Tests.NewUi
             return new Rig(ctx, engine, timers, toasts, tuned);
         }
 
-        private static async Task<(HomeScreen Home, Rig Rig, Window Window)> Shown()
+        private static async Task<(HomeScreen Home, Rig Rig, Window Window)> Shown(HomeDataTests.Seerr? seerr = null)
         {
-            var rig = Context();
+            var rig = Context(seerr);
             var home = new HomeScreen(rig.Ctx);
             await home.LoadAsync();
             var w = new Window { Width = 1920, Height = 1080, Content = home.View };
@@ -242,6 +242,20 @@ namespace Baird.Tests.NewUi
             home.Build(home.CurrentRows());
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(lit, ((Card)home.LitElement!).Data.Id);
+        }
+
+        [AvaloniaFact]
+        public async Task Downloads_is_the_row_after_continue_watching()
+        {
+            var seerr = new HomeDataTests.Seerr();
+            seerr.Requests.Add(new JellyseerrRequest { Id = 1, Status = 2, TmdbId = 9, MediaType = "tv", Title = "Severance", CreatedAt = DateTime.UtcNow.ToString("o"), UpdatedAt = DateTime.UtcNow.ToString("o"), MediaInfoStatus = 2 });
+            var (home, _, _) = await Shown(seerr);
+            await Wait(100);
+            var rows = home.CurrentRows();
+            Assert.Equal("Continue watching", rows[0].Title);
+            Assert.Equal("Downloads", rows[1].Title);
+            Assert.Equal("Severance", rows[1].Cards.Single().Label);
+            Assert.Equal("Casper", ((Card)home.LitElement!).Data.Label); // Home still opens on Continue watching
         }
     }
 }

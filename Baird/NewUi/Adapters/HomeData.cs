@@ -198,7 +198,46 @@ namespace Baird.NewUi.Adapters
             }
             catch (Exception ex) { Console.WriteLine($"[HomeData] Discover failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
         }
+        /// <summary>How long a request that has arrived stays in Downloads.</summary>
+        public static readonly TimeSpan KeepArrivedFor = TimeSpan.FromDays(14);
+
+        /// <summary>
+        /// Downloads: what's been asked of Seerr, newest request first, one card per title, each saying where it's got to
+        /// (requested, downloading n%, partly here, ready). Arrived titles drop off after <see cref="KeepArrivedFor"/>.
+        /// </summary>
+        public async Task<IReadOnlyList<HomeCard>> DownloadsAsync()
+        {
+            if (_seerr == null) return Array.Empty<HomeCard>();
+            try
+            {
+                var cutoff = DateTime.UtcNow - KeepArrivedFor;
+                static DateTime When(string s) => DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var d) ? d : DateTime.MinValue;
+                return (await _seerr.GetRequestsAsync().ConfigureAwait(false))
+                    .Where(r => r.MediaInfoStatus != 5 || When(r.UpdatedAt) >= cutoff)
+                    .OrderByDescending(r => When(r.CreatedAt))
+                    .DistinctBy(r => (r.MediaType, r.TmdbId))
+                    .Select(r =>
+                    {
+                        var tv = r.MediaType == "tv";
+                        var badge = r.MediaInfoStatus switch
+                        {
+                            5 => "ready",
+                            4 => "partial",
+                            _ when r.DownloadProgress is { } p => $"dl:{p:0}",
+                            _ => "requested",
+                        };
+                        var asked = When(r.CreatedAt);
+                        var sub = $"{(tv ? "Series" : "Film")}{(asked > DateTime.MinValue ? $" · requested {asked.ToLocalTime():d MMM}" : "")}";
+                        return new HomeCard(tv ? CardKind.Series : CardKind.Film, $"tmdb:{r.MediaType}:{r.TmdbId}", r.Title, sub,
+                            r.PosterPath is { Length: > 0 } pp ? $"https://image.tmdb.org/t/p/w500{pp}" : null,
+                            null, badge, "Seerr", PlayVia.None);
+                    })
+                    .ToList();
+            }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Downloads failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
+        }
     }
+
 
     /// <summary>Saves watch progress through the legacy history service (which wants a MediaItemViewModel).</summary>
     public sealed class HistoryWriter

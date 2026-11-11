@@ -299,7 +299,7 @@ namespace Baird.Services
                 using var doc = JsonDocument.Parse(json);
 
                 var requests = new List<JellyseerrRequest>();
-                var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
+                var recentSince = DateTime.UtcNow.AddDays(-14); // Home's Downloads row keeps arrived titles for two weeks
 
                 if (doc.RootElement.TryGetProperty("results", out var resultsArray))
                 {
@@ -321,10 +321,10 @@ namespace Baird.Services
                         var mediaType = mediaInfo.TryGetProperty("mediaType", out var mediaTypeProp) ? mediaTypeProp.GetString() ?? "movie" : "movie";
 
                         // Filter: Include all in-flight (status 1=PENDING, 2=APPROVED) OR 
-                        // completed/available (mediaStatus 4=PARTIALLY_AVAILABLE, 5=AVAILABLE) within last 7 days
+                        // completed/available (mediaStatus 4=PARTIALLY_AVAILABLE, 5=AVAILABLE) within the last 14 days
                         bool isInFlight = status == 1 || status == 2;
                         bool isCompleted = mediaStatus == 4 || mediaStatus == 5;
-                        bool isRecent = updatedDate >= sevenDaysAgo;
+                        bool isRecent = updatedDate >= recentSince;
 
                         if (isInFlight || (isCompleted && isRecent))
                         {

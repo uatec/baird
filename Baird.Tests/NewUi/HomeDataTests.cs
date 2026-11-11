@@ -56,8 +56,9 @@ namespace Baird.Tests.NewUi
             public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => throw new InvalidOperationException("down");
             public Task<MediaItemData?> GetItemAsync(string id) => throw new InvalidOperationException("down");
         }
-        private sealed class Seerr : IJellyseerrService
+        internal sealed class Seerr : IJellyseerrService
         {
+            public List<JellyseerrRequest> Requests = new();
             public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string q, int p, CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
             public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrSearchResult>>(new[]
             {
@@ -65,10 +66,10 @@ namespace Baird.Tests.NewUi
                 new JellyseerrSearchResult { Id = 8, MediaType = "movie", Title = "Alien", ReleaseDate = "1979-05-25", MediaInfoStatus = 5 },
             });
             public Task<JellyseerrRequestResponse> CreateRequestAsync(int id, string t, CancellationToken ct = default) => Task.FromResult(new JellyseerrRequestResponse());
-            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
+            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrRequest>>(Requests);
         }
 
-        internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false)
+        internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false, Seerr? seerr = null)
         {
             var items = new[]
             {
@@ -86,7 +87,7 @@ namespace Baird.Tests.NewUi
             var epg = new MockEpgService();
             var now = DateTimeOffset.UtcNow;
             epg.MockSchedules["ch1"] = new List<EpgProgram> { new() { Id = "p1", ChannelId = "ch1", Title = "News at Six", StartUnix = now.AddMinutes(-15).ToUnixTimeSeconds(), StopUnix = now.AddMinutes(15).ToUnixTimeSeconds() } };
-            return (new HomeData(data, epg, new Seerr()), history, epg, data);
+            return (new HomeData(data, epg, seerr ?? new Seerr()), history, epg, data);
         }
 
         [Fact]
@@ -135,6 +136,55 @@ namespace Baird.Tests.NewUi
             Assert.Equal("get", cards[0].Badge);
             Assert.Equal("https://image.tmdb.org/t/p/w500/a.jpg", cards[0].ImageUrl);
             Assert.Null(cards[1].Badge);
+        }
+
+        private static JellyseerrRequest Req(int tmdb, string type, string title, DateTime created, int mediaStatus, double? progress = null, DateTime? updated = null) => new()
+        {
+            Id = tmdb * 10,
+            Status = 2,
+            TmdbId = tmdb,
+            MediaType = type,
+            Title = title,
+            PosterPath = $"/{tmdb}.jpg",
+            CreatedAt = created.ToString("o"),
+            UpdatedAt = (updated ?? created).ToString("o"),
+            MediaInfoStatus = mediaStatus,
+            DownloadProgress = progress,
+        };
+
+        [Fact]
+        public async Task Downloads_lists_requests_newest_first_one_card_per_title_with_where_each_has_got_to()
+        {
+            var now = DateTime.UtcNow;
+            var seerr = new Seerr();
+            seerr.Requests.AddRange(new[]
+            {
+                Req(1, "movie", "Dune", now.AddDays(-3), mediaStatus: 3, progress: 42.4),
+                Req(2, "tv", "Severance", now.AddDays(-1), mediaStatus: 2),
+                Req(2, "tv", "Severance", now.AddDays(-5), mediaStatus: 2), // an older request for another season
+                Req(3, "tv", "Slow Horses", now.AddDays(-2), mediaStatus: 4),
+                Req(4, "movie", "Arrival", now.AddDays(-4), mediaStatus: 5, updated: now.AddDays(-2)),
+            });
+            var (home, _, _, _) = Build(seerr: seerr);
+            var cards = await home.DownloadsAsync();
+            Assert.Equal(new[] { "Severance", "Slow Horses", "Dune", "Arrival" }, cards.Select(c => c.Label));
+            Assert.Equal(new[] { "requested", "partial", "dl:42", "ready" }, cards.Select(c => c.Badge));
+            Assert.Equal("tmdb:tv:2", cards[0].Id); // OK opens the show's page, like Discover
+            Assert.Equal(CardKind.Series, cards[0].Kind);
+            Assert.Equal(CardKind.Film, cards[2].Kind);
+            Assert.Equal("https://image.tmdb.org/t/p/w500/2.jpg", cards[0].ImageUrl);
+            Assert.StartsWith("Series · requested", cards[0].Sublabel);
+        }
+
+        [Fact]
+        public async Task Downloads_drops_what_arrived_more_than_two_weeks_ago()
+        {
+            var now = DateTime.UtcNow;
+            var seerr = new Seerr();
+            seerr.Requests.Add(Req(4, "movie", "Arrival", now.AddDays(-30), mediaStatus: 5, updated: now.AddDays(-20)));
+            seerr.Requests.Add(Req(5, "movie", "Heat", now.AddDays(-30), mediaStatus: 3));
+            var (home, _, _, _) = Build(seerr: seerr);
+            Assert.Equal(new[] { "Heat" }, (await home.DownloadsAsync()).Select(c => c.Label));
         }
 
         [Fact]

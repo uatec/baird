@@ -18,8 +18,8 @@ using Baird.NewUi.Theme;
 namespace Baird.NewUi.Screens
 {
     /// <summary>
-    /// Home: a hero that describes the lit card (no buttons of its own), then rows — Continue watching, On now, Watchlist,
-    /// Discover. ▴ off the top row returns false so the shell lights the tab bar.
+    /// Home: a hero that describes the lit card (no buttons of its own), then rows — Continue watching, Downloads, On now,
+    /// Watchlist, Discover. ▴ off the top row returns false so the shell lights the tab bar.
     /// </summary>
     public sealed class HomeScreen : IScreen
     {
@@ -103,11 +103,39 @@ namespace Baird.NewUi.Screens
             Dispatcher.UIThread.Post(() => Build(new (string, string, CardShape, IReadOnlyList<HomeCard>)[]
             {
                 ("Continue watching", "Continue watching", CardShape.Wide, upNext.Result),
+                (DownloadsRow, DownloadsRow, CardShape.Poster, _downloads),
                 ("On now", "On now", CardShape.Wide, onNow.Result),
                 ("Your watchlist", "In your watchlist", CardShape.Poster, watch.Result),
                 ("Discover", "Discover", CardShape.Poster, disc.Result),
             }));
             Dispatcher.UIThread.Post(() => _ready.TrySetResult());
+            // Downloads asks Seerr about every request, which can be slow: it joins Home when it answers rather than holding it up.
+            await RefreshDownloadsAsync();
+        }
+
+        private const string DownloadsRow = "Downloads";
+        private static readonly TimeSpan DownloadsEvery = TimeSpan.FromMinutes(2);
+        private DateTime _downloadsAt = DateTime.MinValue;
+        private IReadOnlyList<HomeCard> _downloads = Array.Empty<HomeCard>();
+
+        /// <summary>Puts Downloads (what's been requested and where it's got to) after Continue watching; at most every couple of minutes.</summary>
+        public async Task RefreshDownloadsAsync()
+        {
+            if (DateTime.UtcNow - _downloadsAt < DownloadsEvery) return;
+            _downloadsAt = DateTime.UtcNow;
+            IReadOnlyList<HomeCard> cards;
+            try { cards = await _ctx.Home.DownloadsAsync(); }
+            catch (Exception ex) { Console.WriteLine($"[Home] Downloads failed: {ex.Message}"); return; }
+            void Apply()
+            {
+                _downloads = cards;
+                if (_rowList.Count == 0) return; // the first Build includes it
+                var rows = CurrentRows().Where(r => r.Title != DownloadsRow).ToList();
+                var at = rows.Count > 0 && rows[0].Title == "Continue watching" ? 1 : 0;
+                rows.Insert(at, (DownloadsRow, DownloadsRow, CardShape.Poster, cards));
+                RebuildIfChanged(rows);
+            }
+            Dispatcher.UIThread.Post(Apply); // always queued, so it lands after the first Build that LoadRowsAsync posts
         }
 
         /// <summary>What's playing goes first in the first row, so one OK from Home goes back to it.</summary>
@@ -296,7 +324,7 @@ namespace Baird.NewUi.Screens
                 if (playing != null && _overVideo && playing != _seenPlaying) { _pos = (0, 0); _memory.Clear(); }
                 _seenPlaying = playing;
             }
-            _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync();
+            _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync(); _ = RefreshDownloadsAsync();
             Layout();
         }
         public void OnFocusIn() { _lit = true; Layout(); }
