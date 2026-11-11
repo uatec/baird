@@ -241,6 +241,7 @@ namespace Baird.NewUi.Diagnostics
         public void Record()
         {
             var line = Sample();
+            if (BoundedImageLoader.TopRequested() is { Length: > 0 } top && _samples % 10 == 0) line += $"\n{_now():yyyy-MM-dd HH:mm:ss} img_top {top}";
             if (++_samples % MappingsEvery == 1 && Mappings() is { Length: > 0 } maps) line += "\n" + maps;
             Append(line);
         }
