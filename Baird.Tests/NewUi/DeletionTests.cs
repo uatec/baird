@@ -130,3 +130,29 @@ namespace Baird.Tests.NewUi
         }
     }
 }
+
+namespace Baird.Tests.NewUi
+{
+    public class EpisodeActionsTests
+    {
+        [Avalonia.Headless.XUnit.AvaloniaFact]
+        public async System.Threading.Tasks.Task An_episode_opens_its_series_page_not_a_film_page()
+        {
+            var rig = HomeScreenTests.Context();
+            var w = CatalogueTests.Build();
+            rig.Ctx.Shows = w.Shows;
+            var series = new CatalogueTitle("Series:simp", TitleKind.Series, "The Simpsons", null, null, null, new[] { new TitleSource("Jellyfin", "simp", PlayVia.Mpv) });
+            rig.Ctx.SeriesOf = c => System.Threading.Tasks.Task.FromResult<CatalogueTitle?>(c.Id == "s1e2" ? series : null);
+            var ep = new HomeCard(CardKind.Episode, "s1e2", "The Simpsons", "S1 E2 · Bart the Genius", null, 0.3, null, "Jellyfin: nas", PlayVia.Mpv, "http://stream/s1e2");
+            var menu = new Baird.NewUi.Screens.ItemActions(rig.Ctx, ep);
+            Xunit.Assert.DoesNotContain("Open the page", menu.Items);
+            var i = menu.Items.ToList().IndexOf("Open the series");
+            Xunit.Assert.True(i >= 0);
+            for (var k = 0; k < i; k++) menu.OnAction(Baird.NewUi.Core.UiAction.Down, false);
+            menu.OnAction(Baird.NewUi.Core.UiAction.Ok, false);
+            await System.Threading.Tasks.Task.Delay(20);
+            var page = Xunit.Assert.Single(rig.Ctx.Nav.State.Pages);
+            Xunit.Assert.Same(series, page.Params);
+        }
+    }
+}

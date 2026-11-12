@@ -50,10 +50,14 @@ namespace Baird.NewUi.Adapters
             source.StartsWith("Netflix", StringComparison.OrdinalIgnoreCase) || source.StartsWith("Disney", StringComparison.OrdinalIgnoreCase)
             || source == ItvxProvider.SourceName || source == Channel4Provider.SourceName ? PlayVia.Browser : PlayVia.Mpv;
 
+        /// <summary>"S4 E2 · The Griffin Incident" when the provider says which episode it is, else the episode's title.</summary>
+        private static string EpisodeLine(MediaItemViewModel m) =>
+            System.Text.RegularExpressions.Regex.IsMatch(m.Details ?? "", @"^S\d+ E\d+$") ? $"{m.Details} · {m.Subtitle}" : m.Subtitle;
+
         private static HomeCard ItemCard(MediaItemViewModel m) =>
             new(m.Type == MediaType.Brand ? CardKind.Series : !string.IsNullOrWhiteSpace(m.Subtitle) ? CardKind.Episode : CardKind.Film,
                 m.Id, m.Name,
-                m.Type == MediaType.Brand ? m.Details : !string.IsNullOrWhiteSpace(m.Subtitle) ? m.Subtitle : m.Details,
+                m.Type == MediaType.Brand ? m.Details : !string.IsNullOrWhiteSpace(m.Subtitle) ? EpisodeLine(m) : m.Details,
                 string.IsNullOrEmpty(m.ImageUrl) ? null : m.ImageUrl,
                 m.History is { } h && !h.IsFinished && h.LastPosition > TimeSpan.Zero ? m.Progress : null,
                 null, m.Source, m.StreamUrl is { Length: > 0 } ? ViaOf(m.Source) : PlayVia.None, m.StreamUrl, m.LastPosition, Synopsis: m.Synopsis);

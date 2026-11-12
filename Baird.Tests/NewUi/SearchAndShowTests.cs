@@ -215,7 +215,7 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public async Task Play_plays_the_episode_and_back_returns_to_the_page()
+        public async Task Play_plays_the_episode_and_back_goes_home_with_it_playing()
         {
             var (page, rig) = await Simpsons();
             rig.Ctx.OpenShow(page.Details!.Title);
@@ -223,7 +223,9 @@ namespace Baird.Tests.NewUi
             Assert.Equal("s1e1", rig.Ctx.Playback.Current!.ItemId);
             Assert.True(rig.Ctx.Nav.State.AtVideo);
             rig.Ctx.Nav.Back();
-            Assert.Equal("show", rig.Ctx.Nav.State.Pages.Single().Name);
+            Assert.Empty(rig.Ctx.Nav.State.Pages);
+            Assert.Equal(Place.Home, rig.Ctx.Nav.Top);
+            Assert.NotNull(rig.Ctx.Nav.State.Video);
         }
 
         [AvaloniaFact]

@@ -296,6 +296,9 @@ namespace Baird.Services
             return item == null ? null : MapJellyfinItem(item);
         }
 
+        /// <summary>An item's poster.</summary>
+        public string ImageUrlOf(string itemId) => $"{_serverUrl.TrimEnd('/')}/Items/{itemId}/Images/Primary";
+
         /// <summary>An episode's series (id and name), or null for anything that isn't an episode.</summary>
         public async Task<(string Id, string Name)?> GetSeriesOfAsync(string episodeId)
         {
@@ -424,20 +427,40 @@ namespace Baird.Services
                 ? TimeSpan.FromTicks(m.RunTimeTicks.Value)
                 : TimeSpan.Zero;
 
+            // An episode is named as other providers name one: the series, with the episode's title as its subtitle and
+            // "S4 E2" as its details (so it's an episode everywhere, not a film called after its file).
+            var episode = string.Equals(m.Type, "Episode", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(m.SeriesName);
+            var code = m.ParentIndexNumber is { } sn && m.IndexNumber is { } en ? $"S{sn} E{en}" : null;
             return new MediaItemData
             {
                 Id = m.Id,
-                Name = m.Name,
-                Details = m.ProductionYear?.ToString() ?? "",
+                Name = episode ? m.SeriesName! : m.Name,
+                Details = episode && code != null ? code : m.ProductionYear?.ToString() ?? "",
                 ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary",
                 IsLive = false,
                 StreamUrl = isContainer ? "" : GetStreamUrlInternal(m.Id),
                 Source = SourcePrefix + _serverHostname,
                 Type = type,
-                Subtitle = "",
+                Subtitle = episode ? EpisodeTitle(m.Name) : "",
                 Synopsis = "", // TODO: should this stuff just be nullable or expicitly empty? or a subtype for Groupings
                 Duration = duration,
             };
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex EpisodeCode = new(@"\bS(\d{1,3})E(\d{1,4})\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex Release = new(@"[\s._-]+(WEB[-. ]?Rip|WEB[-. ]?DL|HDTV|Blu-?Ray|BDRip|DVDRip|Remux|\d{3,4}p|x26[45]|HEVC)\b.*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>
+        /// The episode's title from what Jellyfin calls it. Without metadata Jellyfin uses the file name
+        /// ("Show - S04E02 - The Griffin Incident WEBRip-1080p"): that becomes "The Griffin Incident" ("Episode 2" if
+        /// there's no title in it). A real title is left alone.
+        /// </summary>
+        public static string EpisodeTitle(string name)
+        {
+            var code = EpisodeCode.Match(name);
+            if (!code.Success) return name;
+            var rest = Release.Replace(name[(code.Index + code.Length)..], "").Trim(' ', '-', '.', '_');
+            return rest.Length > 0 ? rest : $"Episode {int.Parse(code.Groups[2].Value)}";
         }
 
         private string GetStreamUrlInternal(string itemId)
@@ -495,6 +518,9 @@ namespace Baird.Services
         public int? ProductionYear { get; set; }
         public string Type { get; set; } = null!;
         public int? ParentIndexNumber { get; set; }
+        public int? IndexNumber { get; set; }
+        public string? SeriesName { get; set; }
+        public string? SeriesId { get; set; }
         public long? RunTimeTicks { get; set; }
     }
 

@@ -27,6 +27,8 @@ namespace Baird.NewUi
         /// <summary>Something was deleted from the server: Home, Search and an open show page read it again.</summary>
         public event Action? LibraryChanged;
         public void RaiseLibraryChanged() => LibraryChanged?.Invoke();
+        /// <summary>An episode's series, as a title its page can open (null when it can't be found, or until wired).</summary>
+        public Func<HomeCard, System.Threading.Tasks.Task<CatalogueTitle?>>? SeriesOf { get; set; }
         /// <summary>Deleting from the server (null until wired: nothing offers it).</summary>
         public Adapters.Deletion? Deleter { get; set; }
         public void RaiseUpNextChanged() => UpNextChanged?.Invoke();

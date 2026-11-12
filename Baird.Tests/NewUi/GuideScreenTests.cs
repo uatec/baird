@@ -404,7 +404,8 @@ namespace Baird.Tests.NewUi
             Assert.False(GuideScreen.ShowsPreview(nav.State, playing: false));
             nav.Play(new VideoRef("live", "ch1"));
             Assert.False(GuideScreen.ShowsPreview(nav.State, playing: true));
-            nav.Back();
+            nav.Back(); // Home, with what's playing
+            nav.SetPlace(Place.LiveTv);
             Assert.True(GuideScreen.ShowsPreview(nav.State, playing: true));
             nav.SetPlace(Place.Home);
             Assert.False(GuideScreen.ShowsPreview(nav.State, playing: true));

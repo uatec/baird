@@ -76,12 +76,17 @@ namespace Baird.NewUi
             _ctx.SearchNote = () => services.Netflix is { } nf && nf.Hub.ActivePlayback is { } busy && nf.DirectSearchWorks != true
                 ? $"Netflix search is paused while {busy} plays — stop it to search Netflix." : null;
             // An episode started from Home (not its show page): find its show, so the end card can offer the next one.
-            _ctx.FindFollowing = async card =>
+            _ctx.SeriesOf = async card =>
             {
                 if (!card.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase)) return null;
                 if (await services.Jellyfin.GetSeriesOfAsync(card.Id) is not { } series) return null;
-                var title = new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
+                return new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, services.Jellyfin.ImageUrlOf(series.Id), null,
                     new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
+            };
+            _ctx.FindFollowing = async card =>
+            {
+                if (await _ctx.SeriesOf(card) is not { } title) return null;
+                var series = (Name: title.Name, Id: title.Sources[0].ItemId);
                 var details = await _ctx.Shows!.DetailsAsync(title);
                 var eps = details.Seasons.SelectMany(s => s.Episodes)
                     .Where(e => e.State == Model.EpisodeState.Available && e.Source is { StreamUrl: not null })

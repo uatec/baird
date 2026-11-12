@@ -297,7 +297,12 @@ namespace Baird.NewUi.Shell
                 if (a == UiAction.Left && i > 0) { nav.SetPlace(Tabs[i - 1]); return; }
                 if (a == UiAction.Right && i < Tabs.Length - 1) { nav.SetPlace(Tabs[i + 1]); return; }
                 if (a is UiAction.Down or UiAction.Ok) { TabFocus = false; PlaceScreen(st.Place).OnFocusIn(); Render(); return; }
-                if (a == UiAction.Back) { if (st.Place != Place.Home) nav.SetPlace(Place.Home); return; }
+                if (a == UiAction.Back)
+                {
+                    if (st.Place != Place.Home) nav.SetPlace(Place.Home);
+                    else if (st.Video != null) { TabFocus = false; nav.ToVideo(); } // Home ⇄ what's playing
+                    return;
+                }
                 if (a is UiAction.Left or UiAction.Right or UiAction.Up) return;
             }
 
@@ -308,12 +313,19 @@ namespace Baird.NewUi.Shell
             if (st.Overlay != null && st.Video != null && st.AtVideo && st.Pages.Count == 0
                 && (a is UiAction.PageUp or UiAction.PageDown or UiAction.Prev or UiAction.Next || InputMap.DigitOf(a) != null)
                 && _d.VideoAction(a, repeat)) return;
+            // Home while something plays: Back returns to it (and Back from the video comes Home, lit on it).
+            if (onPlace && a == UiAction.Back && st.Place == Place.Home && st.Video != null) { nav.ToVideo(); return; }
             if (onPlace && (a == UiAction.Up || a == UiAction.Back))
             {
                 // ▴ off the top of a place's content, or Back from inside it, lights its tab.
                 TabFocus = true; PlaceScreen(st.Place).OnFocusOut(); Render(); return;
             }
-            if (a == UiAction.Back) nav.Back();
+            if (a == UiAction.Back)
+            {
+                var fromVideo = st.Video != null && st.AtVideo && st.Pages.Count == 0 && st.Overlay == null;
+                nav.Back();
+                if (fromVideo) { TabFocus = false; if (PlaceScreen(Place.Home) is HomeScreen home) home.Reset(); }
+            }
             else if (a == UiAction.PlayPause) _d.VideoAction(a, repeat);
         }
 

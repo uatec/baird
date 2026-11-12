@@ -29,7 +29,7 @@ namespace Baird.Tests.NewUi
         {
             var nav = new Navigator();
             var video = new Border { Name = "video" };
-            var shell = new Shell(new ShellDeps(video, nav, p => new FakeScreen(p.ToString()), pr => new FakeScreen(pr.Name), o => new FakeScreen(o.Name), (_, _) => true, () => "BBC One"));
+            var shell = new Shell(new ShellDeps(video, nav, p => new FakeScreen(p.ToString()), pr => new FakeScreen(pr.Name), o => new FakeScreen(o.Name), (a, _) => a != UiAction.Back, () => "BBC One")); // Back is left to the navigator, as VideoActions does
             var w = new Window { Width = 1920, Height = 1080, Content = shell };
             w.Show();
             Dispatcher.UIThread.RunJobs();
@@ -72,6 +72,24 @@ namespace Baird.Tests.NewUi
             Assert.True(shell.TabFocus);
             shell.OnAction(UiAction.Down, false);
             Assert.False(shell.TabFocus);
+        }
+
+        [AvaloniaFact]
+        public void While_something_plays_back_cycles_between_the_video_and_home()
+        {
+            var (shell, nav, _, _) = Build();
+            nav.Play(new VideoRef("vod", "loki"));
+            shell.OnAction(UiAction.Back, false);
+            Assert.Equal(Place.Home, nav.Top);
+            Assert.False(shell.TabFocus);
+            shell.OnAction(UiAction.Back, false); // from Home's content: straight back to the video, not the tab bar
+            Assert.Equal("video", nav.Top);
+            shell.OnAction(UiAction.Back, false);
+            Assert.Equal(Place.Home, nav.Top);
+            shell.OnAction(UiAction.Up, false);
+            Assert.True(shell.TabFocus);
+            shell.OnAction(UiAction.Back, false); // from the tab bar too
+            Assert.Equal("video", nav.Top);
         }
 
         [AvaloniaFact]
