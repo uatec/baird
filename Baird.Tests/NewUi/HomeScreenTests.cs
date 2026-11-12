@@ -152,6 +152,22 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task A_programme_changing_remakes_only_its_card_so_the_rest_of_home_doesnt_flicker()
+        {
+            var (home, rig, _) = await Shown();
+            var before = Cards(home.View).ToList();
+            var epg = (Baird.Tests.Mocks.MockEpgService)typeof(Baird.NewUi.Adapters.HomeData).GetField("_epg", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(rig.Ctx.Home)!;
+            var now = DateTimeOffset.UtcNow;
+            epg.MockSchedules["ch1"] = new System.Collections.Generic.List<Baird.Models.EpgProgram> { new() { Id = "p9", ChannelId = "ch1", Title = "Regional News", StartUnix = now.AddMinutes(-1).ToUnixTimeSeconds(), StopUnix = now.AddMinutes(29).ToUnixTimeSeconds() } };
+            await home.RefreshOnNowAsync();
+            Dispatcher.UIThread.RunJobs();
+            var after = Cards(home.View).ToList();
+            var changed = after.Single(c => c.Data.Programme?.Title == "Regional News");
+            Assert.DoesNotContain(changed, before);                       // the changed card is new…
+            Assert.All(after.Where(c => c != changed), c => Assert.Contains(c, before)); // …every other card is the same one, artwork already shown
+        }
+
+        [AvaloniaFact]
         public async Task The_home_key_goes_back_to_the_first_card()
         {
             var (home, rig, _) = await Shown();
