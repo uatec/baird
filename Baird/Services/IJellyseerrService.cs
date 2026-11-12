@@ -25,6 +25,13 @@ namespace Baird.Services
         /// </summary>
         Task<JellyseerrRequestResponse> RequestSeasonsAsync(int mediaId, string mediaType, IReadOnlyList<int>? seasons, CancellationToken cancellationToken = default) =>
             CreateRequestAsync(mediaId, mediaType, cancellationToken);
+
+        /// <summary>
+        /// Delete a title from the server: Radarr/Sonarr remove it and its files (so nothing fetches it again), then Seerr
+        /// forgets it (so it can be requested again). Ok when it's gone or Seerr never had it.
+        /// </summary>
+        Task<(bool Ok, string Message)> RemoveMediaAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default) =>
+            Task.FromResult((false, "Seerr can't delete."));
     }
 
     /// <summary>Seerr's state of one title. Status: 1 unknown, 2 pending, 3 processing, 4 partly available, 5 available.</summary>
@@ -71,6 +78,9 @@ namespace Baird.Services
         public string UpdatedAt { get; set; } = string.Empty;
         public int MediaInfoStatus { get; set; } // Same as search result
         public double? DownloadProgress { get; set; } // null = no data, 0-100 = real % from Radarr/Sonarr
+        public int MediaId { get; set; } // Seerr's media id (not TMDB's)
+        public string? ReleaseDate { get; set; } // a film's release date, or a series' first air date (yyyy-MM-dd)
+        public IReadOnlyList<JellyseerrSeason> Seasons { get; set; } = System.Array.Empty<JellyseerrSeason>();
         public bool IsAvailable => MediaInfoStatus == 5 || MediaInfoStatus == 4;
     }
 

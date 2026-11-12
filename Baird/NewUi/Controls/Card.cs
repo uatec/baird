@@ -85,11 +85,13 @@ namespace Baird.NewUi.Controls
             if (data.Badge == "playing") layers.Children.Add(Pill(data.Kind == CardKind.Channel ? "● Live · Now playing" : "▶ Now playing", data.Kind == CardKind.Channel ? T.Live : T.FocusFill, data.Kind == CardKind.Channel ? T.Text : T.FocusInk, HorizontalAlignment.Left));
             if (data.Badge == "get") layers.Children.Add(Pill("⤓ Request", T.FocusFill, T.FocusInk, HorizontalAlignment.Right));
             if (data.Badge == "requested") layers.Children.Add(Pill("Requested", T.Pill, T.Text, HorizontalAlignment.Right));
-            if (data.Badge == "ready") layers.Children.Add(Pill("✓ Ready to watch", T.FocusFill, T.FocusInk, HorizontalAlignment.Right));
+            if (data.Badge == "ready") layers.Children.Add(Pill("✓ Ready", T.Ready, T.FocusInk, HorizontalAlignment.Right));
+            if (data.Badge == "searching") layers.Children.Add(Pill("Searching", T.Pill, T.Text, HorizontalAlignment.Right));
+            if (data.Badge is { } outOn && outOn.StartsWith("out:", StringComparison.Ordinal)) layers.Children.Add(Pill($"Out {outOn[4..]}", T.Pill, T.Text, HorizontalAlignment.Right));
             if (data.Badge == "partial") layers.Children.Add(Pill("Partly available", T.Pill, T.Text, HorizontalAlignment.Right));
             if (data.Badge == "missing") layers.Children.Add(Pill("Not streaming", T.Pill, T.Text, HorizontalAlignment.Left));
             // Downloading: the percentage, like a film's (episodes too).
-            if (data.Badge is { } b && b.StartsWith("dl:", StringComparison.Ordinal)) layers.Children.Add(Pill($"⤓ Downloading {b[3..]}%", T.Downloading, T.FocusInk, HorizontalAlignment.Left));
+            if (data.Badge is { } b && b.StartsWith("dl:", StringComparison.Ordinal)) layers.Children.Add(Pill(shape == CardShape.Poster ? $"⤓ {b[3..]}%" : $"⤓ Downloading {b[3..]}%", T.Downloading, T.FocusInk, HorizontalAlignment.Left));
             if (data.Progress is { } p and > 0)
             {
                 var track = new Grid { Height = 5, Margin = new Thickness(14, 0, 14, 12), VerticalAlignment = VerticalAlignment.Bottom, ClipToBounds = true };

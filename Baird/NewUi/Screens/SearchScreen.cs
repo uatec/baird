@@ -110,6 +110,9 @@ namespace Baird.NewUi.Screens
         {
             _ctx = ctx;
             _timers = timers ?? ctx.Timers;
+            // Something deleted: what's shown reads again (Downloads, or the search typed).
+            _onLibraryChanged = () => OnUi(() => { if (_inDownloads || _query.Trim().Length > 0) _ = RunAsync(); });
+            _ctx.LibraryChanged += _onLibraryChanged;
             _root.Background = new RadialGradientBrush
             {
                 Center = new RelativePoint(0.85, 0, RelativeUnit.Relative),
@@ -581,7 +584,8 @@ namespace Baird.NewUi.Screens
 
         public void OnFocusIn() { _zone = Zone.Keyboard; Draw(); }
         public void OnFocusOut() { _zone = Zone.None; Draw(); }
-        public void Destroy() { _debounce?.Dispose(); _cts?.Cancel(); }
+        private readonly Action _onLibraryChanged;
+        public void Destroy() { _debounce?.Dispose(); _cts?.Cancel(); _ctx.LibraryChanged -= _onLibraryChanged; }
     }
 
     /// <summary>A lit-able pill (recent searches).</summary>

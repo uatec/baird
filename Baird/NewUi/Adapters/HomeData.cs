@@ -198,6 +198,42 @@ namespace Baird.NewUi.Adapters
             }
             catch (Exception ex) { Console.WriteLine($"[HomeData] Discover failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
         }
+        /// <summary>
+        /// Where a request has got to, as a card badge: "ready", "dl:42" (with the progress for a bar), "partial",
+        /// "out:18 Dec" (not released yet), "searching" (released, nothing found yet) or "requested" (awaiting approval).
+        /// </summary>
+        public static (string Badge, double? Progress) DownloadBadge(JellyseerrRequest r, DateTime today)
+        {
+            if (r.MediaInfoStatus == 5) return ("ready", null);
+            if (r.DownloadProgress is { } p) return ($"dl:{p:0}", p / 100);
+            if (r.MediaInfoStatus == 4) return ("partial", null);
+            if (r.MediaInfoStatus == 3) // processing: approved, being looked for
+            {
+                if (DateTime.TryParse(r.ReleaseDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var out_) && out_.Date > today.Date)
+                    return ($"out:{out_:d MMM}{(out_.Year != today.Year ? $" {out_.Year}" : "")}", null);
+                return ("searching", null);
+            }
+            return ("requested", null);
+        }
+
+        /// <summary>"S1–3 ready · S4 coming": which seasons are here, partly here, or on the way (runs of the same state joined).</summary>
+        public static string SeasonLine(IReadOnlyList<JellyseerrSeason> seasons)
+        {
+            static string? State(int status) => status switch { 5 => "ready", 4 => "partly", 2 or 3 => "coming", _ => null };
+            var parts = new List<string>();
+            int? from = null, to = null; string? state = null;
+            void Flush() { if (state != null) parts.Add($"S{from}{(to != from ? $"–{to}" : "")} {state}"); }
+            foreach (var s in seasons.Where(s => s.Number > 0).OrderBy(s => s.Number))
+            {
+                var st = State(s.Status);
+                if (st != null && st == state && to == s.Number - 1) { to = s.Number; continue; }
+                Flush();
+                from = to = st == null ? null : s.Number; state = st;
+            }
+            Flush();
+            return string.Join(" · ", parts);
+        }
+
         /// <summary>How long a request that has arrived stays in Downloads.</summary>
         public static readonly TimeSpan KeepArrivedFor = TimeSpan.FromDays(14);
 
@@ -219,18 +255,16 @@ namespace Baird.NewUi.Adapters
                     .Select(r =>
                     {
                         var tv = r.MediaType == "tv";
-                        var badge = r.MediaInfoStatus switch
-                        {
-                            5 => "ready",
-                            4 => "partial",
-                            _ when r.DownloadProgress is { } p => $"dl:{p:0}",
-                            _ => "requested",
-                        };
+                        var (badge, progress) = DownloadBadge(r, DateTime.Now);
                         var asked = When(r.CreatedAt);
-                        var sub = $"{(tv ? "Series" : "Film")}{(asked > DateTime.MinValue ? $" · requested {asked.ToLocalTime():d MMM}" : "")}";
-                        return new HomeCard(tv ? CardKind.Series : CardKind.Film, $"tmdb:{r.MediaType}:{r.TmdbId}", r.Title, sub,
-                            r.PosterPath is { Length: > 0 } pp ? $"https://image.tmdb.org/t/p/w500{pp}" : null,
-                            null, badge, "Seerr", PlayVia.None);
+                        var seasons = tv ? SeasonLine(r.Seasons) : "";
+                        var sub = seasons.Length > 0 ? seasons : asked > DateTime.MinValue ? $"Requested {asked.ToLocalTime():d MMM}" : tv ? "Series" : "Film";
+                        var poster = r.PosterPath is { Length: > 0 } pp ? $"https://image.tmdb.org/t/p/w500{pp}" : null;
+                        var kind = tv ? TitleKind.Series : TitleKind.Film;
+                        var title = new CatalogueTitle($"tmdb:{r.MediaType}:{r.TmdbId}", kind, r.Title, CatalogueSearch.YearOf(r.ReleaseDate), poster, null,
+                            Array.Empty<TitleSource>(), new SeerrRef(r.TmdbId, r.MediaType, r.MediaInfoStatus == 0 ? 1 : r.MediaInfoStatus));
+                        return new HomeCard(tv ? CardKind.Series : CardKind.Film, $"tmdb:{r.MediaType}:{r.TmdbId}", r.Title, sub, poster,
+                            progress, badge, "Seerr", PlayVia.None, Title: title);
                     })
                     .ToList();
             }

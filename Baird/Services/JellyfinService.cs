@@ -12,7 +12,7 @@ using Baird.Models;
 
 namespace Baird.Services
 {
-    public class JellyfinService : IMediaProvider, IMediaLibrary
+    public class JellyfinService : IMediaProvider, IMediaLibrary, IMediaDeleter
     {
         public string Name => "Jellyfin";
         private readonly string _serverUrl;
@@ -200,6 +200,29 @@ namespace Baird.Services
                 Console.WriteLine($"[JellyfinService] Failed to fetch movies: {ex.Message}");
                 Console.WriteLine($"[JellyfinService] StackTrace: {ex.StackTrace}");
                 return Enumerable.Empty<MediaItemData>();
+            }
+        }
+
+        /// <summary>Deletes an item and its files (the account needs Jellyfin's "allow media deletion").</summary>
+        public async Task<bool> DeleteItemAsync(string itemId, System.Threading.CancellationToken cancellationToken = default)
+        {
+            await EnsureAuthenticatedAsync();
+            if (!IsAuthenticated) return false;
+            try
+            {
+                var response = await _httpClient.DeleteAsync($"Items/{Uri.EscapeDataString(itemId)}", cancellationToken).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine($"[JellyfinService] Deleted item {itemId} ({(int)response.StatusCode})");
+                    return true;
+                }
+                Console.WriteLine($"[JellyfinService] Deleting item {itemId} failed: {response.StatusCode}");
+                return false;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine($"[JellyfinService] Deleting item {itemId} error: {ex.Message}");
+                return false;
             }
         }
 

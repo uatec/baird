@@ -24,6 +24,11 @@ namespace Baird.NewUi
         public Func<string?> SearchNote { get; set; } = () => null;
         /// <summary>Up next changed (an item was taken off it): Home refreshes the row.</summary>
         public event Action? UpNextChanged;
+        /// <summary>Something was deleted from the server: Home, Search and an open show page read it again.</summary>
+        public event Action? LibraryChanged;
+        public void RaiseLibraryChanged() => LibraryChanged?.Invoke();
+        /// <summary>Deleting from the server (null until wired: nothing offers it).</summary>
+        public Adapters.Deletion? Deleter { get; set; }
         public void RaiseUpNextChanged() => UpNextChanged?.Invoke();
         /// <summary>The episodes of the show being watched, in order (set by the show page), for "Up next".</summary>
         public IReadOnlyList<HomeCard> Following { get; set; } = Array.Empty<HomeCard>();

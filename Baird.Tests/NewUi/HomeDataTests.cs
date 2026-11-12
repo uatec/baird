@@ -157,23 +157,43 @@ namespace Baird.Tests.NewUi
         {
             var now = DateTime.UtcNow;
             var seerr = new Seerr();
+            var dune = Req(1, "movie", "Dune", now.AddDays(-3), mediaStatus: 3, progress: 42.4);
+            var rivals = Req(2, "tv", "Rivals", now.AddDays(-1), mediaStatus: 4);
+            rivals.Seasons = new[] { new JellyseerrSeason(1, 8, 5), new JellyseerrSeason(2, 8, 4), new JellyseerrSeason(3, 8, 1) };
+            var future = Req(5, "movie", "Dune: Part Three", now.AddDays(-6), mediaStatus: 3);
+            future.ReleaseDate = "2099-12-18";
+            var stuck = Req(6, "movie", "Clayface", now.AddDays(-7), mediaStatus: 3);
+            stuck.ReleaseDate = "2020-01-01";
             seerr.Requests.AddRange(new[]
             {
-                Req(1, "movie", "Dune", now.AddDays(-3), mediaStatus: 3, progress: 42.4),
-                Req(2, "tv", "Severance", now.AddDays(-1), mediaStatus: 2),
-                Req(2, "tv", "Severance", now.AddDays(-5), mediaStatus: 2), // an older request for another season
-                Req(3, "tv", "Slow Horses", now.AddDays(-2), mediaStatus: 4),
+                dune, rivals,
+                Req(2, "tv", "Rivals", now.AddDays(-5), mediaStatus: 4), // an older request for another season
                 Req(4, "movie", "Arrival", now.AddDays(-4), mediaStatus: 5, updated: now.AddDays(-2)),
+                future, stuck,
             });
             var (home, _, _, _) = Build(seerr: seerr);
             var cards = await home.DownloadsAsync();
-            Assert.Equal(new[] { "Severance", "Slow Horses", "Dune", "Arrival" }, cards.Select(c => c.Label));
-            Assert.Equal(new[] { "requested", "partial", "dl:42", "ready" }, cards.Select(c => c.Badge));
+            Assert.Equal(new[] { "Rivals", "Dune", "Arrival", "Dune: Part Three", "Clayface" }, cards.Select(c => c.Label));
+            Assert.Equal(new[] { "partial", "dl:42", "ready", "out:18 Dec 2099", "searching" }, cards.Select(c => c.Badge));
+            Assert.Equal("S1 ready · S2 partly", cards[0].Sublabel); // which seasons are here
+            Assert.Equal(0.424, cards[1].Progress!.Value, 3); // a bar along the card
             Assert.Equal("tmdb:tv:2", cards[0].Id); // OK opens the show's page, like Discover
             Assert.Equal(CardKind.Series, cards[0].Kind);
-            Assert.Equal(CardKind.Film, cards[2].Kind);
+            Assert.Equal(CardKind.Film, cards[1].Kind);
+            Assert.Equal(4, cards[0].Title!.Seerr!.Status);
             Assert.Equal("https://image.tmdb.org/t/p/w500/2.jpg", cards[0].ImageUrl);
-            Assert.StartsWith("Series · requested", cards[0].Sublabel);
+            Assert.StartsWith("Requested ", cards[1].Sublabel);
+        }
+
+        [Theory]
+        [InlineData("1:5,2:5,3:5,4:3", "S1–3 ready · S4 coming")]
+        [InlineData("1:4", "S1 partly")]
+        [InlineData("1:1,2:2", "S2 coming")]
+        [InlineData("1:5,2:1,3:5", "S1 ready · S3 ready")]
+        public void Season_lines_say_which_seasons_are_here(string seasons, string expected)
+        {
+            var list = seasons.Split(',').Select(x => x.Split(':')).Select(x => new JellyseerrSeason(int.Parse(x[0]), 8, int.Parse(x[1]))).ToList();
+            Assert.Equal(expected, HomeData.SeasonLine(list));
         }
 
         [Fact]

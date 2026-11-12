@@ -48,9 +48,12 @@ namespace Baird.Tests.NewUi
         }
 
         /// <summary>A library that can list everything it has, newest first (Items are in that order), as Jellyfin can.</summary>
-        internal sealed class NewestFirstLibrary : Library, IMediaLibrary
+        internal sealed class NewestFirstLibrary : Library, IMediaLibrary, IMediaDeleter
         {
+            public readonly List<string> Deleted = new();
+            public bool Fail;
             public NewestFirstLibrary(string name) : base(name) { }
+            public Task<bool> DeleteItemAsync(string id, CancellationToken ct = default) { if (Fail) return Task.FromResult(false); Deleted.Add(id); return Task.FromResult(true); }
             public Task<IEnumerable<MediaItemData>> GetNewestAsync(CancellationToken ct = default) =>
                 Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => !i.IsLive).ToList());
         }
@@ -58,6 +61,12 @@ namespace Baird.Tests.NewUi
         internal sealed class FakeSeerr : IJellyseerrService
         {
             public readonly List<JellyseerrRequest> Asked = new();
+            public readonly List<(int TmdbId, string Type)> Removed = new();
+            public Task<(bool Ok, string Message)> RemoveMediaAsync(int tmdbId, string type, CancellationToken ct = default)
+            {
+                Removed.Add((tmdbId, type));
+                return Task.FromResult((true, "Removed"));
+            }
             public readonly List<JellyseerrSearchResult> Results = new();
             public readonly Dictionary<int, JellyseerrMediaStatus> Status = new();
             public readonly List<(int Id, string Type, IReadOnlyList<int>? Seasons)> Requests = new();

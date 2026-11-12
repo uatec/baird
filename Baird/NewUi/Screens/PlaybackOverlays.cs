@@ -619,6 +619,8 @@ namespace Baird.NewUi.Screens
                     ));
                 }
                 else if (card.Source == "Seerr") _items.Add(("Open the page to request it", () => ctx.Activate(card)));
+                if (ctx.Deleter is { } deleter && deleter.CanDelete(card) && card.Badge != "playing")
+                    _items.Add(("Delete from the server…", (Action)(() => ConfirmDelete(ctx, deleter, card))));
                 if (fromUpNext && card.Badge != "playing")
                     _items.Add(("Forget this", async () =>
                     {
@@ -648,6 +650,29 @@ namespace Baird.NewUi.Screens
                 },
             });
             Draw();
+        }
+
+        /// <summary>"Delete … for good?": the files go from the server, so it asks first (Keep it is lit).</summary>
+        public static void ConfirmDelete(NewUiContext ctx, Adapters.Deletion deleter, HomeCard card)
+        {
+            var what = card.Kind switch { CardKind.Series => "this series, every episode", CardKind.Episode => "this episode", _ => "this film" };
+            ctx.Nav.OpenOverlay(new OverlayRef("choices", new ChoiceList($"Delete {card.Label} for good?",
+                $"This deletes {what} from the server. It can't be undone.", new[]
+                {
+                    new Choice("Keep it", null, () => { }),
+                    new Choice("Delete for good", null, async () =>
+                    {
+                        ctx.Toast($"Deleting {card.Label}…");
+                        var (ok, message) = await deleter.DeleteAsync(card);
+                        ctx.Toast(message);
+                        if (!ok) return;
+                        // Its own page has nothing left to show.
+                        if (card.Kind != CardKind.Episode && ctx.Nav.State.Pages.LastOrDefault()?.Params is CatalogueTitle shown
+                            && shown.Key == Adapters.ShowData.FromCard(card).Key) ctx.Nav.Back();
+                        ctx.RaiseLibraryChanged();
+                        ctx.RaiseUpNextChanged();
+                    }),
+                })));
         }
 
         private void Draw()

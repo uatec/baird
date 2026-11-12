@@ -74,6 +74,7 @@ namespace Baird.NewUi.Screens
             _root.Children.Add(_rows);
             _ = LoadAsync();
             _ctx.UpNextChanged += () => _ = RefreshUpNextAsync();
+            _ctx.LibraryChanged += () => { _downloadsAt = DateTime.MinValue; _ = RefreshDownloadsAsync(); };
             // Keep On now current while Home is up (programmes change all day).
             var refresh = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
             refresh.Tick += (_, _) => { if (_root.IsEffectivelyVisible && _root.GetVisualRoot() != null) _ = RefreshOnNowAsync(); };

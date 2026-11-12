@@ -77,6 +77,8 @@ namespace Baird.NewUi.Screens
         public ShowPage(NewUiContext ctx, CatalogueTitle title)
         {
             _ctx = ctx; _title = title;
+            _onLibraryChanged = () => OnUi(() => { if (!_life.IsCancellationRequested) Loaded = LoadAsync(fresh: true); });
+            _ctx.LibraryChanged += _onLibraryChanged; // an episode deleted: its card goes
             _root.Children.Add(_art);
             _root.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F5000000"), 0), new GradientStop(Color.Parse("#C0000000"), 0.45), new GradientStop(Color.Parse("#40000000"), 0.8) } } });
             _root.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F0000000"), 0), new GradientStop(Color.Parse("#80000000"), 0.4), new GradientStop(Colors.Transparent, 0.7) } } });
@@ -538,7 +540,8 @@ namespace Baird.NewUi.Screens
         }
 
         public void OnShow() { if (_details != null) Draw(); }
-        public void Destroy() { _life.Cancel(); _poll?.Dispose(); }
+        private readonly Action _onLibraryChanged;
+        public void Destroy() { _life.Cancel(); _poll?.Dispose(); _ctx.LibraryChanged -= _onLibraryChanged; }
     }
 
     /// <summary>A lit-able pill button with an icon (the show page's actions).</summary>
