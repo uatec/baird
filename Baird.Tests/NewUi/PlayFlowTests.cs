@@ -177,6 +177,51 @@ namespace Baird.Tests.NewUi
             Assert.False(ident.Showing);
         }
 
+        [AvaloniaFact]
+        public void The_tuning_spinner_turns_on_the_Pi_too_and_stops_once_the_picture_arrives()
+        {
+            var lite = Baird.NewUi.Shell.Motion.Lite;
+            Baird.NewUi.Shell.Motion.Lite = true; // the Pi's GPU
+            try
+            {
+                var ident = new TuneIdent();
+                ident.Show(Bbc1, null);
+                Assert.True(ident.Spinning);
+                ident.Loaded();
+                Assert.False(ident.Spinning);
+            }
+            finally { Baird.NewUi.Shell.Motion.Lite = lite; }
+        }
+
+        [Fact]
+        public void An_episode_loads_under_its_shows_name_with_the_episode_beneath()
+        {
+            var ep = new HomeCard(CardKind.Episode, "e", "Twisting 1-2-3", "S1 E2", null, null, null, "Disney+", PlayVia.Browser, "https://disney/e", Show: "The Simpsons");
+            Assert.Equal(("The Simpsons", "Twisting 1-2-3\nStarting Disney+…"), TuneIdent.Words(ep, ep.Label, "Starting Disney+…"));
+            var film = new HomeCard(CardKind.Film, "f", "Up", null, null, null, null, "Jellyfin", PlayVia.Mpv, "http://jf/f");
+            Assert.Equal(("Up", "Loading…"), TuneIdent.Words(film, film.Label, "Loading…"));
+        }
+
+        [AvaloniaFact]
+        public void Playing_from_a_shows_page_says_which_show_while_it_loads()
+        {
+            var rig = HomeScreenTests.Context();
+            HomeCard? started = null;
+            rig.Ctx.Starting += c => started = c;
+            var ep = new HomeCard(CardKind.Episode, "e", "Twisting 1-2-3", null, null, null, null, "Jellyfin", PlayVia.Mpv, "http://jf/e", Show: "The Simpsons");
+            rig.Ctx.PlayItem(ep);
+            Assert.Equal("The Simpsons", started!.Heading);
+        }
+
+        [Fact]
+        public void A_live_episode_says_the_show_and_the_episode()
+        {
+            var end = new DateTimeOffset(2026, 11, 12, 19, 30, 0, TimeSpan.Zero);
+            var p = new Programme("p", "c", "The Simpsons", "Twisting 1-2-3", null, end.AddMinutes(-30), end);
+            Assert.Equal($"The Simpsons · Twisting 1-2-3 · until {end.LocalDateTime:HH:mm}", TuneIdent.Describe(p));
+            Assert.Equal($"The Simpsons · until {end.LocalDateTime:HH:mm}", TuneIdent.Describe(p with { Subtitle = null }));
+        }
+
         private static async Task Wait(int ms) { var until = DateTime.UtcNow.AddMilliseconds(ms); while (DateTime.UtcNow < until) { Dispatcher.UIThread.RunJobs(); await Task.Delay(15); } }
     }
 }

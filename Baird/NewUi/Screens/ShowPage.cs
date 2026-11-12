@@ -267,7 +267,7 @@ namespace Baird.NewUi.Screens
             };
             var src = e.Source;
             return new HomeCard(CardKind.Episode, src?.ItemId ?? $"{_title.Key}:{e.Code}", e.Label, sub.Length > 0 ? sub : null, e.ImageUrl,
-                e.Watched ? 1 : src?.Progress, badge, src?.Service ?? "", src?.Via ?? PlayVia.None, src?.StreamUrl, src?.Resume ?? TimeSpan.Zero, Synopsis: e.Synopsis);
+                e.Watched ? 1 : src?.Progress, badge, src?.Service ?? "", src?.Via ?? PlayVia.None, src?.StreamUrl, src?.Resume ?? TimeSpan.Zero, Synopsis: e.Synopsis, Show: _title.Name);
         }
 
         private HomeCard FilmCard(TitleSource b) =>

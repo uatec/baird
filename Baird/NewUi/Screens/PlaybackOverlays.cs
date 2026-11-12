@@ -19,7 +19,8 @@ namespace Baird.NewUi.Screens
 {
     /// <summary>
     /// The tuning transition: while the tuner locks (1–2 s on DVB) the picture is dimmed and an ident shows the channel,
-    /// what's on and a spinner; it fades once the stream has loaded (and at least ~1.5 s have passed).
+    /// what's on and a spinner; the spinner stops when the picture arrives and the ident fades soon after (it stays at
+    /// least ~1.5 s, so it never flashes).
     /// </summary>
     public sealed class TuneIdent : Panel
     {
@@ -28,11 +29,10 @@ namespace Baird.NewUi.Screens
         private readonly TextBlock _num = new() { FontSize = 72, FontWeight = FontWeight.Bold, Foreground = T.Text2, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock _name = new() { FontSize = 40, FontWeight = FontWeight.Bold, Foreground = T.Text };
         private readonly TextBlock _prog = new() { FontSize = 26, Foreground = T.Text2 };
-        private readonly Arc _spinner = new() { Width = 44, Height = 44, StartAngle = 0, SweepAngle = 90, Stroke = Brushes.White, StrokeThickness = 4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(30, 0, 0, 0) };
+        private readonly Controls.Spinner _spinner = new(44, 4) { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(30, 0, 0, 0) };
         private DateTime _shownAt;
         private bool _loaded;
         private IDisposable? _hide;
-        private DispatcherTimer? _spin;
 
         public TuneIdent()
         {
@@ -56,10 +56,27 @@ namespace Baird.NewUi.Screens
         }
 
         public void Show(Channel ch, Programme? now) =>
-            Present(ch.Number, ch.Name, now != null ? $"{now.Title} · until {now.End.LocalDateTime:HH:mm}" : "No programme information", spinner: true, cap: TimeSpan.FromSeconds(12));
+            Present(ch.Number, ch.Name, Describe(now), spinner: true, cap: TimeSpan.FromSeconds(12));
 
-        /// <summary>An on-demand title loading: its name and the current step ("Signing in to Netflix…"). Up until it loads.</summary>
-        public void ShowStatus(string title, string status) => Present("", title, status, spinner: true, cap: null);
+        /// <summary>What's on arrived after the ident went up: only the words change (it doesn't start again).</summary>
+        public void ShowProgramme(Programme now) => _prog.Text = Describe(now);
+
+        /// <summary>"The Simpsons · Twisting 1-2-3 · until 19:30": the show, then the episode (when the guide names it).</summary>
+        public static string Describe(Programme? now) => now == null ? "No programme information"
+            : $"{now.Title}{(now.Subtitle is { Length: > 0 } ep && ep != now.Title ? $" · {ep}" : "")} · until {now.End.LocalDateTime:HH:mm}";
+
+        /// <summary>
+        /// An on-demand title loading: its name (an episode's show, then the episode) and the current step ("Signing in to
+        /// Netflix…"). Up until it loads.
+        /// </summary>
+        public void ShowStatus(HomeCard? card, string title, string status)
+        {
+            var (name, sub) = Words(card, title, status);
+            Present("", name, sub, spinner: true, cap: null);
+        }
+
+        public static (string Name, string Sub) Words(HomeCard? card, string title, string status) =>
+            card?.Subheading is { } episode ? (card.Heading, $"{episode}\n{status}") : (card?.Heading ?? title, status);
 
         /// <summary>A play that failed: stays up (dimmed picture) until the viewer moves on.</summary>
         public void ShowFailure(string title, string message) => Present("", title, message, spinner: false, cap: null);
@@ -72,17 +89,11 @@ namespace Baird.NewUi.Screens
             _prog.Text = sub;
             _prog.TextWrapping = TextWrapping.Wrap;
             _prog.MaxWidth = 1100;
-            _spinner.IsVisible = spinner;
             _shownAt = DateTime.UtcNow; _loaded = false;
             _dim.Opacity = 0.75; _card.Opacity = 1;
             _hide?.Dispose();
             _hide = null;
-            if (_spin == null)
-            {
-                _spin = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
-                _spin.Tick += (_, _) => _spinner.StartAngle = (_spinner.StartAngle + 12) % 360;
-            }
-            if (spinner && !Motion.Lite) _spin.Start(); else _spin.Stop();
+            if (spinner) _spinner.Start(); else _spinner.Stop();
             // A tune never stays up forever (a failed one shows its own message).
             if (cap is { } c) _hide = DispatcherTimer.RunOnce(Hide, c);
         }
@@ -92,6 +103,7 @@ namespace Baird.NewUi.Screens
         {
             if (_loaded) return;
             _loaded = true;
+            _spinner.Stop(); // the picture's here
             var wait = TimeSpan.FromMilliseconds(1500) - (DateTime.UtcNow - _shownAt);
             _hide?.Dispose();
             _hide = DispatcherTimer.RunOnce(Hide, wait > TimeSpan.Zero ? wait : TimeSpan.FromMilliseconds(1));
@@ -100,10 +112,11 @@ namespace Baird.NewUi.Screens
         public void Hide()
         {
             _dim.Opacity = 0; _card.Opacity = 0;
-            _spin?.Stop();
+            _spinner.Stop();
         }
 
         public bool Showing => _card.Opacity > 0;
+        public bool Spinning => _spinner.Spinning;
     }
 
     /// <summary>

@@ -57,20 +57,13 @@ namespace Baird.NewUi.Screens
         /// <summary>How long it will wait for Home before showing it anyway.</summary>
         public static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(25);
         private System.Threading.Tasks.Task? _ready;
-        private readonly Avalonia.Controls.Shapes.Arc _spinner = new()
+        private readonly Controls.Spinner _spinner = new(40, 4)
         {
-            Width = 40,
-            Height = 40,
-            StartAngle = 0,
-            SweepAngle = 100,
-            Stroke = Brushes.White,
-            StrokeThickness = 4,
             Opacity = 0,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 330, 0, 0),
         };
-        private DispatcherTimer? _spin;
 
         /// <summary>The animation has played but Home isn't ready: the spinner shows and the intro stays.</summary>
         public bool Waiting { get; private set; }
@@ -125,11 +118,9 @@ namespace Baird.NewUi.Screens
                 _timer?.Dispose();
                 Motion.Animate(_spinner, T.Fast);
                 _spinner.Opacity = 1;
-                _spin = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
-                _spin.Tick += (_, _) => _spinner.StartAngle = (_spinner.StartAngle + 12) % 360;
-                if (!Motion.Lite) _spin.Start();
+                _spinner.Start();
                 _ = System.Threading.Tasks.Task.WhenAny(ready, System.Threading.Tasks.Task.Delay(MaxWait))
-                    .ContinueWith(_ => Dispatcher.UIThread.Post(() => { _ready = null; _spin?.Stop(); Finish(); }));
+                    .ContinueWith(_ => Dispatcher.UIThread.Post(() => { _ready = null; _spinner.Stop(); Finish(); }));
                 return;
             }
             _finishing = true;

@@ -335,11 +335,39 @@ namespace Baird.Tests.NewUi
             keys.OnAction(UiAction.PageUp, false);
             Assert.Equal(Bbc2, rig.Ctx.Playback.Current!.Channel);
             Assert.Equal("channels", rig.Ctx.Nav.State.Overlay?.Name);
-            var list = new ChannelList(rig.Ctx, rig.Timers);
+            var list = new ChannelList(rig.Ctx, rig.Timers, rig.Ctx.Nav.State.Overlay!.Params);
             Assert.Equal(Bbc2, list.Lit);
             list.OnAction(UiAction.PageUp, false);                   // again, with the strip up: tunes at once
             Assert.Equal(C4, rig.Ctx.Playback.Current!.Channel);
             Assert.Equal(C4, list.Lit);
+        }
+
+        [AvaloniaFact]
+        public void Channel_up_opens_the_strip_on_the_channel_you_were_on_so_the_move_shows()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.Channels = new[] { Bbc1, Bbc2, C4 };
+            rig.Ctx.PlayLive(Bbc1);
+            new VideoActions(rig.Ctx, rig.Timers).OnAction(UiAction.PageUp, false);
+            var list = new ChannelList(rig.Ctx, rig.Timers, rig.Ctx.Nav.State.Overlay!.Params);
+            Assert.Equal(Bbc1, list.OpenedOn); // drawn there first, then the highlight slides on
+            Assert.Equal(Bbc2, list.Lit);
+        }
+
+        [AvaloniaFact]
+        public void The_strip_says_a_channel_is_tuning_until_its_picture_arrives()
+        {
+            var (list, rig) = Watching(Bbc1);
+            rig.Engine.Loaded();
+            new Avalonia.Controls.Window { Width = 1920, Height = 1080, Content = list.View }.Show();
+            Assert.Equal("watching", list.RowOf("ch1")!.Status);
+            list.OnAction(UiAction.PageUp, false);
+            Assert.Equal("tuning…", list.RowOf("ch2")!.Status);
+            Assert.Null(list.RowOf("ch1")!.Status);
+            rig.Timers.Advance(PlaybackController.TuneDebounce);
+            rig.Engine.Loaded();
+            Assert.Equal("watching", list.RowOf("ch2")!.Status);
+            list.Destroy();
         }
     }
 }

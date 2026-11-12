@@ -90,7 +90,7 @@ namespace Baird.NewUi
                 var details = await _ctx.Shows!.DetailsAsync(title);
                 var eps = details.Seasons.SelectMany(s => s.Episodes)
                     .Where(e => e.State == Model.EpisodeState.Available && e.Source is { StreamUrl: not null })
-                    .Select(e => new Model.HomeCard(Model.CardKind.Episode, e.Source!.ItemId, e.Label, e.Code, e.ImageUrl, null, null, e.Source.Service, e.Source.Via, e.Source.StreamUrl, e.Source.Resume, Synopsis: e.Synopsis))
+                    .Select(e => new Model.HomeCard(Model.CardKind.Episode, e.Source!.ItemId, e.Label, e.Code, e.ImageUrl, null, null, e.Source.Service, e.Source.Via, e.Source.StreamUrl, e.Source.Resume, Synopsis: e.Synopsis, Show: series.Name))
                     .ToList();
                 return (eps, series.Name);
             };
@@ -141,7 +141,7 @@ namespace Baird.NewUi
                 {
                     "info" => new InfoBar(_ctx),
                     "number" when o.Params is int first => new NumberPanel(_ctx, timers, first),
-                    "channels" => new ChannelList(_ctx, timers, o.Params as UiAction?, guideData.LoadAsync),
+                    "channels" => new ChannelList(_ctx, timers, o.Params, guideData.LoadAsync),
                     "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, nav, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
                     "reminder" when o.Params is Model.Reminder r => new ReminderCard(_ctx, r),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
@@ -243,14 +243,18 @@ namespace Baird.NewUi
                 }
                 else if (nav.State.Overlay?.Name == "code") nav.CloseOverlay();
             });
+            Model.HomeCard? starting = null;
             router.StatusChanged += (_, _) => Dispatcher.UIThread.Post(() =>
             {
                 if (playback.IsLoading && playback.Current is { Kind: "vod" } cur && router.ActiveBrowser != null && router.StatusText is { Length: > 0 } st)
-                    ident.ShowStatus(cur.Title, st);
+                    ident.ShowStatus(starting?.Id == cur.ItemId ? starting : null, cur.Title, st);
             });
+            // Anything on demand says what's loading (the show's name for an episode) until its picture arrives.
             _ctx.Starting += card =>
             {
-                if (router.BrowserFor(card.StreamUrl) is { } b) ident.ShowStatus(card.Label, router.StatusText is { Length: > 0 } st ? st : $"Starting {b.Name}…");
+                starting = card;
+                var b = router.BrowserFor(card.StreamUrl);
+                ident.ShowStatus(card, card.Label, b == null ? "Loading…" : router.StatusText is { Length: > 0 } st ? st : $"Starting {b.Name}…");
             };
 
             _ctx.Tuning += async ch =>
@@ -262,7 +266,7 @@ namespace Baird.NewUi
                     if (playback.Current?.Channel?.Id != ch.Id) return;
                     _ctx.Programme = prog;
                     RefreshRadio();
-                    if (prog != null && ident.Showing) ident.Show(ch, prog);
+                    if (prog != null && ident.Showing) ident.ShowProgramme(prog);
                 }
                 catch (Exception ex) { Console.WriteLine($"[NewUi] What's on {ch.Name} failed: {ex.Message}"); }
             };
@@ -276,6 +280,9 @@ namespace Baird.NewUi
             {
                 if (nav.State.Overlay != null) upNextCard.Opacity = 0;
                 if (nav.State.Overlay != null || !nav.State.AtVideo) ident.Hide();
+                // The channel strip went while the channel is still tuning: say so (the strip said "tuning…").
+                else if (playback.Current is { Kind: "live", Channel: { } tuning } && playback.IsLoading && playback.Failure == null && !ident.Showing)
+                    ident.Show(tuning, _ctx.Programme);
                 if (!nav.State.AtVideo) prompt.Opacity = 0;
             };
             // The guide's preview: the one video surface is scaled into the preview's frame (a transform; it is never

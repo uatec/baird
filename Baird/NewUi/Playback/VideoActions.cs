@@ -49,9 +49,11 @@ namespace Baird.NewUi.Playback
                     return true;
                 case UiAction.PageUp or UiAction.PageDown:
                     if (p.Current?.Kind != "live") return false;
+                    var from = p.Current.Channel;
                     if (_ctx.NeighbourChannel(a == UiAction.PageUp ? 1 : -1) is { } ch) _ctx.PlayLive(ch);
-                    // Show the channel strip, lit on the new channel, so you can see where you are.
-                    if (_ctx.Nav.State.Overlay?.Name != "channels") _ctx.Nav.OpenOverlay(new OverlayRef("channels"));
+                    // Show the channel strip, its highlight sliding from the old channel to the new, so the press shows.
+                    if (_ctx.Nav.State.Overlay?.Name != "channels")
+                        _ctx.Nav.OpenOverlay(new OverlayRef("channels", from != null ? new Screens.ChannelList.Stepped(from.Id) : null));
                     return true;
             }
             return false;
