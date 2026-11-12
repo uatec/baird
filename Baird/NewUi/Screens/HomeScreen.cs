@@ -155,6 +155,9 @@ namespace Baird.NewUi.Screens
         public List<(string Title, string Eyebrow, CardShape Shape, IReadOnlyList<HomeCard> Cards)> CurrentRows() =>
             _rowList.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Select(c => c.Data).ToList())).ToList();
 
+        /// <summary>Everything a kept card draws (the row compare skips progress, so it isn't a rebuild on its own).</summary>
+        private static object SameLook(HomeCard c) => (Key(c), c.Progress, c.Synopsis);
+
         private static object Key(HomeCard c) => (c.Id, c.Badge, c.Programme?.Id, c.Programme?.ImageUrl, c.ImageUrl, c.Label, c.Sublabel);
 
         /// <summary>
@@ -178,10 +181,23 @@ namespace Baird.NewUi.Screens
             var litId = _rowList.Count > _pos.Row && _rowList[_pos.Row].Cards.Count > _pos.Col ? _rowList[_pos.Row].Cards[_pos.Col].Data.Id : null;
             var oldPos = _pos;
             rows = WithNowPlaying(rows);
+            // Cards that look the same are kept, not remade: a new card fades its artwork in from nothing, so remaking
+            // every card whenever one changed (a programme ending, a download's percentage) made all of Home flicker.
+            var reusable = new Dictionary<(string, CardShape, object), Queue<Card>>();
+            foreach (var old in _rowList)
+            {
+                old.Track.Children.Clear();
+                foreach (var c in old.Cards)
+                {
+                    var k = (old.Title, old.Shape, SameLook(c.Data));
+                    if (!reusable.TryGetValue(k, out var q)) reusable[k] = q = new Queue<Card>();
+                    q.Enqueue(c);
+                }
+            }
             _rowList = rows.Where(r => r.Cards.Count > 0).Select(r =>
             {
                 var row = new Row { Title = r.Title, Eyebrow = r.Eyebrow, Shape = r.Shape };
-                row.Cards = r.Cards.Select(c => new Card(c, r.Shape)).ToList();
+                row.Cards = r.Cards.Select(c => reusable.TryGetValue((r.Title, r.Shape, SameLook(c)), out var q) && q.Count > 0 ? q.Dequeue() : new Card(c, r.Shape)).ToList();
                 row.Track = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 36, Margin = new Thickness(T.SafeX, 0, 0, 0) };
                 foreach (var c in row.Cards) row.Track.Children.Add(c);
                 Motion.Animate(row.Track, Motion.Med);
