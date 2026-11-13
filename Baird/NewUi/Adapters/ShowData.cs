@@ -163,6 +163,8 @@ namespace Baird.NewUi.Adapters
             if (t.Seerr == null) t = t with { Seerr = await _search.FindInSeerrAsync(t, ct).ConfigureAwait(false) };
             var status = await StatusAsync(t, ct).ConfigureAwait(false);
             if (status != null && t.Seerr != null) t = t with { Seerr = t.Seerr with { Status = status.Status } };
+            // A card from Downloads or a search hit may carry no description: Seerr (TMDB) has one.
+            if (status?.Overview is { } overview && string.IsNullOrWhiteSpace(t.Synopsis)) t = t with { Synopsis = overview };
 
             var remaining = sources.Select(s => s.Results).ToList();
             var found = new List<MediaItemViewModel>();

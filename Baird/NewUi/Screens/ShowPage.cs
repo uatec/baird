@@ -325,6 +325,10 @@ namespace Baird.NewUi.Screens
                 var on = _ctx.Shows.InWatchlist(t);
                 list.Add(new(on ? "In watchlist" : "Watchlist", on ? Icon.Check : Icon.Plus, false, ToggleWatchlist));
             }
+            // A film in Jellyfin can be deleted from the server here too (it asks first; Seerr's record goes with it).
+            if (t.Kind == TitleKind.Film && t.Best is { Service: "Jellyfin" } jf && _ctx.Deleter is { } deleter
+                && FilmCard(jf) with { Title = t } is var card && deleter.CanDelete(card))
+                list.Add(new("Delete…", null, false, () => ItemActions.ConfirmDelete(_ctx, deleter, card)));
             if (list.Count == 0) list.Add(new("Not available", null, false, () => _ctx.Toast($"{t.Name} isn't streaming anywhere Baird knows, and Seerr doesn't know it.")));
             return list;
         }

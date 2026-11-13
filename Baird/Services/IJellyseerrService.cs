@@ -38,8 +38,8 @@ namespace Baird.Services
             Task.FromResult((false, "Seerr can't delete."));
     }
 
-    /// <summary>Seerr's state of one title. Status: 1 unknown, 2 pending, 3 processing, 4 partly available, 5 available.</summary>
-    public sealed record JellyseerrMediaStatus(int Status, IReadOnlyList<JellyseerrSeason> Seasons, IReadOnlyList<JellyseerrDownload> Downloads)
+    /// <summary>Seerr's state of one title (with TMDB's description of it, when Seerr has one). Status: 1 unknown, 2 pending, 3 processing, 4 partly available, 5 available.</summary>
+    public sealed record JellyseerrMediaStatus(int Status, IReadOnlyList<JellyseerrSeason> Seasons, IReadOnlyList<JellyseerrDownload> Downloads, string? Overview = null)
     {
         /// <summary>Overall download progress (0–1) of what's downloading, optionally only one season or one episode.</summary>
         public double? Progress(int? season = null, int? episode = null)
