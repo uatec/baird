@@ -32,6 +32,9 @@ namespace Baird.NewUi
         public string? FollowingShow { get; set; }
         /// <summary>Finds an episode's show and its episodes in order (for Up next when it wasn't started from the show page).</summary>
         public Func<HomeCard, System.Threading.Tasks.Task<(IReadOnlyList<HomeCard> Episodes, string Show)?>>? FindFollowing { get; set; }
+
+        /// <summary>An episode's series, so "Open the series" can go there (an episode from Home doesn't know its show). Wired by the shell.</summary>
+        public Func<HomeCard, System.Threading.Tasks.Task<CatalogueTitle?>>? FindSeries { get; set; }
         public IReadOnlyDictionary<string, (string Title, string Meta)> FollowingInfo { get; set; } = new Dictionary<string, (string, string)>();
         /// <summary>Settings: play the next episode by itself after a countdown (off: the end card waits for OK).</summary>
         public bool Autoplay { get; set; } = true;

@@ -56,6 +56,7 @@ namespace Baird.NewUi.Screens
         private readonly CancellationTokenSource _life = new();
         private IDisposable? _poll;
         private bool _moved;
+        private string? _focusId; // the episode to land on (from "Open the series" on an episode)
         private bool _loadingMore;
         private (Channel Channel, Programme Programme)? _onTv;
         private bool Checking => _details?.CheckingLibrary == true && _title.Sources.Count == 0;
@@ -76,7 +77,7 @@ namespace Baird.NewUi.Screens
 
         public ShowPage(NewUiContext ctx, CatalogueTitle title)
         {
-            _ctx = ctx; _title = title;
+            _ctx = ctx; _title = title; _focusId = title.FocusItemId;
             _root.Children.Add(_art);
             _root.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F5000000"), 0), new GradientStop(Color.Parse("#C0000000"), 0.45), new GradientStop(Color.Parse("#40000000"), 0.8) } } });
             _root.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F0000000"), 0), new GradientStop(Color.Parse("#80000000"), 0.4), new GradientStop(Colors.Transparent, 0.7) } } });
@@ -158,6 +159,15 @@ namespace Baird.NewUi.Screens
                 _memory[1] = _season;
                 if (next != null) _memory[2] = Math.Max(0, d.Seasons[_season].Episodes.ToList().IndexOf(next));
             }
+            // Opened from an episode: land on its season and the episode itself, once the library has it.
+            if (_focusId != null && !_moved)
+                for (var si = 0; si < d.Seasons.Count; si++)
+                {
+                    var ei = d.Seasons[si].Episodes.ToList().FindIndex(e => e.Source?.ItemId == _focusId);
+                    if (ei < 0) continue;
+                    _season = si; _memory[1] = si; _memory[2] = ei; _pos = (2, ei); _focusId = null;
+                    break;
+                }
             Rebuild();
             _poll?.Dispose();
             var downloading = d.Seasons.Any(s => s.State == SeasonState.Requested || s.Episodes.Any(e => e.State == EpisodeState.Requested)) || d.FilmState == SeasonState.Requested;

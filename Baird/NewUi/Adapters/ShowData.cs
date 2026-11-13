@@ -107,6 +107,31 @@ namespace Baird.NewUi.Adapters
                 new[] { new TitleSource(CatalogueSearch.ServiceOf(c.Source), c.Id, c.Via, c.StreamUrl, c.Resume, c.Progress) });
         }
 
+        /// <summary>
+        /// What to offer after you finish an episode of this show (for Up next): the episode after the last one you watched, when it
+        /// can play; otherwise, when Seerr knows of later episodes you don't have, the show itself, to get ("get") or already on its way
+        /// ("requested"). Null when you're part-way through an episode (it's in Up next already), the show is over, or nothing is known.
+        /// </summary>
+        public async Task<HomeCard?> FollowingAsync(CatalogueTitle series, CancellationToken ct = default)
+        {
+            var d = await DetailsAsync(series, null, ct).ConfigureAwait(false);
+            // "Resume" is in Up next already; "Play" means nothing was watched or nothing follows the last episode (Next falls back to the first).
+            if (d.Next is { } n && n.Label.StartsWith("Resume ", StringComparison.Ordinal)) return null;
+            if (d.Next is { } nx && nx.Label.StartsWith("Next ", StringComparison.Ordinal) && nx.Episode.Source is { } s)
+            {
+                var e = nx.Episode;
+                return new HomeCard(CardKind.Episode, s.ItemId, e.Label, e.Code, e.ImageUrl, null, null, s.Service, s.Via, s.StreamUrl, s.Resume, Synopsis: e.Synopsis);
+            }
+
+            var all = d.Seasons.SelectMany(x => x.Episodes).ToList();
+            var last = all.Where(e => e.LastWatched != null).OrderByDescending(e => e.LastWatched).FirstOrDefault();
+            if (last == null || d.Title.Seerr is not { } seerr) return null;
+            var later = all.Skip(all.IndexOf(last) + 1).FirstOrDefault(e => e.State != EpisodeState.Available);
+            if (later == null) return null;
+            return new HomeCard(CardKind.Series, $"tmdb:{seerr.MediaType}:{seerr.TmdbId}", d.Title.Name, $"Next: {later.Code}", d.Title.ImageUrl, null,
+                later.State == EpisodeState.Requested ? "requested" : "get", "Seerr", PlayVia.None, Synopsis: d.Title.Synopsis);
+        }
+
         private static readonly Regex Number = new(@"\d+", RegexOptions.Compiled);
 
         /// <summary>"Season 2" / "Series 2" → 2; "Specials" → 0; otherwise its position.</summary>

@@ -23,7 +23,7 @@ namespace Baird.NewUi.Model
     /// <see cref="Sources"/> is ordered best first: your own Jellyfin copy, then other players, then the browser services.
     /// </summary>
     public sealed record CatalogueTitle(string Key, TitleKind Kind, string Name, int? Year, string? ImageUrl, string? Synopsis,
-        IReadOnlyList<TitleSource> Sources, SeerrRef? Seerr = null, string? Subtitle = null)
+        IReadOnlyList<TitleSource> Sources, SeerrRef? Seerr = null, string? Subtitle = null, string? FocusItemId = null)
     {
         public Availability Availability =>
             Sources.Count > 0 ? (Seerr?.Status == 4 && Kind == TitleKind.Series ? Availability.Partial : Availability.Play)

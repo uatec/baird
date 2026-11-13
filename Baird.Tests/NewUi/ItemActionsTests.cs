@@ -41,6 +41,32 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public void Choosing_an_action_from_the_up_next_menu_closes_it()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.Nav.OpenOverlay(new OverlayRef("itemactions-upnext"));
+            var a = new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40)), fromUpNext: true);
+            for (var i = 0; i < a.Items.ToList().IndexOf("Remove from Up next"); i++) a.OnAction(UiAction.Down, false);
+            a.OnAction(UiAction.Ok, false);
+            Assert.Null(rig.Ctx.Nav.State.Overlay);
+        }
+
+        [AvaloniaFact]
+        public async Task An_episode_can_open_its_series_on_that_episode()
+        {
+            var rig = HomeScreenTests.Context();
+            var data = HomeDataTests.Build().Data;
+            rig.Ctx.Shows = new Baird.NewUi.Adapters.ShowData(data, null, new Baird.NewUi.Adapters.CatalogueSearch(data, new Baird.Tests.Mocks.MockEpgService(), null, null));
+            rig.Ctx.FindSeries = _ => Task.FromResult<CatalogueTitle?>(new CatalogueTitle("Series:s1", TitleKind.Series, "Lamentis Show", null, null, null, Array.Empty<TitleSource>()));
+            var a = new ItemActions(rig.Ctx, Episode());
+            for (var i = 0; i < a.Items.ToList().IndexOf("Open the series"); i++) a.OnAction(UiAction.Down, false);
+            a.OnAction(UiAction.Ok, false);
+            await Task.Delay(100);
+            var shown = Assert.IsType<CatalogueTitle>(rig.Ctx.Nav.State.Pages.Last().Params);
+            Assert.Equal("ep1", shown.FocusItemId);
+        }
+
+        [AvaloniaFact]
         public void Play_from_the_start_ignores_the_resume_point()
         {
             var rig = HomeScreenTests.Context();

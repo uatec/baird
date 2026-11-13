@@ -607,6 +607,15 @@ namespace Baird.NewUi.Screens
                 var onItsPage = ctx.Nav.State.Pages.LastOrDefault()?.Params is CatalogueTitle shown && shown.Key == Adapters.ShowData.FromCard(card).Key;
                 if (ctx.Shows != null && card.Kind != CardKind.Episode && !onItsPage)
                     _items.Add(("Open the page", () => ctx.OpenShow(Adapters.ShowData.FromCard(card))));
+                // An episode doesn't know its show: look it up, then open the page on that season and episode.
+                var onAShowPage = ctx.Nav.State.Pages.LastOrDefault()?.Params is CatalogueTitle { Kind: TitleKind.Series };
+                if (ctx.Shows != null && card.Kind == CardKind.Episode && ctx.FindSeries != null && !onAShowPage)
+                    _items.Add(("Open the series", async () =>
+                    {
+                        if (await ctx.FindSeries(card) is { } series) ctx.OpenShow(series with { FocusItemId = card.Id });
+                        else ctx.Toast($"{card.Label}'s series isn't available.");
+                    }
+                    ));
                 if (ctx.Shows != null && card.Source != "Seerr")
                 {
                     var title = Adapters.ShowData.FromCard(card);
@@ -676,7 +685,7 @@ namespace Baird.NewUi.Screens
                 case UiAction.Ok:
                     if (_items.Count == 0) return true;
                     var run = _items[_index].Run;
-                    if (_ctx.Nav.State.Overlay?.Name == "itemactions") _ctx.Nav.CloseOverlay();
+                    if (_ctx.Nav.State.Overlay?.Name is "itemactions" or "itemactions-upnext") _ctx.Nav.CloseOverlay();
                     run();
                     return true;
                 case UiAction.Left or UiAction.Right: return true;

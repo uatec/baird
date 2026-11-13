@@ -79,6 +79,22 @@ namespace Baird.NewUi
                     .ToList();
                 return (eps, series.Name);
             };
+            _ctx.FindSeries = async card =>
+            {
+                if (!card.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase)) return null;
+                if (await services.Jellyfin.GetSeriesOfAsync(card.Id) is not { } series) return null;
+                return new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
+                    new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
+            };
+            // A finished episode's show gives Up next its next episode (or, through Seerr, the next season to get).
+            home.FindNextAfter = async (item, ct) =>
+            {
+                if (!item.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase)) return null;
+                if (await services.Jellyfin.GetSeriesOfAsync(item.Id) is not { } series) return null;
+                var title = new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
+                    new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
+                return await _ctx.Shows!.FollowingAsync(title, ct);
+            };
             _ctx.OpenGuide = (id, at) => GuideScreen.OpenSchedule(_shell!, nav, id, at);
             _ctx.Prefetch = new Prefetcher(_ctx.Shows, timers);
             var guideData = new GuideData(home, services.Epg);

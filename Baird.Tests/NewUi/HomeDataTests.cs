@@ -90,6 +90,33 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public async Task A_finished_episode_is_replaced_in_up_next_by_the_one_that_follows()
+        {
+            var (home, history, _, _) = Build();
+            history.Items.Add(new HistoryItem { Id = "ep1", LastPosition = TimeSpan.FromMinutes(50), Duration = TimeSpan.FromMinutes(50), LastWatched = DateTime.Now, IsFinished = true });
+            history.Items.RemoveAll(h => h.Id == "ep1" && !h.IsFinished);
+            var asked = new List<string>();
+            home.FindNextAfter = (m, ct) =>
+            {
+                asked.Add(m.Id);
+                return Task.FromResult<HomeCard?>(new HomeCard(CardKind.Episode, "ep2", "Loki 5", "S1 E5", null, null, null, "P", PlayVia.Mpv, "http://stream/ep2"));
+            };
+            var cards = await home.UpNextAsync();
+            Assert.Equal("ep2", cards[0].Id);
+            Assert.Contains("ep1", asked);
+            Assert.DoesNotContain(cards, c => c.Id == "ep1");
+        }
+
+        [Fact]
+        public async Task A_lookup_that_fails_leaves_up_next_as_it_was()
+        {
+            var (home, history, _, _) = Build();
+            history.Items.Add(new HistoryItem { Id = "ep1", LastPosition = TimeSpan.FromMinutes(50), Duration = TimeSpan.FromMinutes(50), LastWatched = DateTime.Now, IsFinished = true });
+            home.FindNextAfter = (m, ct) => throw new InvalidOperationException("down");
+            Assert.Contains(await home.UpNextAsync(), c => c.Id == "film1");
+        }
+
+        [Fact]
         public async Task Up_next_is_unfinished_on_demand_items_most_recent_first_with_progress()
         {
             var (home, _, _, _) = Build();

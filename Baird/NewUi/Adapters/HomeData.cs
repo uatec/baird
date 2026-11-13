@@ -97,17 +97,65 @@ namespace Baird.NewUi.Adapters
         private bool IsHidden(string id, DateTime lastWatched) =>
             Hidden().TryGetValue(id, out var at) && DateTime.TryParse(at, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var when) && when >= lastWatched;
 
+        /// <summary>
+        /// What comes after a finished episode (or null): set by the shell, which knows how to find the show. See <see cref="ShowData.FollowingAsync"/>.
+        /// </summary>
+        public Func<MediaItemViewModel, CancellationToken, Task<HomeCard?>>? FindNextAfter { get; set; }
+        /// <summary>How many of the most recently finished items are asked about, and for how long each may take.</summary>
+        public const int MaxFinishedLookups = 6;
+        public static readonly TimeSpan NextLookupTimeout = TimeSpan.FromSeconds(8);
+        private readonly Dictionary<string, (DateTime When, HomeCard? Next)> _nextCache = new();
+
         public async Task<IReadOnlyList<HomeCard>> UpNextAsync()
         {
             try
             {
                 var items = await _data.GetContinueWatchingAsync().ConfigureAwait(false);
-                return items.Where(i => !i.IsLive && i.Type != MediaType.Channel && !IsHidden(i.Id, i.History?.LastWatched ?? DateTime.MinValue))
-                    .OrderByDescending(i => i.History?.LastWatched ?? DateTime.MinValue)
-                    .Select(ItemCard).ToList();
+                var cards = items.Where(i => !i.IsLive && i.Type != MediaType.Channel && !IsHidden(i.Id, i.History?.LastWatched ?? DateTime.MinValue))
+                    .Select(i => (When: i.History?.LastWatched ?? DateTime.MinValue, Card: ItemCard(i))).ToList();
+
+                // A finished episode leaves Up next, but the show's next episode (found through Seerr and the library) takes its place.
+                if (FindNextAfter != null)
+                {
+                    foreach (var (when, card) in await NextEpisodesAsync(cards.Select(c => c.Card.Id).ToHashSet()).ConfigureAwait(false))
+                        cards.Add((when, card));
+                }
+                return cards.OrderByDescending(c => c.When).Select(c => c.Card).ToList();
             }
             catch (Exception ex) { Console.WriteLine($"[HomeData] Up next failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
         }
+
+        private async Task<IReadOnlyList<(DateTime When, HomeCard Card)>> NextEpisodesAsync(HashSet<string> already)
+        {
+            IEnumerable<MediaItemViewModel> history;
+            try { history = await _data.GetHistoryItemsAsync().ConfigureAwait(false); }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Finished episodes failed: {ex.Message}"); return Array.Empty<(DateTime, HomeCard)>(); }
+
+            var finished = history.Where(i => i.History is { IsFinished: true } && !i.IsLive && i.Type == MediaType.Video && !IsHidden(i.Id, i.History!.LastWatched))
+                .OrderByDescending(i => i.History!.LastWatched).Take(MaxFinishedLookups).ToList();
+            var found = await Task.WhenAll(finished.Select(async m =>
+            {
+                var key = $"{m.Id}@{m.History!.LastWatched.Ticks}";
+                lock (_nextCache)
+                    if (_nextCache.TryGetValue(key, out var hit) && DateTime.UtcNow - hit.When < NextCacheFor) return hit.Next;
+                try
+                {
+                    using var cts = new CancellationTokenSource(NextLookupTimeout);
+                    var next = await FindNextAfter!(m, cts.Token).ConfigureAwait(false);
+                    lock (_nextCache) _nextCache[key] = (DateTime.UtcNow, next);
+                    return next;
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException) { Console.WriteLine($"[HomeData] Next after {m.Name} failed: {ex.Message}"); return null; }
+            })).ConfigureAwait(false);
+
+            var result = new List<(DateTime, HomeCard)>();
+            var seen = new HashSet<string>(already);
+            for (var k = 0; k < finished.Count; k++)
+                if (found[k] is { } card && seen.Add(card.Id)) result.Add((finished[k].History!.LastWatched, card));
+            return result;
+        }
+
+        private static readonly TimeSpan NextCacheFor = TimeSpan.FromMinutes(5);
 
         /// <summary>Live channels in channel-number order, each with what's on now (when the guide answers in time).</summary>
         public async Task<IReadOnlyList<HomeCard>> OnNowAsync(DateTimeOffset now)
