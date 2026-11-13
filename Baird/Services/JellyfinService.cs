@@ -256,7 +256,7 @@ namespace Baird.Services
             try
             {
                 var q = Uri.EscapeDataString(query.Trim());
-                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series&Recursive=true&SortBy=SortName&Fields=ProductionYear,RunTimeTicks&SearchTerm={q}";
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series&Recursive=true&SortBy=SortName&Fields=ProductionYear,RunTimeTicks,Overview&SearchTerm={q}";
 
                 Console.WriteLine($"[JellyfinService] Searching Jellyfin movies and shows with query '{query}': {url}");
 
@@ -286,7 +286,7 @@ namespace Baird.Services
             await EnsureAuthenticatedAsync();
             if (!IsAuthenticated) throw new InvalidOperationException("Jellyfin is not signed in");
 
-            var url = $"Users/{_userId}/Items/{id}?Fields=ProductionYear,RunTimeTicks,ProviderIds";
+            var url = $"Users/{_userId}/Items/{id}?Fields=ProductionYear,RunTimeTicks,ProviderIds,Overview";
             var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
             response.EnsureSuccessStatusCode();
@@ -339,7 +339,7 @@ namespace Baird.Services
                 // Changed to non-recursive to support Season folders
                 // IncludeItemTypes: Season, Episode, Movie, Folder (for other structures)
                 // Added ParentIndexNumber to Fields for manual grouping
-                var url = $"Users/{_userId}/Items?ParentId={itemId}&IncludeItemTypes=Season,Episode,Movie,Folder&Recursive=false&SortBy=ParentIndexNumber,IndexNumber,SortName&Fields=ProductionYear,ParentIndexNumber,RunTimeTicks";
+                var url = $"Users/{_userId}/Items?ParentId={itemId}&IncludeItemTypes=Season,Episode,Movie,Folder&Recursive=false&SortBy=ParentIndexNumber,IndexNumber,SortName&Fields=ProductionYear,ParentIndexNumber,RunTimeTicks,Overview";
                 // Console.WriteLine($"[Jellyfin] Fetching children for {itemId} with URL: {url}");
 
                 var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
@@ -407,6 +407,9 @@ namespace Baird.Services
             }
         }
 
+        /// <summary>Jellyfin's description of the item ("" when it has none, or when the listing didn't ask for it).</summary>
+        internal static string SynopsisOf(MovieItem m) => string.IsNullOrWhiteSpace(m.Overview) ? "" : m.Overview.Trim();
+
         private MediaItemData MapJellyfinItem(MovieItem m)
         {
             // Treat Series, Season, and generic Folder as "Brand" (navigable container)
@@ -442,7 +445,7 @@ namespace Baird.Services
                 Source = SourcePrefix + _serverHostname,
                 Type = type,
                 Subtitle = episode ? EpisodeTitle(m.Name) : "",
-                Synopsis = "", // TODO: should this stuff just be nullable or expicitly empty? or a subtype for Groupings
+                Synopsis = SynopsisOf(m),
                 Duration = duration,
                 SeriesId = m.Type?.Equals("Episode", StringComparison.OrdinalIgnoreCase) == true && !string.IsNullOrEmpty(m.SeriesId) ? m.SeriesId : null,
                 SeriesName = m.Type?.Equals("Episode", StringComparison.OrdinalIgnoreCase) == true && !string.IsNullOrEmpty(m.SeriesName) ? m.SeriesName : null,
@@ -524,6 +527,7 @@ namespace Baird.Services
         public string? SeriesName { get; set; }
         public string? SeriesId { get; set; }
         public long? RunTimeTicks { get; set; }
+        public string? Overview { get; set; }
     }
 
     [JsonSerializable(typeof(AuthRequest))]
