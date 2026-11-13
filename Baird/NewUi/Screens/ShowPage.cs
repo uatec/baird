@@ -381,7 +381,8 @@ namespace Baird.NewUi.Screens
             {
                 var (ok, message) = await _ctx.Shows.RequestAsync(_details, seasons, _life.Token);
                 OnUi(() => _ctx.Toast(message));
-                if (ok) { Loaded = LoadAsync(fresh: true); await Loaded; }
+                // Everything that lists requests (Home's Downloads, Search's, this page) reads them again, at once.
+                if (ok) { OnUi(_ctx.RaiseLibraryChanged); await Loaded; }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { Console.WriteLine($"[ShowPage] Request failed: {ex.Message}"); }

@@ -320,6 +320,7 @@ namespace Baird.NewUi.Adapters
             {
                 var r = await _seerr.RequestSeasonsAsync(t.Seerr.TmdbId, t.Seerr.MediaType, wanted, ct).ConfigureAwait(false);
                 if (!r.Success) return (false, $"Seerr didn't take the request: {r.Message}");
+                _search.ForgetDownloads(); // Search's Downloads list was read before this request: read it again
                 var what = wanted == null ? t.Name : $"{t.Name}, {ShowDetails.Label(wanted).ToLowerInvariant()}";
                 return (true, $"Requested {what}. It downloads to Jellyfin and appears in Up next when it's ready.");
             }

@@ -89,5 +89,28 @@ namespace Baird.Tests.NewUi
             var (page, _, _) = await Open(SeerrFilm(348, "Alien", year: "1979"), withDeleter: false);
             Assert.DoesNotContain("Delete…", page.ButtonLabels);
         }
+
+        // ---- a request shows up in Downloads at once ----
+        [AvaloniaFact]
+        public async Task A_request_tells_home_and_search_the_library_changed_so_downloads_refresh()
+        {
+            var rig = HomeScreenTests.Context();
+            var w = CatalogueTests.Build();
+            rig.Ctx.Search = w.Search; rig.Ctx.Shows = w.Shows;
+            w.Seerr.Results.Add(new JellyseerrSearchResult { Id = 1234, MediaType = "movie", Title = "Heat", ReleaseDate = "1995-12-15", MediaInfoStatus = 1 });
+            var changed = 0;
+            rig.Ctx.LibraryChanged += () => changed++;
+            var before = (await w.Search.DownloadsAsync("")).Count; // reads and keeps Downloads
+            var page = new ShowPage(rig.Ctx, ShowData.FromCard(SeerrFilm(1234, "Heat")));
+            await page.Loaded;
+            Assert.Contains("Request…", page.ButtonLabels);
+            page.OnAction(UiAction.Ok, false);
+            var ask = Assert.IsType<ChoiceList>(rig.Ctx.Nav.State.Overlay!.Params);
+            w.Seerr.Asked.Add(new JellyseerrRequest { Id = 9, Status = 1, TmdbId = 1234, MediaType = "movie", Title = "Heat", CreatedAt = DateTime.UtcNow.ToString("o"), UpdatedAt = DateTime.UtcNow.ToString("o"), MediaInfoStatus = 2 });
+            ask.Choices[0].Run();
+            await Task.Delay(150);
+            Assert.True(changed >= 1, "nobody was told the library changed");
+            Assert.Equal(before + 1, (await w.Search.DownloadsAsync("")).Count); // not the copy kept from before the request
+        }
     }
 }

@@ -306,5 +306,21 @@ namespace Baird.Tests.NewUi
             Assert.DoesNotContain("Downloads", titles);
             Assert.Equal(new[] { "Continue watching", "On now", "Your watchlist", "Discover" }, titles);
         }
+
+        [AvaloniaFact]
+        public async Task Downloads_refreshes_in_the_background_and_a_new_request_comes_first()
+        {
+            var seerr = new HomeDataTests.Seerr();
+            seerr.Requests.Add(new JellyseerrRequest { Id = 1, Status = 2, TmdbId = 9, MediaType = "tv", Title = "Severance", CreatedAt = DateTime.UtcNow.AddDays(-1).ToString("o"), UpdatedAt = DateTime.UtcNow.ToString("o"), MediaInfoStatus = 2 });
+            var (home, _, _) = await Shown(seerr);
+            await Wait(300);
+            Assert.Equal(new[] { "Severance" }, home.CurrentRows().Single(r => r.Title == "Downloads").Cards.Select(c => c.Label));
+
+            seerr.Requests.Add(new JellyseerrRequest { Id = 2, Status = 1, TmdbId = 10, MediaType = "movie", Title = "Heat", CreatedAt = DateTime.UtcNow.ToString("o"), UpdatedAt = DateTime.UtcNow.ToString("o"), MediaInfoStatus = 2 });
+            home.DownloadsEvery = TimeSpan.Zero;
+            home.RefreshInBackground(); // what the timer does while Home is up
+            await Wait(300);
+            Assert.Equal(new[] { "Heat", "Severance" }, home.CurrentRows().Single(r => r.Title == "Downloads").Cards.Select(c => c.Label));
+        }
     }
 }
