@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -97,6 +98,37 @@ namespace Baird.Services
                 DirectSearchWorks = false;
                 AddLog($"Direct API failed: {ex.Message}");
                 return new(null, $"Netflix direct search failed: {ex.Message}", sw.ElapsedMilliseconds);
+            }
+        }
+
+        // ---- Seasons and episodes of a series (the requests Netflix's own title page sends) -----------------------------------
+        /// <summary>The series' seasons. Never throws for Netflix problems: the outcome carries the reason.</summary>
+        public Task<NetflixListOutcome<NetflixSeason>> GetSeasonsAsync(string showId, CancellationToken ct) =>
+            ListAsync("Seasons", NetflixEpisodeQueries.SeasonsBody(showId), NetflixEpisodesParser.ParseSeasons, ct);
+
+        /// <summary>One season's episodes.</summary>
+        public Task<NetflixListOutcome<NetflixEpisode>> GetEpisodesAsync(string seasonId, CancellationToken ct) =>
+            ListAsync("Episodes", NetflixEpisodeQueries.EpisodesBody(seasonId), NetflixEpisodesParser.ParseEpisodes, ct);
+
+        private async Task<NetflixListOutcome<T>> ListAsync<T>(string what, string body, Func<string?, NetflixList<T>> parse, CancellationToken ct)
+        {
+            if (IsPlaybackActive) return new(null, "Netflix is playing; its episode lists are not read until playback ends.");
+            if (_hub.BlockedFor(Owner) is { } blocked) return new(null, $"{blocked} Episode lists are paused.");
+
+            await _hub.Gate.WaitAsync(ct);
+            try
+            {
+                var failure = await EnsureReadyCoreAsync(ct);
+                if (failure != null) return new(null, failure);
+                var sw = Stopwatch.StartNew();
+                var reply = parse(await Browser.PostNetflixGraphQlAsync(body, ct));
+                AddLog(reply.Ok ? $"{what}: {reply.Items.Count} in {sw.ElapsedMilliseconds} ms"
+                                : $"{what} error {reply.ErrorCode}: {reply.ErrorMessage}{(reply.NeedsNewTemplate ? " (Netflix changed its request ids)" : "")}");
+                return reply.Ok ? new(reply.Items, null) : new(null, $"Netflix {what.ToLowerInvariant()} error {reply.ErrorCode}: {reply.ErrorMessage}");
+            }
+            finally
+            {
+                _hub.Gate.Release();
             }
         }
 
