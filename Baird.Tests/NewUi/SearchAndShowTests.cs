@@ -206,6 +206,21 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task Opening_the_series_from_an_episode_lands_on_its_season_and_episode()
+        {
+            var (first, rig) = await Simpsons();
+            var (si, ep) = first.Details!.Seasons.SelectMany((se, i) => se.Episodes.Select(e => (i, e)))
+                .Where(x => x.i > 0 && x.e.Source != null).Select(x => (x.i, x.e)).First();
+            var title = first.Details.Title with { FocusItemId = ep.Source!.ItemId };
+            var page = new ShowPage(rig.Ctx, title);
+            Show(page.View);
+            await page.Loaded;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(si, page.SeasonIndex);
+            Assert.Contains(ep.Label, ((Card)page.LitElement!).Data.Label);
+        }
+
+        [AvaloniaFact]
         public async Task The_show_page_offers_play_request_and_watchlist_and_its_seasons()
         {
             var (page, _) = await Simpsons();

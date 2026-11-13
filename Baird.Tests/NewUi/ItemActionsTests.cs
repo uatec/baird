@@ -41,6 +41,17 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public void Choosing_an_action_from_the_up_next_menu_closes_it()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.Nav.OpenOverlay(new OverlayRef("itemactions-upnext"));
+            var a = new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40)), fromUpNext: true);
+            for (var i = 0; i < a.Items.ToList().IndexOf("Remove from Up next"); i++) a.OnAction(UiAction.Down, false);
+            a.OnAction(UiAction.Ok, false);
+            Assert.Null(rig.Ctx.Nav.State.Overlay);
+        }
+
+        [AvaloniaFact]
         public void Play_from_the_start_ignores_the_resume_point()
         {
             var rig = HomeScreenTests.Context();
