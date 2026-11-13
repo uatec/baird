@@ -12,7 +12,7 @@ using Baird.Models;
 
 namespace Baird.Services
 {
-    public class JellyfinService : IMediaProvider
+    public class JellyfinService : IMediaProvider, IMediaLibrary, IMediaDeleter
     {
         public string Name => "Jellyfin";
         private readonly string _serverUrl;
@@ -203,6 +203,50 @@ namespace Baird.Services
             }
         }
 
+        /// <summary>Deletes an item and its files (the account needs Jellyfin's "allow media deletion").</summary>
+        public async Task<bool> DeleteItemAsync(string itemId, System.Threading.CancellationToken cancellationToken = default)
+        {
+            await EnsureAuthenticatedAsync();
+            if (!IsAuthenticated) return false;
+            try
+            {
+                var response = await _httpClient.DeleteAsync($"Items/{Uri.EscapeDataString(itemId)}", cancellationToken).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine($"[JellyfinService] Deleted item {itemId} ({(int)response.StatusCode})");
+                    return true;
+                }
+                Console.WriteLine($"[JellyfinService] Deleting item {itemId} failed: {response.StatusCode}");
+                return false;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine($"[JellyfinService] Deleting item {itemId} error: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>Every film and series, newest added first (Search's Downloads tag).</summary>
+        public async Task<IEnumerable<MediaItemData>> GetNewestAsync(System.Threading.CancellationToken cancellationToken = default)
+        {
+            await EnsureAuthenticatedAsync();
+            if (!IsAuthenticated) return Enumerable.Empty<MediaItemData>();
+            try
+            {
+                var url = $"Users/{_userId}/Items?IncludeItemTypes=Movie,Series&Recursive=true&SortBy=DateCreated,SortName&SortOrder=Descending&Fields=ProductionYear,RunTimeTicks";
+                var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                var result = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult);
+                return result?.Items?.Select(MapJellyfinItem).ToList() ?? Enumerable.Empty<MediaItemData>();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine($"[JellyfinService] Listing the library failed: {ex.Message}");
+                return Enumerable.Empty<MediaItemData>();
+            }
+        }
+
         public async Task<IEnumerable<MediaItemData>> SearchAsync(string query, System.Threading.CancellationToken cancellationToken = default)
         {
             await EnsureAuthenticatedAsync();
@@ -235,33 +279,25 @@ namespace Baird.Services
             }
         }
 
+        /// <summary>One item by id. Null means the server answered and hasn't got it (404); an unreachable or erroring server throws, so callers can tell "gone" from "can't tell".</summary>
         public async Task<MediaItemData?> GetItemAsync(string id)
         {
             if (!IsJellyfinId(id)) return null;
             await EnsureAuthenticatedAsync();
-            if (!IsAuthenticated) return null;
+            if (!IsAuthenticated) throw new InvalidOperationException("Jellyfin is not signed in");
 
-            try
-            {
-                var url = $"Users/{_userId}/Items/{id}?Fields=ProductionYear,RunTimeTicks,ProviderIds";
-                var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
-                if (!response.IsSuccessStatusCode) return null;
+            var url = $"Users/{_userId}/Items/{id}?Fields=ProductionYear,RunTimeTicks,ProviderIds";
+            var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+            response.EnsureSuccessStatusCode();
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                var item = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieItem);
-
-                if (item != null)
-                {
-                    return MapJellyfinItem(item);
-                }
-                return null;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[JellyfinService] Jellyfin GetItemAsync failed for {id}: {ex.Message}");
-                return null;
-            }
+            var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            var item = JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieItem);
+            return item == null ? null : MapJellyfinItem(item);
         }
+
+        /// <summary>An item's poster.</summary>
+        public string ImageUrlOf(string itemId) => $"{_serverUrl.TrimEnd('/')}/Items/{itemId}/Images/Primary";
 
         /// <summary>An episode's series (id and name), or null for anything that isn't an episode.</summary>
         public async Task<(string Id, string Name)?> GetSeriesOfAsync(string episodeId)
@@ -391,22 +427,42 @@ namespace Baird.Services
                 ? TimeSpan.FromTicks(m.RunTimeTicks.Value)
                 : TimeSpan.Zero;
 
+            // An episode is named as other providers name one: the series, with the episode's title as its subtitle and
+            // "S4 E2" as its details (so it's an episode everywhere, not a film called after its file).
+            var episode = string.Equals(m.Type, "Episode", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(m.SeriesName);
+            var code = m.ParentIndexNumber is { } sn && m.IndexNumber is { } en ? $"S{sn} E{en}" : null;
             return new MediaItemData
             {
                 Id = m.Id,
-                Name = m.Name,
-                Details = m.ProductionYear?.ToString() ?? "",
+                Name = episode ? m.SeriesName! : m.Name,
+                Details = episode && code != null ? code : m.ProductionYear?.ToString() ?? "",
                 ImageUrl = $"{_serverUrl.TrimEnd('/')}/Items/{m.Id}/Images/Primary",
                 IsLive = false,
                 StreamUrl = isContainer ? "" : GetStreamUrlInternal(m.Id),
                 Source = SourcePrefix + _serverHostname,
                 Type = type,
-                Subtitle = "",
+                Subtitle = episode ? EpisodeTitle(m.Name) : "",
                 Synopsis = "", // TODO: should this stuff just be nullable or expicitly empty? or a subtype for Groupings
                 Duration = duration,
                 SeriesId = m.Type?.Equals("Episode", StringComparison.OrdinalIgnoreCase) == true && !string.IsNullOrEmpty(m.SeriesId) ? m.SeriesId : null,
                 SeriesName = m.Type?.Equals("Episode", StringComparison.OrdinalIgnoreCase) == true && !string.IsNullOrEmpty(m.SeriesName) ? m.SeriesName : null,
             };
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex EpisodeCode = new(@"\bS(\d{1,3})E(\d{1,4})\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex Release = new(@"[\s._-]+(WEB[-. ]?Rip|WEB[-. ]?DL|HDTV|Blu-?Ray|BDRip|DVDRip|Remux|\d{3,4}p|x26[45]|HEVC)\b.*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>
+        /// The episode's title from what Jellyfin calls it. Without metadata Jellyfin uses the file name
+        /// ("Show - S04E02 - The Griffin Incident WEBRip-1080p"): that becomes "The Griffin Incident" ("Episode 2" if
+        /// there's no title in it). A real title is left alone.
+        /// </summary>
+        public static string EpisodeTitle(string name)
+        {
+            var code = EpisodeCode.Match(name);
+            if (!code.Success) return name;
+            var rest = Release.Replace(name[(code.Index + code.Length)..], "").Trim(' ', '-', '.', '_');
+            return rest.Length > 0 ? rest : $"Episode {int.Parse(code.Groups[2].Value)}";
         }
 
         private string GetStreamUrlInternal(string itemId)
@@ -464,9 +520,10 @@ namespace Baird.Services
         public int? ProductionYear { get; set; }
         public string Type { get; set; } = null!;
         public int? ParentIndexNumber { get; set; }
-        public long? RunTimeTicks { get; set; }
-        public string? SeriesId { get; set; }
+        public int? IndexNumber { get; set; }
         public string? SeriesName { get; set; }
+        public string? SeriesId { get; set; }
+        public long? RunTimeTicks { get; set; }
     }
 
     [JsonSerializable(typeof(AuthRequest))]

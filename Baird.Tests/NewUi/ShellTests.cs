@@ -29,11 +29,30 @@ namespace Baird.Tests.NewUi
         {
             var nav = new Navigator();
             var video = new Border { Name = "video" };
-            var shell = new Shell(new ShellDeps(video, nav, p => new FakeScreen(p.ToString()), pr => new FakeScreen(pr.Name), o => new FakeScreen(o.Name), (_, _) => true, () => "BBC One"));
+            var shell = new Shell(new ShellDeps(video, nav, p => new FakeScreen(p.ToString()), pr => new FakeScreen(pr.Name), o => new FakeScreen(o.Name), (a, _) => a != UiAction.Back, () => "BBC One")); // Back is left to the navigator, as VideoActions does
             var w = new Window { Width = 1920, Height = 1080, Content = shell };
             w.Show();
             Dispatcher.UIThread.RunJobs();
             return (shell, nav, video, w);
+        }
+
+        [AvaloniaFact]
+        public void A_smaller_interface_size_gives_a_bigger_stage_that_still_fills_the_screen()
+        {
+            var (shell, _, _, w) = Build();
+            try
+            {
+                shell.SetStageScale(0.8);
+                Dispatcher.UIThread.RunJobs();
+                Assert.Equal(2400, shell.Stage.Width, 3);
+                Assert.Equal(1350, shell.Stage.Height, 3);
+                // The viewbox scales it back down to the window: no small rectangle in the middle.
+                var vb = shell.Children.OfType<Avalonia.Controls.Viewbox>().Single();
+                Assert.Equal(1920, vb.Bounds.Width, 1);
+                Assert.Equal(1080, vb.Bounds.Height, 1);
+                Assert.Equal(0.8, Avalonia.VisualExtensions.TranslatePoint(shell.Stage, new Avalonia.Point(2400, 0), shell).Value.X / 2400 * 1.0, 3);
+            }
+            finally { shell.SetStageScale(1.0); w.Close(); }
         }
 
         private static async Task Wait(int ms) { var until = DateTime.UtcNow.AddMilliseconds(ms); while (DateTime.UtcNow < until) { Dispatcher.UIThread.RunJobs(); await Task.Delay(15); } }
@@ -72,6 +91,24 @@ namespace Baird.Tests.NewUi
             Assert.True(shell.TabFocus);
             shell.OnAction(UiAction.Down, false);
             Assert.False(shell.TabFocus);
+        }
+
+        [AvaloniaFact]
+        public void While_something_plays_back_cycles_between_the_video_and_home()
+        {
+            var (shell, nav, _, _) = Build();
+            nav.Play(new VideoRef("vod", "loki"));
+            shell.OnAction(UiAction.Back, false);
+            Assert.Equal(Place.Home, nav.Top);
+            Assert.False(shell.TabFocus);
+            shell.OnAction(UiAction.Back, false); // from Home's content: straight back to the video, not the tab bar
+            Assert.Equal("video", nav.Top);
+            shell.OnAction(UiAction.Back, false);
+            Assert.Equal(Place.Home, nav.Top);
+            shell.OnAction(UiAction.Up, false);
+            Assert.True(shell.TabFocus);
+            shell.OnAction(UiAction.Back, false); // from the tab bar too
+            Assert.Equal("video", nav.Top);
         }
 
         [AvaloniaFact]

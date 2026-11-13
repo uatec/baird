@@ -24,6 +24,7 @@ namespace Baird
 
         public override void OnFrameworkInitializationCompleted()
         {
+            Baird.NewUi.Controls.BoundedImageLoader.Install();   // bounded artwork cache (the library's default never lets go)
             // Global safety nets: keep the kiosk app alive on unhandled UI/Rx exceptions.
             Dispatcher.UIThread.UnhandledException += (s, e) =>
             {

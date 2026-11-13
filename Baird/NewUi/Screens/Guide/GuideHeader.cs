@@ -21,7 +21,7 @@ namespace Baird.NewUi.Screens
     public sealed class GuideHeader : Panel
     {
         /// <summary>Where the preview sits, in stage coordinates (prototype: right 96, top 130, 520×292).</summary>
-        public static readonly Rect PreviewRect = new(1920 - T.SafeX - 520, 130, 520, 292);
+        public static Rect PreviewRect => new(T.W - T.SafeX - 520, 130, 520, 292);
         private const double PreviewRadius = 18;
 
         private readonly Avalonia.Controls.Shapes.Path _ground = new() { Fill = new SolidColorBrush(Color.Parse("#F4050507")) };
@@ -37,7 +37,7 @@ namespace Baird.NewUi.Screens
 
         public GuideHeader()
         {
-            Width = 1920; Height = 1080;
+            
             IsHitTestVisible = false;
             _scrimHost.Children.Add(_ambient);
             _scrimHost.Children.Add(new Border
@@ -77,7 +77,7 @@ namespace Baird.NewUi.Screens
         {
             if (_hole == hole) return;
             _hole = hole;
-            var full = new RectangleGeometry(new Rect(0, 0, 1920, 1080));
+            var full = new RectangleGeometry(new Rect(0, 0, T.W, T.H));
             Geometry shape = hole ? new CombinedGeometry(GeometryCombineMode.Exclude, full, new RectangleGeometry(PreviewRect, PreviewRadius, PreviewRadius)) : full;
             _ground.Data = shape;
             _scrimHost.Clip = hole ? shape : null;

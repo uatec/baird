@@ -323,8 +323,8 @@ namespace Baird.Services
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
 
-                var requests = new List<JellyseerrRequest>();
-                var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
+                var wanted = new List<(int Id, int Status, int MediaId, int TmdbId, string MediaType, int MediaStatus, string CreatedAt, string UpdatedAt)>();
+                var recentSince = DateTime.UtcNow.AddDays(-14); // Home's Downloads row keeps arrived titles for two weeks
 
                 if (doc.RootElement.TryGetProperty("results", out var resultsArray))
                 {
@@ -332,50 +332,53 @@ namespace Baird.Services
                     {
                         var status = item.GetProperty("status").GetInt32();
                         var updatedAt = item.GetProperty("updatedAt").GetString() ?? "";
+                        if (!DateTime.TryParse(updatedAt, out var updatedDate)) updatedDate = DateTime.MinValue;
 
-                        DateTime updatedDate;
-                        if (!DateTime.TryParse(updatedAt, out updatedDate))
-                        {
-                            updatedDate = DateTime.MinValue;
-                        }
-
-                        // Get media info
                         var mediaInfo = item.GetProperty("media");
                         var mediaStatus = mediaInfo.TryGetProperty("status", out var mediaStatusProp) ? mediaStatusProp.GetInt32() : 1;
                         var tmdbId = mediaInfo.GetProperty("tmdbId").GetInt32();
+                        var mediaId = mediaInfo.TryGetProperty("id", out var mid) && mid.ValueKind == JsonValueKind.Number ? mid.GetInt32() : 0;
                         var mediaType = mediaInfo.TryGetProperty("mediaType", out var mediaTypeProp) ? mediaTypeProp.GetString() ?? "movie" : "movie";
 
-                        // Filter: Include all in-flight (status 1=PENDING, 2=APPROVED) OR 
-                        // completed/available (mediaStatus 4=PARTIALLY_AVAILABLE, 5=AVAILABLE) within last 7 days
+                        // Filter: Include all in-flight (status 1=PENDING, 2=APPROVED) OR
+                        // completed/available (mediaStatus 4=PARTIALLY_AVAILABLE, 5=AVAILABLE) within the last 14 days
                         bool isInFlight = status == 1 || status == 2;
                         bool isCompleted = mediaStatus == 4 || mediaStatus == 5;
-                        bool isRecent = updatedDate >= sevenDaysAgo;
-
-                        if (isInFlight || (isCompleted && isRecent))
-                        {
-                            // Fetch full media details using TMDB ID
-                            var (title, posterPath, downloadProgress) = await GetMediaDetailsAsync(tmdbId, mediaType, cancellationToken).ConfigureAwait(false);
-
-                            var request = new JellyseerrRequest
-                            {
-                                Id = item.GetProperty("id").GetInt32(),
-                                Status = status,
-                                Title = title,
-                                MediaType = mediaType,
-                                PosterPath = posterPath,
-                                TmdbId = tmdbId,
-                                CreatedAt = item.GetProperty("createdAt").GetString() ?? "",
-                                UpdatedAt = updatedAt,
-                                MediaInfoStatus = mediaStatus,
-                                DownloadProgress = downloadProgress
-                            };
-
-                            requests.Add(request);
-                        }
+                        if (isInFlight || (isCompleted && updatedDate >= recentSince))
+                            wanted.Add((item.GetProperty("id").GetInt32(), status, mediaId, tmdbId, mediaType, mediaStatus,
+                                item.GetProperty("createdAt").GetString() ?? "", updatedAt));
                     }
                 }
 
-                Console.WriteLine($"[JellyseerrService] Retrieved {requests.Count} active/recent requests");
+                // Each title's details (name, poster, release date, seasons, downloads): a few at a time, not one by one.
+                using var gate = new SemaphoreSlim(4);
+                var requests = await Task.WhenAll(wanted.Select(async w =>
+                {
+                    await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        var d = await GetMediaDetailsAsync(w.TmdbId, w.MediaType, cancellationToken).ConfigureAwait(false);
+                        return new JellyseerrRequest
+                        {
+                            Id = w.Id,
+                            Status = w.Status,
+                            MediaId = w.MediaId,
+                            Title = d.Title,
+                            MediaType = w.MediaType,
+                            PosterPath = d.PosterPath,
+                            TmdbId = w.TmdbId,
+                            CreatedAt = w.CreatedAt,
+                            UpdatedAt = w.UpdatedAt,
+                            MediaInfoStatus = w.MediaStatus,
+                            DownloadProgress = d.Status?.Progress() is { } p ? p * 100 : null,
+                            ReleaseDate = d.ReleaseDate,
+                            Seasons = d.Status?.Seasons ?? Array.Empty<JellyseerrSeason>(),
+                        };
+                    }
+                    finally { gate.Release(); }
+                })).ConfigureAwait(false);
+
+                Console.WriteLine($"[JellyseerrService] Retrieved {requests.Length} active/recent requests");
                 return requests;
             }
             catch (Exception ex)
@@ -385,64 +388,65 @@ namespace Baird.Services
             }
         }
 
-        private async Task<(string title, string posterPath, double? downloadProgress)> GetMediaDetailsAsync(int tmdbId, string mediaType, CancellationToken cancellationToken)
+        private async Task<(string Title, string PosterPath, string? ReleaseDate, JellyseerrMediaStatus? Status)> GetMediaDetailsAsync(int tmdbId, string mediaType, CancellationToken cancellationToken)
+        {
+            var unknown = ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "", (string?)null, (JellyseerrMediaStatus?)null);
+            try
+            {
+                var endpoint = mediaType == "movie" ? $"api/v1/movie/{tmdbId}" : $"api/v1/tv/{tmdbId}";
+                var response = await _httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[JellyseerrService] Failed to get {mediaType} details for TMDB ID {tmdbId}: {response.StatusCode}");
+                    return unknown;
+                }
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                string? Str(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+                var title = (mediaType == "movie" ? Str("title") : Str("name")) ?? "";
+                var released = mediaType == "movie" ? Str("releaseDate") : Str("firstAirDate");
+                return (title, Str("posterPath") ?? "", string.IsNullOrEmpty(released) ? null : released, ParseMediaStatus(json));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine($"[JellyseerrService] Error fetching media details: {ex.Message}");
+                return unknown;
+            }
+        }
+
+        public async Task<(bool Ok, string Message)> RemoveMediaAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
         {
             try
             {
                 var endpoint = mediaType == "movie" ? $"api/v1/movie/{tmdbId}" : $"api/v1/tv/{tmdbId}";
                 var response = await _httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode) return (false, $"Seerr couldn't find it ({(int)response.StatusCode}).");
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+                if (!doc.RootElement.TryGetProperty("mediaInfo", out var info) || info.ValueKind != JsonValueKind.Object
+                    || !info.TryGetProperty("id", out var idProp) || idProp.ValueKind != JsonValueKind.Number)
+                    return (true, "Seerr has nothing for it.");
+                var mediaId = idProp.GetInt32();
 
-                if (!response.IsSuccessStatusCode)
+                // Radarr/Sonarr: remove it and its files, so nothing fetches it again.
+                var files = await _httpClient.DeleteAsync($"api/v1/media/{mediaId}/file?is4k=false", cancellationToken).ConfigureAwait(false);
+                if (!files.IsSuccessStatusCode)
                 {
-                    Console.WriteLine($"[JellyseerrService] Failed to get {mediaType} details for TMDB ID {tmdbId}: {response.StatusCode}");
-                    return ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "", null);
+                    var body = await files.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    Console.WriteLine($"[JellyseerrService] Removing {mediaType} {tmdbId} from Radarr/Sonarr failed: {files.StatusCode} - {SecretRedactor.Redact(body)}");
+                    return (false, $"Radarr/Sonarr didn't remove it ({(int)files.StatusCode}).");
                 }
-
-                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                using var doc = JsonDocument.Parse(json);
-
-                var title = "";
-                if (mediaType == "movie")
-                {
-                    title = doc.RootElement.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? "" : "";
-                }
-                else
-                {
-                    title = doc.RootElement.TryGetProperty("name", out var nameProp) ? nameProp.GetString() ?? "" : "";
-                }
-
-                var posterPath = doc.RootElement.TryGetProperty("posterPath", out var posterProp) ? posterProp.GetString() ?? "" : "";
-
-                double? downloadProgress = null;
-                if (doc.RootElement.TryGetProperty("mediaInfo", out var mediaInfo) &&
-                    mediaInfo.TryGetProperty("downloadStatus", out var downloadStatusArray))
-                {
-                    long totalSize = 0;
-                    long totalSizeLeft = 0;
-                    bool hasItems = false;
-
-                    foreach (var item in downloadStatusArray.EnumerateArray())
-                    {
-                        var size = item.TryGetProperty("size", out var sizeProp) ? sizeProp.GetInt64() : 0;
-                        var sizeLeft = item.TryGetProperty("sizeLeft", out var sizeLeftProp) ? sizeLeftProp.GetInt64() : 0;
-                        totalSize += size;
-                        totalSizeLeft += sizeLeft;
-                        hasItems = true;
-                    }
-
-                    if (hasItems && totalSize > 0)
-                    {
-                        downloadProgress = (double)(totalSize - totalSizeLeft) / totalSize * 100.0;
-                        Console.WriteLine($"[JellyseerrService] Download progress for TMDB {tmdbId}: {downloadProgress:F1}% ({totalSize - totalSizeLeft}/{totalSize} bytes)");
-                    }
-                }
-
-                return (title, posterPath, downloadProgress);
+                // Seerr: forget it, so it can be requested again.
+                var media = await _httpClient.DeleteAsync($"api/v1/media/{mediaId}", cancellationToken).ConfigureAwait(false);
+                if (!media.IsSuccessStatusCode)
+                    Console.WriteLine($"[JellyseerrService] Clearing {mediaType} {tmdbId} from Seerr failed: {media.StatusCode}");
+                Console.WriteLine($"[JellyseerrService] Removed {mediaType} {tmdbId} (media {mediaId}) and its files");
+                return (true, "Removed");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                Console.WriteLine($"[JellyseerrService] Error fetching media details: {ex.Message}");
-                return ($"Unknown {(mediaType == "movie" ? "Movie" : "Series")}", "", null);
+                Console.WriteLine($"[JellyseerrService] Removing {mediaType} {tmdbId} error: {ex.Message}");
+                return (false, ex.Message);
             }
         }
     }

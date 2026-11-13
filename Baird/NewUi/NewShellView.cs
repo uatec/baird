@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -58,36 +59,43 @@ namespace Baird.NewUi
             var router = new EngineRouter(mpv, services.BrowserEngines);
             var playback = new PlaybackController(router, a => Dispatcher.UIThread.Post(a), timers, () => DateTimeOffset.Now,
                 (id, pos, dur) => _ = history.SaveAsync(id, pos, dur), mpv.ConfigureForSource);
+            // A live channel that won't load may be a wedged tuner: restart TvHeadend (rate-limited), then tune it again.
+            var tuner = TunerRecovery.ForThisMachine();
+            playback.LiveLoadFailed += async failed =>
+            {
+                if (!await tuner.TryRecoverAsync()) return;
+                await Task.Delay(TunerRecovery.Settle);
+                Dispatcher.UIThread.Post(() => { if (playback.Current?.ItemId == failed.ItemId && playback.Failure != null) playback.Replay(); });
+            };
             var home = new HomeData(services.Data, services.Epg, services.Seerr, new ProgrammeArt(services.Seerr, ProgrammeArt.DefaultPath)) { HiddenPath = HomeData.DefaultHiddenPath };
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
+            _ctx.Deleter = new Deletion(services.Data, services.Seerr, _ctx.Search);
             // Netflix searches in the one shared browser: while another service plays there, say so instead of silently missing it.
             _ctx.SearchNote = () => services.Netflix is { } nf && nf.Hub.ActivePlayback is { } busy && nf.DirectSearchWorks != true
                 ? $"Netflix search is paused while {busy} plays — stop it to search Netflix." : null;
             // An episode started from Home (not its show page): find its show, so the end card can offer the next one.
-            _ctx.FindFollowing = async card =>
+            _ctx.SeriesOf = async card =>
             {
                 if (!card.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase)) return null;
                 if (await services.Jellyfin.GetSeriesOfAsync(card.Id) is not { } series) return null;
-                var title = new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
+                return new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, services.Jellyfin.ImageUrlOf(series.Id), null,
                     new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
+            };
+            _ctx.FindFollowing = async card =>
+            {
+                if (await _ctx.SeriesOf(card) is not { } title) return null;
+                var series = (Name: title.Name, Id: title.Sources[0].ItemId);
                 var details = await _ctx.Shows!.DetailsAsync(title);
                 var eps = details.Seasons.SelectMany(s => s.Episodes)
                     .Where(e => e.State == Model.EpisodeState.Available && e.Source is { StreamUrl: not null })
-                    .Select(e => new Model.HomeCard(Model.CardKind.Episode, e.Source!.ItemId, e.Label, e.Code, e.ImageUrl, null, null, e.Source.Service, e.Source.Via, e.Source.StreamUrl, e.Source.Resume, Synopsis: e.Synopsis))
+                    .Select(e => new Model.HomeCard(Model.CardKind.Episode, e.Source!.ItemId, e.Label, e.Code, e.ImageUrl, null, null, e.Source.Service, e.Source.Via, e.Source.StreamUrl, e.Source.Resume, Synopsis: e.Synopsis, Show: series.Name))
                     .ToList();
                 return (eps, series.Name);
             };
-            _ctx.FindSeries = async card =>
-            {
-                if (!card.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase)) return null;
-                if (await services.Jellyfin.GetSeriesOfAsync(card.Id) is not { } series) return null;
-                return new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
-                    new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
-            };
-            // A finished episode's show gives Up next its next episode (or, through Seerr, the next season to get). Episodes say which
-            // show they belong to; older Jellyfin history (cached before they did) is traced through Jellyfin itself.
+            // A finished episode's show gives Continue watching its next episode (or, through Seerr, the next season to get). Episodes say
+            // which show they belong to; older Jellyfin history (cached before they did) is traced through Jellyfin itself.
             home.FindNextAfter = async (item, ct) =>
             {
                 var title = ShowData.SeriesOf(item.Data);
@@ -124,6 +132,7 @@ namespace Baird.NewUi
             CodeEntry? codeEntry = null;
 
             var scale = double.TryParse(config["Baird:NewUiSize"], NumberStyles.Float, CultureInfo.InvariantCulture, out var s) && s > 0 ? s : 1.0;
+            global::Baird.NewUi.Theme.T.SetScale(scale);
             _shell = new Shell.Shell(new Shell.ShellDeps(
                 surface, nav,
                 CreatePlace: p => p switch
@@ -143,7 +152,7 @@ namespace Baird.NewUi
                 {
                     "info" => new InfoBar(_ctx),
                     "number" when o.Params is int first => new NumberPanel(_ctx, timers, first),
-                    "channels" => new ChannelList(_ctx, timers, o.Params as UiAction?, guideData.LoadAsync),
+                    "channels" => new ChannelList(_ctx, timers, o.Params, guideData.LoadAsync),
                     "actions" => new ActionsPanel(_ctx, () => GuideScreen.OpenSchedule(_shell!, nav, playback.Current?.Channel?.Id, DateTimeOffset.Now)),
                     "reminder" when o.Params is Model.Reminder r => new ReminderCard(_ctx, r),
                     "code" => codeEntry = new CodeEntry(() => router.CodeRequest, router.SubmitCodeAsync, () => { playback.Stop(); nav.Stop(); }),
@@ -158,6 +167,14 @@ namespace Baird.NewUi
             _ctx.Toast = _shell.Toast;
             _ctx.FlashBackChip = _shell.FlashBackChip;
             _shell.Stage.Children.Insert(0, ident); // over the picture, under everything else
+            // Radio has no picture: the channel's logo and what's on fill the screen instead (under the ident and every screen).
+            var radio = new RadioCard();
+            radio.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative);
+            Shell.Motion.Animate(radio, Shell.Motion.Med);
+            _shell.Stage.Children.Insert(0, radio);
+            void RefreshRadio() => radio.Update(
+                playback.Current is { Kind: "live", Channel: { } rc } && playback.IsAudioOnly && !playback.IsLoading && playback.Failure == null ? rc : null,
+                _ctx.Programme, DateTimeOffset.Now);
             var promptText = new TextBlock { FontSize = 28, FontWeight = FontWeight.SemiBold, Foreground = Baird.NewUi.Theme.T.FocusInk };
             var prompt = new Border
             {
@@ -199,6 +216,7 @@ namespace Baird.NewUi
                     var fresh = await home.CurrentProgrammeAsync(live.Id);
                     if (playback.Current?.Channel?.Id == live.Id) _ctx.Programme = fresh;
                 }
+                RefreshRadio();
                 var prog = _ctx.Programme;
                 if (playback.Current is not { Kind: "live", Channel: { } ch } || !nav.State.AtVideo || nav.State.Overlay != null || !liveUpNext.ShouldShow(prog, DateTimeOffset.Now))
                 {
@@ -218,6 +236,8 @@ namespace Baird.NewUi
             new ReminderClock(_ctx.Reminders, nav, timers).Start(); // a minute before a reminder: the card, over whatever is showing
             var saver = new ScreensaverLayer(services.Screensaver);
             _shell.Children.Add(_intro!);       // the start-up animation, over everything until it's done
+            var stillWatching = new StillWatchingPrompt();
+            _shell.Children.Add(stillWatching.View);   // "Still watching?", under only the screensaver
             _shell.Children.Add(saver.View); // over everything, at native resolution
             ApplyScale(scale);
 
@@ -234,34 +254,46 @@ namespace Baird.NewUi
                 }
                 else if (nav.State.Overlay?.Name == "code") nav.CloseOverlay();
             });
+            Model.HomeCard? starting = null;
             router.StatusChanged += (_, _) => Dispatcher.UIThread.Post(() =>
             {
                 if (playback.IsLoading && playback.Current is { Kind: "vod" } cur && router.ActiveBrowser != null && router.StatusText is { Length: > 0 } st)
-                    ident.ShowStatus(cur.Title, st);
+                    ident.ShowStatus(starting?.Id == cur.ItemId ? starting : null, cur.Title, st);
             });
+            // Anything on demand says what's loading (the show's name for an episode) until its picture arrives.
             _ctx.Starting += card =>
             {
-                if (router.BrowserFor(card.StreamUrl) is { } b) ident.ShowStatus(card.Label, router.StatusText is { Length: > 0 } st ? st : $"Starting {b.Name}…");
+                starting = card;
+                var b = router.BrowserFor(card.StreamUrl);
+                ident.ShowStatus(card, card.Label, b == null ? "Loading…" : router.StatusText is { Length: > 0 } st ? st : $"Starting {b.Name}…");
             };
 
             _ctx.Tuning += async ch =>
             {
                 _ctx.Programme = null;
-                ident.Show(ch, null);
                 try
                 {
                     var prog = await home.CurrentProgrammeAsync(ch.Id);
                     if (playback.Current?.Channel?.Id != ch.Id) return;
                     _ctx.Programme = prog;
-                    if (prog != null && ident.Showing) ident.Show(ch, prog);
+                    RefreshRadio();
+                    if (prog != null && ident.Showing) ident.ShowProgramme(prog);
                 }
                 catch (Exception ex) { Console.WriteLine($"[NewUi] What's on {ch.Name} failed: {ex.Message}"); }
+            };
+            // The picture dims only once the stream really changes (not while you flick past), and never under the channel strip.
+            playback.Started += () =>
+            {
+                if (playback.Current is { Kind: "live", Channel: { } ch } && nav.State.AtVideo && nav.State.Overlay == null) ident.Show(ch, _ctx.Programme);
             };
             playback.Loaded += ident.Loaded;
             nav.Changed += () =>
             {
                 if (nav.State.Overlay != null) upNextCard.Opacity = 0;
                 if (nav.State.Overlay != null || !nav.State.AtVideo) ident.Hide();
+                // The channel strip went while the channel is still tuning: say so (the strip said "tuning…").
+                else if (playback.Current is { Kind: "live", Channel: { } tuning } && playback.IsLoading && playback.Failure == null && !ident.Showing)
+                    ident.Show(tuning, _ctx.Programme);
                 if (!nav.State.AtVideo) prompt.Opacity = 0;
             };
             // The guide's preview: the one video surface is scaled into the preview's frame (a transform; it is never
@@ -277,11 +309,17 @@ namespace Baird.NewUi
                 surface.RenderTransform = tl is { } a && br is { } b && surface.Bounds.Width > 0
                     ? GuideScreen.PreviewTransform(new Rect(a, b), surface.Bounds.Size)
                     : Shell.Motion.None;
+                // The radio card fills the Stage, so the preview frame (in Stage coordinates) is its target as it stands.
+                radio.SetCompact(frame);
+                radio.RenderTransform = frame && radio.Bounds.Width > 0
+                    ? GuideScreen.PreviewTransform(r, radio.Bounds.Size)
+                    : Shell.Motion.None;
             }
             nav.Changed += FrameVideo;
             playback.Changed += FrameVideo;
             playback.Changed += () =>
             {
+                RefreshRadio();
                 surface.HasVideo = playback.Current != null;
                 // A browser service plays in the window behind Baird: let it show through once it's playing.
                 var browser = router.ActiveBrowser != null && playback.Current != null && !playback.IsLoading && playback.Failure == null;
@@ -340,9 +378,19 @@ namespace Baird.NewUi
             new Diagnostics.FreezeWatchdog(a => Dispatcher.UIThread.Post(a, DispatcherPriority.Send), () => DateTime.Now, Diagnostics.FreezeWatchdog.DefaultDir, crumbs,
                 () => $"screen {DescribeScreen()}; playing {(playback.Current is { } c ? $"{c.Kind} '{c.Title}'{(playback.IsLoading ? " (loading)" : "")}{(playback.IsPaused ? " (paused)" : "")} via {(router.ActiveBrowser?.Name ?? "mpv")}" : "nothing")}; " +
                       $"intro {(_intro != null ? "showing" : "done")}; screensaver {(saver.IsActive ? "on" : "off")}").Start();
+            Diagnostics.ResourceRecorder.ForThisProcess().Start();   // ~/.baird/resources.log, a line a minute
+            // Memory guard: if Baird's memory has grown past the limit while nobody is watching, restart it (systemd brings it back).
+            var lastInput = DateTime.Now;
+            crumbs.Added += line => { if (line.Contains("  key ", StringComparison.Ordinal)) lastInput = DateTime.Now; };
+            var guard = new Diagnostics.MemoryGuard(
+                () => Diagnostics.Proc.KeyValues(Diagnostics.Proc.Read("/proc/self/status")).GetValueOrDefault("RssAnon"),
+                () => playback.Current != null, () => lastInput, () => DateTime.Now, () => AppRestarter.ForThisProcess().Restart());
+            new Avalonia.Threading.DispatcherTimer(TimeSpan.FromMinutes(1), DispatcherPriority.Background, (_, _) => guard.Check()).Start();
+            if (bool.TryParse(config["BAIRD_FPS_PROBE"], out var fpsProbe) && fpsProbe)
+                AttachedToVisualTree += (_, e) => Diagnostics.FrameProbe.ForResourcesLog(TopLevel.GetTopLevel(this)!, crumbs).Start();   // opt-in: UI fps every 5 s with the keys/screens and busiest threads, once on screen
             _cec = services.Cec;
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
-                inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn);
+                inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn, stillWatching, new FileIdleState());
             _ = System.Threading.Tasks.Task.Run(() => services.Screensaver.InitializeAsync());
             _life.Start();
 
@@ -352,9 +400,8 @@ namespace Baird.NewUi
 
         private void ApplyScale(double scale)
         {
-            // Interface size: scales the UI (not the picture) about the centre, for TVs that overscan.
-            _shell.Stage.RenderTransformOrigin = RelativePoint.Center;
-            _shell.Stage.RenderTransform = new ScaleTransform(scale, scale);
+            // Interface size: the UI (not the picture) is laid out on a larger or smaller stage that still fills the screen.
+            _shell.SetStageScale(scale);
         }
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -483,6 +530,7 @@ namespace Baird.NewUi
         private readonly PlaybackController _p;
         public PlaybackPausable(PlaybackController p) => _p = p;
         public bool IsPlaying => _p.Current != null && !_p.IsPaused && !_p.IsLoading;
+        public bool HasStream => _p.Current != null;
         public void Pause() { if (IsPlaying) _p.TogglePause(); }
         public void Resume() { if (_p.Current != null && _p.IsPaused) _p.TogglePause(); }
     }

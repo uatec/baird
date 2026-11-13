@@ -19,13 +19,25 @@ namespace Baird.NewUi.Theme
         public static readonly IBrush FocusFill = new SolidColorBrush(Color.Parse("#F5F5F7"));
         public static readonly IBrush FocusInk = new SolidColorBrush(Color.Parse("#0A0A0C"));
         public static readonly IBrush Downloading = new SolidColorBrush(Color.Parse("#8FD3FF"));
+        /// <summary>Downloads that have arrived ("✓ Ready").</summary>
+        public static readonly IBrush Ready = new SolidColorBrush(Color.Parse("#4CD964"));
         public static readonly IBrush Missing = new SolidColorBrush(Color.Parse("#FFB38A"));
         public static readonly IBrush Pill = new SolidColorBrush(Color.Parse("#29FFFFFF"));
         public static readonly IBrush CardBack = new SolidColorBrush(Color.Parse("#1A1A1E"));
         /// <summary>Panels over video. There's no live blur of the picture (mpv/Chromium draw it), so glass is a tint.</summary>
         public static readonly IBrush Glass = new SolidColorBrush(Color.Parse("#E81C1C20"));
 
-        public const double SafeX = 96, SafeTop = 64, SafeBottom = 1030;
+        public const double SafeX = 96, SafeTop = 64;
+        /// <summary>The stage the interface is laid out on: 1920 × 1080 at 100%, larger when the interface size is smaller (the Viewbox
+        /// shrinks it to fill the screen, so components are smaller and more fit). Set by <see cref="SetScale"/> before screens are built.</summary>
+        public static double W { get; private set; } = 1920;
+        public static double H { get; private set; } = 1080;
+        public static double SafeBottom => H - 50;
+        public static void SetScale(double scale)
+        {
+            var s = Math.Clamp(scale, 0.5, 2.0);
+            W = 1920 / s; H = 1080 / s;
+        }
         public const double Hero = 112, Title = 64, H2 = 40, H3 = 30, Body = 26, Small = 22;
         public const double RCard = 14, RPanel = 28;
 

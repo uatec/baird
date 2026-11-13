@@ -22,13 +22,18 @@ namespace Baird.NewUi.Diagnostics
 
         public static Breadcrumbs Shared { get; } = new();
 
+        /// <summary>Raised (outside the lock) with the same text each crumb is stored with, for the frame probe's timeline.</summary>
+        public event Action<string>? Added;
+
         public void Add(string what)
         {
+            var line = $"{DateTime.Now:HH:mm:ss.fff}  {what}";
             lock (_lock)
             {
-                _recent.Enqueue($"{DateTime.Now:HH:mm:ss.fff}  {what}");
+                _recent.Enqueue(line);
                 while (_recent.Count > Size) _recent.Dequeue();
             }
+            Added?.Invoke(line);
         }
 
         /// <summary>Marks an operation as under way until disposed.</summary>
@@ -143,6 +148,9 @@ namespace Baird.NewUi.Diagnostics
                 sb.AppendLine($"Process: working set {p.WorkingSet64 / 1048576} MB, GC heap {GC.GetTotalMemory(false) / 1048576} MB, " +
                               $"threads {p.Threads.Count}, CPU {p.TotalProcessorTime.TotalSeconds:0} s, thread pool free {workers} workers / {io} IO, " +
                               $"GC counts {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
+                sb.AppendLine();
+                sb.AppendLine("Memory (the GC heap above can't see native memory):");
+                sb.AppendLine(Proc.NativeMemory());
                 sb.AppendLine();
                 sb.AppendLine($"Last {recent.Count} events:");
                 foreach (var r in recent) sb.AppendLine("  " + r);

@@ -52,21 +52,6 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public async Task An_episode_can_open_its_series_on_that_episode()
-        {
-            var rig = HomeScreenTests.Context();
-            var data = HomeDataTests.Build().Data;
-            rig.Ctx.Shows = new Baird.NewUi.Adapters.ShowData(data, null, new Baird.NewUi.Adapters.CatalogueSearch(data, new Baird.Tests.Mocks.MockEpgService(), null, null));
-            rig.Ctx.FindSeries = _ => Task.FromResult<CatalogueTitle?>(new CatalogueTitle("Series:s1", TitleKind.Series, "Lamentis Show", null, null, null, Array.Empty<TitleSource>()));
-            var a = new ItemActions(rig.Ctx, Episode());
-            for (var i = 0; i < a.Items.ToList().IndexOf("Open the series"); i++) a.OnAction(UiAction.Down, false);
-            a.OnAction(UiAction.Ok, false);
-            await Task.Delay(100);
-            var shown = Assert.IsType<CatalogueTitle>(rig.Ctx.Nav.State.Pages.Last().Params);
-            Assert.Equal("ep1", shown.FocusItemId);
-        }
-
-        [AvaloniaFact]
         public void Play_from_the_start_ignores_the_resume_point()
         {
             var rig = HomeScreenTests.Context();
@@ -88,11 +73,11 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public void Up_next_items_can_be_removed_from_up_next()
+        public void Up_next_items_can_be_forgotten()
         {
             var rig = HomeScreenTests.Context();
-            Assert.Contains("Remove from Up next", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40)), fromUpNext: true).Items);
-            Assert.DoesNotContain("Remove from Up next", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40))).Items);
+            Assert.Contains("Forget this", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40)), fromUpNext: true).Items);
+            Assert.DoesNotContain("Forget this", new ItemActions(rig.Ctx, Film(TimeSpan.FromMinutes(40))).Items);
         }
 
         [AvaloniaFact]

@@ -19,14 +19,13 @@ using Baird.NewUi.Theme;
 namespace Baird.NewUi.Screens
 {
     /// <summary>
-    /// Home: a hero that describes the lit card (no buttons of its own), then rows — Continue watching, On now, Watchlist,
-    /// Downloads, Discover, then what is popular on each streaming service. ▴ off the top row returns false so the shell lights the tab bar.
+    /// Home: a hero that describes the lit card (no buttons of its own), then rows — Continue watching, Downloads, On now,
+    /// Watchlist, Discover. ▴ off the top row returns false so the shell lights the tab bar.
     /// </summary>
     public sealed class HomeScreen : IScreen
     {
-        /// <summary>The first row (what you were partway through, plus what is playing now).</summary>
-        private const string ContinueWatching = "Continue watching";
         private const double RowTop = 590;
+        private const double PeekAbove = 90, PeekGap = 24, PeekOpacity = 0.55; // the sliver of the row above that shows: how tall, how far over the current row, how dim
         private static readonly Dictionary<CardShape, double> RowHeight = new() { [CardShape.Wide] = 412, [CardShape.Poster] = 520 };
         private static readonly Dictionary<CardShape, double> Step = new() { [CardShape.Wide] = 384 + 36, [CardShape.Poster] = 216 + 36 };
 
@@ -41,17 +40,18 @@ namespace Baird.NewUi.Screens
         }
 
         private readonly NewUiContext _ctx;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080, Background = Brushes.Transparent };
+        private readonly Panel _root = new() { Background = Brushes.Transparent };
         private readonly Panel _heroArt = new();
         private readonly Border _scrim;
         private readonly StackPanel _hero = new() { Width = 900, Spacing = 0, Margin = new Thickness(T.SafeX, 160, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
-        private readonly Canvas _rows = new() { Width = 1920, Height = 1080 };
+        private readonly Canvas _rows = new();
         private List<Row> _rowList = new();
         private (int Row, int Col) _pos = (0, 0);
         private readonly Dictionary<int, int> _memory = new();
         private bool _lit = true;
         private bool _overVideo;
         private string? _heroKey;
+        private string? _seenPlaying;
 
         public Control View => _root;
         public Control? LitElement => _lit && _rowList.Count > 0 && _rowList[_pos.Row].Cards.Count > 0 ? _rowList[_pos.Row].Cards[_pos.Col] : null;
@@ -76,6 +76,7 @@ namespace Baird.NewUi.Screens
             _root.Children.Add(_rows);
             _ = LoadAsync();
             _ctx.UpNextChanged += () => _ = RefreshUpNextAsync();
+            _ctx.LibraryChanged += () => { _downloadsAt = DateTime.MinValue; _ = RefreshDownloadsAsync(); };
             // Keep On now current while Home is up (programmes change all day).
             var refresh = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
             refresh.Tick += (_, _) => { if (_root.IsEffectivelyVisible && _root.GetVisualRoot() != null) _ = RefreshOnNowAsync(); };
@@ -99,23 +100,83 @@ namespace Baird.NewUi.Screens
             var upNext = _ctx.Home.UpNextAsync();
             var onNow = _ctx.Home.OnNowAsync(now);
             var watch = _ctx.Home.WatchlistAsync();
-            var downloads = _ctx.Home.DownloadsAsync();
             var disc = _ctx.Home.DiscoverAsync();
-            var services = HomeData.ServiceRows.Select(r => _ctx.Home.ServiceTrendingAsync(r.ProviderId)).ToList();
-            await Task.WhenAll(new Task[] { upNext, onNow, watch, downloads, disc }.Concat(services));
+            await Task.WhenAll(upNext, onNow, watch, disc);
             _ctx.Channels = onNow.Result.Where(c => c.Channel != null).Select(c => c.Channel!).ToList();
-            var rows = new List<(string, string, CardShape, IReadOnlyList<HomeCard>)>
+            Dispatcher.UIThread.Post(() => Build(new (string, string, CardShape, IReadOnlyList<HomeCard>)[]
             {
-                (ContinueWatching, ContinueWatching, CardShape.Wide, upNext.Result),
+                ("Continue watching", "Continue watching", CardShape.Wide, upNext.Result),
                 ("On now", "On now", CardShape.Wide, onNow.Result),
                 ("Your watchlist", "In your watchlist", CardShape.Poster, watch.Result),
-                ("Downloads", "Downloads", CardShape.Poster, downloads.Result),
+                (DownloadsRow, DownloadsRow, CardShape.Poster, _downloads),
                 ("Discover", "Discover", CardShape.Poster, disc.Result),
-            };
-            for (var i = 0; i < HomeData.ServiceRows.Count; i++)
-                rows.Add((HomeData.ServiceRows[i].Title, HomeData.ServiceRows[i].Title, CardShape.Poster, services[i].Result));
-            Dispatcher.UIThread.Post(() => Build(rows));
+            }.Concat(ServiceRowsNow())));
             Dispatcher.UIThread.Post(() => _ready.TrySetResult());
+            // Downloads asks Seerr about every request, which can be slow: it joins Home when it answers rather than holding it up.
+            await Task.WhenAll(RefreshDownloadsAsync(), RefreshServiceRowsAsync());
+        }
+
+        private static readonly TimeSpan ServiceRowsEvery = TimeSpan.FromMinutes(5);
+        private DateTime _servicesAt = DateTime.MinValue;
+        private IReadOnlyList<IReadOnlyList<HomeCard>> _services = Array.Empty<IReadOnlyList<HomeCard>>();
+
+        private IEnumerable<(string, string, CardShape, IReadOnlyList<HomeCard>)> ServiceRowsNow() =>
+            _services.Select((cards, i) => (HomeData.ServiceRows[i].Title, HomeData.ServiceRows[i].Title, CardShape.Poster, cards));
+
+        /// <summary>The order Home's rows are always in; rows that aren't known yet (or are empty) are simply missing.</summary>
+        private static int RowRank(string title)
+        {
+            string[] fixedRows = { "Continue watching", "On now", "Your watchlist", DownloadsRow, "Discover" };
+            var i = Array.IndexOf(fixedRows, title);
+            if (i >= 0) return i;
+            var s = HomeData.ServiceRows.Select(r => r.Title).ToList().IndexOf(title);
+            return s >= 0 ? fixedRows.Length + s : int.MaxValue;
+        }
+
+        /// <summary>
+        /// Adds what's popular on each streaming service after Discover. Each is its own Seerr question (the data layer caches
+        /// the answers), so the rows join Home when they arrive instead of holding it up.
+        /// </summary>
+        public async Task RefreshServiceRowsAsync()
+        {
+            if (DateTime.UtcNow - _servicesAt < ServiceRowsEvery) return;
+            _servicesAt = DateTime.UtcNow;
+            IReadOnlyList<IReadOnlyList<HomeCard>> all;
+            try { all = await Task.WhenAll(HomeData.ServiceRows.Select(r => _ctx.Home.ServiceTrendingAsync(r.ProviderId))); }
+            catch (Exception ex) { Console.WriteLine($"[Home] Service rows failed: {ex.Message}"); return; }
+            void Apply()
+            {
+                _services = all;
+                if (_rowList.Count == 0) return; // the first Build includes them
+                var rows = CurrentRows().Where(r => !HomeData.ServiceRows.Any(sr => sr.Title == r.Title)).ToList();
+                rows.AddRange(ServiceRowsNow().Select(r => (r.Item1, r.Item2, r.Item3, r.Item4)));
+                RebuildIfChanged(rows.OrderBy(r => RowRank(r.Title)).ToList());
+            }
+            Dispatcher.UIThread.Post(Apply);
+        }
+
+        private const string DownloadsRow = "Downloads";
+        private static readonly TimeSpan DownloadsEvery = TimeSpan.FromMinutes(2);
+        private DateTime _downloadsAt = DateTime.MinValue;
+        private IReadOnlyList<HomeCard> _downloads = Array.Empty<HomeCard>();
+
+        /// <summary>Puts Downloads (what's been requested and where it's got to) after Continue watching; at most every couple of minutes.</summary>
+        public async Task RefreshDownloadsAsync()
+        {
+            if (DateTime.UtcNow - _downloadsAt < DownloadsEvery) return;
+            _downloadsAt = DateTime.UtcNow;
+            IReadOnlyList<HomeCard> cards;
+            try { cards = await _ctx.Home.DownloadsAsync(); }
+            catch (Exception ex) { Console.WriteLine($"[Home] Downloads failed: {ex.Message}"); return; }
+            void Apply()
+            {
+                _downloads = cards;
+                if (_rowList.Count == 0) return; // the first Build includes it
+                var rows = CurrentRows().Where(r => r.Title != DownloadsRow).ToList();
+                rows.Add((DownloadsRow, DownloadsRow, CardShape.Poster, cards));
+                RebuildIfChanged(rows.OrderBy(r => RowRank(r.Title)).ToList());
+            }
+            Dispatcher.UIThread.Post(Apply); // always queued, so it lands after the first Build that LoadRowsAsync posts
         }
 
         /// <summary>What's playing goes first in the first row, so one OK from Home goes back to it.</summary>
@@ -124,7 +185,7 @@ namespace Baird.NewUi.Screens
         {
             var list = rows.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Where(c => c.Badge != "playing").ToList())).ToList();
             if (_ctx.NowPlaying is not { } now) return list;
-            if (list.Count == 0 || list[0].Shape != CardShape.Wide) list.Insert(0, (ContinueWatching, ContinueWatching, CardShape.Wide, Array.Empty<HomeCard>()));
+            if (list.Count == 0 || list[0].Shape != CardShape.Wide) list.Insert(0, ("Continue watching", "Continue watching", CardShape.Wide, Array.Empty<HomeCard>()));
             var first = list[0];
             list[0] = (first.Title, first.Item2, first.Shape, first.Item4.Where(c => c.Id != now.Id).Prepend(now).ToList());
             return list;
@@ -133,6 +194,9 @@ namespace Baird.NewUi.Screens
         /// <summary>The rows' data as shown now.</summary>
         public List<(string Title, string Eyebrow, CardShape Shape, IReadOnlyList<HomeCard> Cards)> CurrentRows() =>
             _rowList.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Select(c => c.Data).ToList())).ToList();
+
+        /// <summary>Everything a kept card draws (the row compare skips progress, so it isn't a rebuild on its own).</summary>
+        private static object SameLook(HomeCard c) => (Key(c), c.Progress, c.Synopsis);
 
         private static object Key(HomeCard c) => (c.Id, c.Badge, c.Programme?.Id, c.Programme?.ImageUrl, c.ImageUrl, c.Label, c.Sublabel);
 
@@ -157,10 +221,23 @@ namespace Baird.NewUi.Screens
             var litId = _rowList.Count > _pos.Row && _rowList[_pos.Row].Cards.Count > _pos.Col ? _rowList[_pos.Row].Cards[_pos.Col].Data.Id : null;
             var oldPos = _pos;
             rows = WithNowPlaying(rows);
+            // Cards that look the same are kept, not remade: a new card fades its artwork in from nothing, so remaking
+            // every card whenever one changed (a programme ending, a download's percentage) made all of Home flicker.
+            var reusable = new Dictionary<(string, CardShape, object), Queue<Card>>();
+            foreach (var old in _rowList)
+            {
+                old.Track.Children.Clear();
+                foreach (var c in old.Cards)
+                {
+                    var k = (old.Title, old.Shape, SameLook(c.Data));
+                    if (!reusable.TryGetValue(k, out var q)) reusable[k] = q = new Queue<Card>();
+                    q.Enqueue(c);
+                }
+            }
             _rowList = rows.Where(r => r.Cards.Count > 0).Select(r =>
             {
                 var row = new Row { Title = r.Title, Eyebrow = r.Eyebrow, Shape = r.Shape };
-                row.Cards = r.Cards.Select(c => new Card(c, r.Shape)).ToList();
+                row.Cards = r.Cards.Select(c => reusable.TryGetValue((r.Title, r.Shape, SameLook(c)), out var q) && q.Count > 0 ? q.Dequeue() : new Card(c, r.Shape)).ToList();
                 row.Track = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 36, Margin = new Thickness(T.SafeX, 0, 0, 0) };
                 foreach (var c in row.Cards) row.Track.Children.Add(c);
                 Motion.Animate(row.Track, Motion.Med);
@@ -193,8 +270,12 @@ namespace Baird.NewUi.Screens
             {
                 var r = _rowList[i];
                 var above = i < _pos.Row;
-                r.View.Opacity = above ? 0 : 1;
-                r.View.RenderTransform = TransformOperations.Parse($"translate(0px, {(above ? RowTop - 200 : y)}px)");
+                // The row just above peeks in as a dimmed sliver over the current one (as the next row does below), so you can tell there's more above.
+                var peek = i == _pos.Row - 1 && _lit;
+                r.View.Opacity = peek ? PeekOpacity : above ? 0 : 1;
+                var h = r.View.Bounds.Height > 0 ? r.View.Bounds.Height : RowHeight[r.Shape] - 80;
+                r.View.Clip = peek ? new RectangleGeometry(new Rect(0, Math.Max(0, h - PeekAbove), T.W, PeekAbove)) : null;
+                r.View.RenderTransform = TransformOperations.Parse($"translate(0px, {(peek ? y - h - PeekGap : above ? RowTop - 200 : y)}px)");
                 if (!above) y += RowHeight[r.Shape];
                 var col = i == _pos.Row ? _pos.Col : (_memory.TryGetValue(i, out var m) ? m : 0);
                 r.Track.RenderTransform = TransformOperations.Parse($"translate({-Math.Max(0, col - 1) * Step[r.Shape]}px, 0px)");
@@ -285,7 +366,7 @@ namespace Baird.NewUi.Screens
                     _ctx.Activate(_rowList[_pos.Row].Cards[_pos.Col].Data);
                     return true;
                 case UiAction.HoldOk:
-                    _ctx.Nav.OpenOverlay(new OverlayRef(_rowList[_pos.Row].Title == ContinueWatching ? "itemactions-upnext" : "itemactions", _rowList[_pos.Row].Cards[_pos.Col].Data));
+                    _ctx.Nav.OpenOverlay(new OverlayRef(_rowList[_pos.Row].Title == "Continue watching" ? "itemactions-upnext" : "itemactions", _rowList[_pos.Row].Cards[_pos.Col].Data));
                     return true;
             }
             return false;
@@ -299,15 +380,18 @@ namespace Baird.NewUi.Screens
             if (_rowList.Count > 0)
             {
                 RebuildIfChanged(CurrentRows());
-                if (_ctx.NowPlaying != null && _overVideo) { _pos = (0, 0); _memory.Clear(); }
+                // Light what's playing only when it's new to Home; coming back from a page restores where you were.
+                var playing = _ctx.NowPlaying?.Id;
+                if (playing != null && _overVideo && playing != _seenPlaying) { _pos = (0, 0); _memory.Clear(); }
+                _seenPlaying = playing;
             }
-            _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync();
+            _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync(); _ = RefreshDownloadsAsync(); _ = RefreshServiceRowsAsync();
             Layout();
         }
         public void OnFocusIn() { _lit = true; Layout(); }
         public void OnFocusOut() { _lit = false; Layout(); }
 
-        /// <summary>The Home key: back to the first card of Up next.</summary>
+        /// <summary>The Home key: back to the first card of Continue watching.</summary>
         public void Reset() { _pos = (0, 0); _memory.Clear(); _lit = true; Layout(); }
 
         /// <summary>What's on changes through the day: refresh On now in place (the lit card stays lit).</summary>
@@ -333,7 +417,7 @@ namespace Baird.NewUi.Screens
 
         private async Task RefreshUpNextAsync()
         {
-            if (_rowList.Count == 0 || _rowList[0].Title != ContinueWatching) return;
+            if (_rowList.Count == 0 || _rowList[0].Title != "Continue watching") return;
             var cards = await _ctx.Home.UpNextAsync();
             Dispatcher.UIThread.Post(() =>
             {

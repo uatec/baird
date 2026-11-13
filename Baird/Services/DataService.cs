@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -44,12 +45,25 @@ namespace Baird.Services
         private readonly IMediaItemCache _cache;
         private readonly IMediaDataCache _mediaDataCache;
 
+        /// <summary>How long an id that every provider answered "don't have it" for is left alone (deleted from the server, or from a service that's gone).</summary>
+        public static readonly TimeSpan UnknownFor = TimeSpan.FromHours(12);
+        /// <summary>How long after a provider was unreachable (timed out or errored) before the id is asked about again. Short: the item may well exist.</summary>
+        public static readonly TimeSpan UnavailableFor = TimeSpan.FromMinutes(2);
+        /// <summary>Continue watching shows at most this many items, so only that many history entries are ever looked up.</summary>
+        public const int ContinueWatchingMax = 24;
+        private const int LookupBatch = 4;
+
+        private readonly Func<DateTime> _now;
+        private readonly ConcurrentDictionary<string, DateTime> _retryAfter = new();
+        private readonly ConcurrentDictionary<string, Task<MediaItemViewModel?>> _lookups = new();
+
         public event EventHandler? HistoryUpdated;
         public event EventHandler? WatchlistUpdated;
         public event EventHandler<MediaItemViewModel>? ItemAddedToWatchlist;
 
-        public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService, IWatchlistService watchlistService, IMediaItemCache cache, IMediaDataCache mediaDataCache)
+        public DataService(IEnumerable<IMediaProvider> providers, IHistoryService historyService, IWatchlistService watchlistService, IMediaItemCache cache, IMediaDataCache mediaDataCache, Func<DateTime>? now = null)
         {
+            _now = now ?? (() => DateTime.UtcNow);
             _providers = providers;
             _historyService = historyService;
             _watchlistService = watchlistService;
@@ -109,11 +123,14 @@ namespace Baird.Services
         {
             var historyItems = await _historyService.GetHistoryAsync().ConfigureAwait(false);
 
-            // Only unfinished items
-            var unfinished = historyItems.Where(x => !x.IsFinished).ToList();
+            // Only unfinished items, newest first. Looked up a few at a time until the row is full: entries further back are never
+            // asked about, and ones nothing can supply (deleted from the server long ago) cost nothing after the first miss.
+            var unfinished = historyItems.Where(x => !x.IsFinished).OrderByDescending(x => x.LastWatched).ToList();
+            var found = new List<MediaItemViewModel>();
+            for (var i = 0; i < unfinished.Count && found.Count < ContinueWatchingMax; i += LookupBatch)
+                found.AddRange(await HydrateHistoryItems(unfinished.Skip(i).Take(LookupBatch)).ConfigureAwait(false));
 
-            var hydrated = await HydrateHistoryItems(unfinished).ConfigureAwait(false);
-            return UnifyAndHydrate(hydrated);
+            return UnifyAndHydrate(found.Take(ContinueWatchingMax));
         }
 
         public async Task<IEnumerable<MediaItemViewModel>> GetHistoryItemsAsync()
@@ -272,10 +289,36 @@ namespace Baird.Services
         /// <summary>
         /// Loads an item from providers (network), stores it in both caches, and returns the ViewModel.
         /// Each provider is given a 5-second timeout; a slow or unreachable provider is skipped
-        /// rather than blocking the whole chain.
+        /// rather than blocking the whole chain. What can't be found is remembered, so opening Home doesn't ask again and again:
+        /// for <see cref="UnknownFor"/> if every provider answered "don't have it", but only <see cref="UnavailableFor"/> if any
+        /// couldn't be reached (a provider returns null for "not here" and throws for "can't tell"). Asks about one id at a time.
         /// </summary>
         private async Task<MediaItemViewModel?> LoadItemFromProvidersAsync(string id)
         {
+            if (_retryAfter.TryGetValue(id, out var until))
+            {
+                if (_now() < until) return null;
+                _retryAfter.TryRemove(id, out _);
+            }
+
+            // Whoever gets here first asks; the others wait for that answer. (Registered before asking, removed after, so a lookup
+            // that finishes at once can't leave its finished task behind.)
+            var mine = new TaskCompletionSource<MediaItemViewModel?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var existing = _lookups.GetOrAdd(id, mine.Task);
+            if (!ReferenceEquals(existing, mine.Task)) return await existing.ConfigureAwait(false);
+            try
+            {
+                var item = await AskProvidersAsync(id).ConfigureAwait(false);
+                mine.SetResult(item);
+                return item;
+            }
+            catch (Exception ex) { mine.SetException(ex); throw; }
+            finally { _lookups.TryRemove(id, out _); }
+        }
+
+        private async Task<MediaItemViewModel?> AskProvidersAsync(string id)
+        {
+            var unreachable = false;
             foreach (var provider in _providers)
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -289,6 +332,7 @@ namespace Baird.Services
                     if (completed == timeoutTask)
                     {
                         Console.WriteLine($"[DataService] Provider {provider.Name} timed out looking up item {id}");
+                        unreachable = true;
                         continue;
                     }
 
@@ -305,8 +349,10 @@ namespace Baird.Services
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[DataService] Provider lookup failed for {id} via {provider.GetType().Name}: {ex.Message}");
+                    unreachable = true;
                 }
             }
+            _retryAfter[id] = _now() + (unreachable ? UnavailableFor : UnknownFor);
             return null;
         }
 

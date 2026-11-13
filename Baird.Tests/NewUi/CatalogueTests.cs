@@ -34,7 +34,7 @@ namespace Baird.Tests.NewUi
             };
 
         /// <summary>A provider with children (seasons, episodes) and a name filter for search.</summary>
-        internal sealed class Library : IMediaProvider
+        internal class Library : IMediaProvider
         {
             public string Name { get; }
             public readonly List<MediaItemData> Items = new();
@@ -47,8 +47,26 @@ namespace Baird.Tests.NewUi
             public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult(Items.Concat(Children.Values.SelectMany(c => c)).FirstOrDefault(i => i.Id == id));
         }
 
+        /// <summary>A library that can list everything it has, newest first (Items are in that order), as Jellyfin can.</summary>
+        internal sealed class NewestFirstLibrary : Library, IMediaLibrary, IMediaDeleter
+        {
+            public readonly List<string> Deleted = new();
+            public bool Fail;
+            public NewestFirstLibrary(string name) : base(name) { }
+            public Task<bool> DeleteItemAsync(string id, CancellationToken ct = default) { if (Fail) return Task.FromResult(false); Deleted.Add(id); return Task.FromResult(true); }
+            public Task<IEnumerable<MediaItemData>> GetNewestAsync(CancellationToken ct = default) =>
+                Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => !i.IsLive).ToList());
+        }
+
         internal sealed class FakeSeerr : IJellyseerrService
         {
+            public readonly List<JellyseerrRequest> Asked = new();
+            public readonly List<(int TmdbId, string Type)> Removed = new();
+            public Task<(bool Ok, string Message)> RemoveMediaAsync(int tmdbId, string type, CancellationToken ct = default)
+            {
+                Removed.Add((tmdbId, type));
+                return Task.FromResult((true, "Removed"));
+            }
             public readonly List<JellyseerrSearchResult> Results = new();
             public readonly Dictionary<int, JellyseerrMediaStatus> Status = new();
             public readonly List<(int Id, string Type, IReadOnlyList<int>? Seasons)> Requests = new();
@@ -56,7 +74,7 @@ namespace Baird.Tests.NewUi
                 Task.FromResult<IEnumerable<JellyseerrSearchResult>>(Results.Where(r => r.Title.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList());
             public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrSearchResult>>(Results);
             public Task<JellyseerrRequestResponse> CreateRequestAsync(int id, string t, CancellationToken ct = default) => RequestSeasonsAsync(id, t, null, ct);
-            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
+            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrRequest>>(Asked);
             public Task<JellyseerrMediaStatus?> GetMediaStatusAsync(int tmdbId, string mediaType, CancellationToken ct = default) =>
                 Task.FromResult(Status.TryGetValue(tmdbId, out var s) ? s : null);
             public Task<JellyseerrRequestResponse> RequestSeasonsAsync(int id, string type, IReadOnlyList<int>? seasons, CancellationToken ct = default)
@@ -82,7 +100,7 @@ namespace Baird.Tests.NewUi
             public bool IsOnWatchlist(string id) => false;
         }
 
-        internal sealed record World(CatalogueSearch Search, ShowData Shows, Library Jellyfin, Library IPlayer, FakeSeerr Seerr, MockEpgService Epg, IDataService Data, List<HistoryItem> History);
+        internal sealed record World(CatalogueSearch Search, ShowData Shows, NewestFirstLibrary Jellyfin, Library IPlayer, FakeSeerr Seerr, MockEpgService Epg, IDataService Data, List<HistoryItem> History);
 
         /// <summary>
         /// The Simpsons: seasons 1–2 on Jellyfin (season 2 has 1 of its 3 episodes), also on iPlayer; Seerr knows 4 seasons,
@@ -90,7 +108,7 @@ namespace Baird.Tests.NewUi
         /// </summary>
         internal static World Build()
         {
-            var jf = new Library("Jellyfin");
+            var jf = new NewestFirstLibrary("Jellyfin");
             jf.Items.Add(Item("simp", "The Simpsons", type: MediaType.Brand, details: "1989"));
             jf.Items.Add(Item("alien", "Alien", details: "1979"));
             jf.Children["simp"] = new() { Item("simp-s1", "Season 1", type: MediaType.Brand), Item("simp-s2", "Season 2", type: MediaType.Brand) };
@@ -130,6 +148,44 @@ namespace Baird.Tests.NewUi
         }
 
         internal static readonly IReadOnlyList<Channel> Channels = new[] { new Channel("ch1", "101", "BBC One", null, "http://tvh/1"), new Channel("ch4", "104", "Channel 4", null, "http://tvh/4") };
+
+        internal static JellyseerrRequest Asked(int tmdb, string type, string title, int daysAgo, int mediaStatus, double? progress = null) => new()
+        {
+            Id = tmdb,
+            Status = 2,
+            TmdbId = tmdb,
+            MediaType = type,
+            Title = title,
+            PosterPath = $"/{tmdb}.jpg",
+            CreatedAt = DateTime.UtcNow.AddDays(-daysAgo).ToString("o"),
+            UpdatedAt = DateTime.UtcNow.AddDays(-daysAgo).ToString("o"),
+            MediaInfoStatus = mediaStatus,
+            DownloadProgress = progress,
+        };
+
+        [Fact]
+        public async Task Downloads_is_whats_requested_and_not_here_yet_then_everything_in_jellyfin_newest_first()
+        {
+            var w = Build();
+            w.Seerr.Asked.Add(Asked(95396, "tv", "Severance", 1, mediaStatus: 3, progress: 25));
+            w.Seerr.Asked.Add(Asked(777, "movie", "Heat", 2, mediaStatus: 2));
+            w.Seerr.Asked.Add(Asked(348, "movie", "Alien", 3, mediaStatus: 5)); // arrived: it's the Jellyfin copy, once
+            var hits = await w.Search.DownloadsAsync("");
+            Assert.Equal(new[] { "Severance", "Heat", "The Simpsons", "Alien" }, hits.Select(h => h.Card.Label));
+            Assert.Equal("dl:25", hits[0].Card.Badge);
+            Assert.Equal("requested", hits[1].Card.Badge);
+            Assert.Equal(Availability.Play, hits[3].Title!.Availability); // OK plays the film
+            Assert.DoesNotContain(hits, h => h.Title!.Sources.Any(s => s.Service == "BBC iPlayer")); // Jellyfin's, not every service's
+        }
+
+        [Fact]
+        public async Task Typing_filters_downloads()
+        {
+            var w = Build();
+            w.Seerr.Asked.Add(Asked(95396, "tv", "Severance", 1, mediaStatus: 3));
+            Assert.Equal(new[] { "The Simpsons" }, (await w.Search.DownloadsAsync("simp")).Select(h => h.Card.Label));
+            Assert.Equal(new[] { "Severance" }, (await w.Search.DownloadsAsync("sev")).Select(h => h.Card.Label));
+        }
 
         [Fact]
         public async Task The_same_show_on_two_services_and_in_seerr_is_one_result_that_says_where()

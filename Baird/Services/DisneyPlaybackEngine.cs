@@ -283,8 +283,13 @@ namespace Baird.Services
             _badPolls = 0;
             if (!status.Found || status.Ended)
             {
-                var limit = status.Url.Contains("/play/", StringComparison.Ordinal) ? MissingPollsOnPlayerPageForEnd : MissingPollsForEnd;
-                if (!status.Ended && ++_missingPolls < limit) return;
+                var onPlayerPage = status.Url.Contains("/play/", StringComparison.Ordinal);
+                var limit = onPlayerPage ? MissingPollsOnPlayerPageForEnd : MissingPollsForEnd;
+                // An advert is a video of its own that ends long before the programme (measured on the Pi, 2026-11-12: titles of
+                // 1300-1416 s "ended" 21-91 s in). Only a video that ends near the title's end ends the title at once; any other
+                // ended video on the player page counts as a missing one, so the programme that follows carries on.
+                var titleOver = status.Ended && (!onPlayerPage || IsNearTitleEnd(status));
+                if (!titleOver && ++_missingPolls < limit) return;
                 Console.WriteLine(status.Ended ? "[DisneyEngine] The video ended." : "[DisneyEngine] No video on the page any more: playback ended.");
                 await StopAsync();
                 StreamEnded?.Invoke(this, EventArgs.Empty);
@@ -326,6 +331,21 @@ namespace Baird.Services
                 Command(NetflixPlayerAction.Play, 0, () => { }, dismissEndCard: true);
             }
             SetPaused(status.Paused);
+        }
+
+        /// <summary>How close to the title's length an ended video must be to count as the end of the title (credits, end card).</summary>
+        private const double TitleEndMarginSeconds = 120;
+
+        /// <summary>
+        /// True when the position is within <see cref="TitleEndMarginSeconds"/> of the title's length, or the length is unknown.
+        /// The length from Disney's API comes first: during an advert the controls may describe the advert, not the title.
+        /// </summary>
+        private bool IsNearTitleEnd(VideoPlaybackStatus status)
+        {
+            var length = _runtime > 0 ? _runtime : DurationSeconds;
+            if (length <= 0) return true;
+            var position = status.TitleSeconds is { } t && double.IsFinite(t) ? t : TimePositionSeconds;
+            return position >= length - TitleEndMarginSeconds;
         }
 
         private void OnPlaybackConfirmed()

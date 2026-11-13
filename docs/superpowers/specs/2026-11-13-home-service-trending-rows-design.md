@@ -30,3 +30,8 @@ Home shows what's popular on each streaming service the owner has (Netflix, Disn
 
 ## Left to the builder
 Provider IDs and params, cache lifetime, card count, how the Downloads row maps request status, tests.
+
+## Outcome notes (2026-11-13)
+- `origin/main` already had a Downloads row (417635e) and the "Continue watching" rename (d808b08) by the time this was built, so this change only reorders Downloads to sit after the watchlist (the owner's order) and adds the five service rows. The plan's Task 2 `DownloadsAsync` and rename steps were dropped.
+- Service rows load after Home's first build, like Downloads, and are cached in `HomeData` (30 min when complete; 2 min when empty or half-answered, so a Seerr outage doesn't cause 10 calls per Home visit).
+- Provider ids (Netflix 8, Disney+ 337, ITVX 54, Channel 4 103, iPlayer 38) are unverified against a live Seerr.

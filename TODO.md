@@ -43,6 +43,7 @@ Phase 2
 - [x] built in screensaver
 - [ ] built in power saving
 - [ ] restore state on restart
+- [ ] "No internet" icon (top corner, by the clock), shown only when the internet has been unreachable for a while (~1 min), not for one failed request or one slow service; clears itself when the connection returns. Retry transient failures (DNS can be intermittent) quietly before giving up.
 
 ## Programme Details
 - [x] show series name etc in episode view

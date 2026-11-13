@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Baird.NewUi.Adapters;
 using Baird.Services;
@@ -11,26 +9,9 @@ namespace Baird.Tests.NewUi
 {
     public class HomeServiceRowsTests
     {
-        internal sealed class Seerr : IJellyseerrService
-        {
-            public List<JellyseerrSearchResult> Movies = new(), Tv = new(), Trending = new();
-            public List<JellyseerrRequest> Requests = new();
-            public bool MoviesThrow;
-            public int Calls;
-            public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string q, int p, CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
-            public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrSearchResult>>(Trending);
-            public Task<IEnumerable<JellyseerrSearchResult>> GetProviderTrendingAsync(int providerId, string mediaType, CancellationToken ct = default)
-            {
-                Interlocked.Increment(ref Calls);
-                if (mediaType == "movie" && MoviesThrow) throw new InvalidOperationException("down");
-                return Task.FromResult<IEnumerable<JellyseerrSearchResult>>(mediaType == "movie" ? Movies : Tv);
-            }
-            public Task<JellyseerrRequestResponse> CreateRequestAsync(int id, string t, CancellationToken ct = default) => Task.FromResult(new JellyseerrRequestResponse());
-            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrRequest>>(Requests);
-        }
-
         private static JellyseerrSearchResult R(int id, string type, string title) => new() { Id = id, MediaType = type, Title = title, PosterPath = "/p.jpg", ReleaseDate = "2020-01-01" };
-        private static HomeData Home(Seerr? s) => new(null!, null!, s);
+        private static HomeData Home(HomeDataTests.Seerr? s, TimeSpan? retry = null) =>
+            new(null!, null!, s) { ServiceRetryLifetime = retry ?? TimeSpan.FromMinutes(2) };
 
         [Fact]
         public void The_five_service_rows_are_in_the_agreed_order() =>
@@ -39,7 +20,7 @@ namespace Baird.Tests.NewUi
         [Fact]
         public async Task ServiceTrending_interleaves_movies_and_tv_capped_at_20()
         {
-            var s = new Seerr
+            var s = new HomeDataTests.Seerr
             {
                 Movies = Enumerable.Range(1, 15).Select(i => R(i, "movie", $"M{i}")).ToList(),
                 Tv = Enumerable.Range(1, 15).Select(i => R(100 + i, "tv", $"T{i}")).ToList(),
@@ -56,9 +37,8 @@ namespace Baird.Tests.NewUi
         [Fact]
         public async Task ServiceTrending_keeps_tv_when_the_movie_call_throws()
         {
-            var s = new Seerr { MoviesThrow = true, Tv = { R(1, "tv", "Andor") } };
-            var cards = await Home(s).ServiceTrendingAsync(8);
-            Assert.Equal("Andor", cards.Single().Label);
+            var s = new HomeDataTests.Seerr { MoviesThrow = true, Tv = { R(1, "tv", "Andor") } };
+            Assert.Equal("Andor", (await Home(s).ServiceTrendingAsync(8)).Single().Label);
         }
 
         [Fact]
@@ -67,7 +47,7 @@ namespace Baird.Tests.NewUi
         [Fact]
         public async Task ServiceTrending_second_call_inside_lifetime_does_not_call_seerr_again()
         {
-            var s = new Seerr { Movies = { R(1, "movie", "Alien") } };
+            var s = new HomeDataTests.Seerr { Movies = { R(1, "movie", "Alien") }, Tv = { R(2, "tv", "Andor") } };
             var home = Home(s);
             await home.ServiceTrendingAsync(8);
             var first = s.Calls;
@@ -76,38 +56,34 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
-        public async Task ServiceTrending_does_not_cache_an_empty_answer()
+        public async Task ServiceTrending_remembers_an_empty_answer_briefly_so_Home_does_not_ask_again()
         {
-            var s = new Seerr();
+            var s = new HomeDataTests.Seerr();
             var home = Home(s);
+            await home.ServiceTrendingAsync(8);
+            var first = s.Calls;
+            await home.ServiceTrendingAsync(8);
+            Assert.Equal(first, s.Calls);
+        }
+
+        [Fact]
+        public async Task ServiceTrending_asks_again_once_the_retry_wait_is_over()
+        {
+            var s = new HomeDataTests.Seerr();
+            var home = Home(s, TimeSpan.Zero);
             await home.ServiceTrendingAsync(8);
             s.Movies.Add(R(1, "movie", "Alien"));
             Assert.Single(await home.ServiceTrendingAsync(8));
         }
 
         [Fact]
-        public async Task Downloads_lists_pending_and_downloading_with_a_percent_badge()
+        public async Task ServiceTrending_a_half_answer_is_only_kept_for_the_retry_wait_not_the_full_lifetime()
         {
-            var s = new Seerr();
-            s.Requests.Add(new JellyseerrRequest { Status = 2, TmdbId = 1, MediaType = "movie", Title = "Alien", DownloadProgress = 40, MediaInfoStatus = 3 });
-            s.Requests.Add(new JellyseerrRequest { Status = 1, TmdbId = 2, MediaType = "tv", Title = "Andor", MediaInfoStatus = 2 });
-            var cards = await Home(s).DownloadsAsync();
-            Assert.Equal(new[] { "Alien", "Andor" }, cards.Select(c => c.Label));
-            Assert.Equal("dl:40", cards[0].Badge);
-            Assert.Equal("requested", cards[1].Badge);
-            Assert.Equal("tmdb:tv:2", cards[1].Id);
+            var s = new HomeDataTests.Seerr { MoviesThrow = true, Tv = { R(1, "tv", "Andor") } };
+            var home = Home(s, TimeSpan.Zero);
+            await home.ServiceTrendingAsync(8);
+            s.MoviesThrow = false; s.Movies.Add(R(2, "movie", "Alien"));
+            Assert.Equal(2, (await home.ServiceTrendingAsync(8)).Count);
         }
-
-        [Fact]
-        public async Task Downloads_skips_declined_and_available_requests()
-        {
-            var s = new Seerr();
-            s.Requests.Add(new JellyseerrRequest { Status = 3, TmdbId = 1, MediaType = "movie", Title = "Declined" });
-            s.Requests.Add(new JellyseerrRequest { Status = 2, TmdbId = 2, MediaType = "movie", Title = "Done", MediaInfoStatus = 5 });
-            Assert.Empty(await Home(s).DownloadsAsync());
-        }
-
-        [Fact]
-        public async Task Downloads_is_empty_without_seerr() => Assert.Empty(await Home(null).DownloadsAsync());
     }
 }

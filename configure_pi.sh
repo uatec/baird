@@ -352,6 +352,23 @@ else
     echo "[Splash] boot-splash files not found next to this script; skipping."
 fi
 
+# --- 9. Let Baird restart TvHeadend when the DVB stick wedges (live TV "No input detected") ---
+# Exactly one command, no password; Baird runs `sudo -n systemctl restart tvheadend` (TunerRecovery).
+if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+    SUDOERS_TMP="$(mktemp)"
+    cat > "$SUDOERS_TMP" <<SUDOERS_CONF
+# Managed by Baird configure_pi.sh
+$TARGET_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart tvheadend
+SUDOERS_CONF
+    if visudo -cf "$SUDOERS_TMP" >/dev/null; then
+        install -m 440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/baird-tvheadend
+        echo "[Tuner] $TARGET_USER may restart tvheadend without a password."
+    else
+        echo "[Tuner] ERROR: generated sudoers rule is invalid; not installed."
+    fi
+    rm -f "$SUDOERS_TMP"
+fi
+
 echo ""
 echo "=== Configuration complete ==="
 echo "Please reboot the Raspberry Pi for all changes to take effect:"

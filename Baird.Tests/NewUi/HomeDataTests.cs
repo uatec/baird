@@ -56,8 +56,18 @@ namespace Baird.Tests.NewUi
             public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => throw new InvalidOperationException("down");
             public Task<MediaItemData?> GetItemAsync(string id) => throw new InvalidOperationException("down");
         }
-        private sealed class Seerr : IJellyseerrService
+        internal sealed class Seerr : IJellyseerrService
         {
+            public List<JellyseerrRequest> Requests = new();
+            public List<JellyseerrSearchResult> Movies = new(), Tv = new();
+            public bool MoviesThrow;
+            public int Calls;
+            public Task<IEnumerable<JellyseerrSearchResult>> GetProviderTrendingAsync(int providerId, string mediaType, CancellationToken ct = default)
+            {
+                Interlocked.Increment(ref Calls);
+                if (mediaType == "movie" && MoviesThrow) throw new InvalidOperationException("down");
+                return Task.FromResult<IEnumerable<JellyseerrSearchResult>>(mediaType == "movie" ? Movies : Tv);
+            }
             public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string q, int p, CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
             public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrSearchResult>>(new[]
             {
@@ -65,10 +75,10 @@ namespace Baird.Tests.NewUi
                 new JellyseerrSearchResult { Id = 8, MediaType = "movie", Title = "Alien", ReleaseDate = "1979-05-25", MediaInfoStatus = 5 },
             });
             public Task<JellyseerrRequestResponse> CreateRequestAsync(int id, string t, CancellationToken ct = default) => Task.FromResult(new JellyseerrRequestResponse());
-            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
+            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrRequest>>(Requests);
         }
 
-        internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false, IJellyseerrService? seerr = null)
+        internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false, Seerr? seerr = null)
         {
             var items = new[]
             {
@@ -81,7 +91,7 @@ namespace Baird.Tests.NewUi
             var history = new History();
             history.Items.Add(new HistoryItem { Id = "ep1", LastPosition = TimeSpan.FromMinutes(10), Duration = TimeSpan.FromMinutes(50), LastWatched = DateTime.Now.AddHours(-1) });
             history.Items.Add(new HistoryItem { Id = "film1", LastPosition = TimeSpan.FromMinutes(40), Duration = TimeSpan.FromMinutes(100), LastWatched = DateTime.Now });
-            history.Items.Add(new HistoryItem { Id = "ch1", LastPosition = TimeSpan.FromMinutes(5), Duration = TimeSpan.Zero, LastWatched = DateTime.Now });
+            history.Items.Add(new HistoryItem { Id = "ch1", LastPosition = TimeSpan.FromMinutes(5), Duration = TimeSpan.Zero, LastWatched = DateTime.Now.AddMinutes(-30) });
             var data = new DataService(providers, history, new Watchlist(), new MediaItemCache(), new MockMediaDataCache());
             var epg = new MockEpgService();
             var now = DateTimeOffset.UtcNow;
@@ -90,7 +100,7 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
-        public async Task A_finished_episode_is_replaced_in_up_next_by_the_one_that_follows()
+        public async Task A_finished_episode_is_replaced_in_continue_watching_by_the_one_that_follows()
         {
             var (home, history, _, _) = Build();
             history.Items.Add(new HistoryItem { Id = "ep1", LastPosition = TimeSpan.FromMinutes(50), Duration = TimeSpan.FromMinutes(50), LastWatched = DateTime.Now, IsFinished = true });
@@ -108,7 +118,7 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
-        public async Task A_lookup_that_fails_leaves_up_next_as_it_was()
+        public async Task A_lookup_that_fails_leaves_continue_watching_as_it_was()
         {
             var (home, history, _, _) = Build();
             history.Items.Add(new HistoryItem { Id = "ep1", LastPosition = TimeSpan.FromMinutes(50), Duration = TimeSpan.FromMinutes(50), LastWatched = DateTime.Now, IsFinished = true });
@@ -117,15 +127,19 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
-        public async Task Up_next_is_unfinished_on_demand_items_most_recent_first_with_progress()
+        public async Task Continue_watching_is_channels_and_unfinished_videos_most_recent_first_with_progress_for_videos()
         {
             var (home, _, _, _) = Build();
             var cards = await home.UpNextAsync();
-            Assert.Equal(new[] { "film1", "ep1" }, cards.Select(c => c.Id));
+            Assert.Equal(new[] { "film1", "ch1", "ep1" }, cards.Select(c => c.Id));
+            Assert.Equal(CardKind.Channel, cards[1].Kind);
+            Assert.Null(cards[1].Progress);
+            Assert.Equal("101", cards[1].Channel!.Number);
+            Assert.Equal("News at Six", cards[1].Sublabel);
             Assert.Equal(CardKind.Film, cards[0].Kind);
             Assert.Equal(0.4, cards[0].Progress!.Value, 3);
-            Assert.Equal(CardKind.Episode, cards[1].Kind);
-            Assert.Equal(TimeSpan.FromMinutes(10), cards[1].Resume);
+            Assert.Equal(CardKind.Episode, cards[2].Kind);
+            Assert.Equal(TimeSpan.FromMinutes(10), cards[2].Resume);
         }
 
         [Fact]
@@ -146,7 +160,7 @@ namespace Baird.Tests.NewUi
         {
             var (home, _, _, _) = Build(withFailing: true);
             Assert.Equal(2, (await home.OnNowAsync(DateTimeOffset.UtcNow)).Count);
-            Assert.Equal(2, (await home.UpNextAsync()).Count);
+            Assert.Equal(3, (await home.UpNextAsync()).Count);
         }
 
         [Fact]
@@ -158,6 +172,75 @@ namespace Baird.Tests.NewUi
             Assert.Equal("get", cards[0].Badge);
             Assert.Equal("https://image.tmdb.org/t/p/w500/a.jpg", cards[0].ImageUrl);
             Assert.Null(cards[1].Badge);
+        }
+
+        private static JellyseerrRequest Req(int tmdb, string type, string title, DateTime created, int mediaStatus, double? progress = null, DateTime? updated = null) => new()
+        {
+            Id = tmdb * 10,
+            Status = 2,
+            TmdbId = tmdb,
+            MediaType = type,
+            Title = title,
+            PosterPath = $"/{tmdb}.jpg",
+            CreatedAt = created.ToString("o"),
+            UpdatedAt = (updated ?? created).ToString("o"),
+            MediaInfoStatus = mediaStatus,
+            DownloadProgress = progress,
+        };
+
+        [Fact]
+        public async Task Downloads_lists_requests_newest_first_one_card_per_title_with_where_each_has_got_to()
+        {
+            var now = DateTime.UtcNow;
+            var seerr = new Seerr();
+            var dune = Req(1, "movie", "Dune", now.AddDays(-3), mediaStatus: 3, progress: 42.4);
+            var rivals = Req(2, "tv", "Rivals", now.AddDays(-1), mediaStatus: 4);
+            rivals.Seasons = new[] { new JellyseerrSeason(1, 8, 5), new JellyseerrSeason(2, 8, 4), new JellyseerrSeason(3, 8, 1) };
+            var future = Req(5, "movie", "Dune: Part Three", now.AddDays(-6), mediaStatus: 3);
+            future.ReleaseDate = "2099-12-18";
+            var stuck = Req(6, "movie", "Clayface", now.AddDays(-7), mediaStatus: 3);
+            stuck.ReleaseDate = "2020-01-01";
+            seerr.Requests.AddRange(new[]
+            {
+                dune, rivals,
+                Req(2, "tv", "Rivals", now.AddDays(-5), mediaStatus: 4), // an older request for another season
+                Req(4, "movie", "Arrival", now.AddDays(-4), mediaStatus: 5, updated: now.AddDays(-2)),
+                future, stuck,
+            });
+            var (home, _, _, _) = Build(seerr: seerr);
+            var cards = await home.DownloadsAsync();
+            Assert.Equal(new[] { "Rivals", "Dune", "Arrival", "Dune: Part Three", "Clayface" }, cards.Select(c => c.Label));
+            Assert.Equal(new[] { "partial", "dl:42", "ready", "out:18 Dec 2099", "searching" }, cards.Select(c => c.Badge));
+            Assert.Equal("S1 ready · S2 partly", cards[0].Sublabel); // which seasons are here
+            Assert.Equal(0.424, cards[1].Progress!.Value, 3); // a bar along the card
+            Assert.Equal("tmdb:tv:2", cards[0].Id); // OK opens the show's page, like Discover
+            Assert.Equal(CardKind.Series, cards[0].Kind);
+            Assert.Equal(CardKind.Film, cards[1].Kind);
+            Assert.Equal(4, cards[0].Title!.Seerr!.Status);
+            Assert.Equal("https://image.tmdb.org/t/p/w500/2.jpg", cards[0].ImageUrl);
+            Assert.StartsWith("Requested ", cards[1].Sublabel);
+        }
+
+        [Theory]
+        [InlineData("1:5,2:5,3:5,4:3", "S1–3 ready · S4 coming")]
+        [InlineData("1:4", "S1 partly")]
+        [InlineData("1:1,2:2", "S2 coming")]
+        [InlineData("1:5,2:1,3:5", "S1 ready · S3 ready")]
+        public void Season_lines_say_which_seasons_are_here(string seasons, string expected)
+        {
+            var list = seasons.Split(',').Select(x => x.Split(':')).Select(x => new JellyseerrSeason(int.Parse(x[0]), 8, int.Parse(x[1]))).ToList();
+            Assert.Equal(expected, HomeData.SeasonLine(list));
+        }
+
+        [Fact]
+        public async Task Downloads_drops_what_arrived_more_than_two_weeks_ago()
+        {
+            var now = DateTime.UtcNow;
+            var seerr = new Seerr();
+            seerr.Requests.Add(Req(4, "movie", "Arrival", now.AddDays(-30), mediaStatus: 5, updated: now.AddDays(-20)));
+            seerr.Requests.Add(Req(5, "movie", "Heat", now.AddDays(-30), mediaStatus: 3));
+            var (home, _, _, _) = Build(seerr: seerr);
+            Assert.Equal(new[] { "Heat" }, (await home.DownloadsAsync()).Select(c => c.Label));
         }
 
         [Fact]

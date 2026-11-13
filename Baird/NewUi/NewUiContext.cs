@@ -24,6 +24,13 @@ namespace Baird.NewUi
         public Func<string?> SearchNote { get; set; } = () => null;
         /// <summary>Up next changed (an item was taken off it): Home refreshes the row.</summary>
         public event Action? UpNextChanged;
+        /// <summary>Something was deleted from the server: Home, Search and an open show page read it again.</summary>
+        public event Action? LibraryChanged;
+        public void RaiseLibraryChanged() => LibraryChanged?.Invoke();
+        /// <summary>An episode's series, as a title its page can open (null when it can't be found, or until wired).</summary>
+        public Func<HomeCard, System.Threading.Tasks.Task<CatalogueTitle?>>? SeriesOf { get; set; }
+        /// <summary>Deleting from the server (null until wired: nothing offers it).</summary>
+        public Adapters.Deletion? Deleter { get; set; }
         public void RaiseUpNextChanged() => UpNextChanged?.Invoke();
         /// <summary>The episodes of the show being watched, in order (set by the show page), for "Up next".</summary>
         public IReadOnlyList<HomeCard> Following { get; set; } = Array.Empty<HomeCard>();
@@ -32,9 +39,6 @@ namespace Baird.NewUi
         public string? FollowingShow { get; set; }
         /// <summary>Finds an episode's show and its episodes in order (for Up next when it wasn't started from the show page).</summary>
         public Func<HomeCard, System.Threading.Tasks.Task<(IReadOnlyList<HomeCard> Episodes, string Show)?>>? FindFollowing { get; set; }
-
-        /// <summary>An episode's series, so "Open the series" can go there (an episode from Home doesn't know its show). Wired by the shell.</summary>
-        public Func<HomeCard, System.Threading.Tasks.Task<CatalogueTitle?>>? FindSeries { get; set; }
         public IReadOnlyDictionary<string, (string Title, string Meta)> FollowingInfo { get; set; } = new Dictionary<string, (string, string)>();
         /// <summary>Settings: play the next episode by itself after a countdown (off: the end card waits for OK).</summary>
         public bool Autoplay { get; set; } = true;

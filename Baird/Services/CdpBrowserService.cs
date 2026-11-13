@@ -149,6 +149,21 @@ namespace Baird.Services
             return false;
         }
 
+        /// <summary>
+        /// How long a launch waits for Chromium's DevTools port. A cold start right after the Pi boots took longer than the old 15 s.
+        /// </summary>
+        private static readonly TimeSpan DevToolsStartTimeout = TimeSpan.FromSeconds(60);
+
+        /// <summary>
+        /// A launch that fails after Chromium started must not leave it running: it was never put behind Baird, so its window
+        /// (Netflix's "Who's watching?") stays on top of Baird, and it holds the profile and port so no retry can reconnect.
+        /// </summary>
+        private async Task<bool> FailAndStopAsync(string message)
+        {
+            await StopAsync();
+            return Fail(message);
+        }
+
         public event Action<string>? LogMessage;
 
         private void Log(string msg) => LogMessage?.Invoke(msg);
@@ -210,6 +225,25 @@ namespace Baird.Services
             return candidates[0]; // Default fallback
         }
 
+        public const int BrowserNiceness = 10;
+        private const string NicePath = "/usr/bin/nice";
+
+        /// <summary>The command line that starts <paramref name="browserPath"/> at lower priority (nice execs, so the process id is the browser's).</summary>
+        internal static (string File, string Arguments) UnderNice(string browserPath, string arguments, string nicePath) =>
+            (nicePath, $"-n {BrowserNiceness} \"{browserPath}\" {arguments}");
+
+        /// <summary>
+        /// Keeps the browser small on the Pi (8 GB shared with Baird and TvHeadend): it started 16 processes and ~1.3 GB idle, 2 GB at launch.
+        /// A cap on each JavaScript heap (measured with a real Chrome: 4192 MB limit becomes 608 MB), no per-site renderer isolation (a streaming
+        /// site's frames share a process; measured one fewer renderer on a five-site page; --renderer-process-limit made no difference, so it is not used), and none of
+        /// the background services (sync, phishing checks, crash reporter, prefetching) a TV kiosk has no use for.
+        /// Chromium honours only the last --disable-features, so every feature to disable goes in this one flag.
+        /// </summary>
+        public const string MemoryFlags =
+            "--js-flags=--max-old-space-size=512 --disable-site-isolation-trials " +
+            "--disable-features=IsolateOrigins,site-per-process,Translate,OptimizationHints,InterestFeedContentSuggestions,MediaRouter " +
+            "--disable-background-networking --disable-sync --disable-breakpad --disable-client-side-phishing-detection --disable-default-apps";
+
         public async Task<bool> LaunchAsync(string browserPath, string url, int port, string userDataDir, bool visible = false, CancellationToken ct = default)
         {
             LastError = null;
@@ -255,12 +289,19 @@ namespace Baird.Services
                             $"--password-store=basic " +
                             $"--disable-session-crashed-bubble " +
                             $"--class=baird-netflix " +
+                            MemoryFlags + " " +
                             // Test hook only (e.g. "--headless=new" on a box without a display).
                             (Environment.GetEnvironmentVariable("BAIRD_CHROME_EXTRA_ARGS") is { Length: > 0 } extra ? extra + " " : "") +
                             $"\"{url}\"",
                 UseShellExecute = false,
                 CreateNoWindow = false
             };
+
+            // Start under nice: on the Pi the browser's start-up (and Netflix/Disney+ loading their home pages) saturated all four cores
+            // (load ~30) and froze Baird's UI for 15-23 s at every start. At low priority the UI keeps its share; the browser is hidden
+            // behind Baird anyway. Children inherit it; an unprivileged process can't raise it again, so it is a mild 10.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && File.Exists(NicePath))
+                (psi.FileName, psi.Arguments) = UnderNice(browserPath, psi.Arguments, NicePath);
 
             // Don't leak Baird's own runtime environment into the browser: the app's LD_LIBRARY_PATH points at its bundled
             // native libraries (SkiaSharp, HarfBuzz, ...) and .NET host variables are meaningless to Chromium.
@@ -301,7 +342,7 @@ namespace Baird.Services
             string? pageWsUrl = null;
             var stopwatch = Stopwatch.StartNew();
 
-            while (stopwatch.Elapsed < TimeSpan.FromSeconds(15) && !ct.IsCancellationRequested)
+            while (stopwatch.Elapsed < DevToolsStartTimeout && !ct.IsCancellationRequested)
             {
                 if (_browserProcess.HasExited)
                 {
@@ -351,7 +392,7 @@ namespace Baird.Services
 
             if (pageWsUrl == null)
             {
-                return Fail($"Timed out after 15s waiting for the DevTools endpoint on port {port}.");
+                return await FailAndStopAsync($"Timed out after {DevToolsStartTimeout.TotalSeconds:F0}s waiting for the DevTools endpoint on port {port}.");
             }
 
             // Connect WebSockets
@@ -378,7 +419,7 @@ namespace Baird.Services
             }
             catch (Exception ex)
             {
-                return Fail($"WebSocket connection error: {ex.Message}");
+                return await FailAndStopAsync($"WebSocket connection error: {ex.Message}");
             }
         }
 

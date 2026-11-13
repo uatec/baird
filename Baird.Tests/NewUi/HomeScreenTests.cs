@@ -22,7 +22,7 @@ namespace Baird.Tests.NewUi
     {
         internal sealed record Rig(NewUiContext Ctx, PlaybackControllerTests.FakeEngine Engine, PlaybackControllerTests.FakeTimers Timers, List<string> Toasts, List<Channel> Tuned);
 
-        internal static Rig Context(IJellyseerrService? seerr = null)
+        internal static Rig Context(HomeDataTests.Seerr? seerr = null)
         {
             var engine = new PlaybackControllerTests.FakeEngine();
             var timers = new PlaybackControllerTests.FakeTimers();
@@ -35,7 +35,7 @@ namespace Baird.Tests.NewUi
             return new Rig(ctx, engine, timers, toasts, tuned);
         }
 
-        private static async Task<(HomeScreen Home, Rig Rig, Window Window)> Shown(IJellyseerrService? seerr = null)
+        private static async Task<(HomeScreen Home, Rig Rig, Window Window)> Shown(HomeDataTests.Seerr? seerr = null)
         {
             var rig = Context(seerr);
             var home = new HomeScreen(rig.Ctx);
@@ -51,30 +51,6 @@ namespace Baird.Tests.NewUi
         private static IEnumerable<Card> Cards(Control root) => root.GetLogicalDescendants().OfType<Card>();
 
         [AvaloniaFact]
-        public async Task Rows_are_in_the_agreed_order()
-        {
-            var seerr = new HomeServiceRowsTests.Seerr
-            {
-                Trending = { new() { Id = 1, MediaType = "movie", Title = "Alien", PosterPath = "/a.jpg" } },
-                Movies = { new() { Id = 2, MediaType = "movie", Title = "Heat", PosterPath = "/h.jpg" } },
-                Requests = { new() { Status = 2, TmdbId = 3, MediaType = "movie", Title = "Dune", DownloadProgress = 30, MediaInfoStatus = 3 } },
-            };
-            var (home, _, _) = await Shown(seerr);
-            Assert.Equal(new[] { "Continue watching", "On now", "Your watchlist", "Downloads", "Discover", "Netflix", "Disney+", "ITVX", "Channel 4", "BBC iPlayer" },
-                home.CurrentRows().Select(r => r.Title));
-        }
-
-        [AvaloniaFact]
-        public async Task A_service_row_with_no_cards_is_left_out()
-        {
-            var (home, _, _) = await Shown();
-            var titles = home.CurrentRows().Select(r => r.Title).ToList();
-            Assert.DoesNotContain("Netflix", titles);
-            Assert.DoesNotContain("Downloads", titles);
-            Assert.Equal("Continue watching", titles[0]);
-        }
-
-        [AvaloniaFact]
         public async Task Home_shows_its_rows_with_exactly_one_lit_card()
         {
             var (home, _, _) = await Shown();
@@ -82,7 +58,27 @@ namespace Baird.Tests.NewUi
             Assert.True(cards.Count >= 5, $"{cards.Count} cards");
             Assert.Single(cards, c => c.Lit);
             Assert.Same(home.LitElement, cards.Single(c => c.Lit));
-            Assert.Equal("Casper", ((Card)home.LitElement!).Data.Label); // Up next, most recent first
+            Assert.Equal("Casper", ((Card)home.LitElement!).Data.Label); // Continue watching, most recent first
+        }
+
+        [AvaloniaFact]
+        public async Task The_row_above_peeks_in_dimmed_and_cropped_and_rows_further_up_stay_hidden()
+        {
+            var (home, _, _) = await Shown();
+            var rows = home.View.GetLogicalDescendants().OfType<Avalonia.Controls.Canvas>().First().Children;
+            Assert.Null(rows[0].Clip); // on the first row nothing is above
+            home.OnAction(UiAction.Down, false);
+            await Wait(700);
+            Assert.InRange(rows[0].Opacity, 0.2, 0.9); // the row just above peeks in
+            Assert.NotNull(rows[0].Clip);              // cropped to a sliver
+            Assert.Equal(1, rows[1].Opacity);          // the lit row is whole
+            Assert.Null(rows[1].Clip);
+            if (rows.Count > 2 && home.OnAction(UiAction.Down, false))
+            {
+                await Wait(700);
+                Assert.Equal(0, rows[0].Opacity);      // two up: out of sight
+                Assert.NotNull(rows[1].Clip);
+            }
         }
 
         [AvaloniaFact]
@@ -176,6 +172,22 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task A_programme_changing_remakes_only_its_card_so_the_rest_of_home_doesnt_flicker()
+        {
+            var (home, rig, _) = await Shown();
+            var before = Cards(home.View).ToList();
+            var epg = (Baird.Tests.Mocks.MockEpgService)typeof(Baird.NewUi.Adapters.HomeData).GetField("_epg", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(rig.Ctx.Home)!;
+            var now = DateTimeOffset.UtcNow;
+            epg.MockSchedules["ch1"] = new System.Collections.Generic.List<Baird.Models.EpgProgram> { new() { Id = "p9", ChannelId = "ch1", Title = "Regional News", StartUnix = now.AddMinutes(-1).ToUnixTimeSeconds(), StopUnix = now.AddMinutes(29).ToUnixTimeSeconds() } };
+            await home.RefreshOnNowAsync();
+            Dispatcher.UIThread.RunJobs();
+            var after = Cards(home.View).ToList();
+            var changed = after.Single(c => c.Data.Programme?.Title == "Regional News");
+            Assert.DoesNotContain(changed, before);                       // the changed card is new…
+            Assert.All(after.Where(c => c != changed), c => Assert.Contains(c, before)); // …every other card is the same one, artwork already shown
+        }
+
+        [AvaloniaFact]
         public async Task The_home_key_goes_back_to_the_first_card()
         {
             var (home, rig, _) = await Shown();
@@ -188,8 +200,8 @@ namespace Baird.Tests.NewUi
         public async Task Whats_playing_is_the_first_card_and_lit_so_one_ok_goes_back_to_it()
         {
             var (home, rig, _) = await Shown();
-            home.OnAction(UiAction.Right, false);
-            home.OnAction(UiAction.Ok, false);                 // play the second Up next card
+            home.OnAction(UiAction.Right, false); home.OnAction(UiAction.Right, false);
+            home.OnAction(UiAction.Ok, false);                 // play the third Continue watching card (a video; the second is a channel)
             var playing = rig.Ctx.Playback.Current!.ItemId;
             var plays = rig.Engine.Plays.Count;
             rig.Ctx.Nav.Back();                                 // back to Home over the video
@@ -226,7 +238,7 @@ namespace Baird.Tests.NewUi
         public async Task Coming_back_to_home_while_something_plays_doesnt_rebuild_or_move_the_highlight_needlessly()
         {
             var (home, rig, _) = await Shown();
-            home.OnAction(UiAction.Ok, false);              // play the first Up next card
+            home.OnAction(UiAction.Ok, false);              // play the first Continue watching card
             rig.Ctx.Nav.Back();
             home.OnShow();
             Dispatcher.UIThread.RunJobs();
@@ -241,6 +253,22 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task Coming_back_from_a_page_while_something_plays_keeps_the_card_you_left_on()
+        {
+            var (home, rig, _) = await Shown();
+            home.OnAction(UiAction.Ok, false);              // play the first Continue watching card
+            rig.Ctx.Nav.Back();                             // Home over the video: the playing card is lit
+            home.OnShow();
+            Dispatcher.UIThread.RunJobs();
+            home.OnAction(UiAction.Down, false);
+            home.OnAction(UiAction.Right, false);           // the owner moves to a card in another row…
+            var lit = ((Card)home.LitElement!).Data.Id;
+            home.OnShow();                                  // …opens a page, and Back shows Home again
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(lit, ((Card)home.LitElement!).Data.Id);
+        }
+
+        [AvaloniaFact]
         public async Task A_rebuild_keeps_the_same_card_lit()
         {
             var (home, rig, _) = await Shown();
@@ -250,6 +278,33 @@ namespace Baird.Tests.NewUi
             home.Build(home.CurrentRows());
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(lit, ((Card)home.LitElement!).Data.Id);
+        }
+
+        [AvaloniaFact]
+        public async Task Rows_are_in_the_agreed_order()
+        {
+            var seerr = new HomeDataTests.Seerr
+            {
+                Movies = { new() { Id = 2, MediaType = "movie", Title = "Heat", PosterPath = "/h.jpg" } },
+            };
+            seerr.Requests.Add(new JellyseerrRequest { Id = 1, Status = 2, TmdbId = 9, MediaType = "tv", Title = "Severance", CreatedAt = DateTime.UtcNow.ToString("o"), UpdatedAt = DateTime.UtcNow.ToString("o"), MediaInfoStatus = 2 });
+            var (home, _, _) = await Shown(seerr);
+            await Wait(300);
+            Assert.Equal(new[] { "Continue watching", "On now", "Your watchlist", "Downloads", "Discover", "Netflix", "Disney+", "ITVX", "Channel 4", "BBC iPlayer" },
+                home.CurrentRows().Select(r => r.Title));
+            Assert.Equal("Severance", home.CurrentRows().Single(r => r.Title == "Downloads").Cards.Single().Label);
+            Assert.Equal("Casper", ((Card)home.LitElement!).Data.Label); // Home still opens on Continue watching
+        }
+
+        [AvaloniaFact]
+        public async Task A_service_row_with_no_cards_is_left_out()
+        {
+            var (home, _, _) = await Shown();
+            await Wait(300);
+            var titles = home.CurrentRows().Select(r => r.Title).ToList();
+            Assert.DoesNotContain("Netflix", titles);
+            Assert.DoesNotContain("Downloads", titles);
+            Assert.Equal(new[] { "Continue watching", "On now", "Your watchlist", "Discover" }, titles);
         }
     }
 }
