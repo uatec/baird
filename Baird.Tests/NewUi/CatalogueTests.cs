@@ -538,6 +538,19 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public async Task A_search_that_timed_out_is_asked_again_not_remembered_as_empty_for_two_minutes()
+        {
+            // Jellyfin 12 can take 10 s or more when cold: a page opened then said "Request" for a film that was in the library.
+            var (search, _, jf, _) = Slow(TimeSpan.FromMilliseconds(200));
+            var first = await Task.WhenAll(search.SearchSources("Loki").Select(s => s.Results));
+            Assert.Contains(first, r => r == null); // Jellyfin didn't answer in time
+            jf.Gate.SetResult(); // and now it's awake
+            var second = await Task.WhenAll(search.SearchSources("Loki").Select(s => s.Results));
+            Assert.Contains(second, r => r != null && r.Any(m => m.Name == "Loki"));
+            Assert.Equal(2, jf.Searches);
+        }
+
+        [Fact]
         public async Task A_source_that_never_answers_is_given_up_on_after_its_timeout()
         {
             var (search, _, _, _) = Slow(TimeSpan.FromMilliseconds(300));

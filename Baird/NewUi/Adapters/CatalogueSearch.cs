@@ -198,7 +198,9 @@ namespace Baird.NewUi.Adapters
             {
                 var now = DateTimeOffset.UtcNow;
                 foreach (var old in _shared.Where(e => e.Value.Task.IsCompleted && now - e.Value.At > SharedFor).Select(e => e.Key).ToList()) _shared.Remove(old);
-                if (!_shared.TryGetValue(key, out entry!) || entry.Task.IsCanceled)
+                // A search that failed or timed out (null) is not worth remembering: Jellyfin is slow when cold, and a page opened then
+                // would say "not in your library" for two minutes. Only answers are shared.
+                if (!_shared.TryGetValue(key, out entry!) || entry.Task.IsCanceled || (entry.Task.IsCompletedSuccessfully && entry.Task.Result == null))
                 {
                     var cts = new CancellationTokenSource();
                     entry = new Shared { Cts = cts, At = now, Task = RunSourceAsync(p, q, cts.Token) };
@@ -364,12 +366,11 @@ namespace Baird.NewUi.Adapters
             return all.Where(h => WordsMatch(q, h.Card.Label) || SearchRelevance.Normalize(h.Card.Label).Contains(nq, StringComparison.Ordinal)).ToList();
         }
 
-        /// <summary>A requested title's card says where it's got to (as Home's Downloads row does), and which seasons are here.</summary>
-        private static HomeCard WithProgress(HomeCard card, JellyseerrRequest r)
+        /// <summary>A requested title's card says where it's got to and which part (as Home's Downloads row does).</summary>
+        private static HomeCard WithProgress(HomeCard card, JellyseerrRequest r, IReadOnlyDictionary<(string Type, int Tmdb), IReadOnlyList<int>> asked)
         {
-            var (badge, progress) = HomeData.DownloadBadge(r, DateTime.Now);
-            var seasons = r.MediaType == "tv" ? HomeData.SeasonLine(r.Seasons) : "";
-            return card with { Badge = badge, Progress = progress ?? card.Progress, Sublabel = seasons.Length > 0 ? seasons : card.Sublabel };
+            var view = HomeData.Describe(r, asked.TryGetValue((r.MediaType, r.TmdbId), out var seasons) ? seasons : Array.Empty<int>(), DateTime.Now);
+            return card with { Badge = view.Badge, Progress = view.Progress ?? card.Progress, Sublabel = view.Scope.Length > 0 ? view.Scope : card.Sublabel };
         }
 
         /// <summary>Read Downloads afresh next time (something was deleted).</summary>
@@ -404,9 +405,10 @@ namespace Baird.NewUi.Adapters
 
             // Requests: one per title, newest first. Ones that have arrived are their Jellyfin copy; the rest go first.
             static DateTime When(string s) => DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var d) ? d : DateTime.MinValue;
+            var askedSeasons = HomeData.RequestedSeasonsByTitle(asked.Result);
             var waiting = new List<SearchHit>();
             var requestOf = new Dictionary<int, JellyseerrRequest>();
-            foreach (var r in asked.Result.OrderByDescending(r => When(r.CreatedAt)).DistinctBy(r => (r.MediaType, r.TmdbId)))
+            foreach (var r in asked.Result.Where(r => r.MediaInfoStatus is not (6 or 7)).OrderByDescending(r => When(r.CreatedAt)).DistinctBy(r => (r.MediaType, r.TmdbId)))
             {
                 var kind = r.MediaType == "tv" ? TitleKind.Series : r.MediaType == "movie" ? TitleKind.Film : (TitleKind?)null;
                 if (kind == null || string.IsNullOrWhiteSpace(r.Title)) continue;
@@ -420,12 +422,12 @@ namespace Baird.NewUi.Adapters
                 if (r.MediaInfoStatus == 5) continue; // here, under another name: Jellyfin's copy is already listed
                 var t = new CatalogueTitle($"tmdb:{r.MediaType}:{r.TmdbId}", kind.Value, r.Title, null,
                     r.PosterPath is { Length: > 0 } p ? $"https://image.tmdb.org/t/p/w500{p}" : null, null, Array.Empty<TitleSource>(), seerr);
-                waiting.Add(new SearchHit(HitKind.Title, WithProgress(CardOf(t), r), t));
+                waiting.Add(new SearchHit(HitKind.Title, WithProgress(CardOf(t), r, askedSeasons), t));
             }
             var library = titles.Select((t, i) =>
             {
                 var card = CardOf(t);
-                return new SearchHit(HitKind.Title, requestOf.TryGetValue(i, out var r) ? WithProgress(card, r) : card, t);
+                return new SearchHit(HitKind.Title, requestOf.TryGetValue(i, out var r) ? WithProgress(card, r, askedSeasons) : card, t);
             });
             IReadOnlyList<SearchHit> hits = waiting.Concat(library).ToList();
             _downloads = (DateTimeOffset.UtcNow, hits);
