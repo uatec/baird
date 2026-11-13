@@ -107,6 +107,12 @@ namespace Baird.NewUi.Adapters
                 new[] { new TitleSource(CatalogueSearch.ServiceOf(c.Source), c.Id, c.Via, c.StreamUrl, c.Resume, c.Progress) });
         }
 
+        /// <summary>The show an episode belongs to (as its provider lists it), or null when the episode doesn't say.</summary>
+        public static CatalogueTitle? SeriesOf(Baird.Models.MediaItemData episode) =>
+            string.IsNullOrEmpty(episode.SeriesId) || string.IsNullOrEmpty(episode.SeriesName) ? null
+            : new CatalogueTitle($"{TitleKind.Series}:{episode.SeriesId}", TitleKind.Series, episode.SeriesName, null, null, null,
+                new[] { new TitleSource(CatalogueSearch.ServiceOf(episode.Source), episode.SeriesId, HomeData.ViaOf(episode.Source)) });
+
         /// <summary>
         /// What to offer after you finish an episode of this show (for Up next): the episode after the last one you watched, when it
         /// can play; otherwise, when Seerr knows of later episodes you don't have, the show itself, to get ("get") or already on its way

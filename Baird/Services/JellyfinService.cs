@@ -404,6 +404,8 @@ namespace Baird.Services
                 Subtitle = "",
                 Synopsis = "", // TODO: should this stuff just be nullable or expicitly empty? or a subtype for Groupings
                 Duration = duration,
+                SeriesId = m.Type?.Equals("Episode", StringComparison.OrdinalIgnoreCase) == true && !string.IsNullOrEmpty(m.SeriesId) ? m.SeriesId : null,
+                SeriesName = m.Type?.Equals("Episode", StringComparison.OrdinalIgnoreCase) == true && !string.IsNullOrEmpty(m.SeriesName) ? m.SeriesName : null,
             };
         }
 
@@ -463,6 +465,8 @@ namespace Baird.Services
         public string Type { get; set; } = null!;
         public int? ParentIndexNumber { get; set; }
         public long? RunTimeTicks { get; set; }
+        public string? SeriesId { get; set; }
+        public string? SeriesName { get; set; }
     }
 
     [JsonSerializable(typeof(AuthRequest))]

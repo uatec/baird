@@ -22,6 +22,10 @@ namespace Baird.Models
         public required string Subtitle { get; init; }
         public TimeSpan Duration { get; init; }
 
+        /// <summary>For an episode: the show it belongs to (its id in <see cref="Source"/>, as the provider lists it, and its name). Null for anything else.</summary>
+        public string? SeriesId { get; init; }
+        public string? SeriesName { get; init; }
+
         public bool HasDuration => Duration > TimeSpan.Zero;
     }
 }

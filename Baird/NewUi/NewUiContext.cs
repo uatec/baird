@@ -30,8 +30,6 @@ namespace Baird.NewUi
         /// <summary>The show those episodes belong to ("Up next in …", "Back to …"), and each episode's title and
         /// "Season 1, episode 2 · 45 min" by card id.</summary>
         public string? FollowingShow { get; set; }
-        /// <summary>Which show each played episode belongs to (any service), so Up next can find what follows a finished one.</summary>
-        public Baird.NewUi.Adapters.ShowLinks? ShowLinks { get; set; }
         /// <summary>Finds an episode's show and its episodes in order (for Up next when it wasn't started from the show page).</summary>
         public Func<HomeCard, System.Threading.Tasks.Task<(IReadOnlyList<HomeCard> Episodes, string Show)?>>? FindFollowing { get; set; }
 

@@ -12,6 +12,10 @@ namespace Baird.Services
         Task<JellyseerrRequestResponse> CreateRequestAsync(int mediaId, string mediaType, CancellationToken cancellationToken = default);
         Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken cancellationToken = default);
 
+        /// <summary>What's popular on one streaming provider in the UK ("movie" or "tv"). Empty when Seerr can't say.</summary>
+        Task<IEnumerable<JellyseerrSearchResult>> GetProviderTrendingAsync(int providerId, string mediaType, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
+
         /// <summary>
         /// Seerr's view of one title (GET /api/v1/movie|tv/{tmdbId}): its seasons, what's requested or in the library, and
         /// download progress. Null when Seerr can't say.

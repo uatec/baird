@@ -84,7 +84,32 @@ namespace Baird.Services
             }
         }
 
-        private List<JellyseerrSearchResult> ParseSearchResults(string json, string source)
+        /// <summary>Seerr's discover URL for what's popular on one streaming provider in the UK.</summary>
+        public static string DiscoverUrl(int providerId, string mediaType) =>
+            $"api/v1/discover/{(mediaType == "tv" ? "tv" : "movies")}?watchProviders={providerId}&watchRegion=GB&sortBy=popularity.desc&page=1";
+
+        public async Task<IEnumerable<JellyseerrSearchResult>> GetProviderTrendingAsync(int providerId, string mediaType, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync(DiscoverUrl(providerId, mediaType), cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[JellyseerrService] Discover {mediaType} for provider {providerId} failed: {response.StatusCode}");
+                    return Array.Empty<JellyseerrSearchResult>();
+                }
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                return ParseSearchResults(json, $"Discover {mediaType} {providerId}", mediaType);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[JellyseerrService] Discover {mediaType} for provider {providerId} error: {ex.Message}");
+                return Array.Empty<JellyseerrSearchResult>();
+            }
+        }
+
+        /// <summary>Discover results carry no "mediaType" (trending ones do), so the caller says which it asked for.</summary>
+        internal static List<JellyseerrSearchResult> ParseSearchResults(string json, string source, string? defaultMediaType = null)
         {
             using var doc = JsonDocument.Parse(json);
 
@@ -94,7 +119,7 @@ namespace Baird.Services
             {
                 foreach (var item in resultsArray.EnumerateArray())
                 {
-                    var mediaType = item.GetProperty("mediaType").GetString() ?? "";
+                    var mediaType = item.TryGetProperty("mediaType", out var mt) ? mt.GetString() ?? "" : defaultMediaType ?? "";
 
                     // Skip person results
                     if (mediaType == "person") continue;

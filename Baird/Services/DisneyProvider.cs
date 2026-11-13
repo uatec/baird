@@ -127,7 +127,7 @@ namespace Baird.Services
                 // A long series lists no episodes on its page: the season is read on its own.
                 var (episodes, seasonFailure) = await _service.GetSeasonEpisodesAsync(season, timeout.Token);
                 if (episodes == null) throw new InvalidOperationException($"Disney+ {season.Name} failed: {seasonFailure}");
-                items.AddRange(episodes.Select(ToEpisodeItem));
+                items.AddRange(episodes.Select(e => ToEpisodeItem(e) with { SeriesId = IdPrefix + entityId, SeriesName = guide.SeriesTitle }));
             }
             return items;
         }

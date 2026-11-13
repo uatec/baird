@@ -86,12 +86,11 @@ namespace Baird.NewUi
                 return new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
                     new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
             };
-            // A finished episode's show gives Up next its next episode (or, through Seerr, the next season to get). The show is the
-            // one the episode was played from (any service); older Jellyfin history is traced through Jellyfin itself.
-            _ctx.ShowLinks = new ShowLinks(ShowLinks.DefaultPath);
+            // A finished episode's show gives Up next its next episode (or, through Seerr, the next season to get). Episodes say which
+            // show they belong to; older Jellyfin history (cached before they did) is traced through Jellyfin itself.
             home.FindNextAfter = async (item, ct) =>
             {
-                var title = _ctx.ShowLinks!.TitleFor(item.Id);
+                var title = ShowData.SeriesOf(item.Data);
                 if (title == null && item.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase) && await services.Jellyfin.GetSeriesOfAsync(item.Id) is { } series)
                     title = new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
                         new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });

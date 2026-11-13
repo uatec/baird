@@ -115,7 +115,7 @@ namespace Baird.Services
             }
 
             var wanted = targetSeries == null ? programme.Episodes : programme.Episodes.Where(e => e.Series == targetSeries).ToList();
-            return wanted.Select(ToEpisodeItem).ToList();
+            return wanted.Select(e => ToEpisodeItem(e) with { SeriesId = $"{IdPrefix}{slug}/{ccid}", SeriesName = programme.Title }).ToList();
         }
 
         public static MediaItemData ToEpisodeItem(ItvxEpisode e) => new()

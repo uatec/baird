@@ -253,7 +253,6 @@ namespace Baird.NewUi.Screens
                 _ctx.FollowingShow = _title.Name;
                 _ctx.FollowingInfo = playable.Zip(_ctx.Following).GroupBy(x => x.Second.Id).ToDictionary(g => g.Key, g => (EpisodeTitle(g.First().First), EpisodeMeta(g.First().First)));
             }
-            if (e.Source != null && _title.Kind == TitleKind.Series) _ctx.ShowLinks?.Remember(e.Source.ItemId, _details?.Title ?? _title);
             _ctx.Activate(EpisodeCard(e));
         }
 
