@@ -210,7 +210,7 @@ namespace Baird.Tests.NewUi
             var (home, _, _, _) = Build(seerr: seerr);
             var cards = await home.DownloadsAsync();
             Assert.Equal(new[] { "Rivals", "Dune", "Arrival", "Dune: Part Three", "Clayface" }, cards.Select(c => c.Label));
-            Assert.Equal(new[] { "partial", "dl:42", "ready", "out:18 Dec 2099", "searching" }, cards.Select(c => c.Badge));
+            Assert.Equal(new[] { "part", "dl:42", "ready", "out:18 Dec 2099", "notfound" }, cards.Select(c => c.Badge)); // Clayface: out for years, asked a week ago, still nothing
             Assert.Equal("S1 ready · S2 partly", cards[0].Sublabel); // which seasons are here
             Assert.Equal(0.424, cards[1].Progress!.Value, 3); // a bar along the card
             Assert.Equal("tmdb:tv:2", cards[0].Id); // OK opens the show's page, like Discover
@@ -218,18 +218,145 @@ namespace Baird.Tests.NewUi
             Assert.Equal(CardKind.Film, cards[1].Kind);
             Assert.Equal(4, cards[0].Title!.Seerr!.Status);
             Assert.Equal("https://image.tmdb.org/t/p/w500/2.jpg", cards[0].ImageUrl);
-            Assert.StartsWith("Requested ", cards[1].Sublabel);
+            Assert.Equal("Downloading", cards[1].Sublabel);
         }
 
-        [Theory]
-        [InlineData("1:5,2:5,3:5,4:3", "S1–3 ready · S4 coming")]
-        [InlineData("1:4", "S1 partly")]
-        [InlineData("1:1,2:2", "S2 coming")]
-        [InlineData("1:5,2:1,3:5", "S1 ready · S3 ready")]
-        public void Season_lines_say_which_seasons_are_here(string seasons, string expected)
+        // ---- what a Downloads tile says: a pill for the state and a line for which part ----
+        private static JellyseerrSeason[] Seasons(string statuses) =>
+            statuses.Split(',').Select((st, i) => new JellyseerrSeason(i + 1, 8, int.Parse(st))).ToArray();
+
+        private static (string Badge, string Scope) Say(string type, string statuses, int[]? requested, int requestStatus = 2, int mediaStatus = 3,
+            double? progress = null, int downloadingEpisodes = 0, int downloadingSeason = 2, int askedDaysAgo = 1, string? release = null)
         {
-            var list = seasons.Split(',').Select(x => x.Split(':')).Select(x => new JellyseerrSeason(int.Parse(x[0]), 8, int.Parse(x[1]))).ToList();
-            Assert.Equal(expected, HomeData.SeasonLine(list));
+            var r = Req(1, type, "X", DateTime.UtcNow.AddDays(-askedDaysAgo), mediaStatus, progress);
+            r.Status = requestStatus;
+            r.ReleaseDate = release;
+            if (statuses.Length > 0) r.Seasons = Seasons(statuses);
+            r.Downloads = Enumerable.Range(1, downloadingEpisodes).Select(e => new JellyseerrDownload(downloadingSeason, e, 100, 50)).ToList();
+            var v = HomeData.Describe(r, requested ?? Array.Empty<int>(), DateTime.UtcNow);
+            return (v.Badge, v.Scope.Replace(DateTime.UtcNow.AddDays(-askedDaysAgo).ToLocalTime().ToString("d MMM"), "<date>"));
+        }
+
+        [Fact]
+        public void A_request_waiting_for_approval_says_requested_and_when()
+        {
+            var (badge, scope) = Say("tv", "1,1,1,1,1", new[] { 1, 2 }, requestStatus: 1, mediaStatus: 2);
+            Assert.Equal("requested", badge);
+            Assert.Equal("S1–2 · asked <date>", scope);
+        }
+
+        [Fact]
+        public void An_approved_request_with_nothing_downloading_says_searching()
+        {
+            var (badge, scope) = Say("tv", "2,2,1,1", new[] { 1, 2 });
+            Assert.Equal(("searching", "S1–2 · looking for it"), (badge, scope));
+        }
+
+        [Fact]
+        public void An_approved_request_nobody_could_find_for_days_says_not_found()
+        {
+            var (badge, scope) = Say("tv", "3,1", new[] { 1 }, askedDaysAgo: 5, release: "2020-01-01");
+            Assert.Equal(("notfound", "S1 · not found yet"), (badge, scope));
+        }
+
+        [Fact]
+        public void A_series_not_out_yet_says_when()
+        {
+            var (badge, scope) = Say("tv", "3", new[] { 1 }, release: "2099-12-18");
+            Assert.Equal(("out:18 Dec 2099", "S1 · not out yet"), (badge, scope));
+        }
+
+        [Fact]
+        public void Downloading_shows_the_percentage_and_the_episodes_still_to_come()
+        {
+            var (badge, scope) = Say("tv", "5,3,1", new[] { 1, 2 }, mediaStatus: 4, progress: 42, downloadingEpisodes: 6);
+            Assert.Equal("part", badge); // S1 is here already
+            Assert.Equal("S1 ready · S2 6 to go", scope);
+            var (b2, s2) = Say("tv", "3,1", new[] { 1 }, progress: 42, downloadingEpisodes: 6, downloadingSeason: 1);
+            Assert.Equal(("dl:42", "S1 · 6 episodes to go"), (b2, s2));
+            Assert.Equal("S1 · 1 episode to go", Say("tv", "3", new[] { 1 }, progress: 90, downloadingEpisodes: 1, downloadingSeason: 1).Scope);
+        }
+
+        [Fact]
+        public void Some_of_what_you_asked_for_here_and_the_rest_coming_says_part_ready()
+        {
+            var (badge, scope) = Say("tv", "5,3,3,1", new[] { 1, 2, 3 }, mediaStatus: 4);
+            Assert.Equal(("part", "S1 ready · S2–3 coming"), (badge, scope));
+        }
+
+        [Fact]
+        public void Everything_you_asked_for_is_here_but_not_the_whole_show_says_ready_and_how_much()
+        {
+            var (badge, scope) = Say("tv", "5,5,5,1,1", new[] { 1, 2, 3 }, mediaStatus: 4);
+            Assert.Equal(("ready", "S1–3 of 5 seasons"), (badge, scope));
+        }
+
+        [Fact]
+        public void The_whole_show_here_says_complete()
+        {
+            Assert.Equal(("complete", "All 5 seasons"), Say("tv", "5,5,5,5,5", new[] { 1, 2, 3, 4, 5 }, mediaStatus: 5));
+            Assert.Equal(("complete", "The whole series"), Say("tv", "5", new[] { 1 }, mediaStatus: 5));
+        }
+
+        [Fact]
+        public void A_season_with_only_some_episodes_and_nothing_downloading_says_partly_here()
+        {
+            Assert.Equal(("part", "S1 ready · S2 partly"), Say("tv", "5,4,1", new[] { 1, 2 }, mediaStatus: 4));
+            Assert.Equal(("part", "S2 partly"), Say("tv", "1,4", new[] { 2 }, mediaStatus: 4));
+        }
+
+        [Fact]
+        public void A_season_deleted_from_the_library_is_no_longer_asked_for()
+        {
+            // Seerr marks deleted (7) and blocklisted (6) seasons; they are neither here nor on the way.
+            Assert.Equal(("ready", "S1 of 3 seasons"), Say("tv", "5,7,1", new[] { 1, 2 }, mediaStatus: 4));
+        }
+
+        [Fact]
+        public async Task A_title_deleted_from_the_server_is_not_listed_in_downloads()
+        {
+            var seerr = new Seerr();
+            var gone = Req(5, "movie", "Fallout", DateTime.UtcNow.AddDays(-2), mediaStatus: 7);
+            seerr.Requests.AddRange(new[] { gone, Req(6, "movie", "Heat", DateTime.UtcNow.AddDays(-1), mediaStatus: 3) });
+            var (home, _, _, _) = Build(seerr: seerr);
+            Assert.Equal(new[] { "Heat" }, (await home.DownloadsAsync()).Select(c => c.Label));
+        }
+
+        [Fact]
+        public void A_declined_request_says_so()
+        {
+            Assert.Equal(("declined", "S1 · declined"), Say("tv", "1", new[] { 1 }, requestStatus: 3, mediaStatus: 1));
+        }
+
+        [Fact]
+        public void When_Seerr_does_not_say_which_seasons_were_asked_for_the_ones_it_knows_of_stand_in()
+        {
+            // seasons with a status above "unknown" are the ones that were requested (or arrived)
+            Assert.Equal(("ready", "S1–2 of 3 seasons"), Say("tv", "5,5,1", null, mediaStatus: 4));
+        }
+
+        [Fact]
+        public void Films_say_requested_searching_a_percentage_or_ready()
+        {
+            Assert.Equal(("requested", "Asked <date>"), Say("movie", "", null, requestStatus: 1, mediaStatus: 2));
+            Assert.Equal(("searching", "Looking for it"), Say("movie", "", null));
+            Assert.Equal(("dl:42", "Downloading"), Say("movie", "", null, progress: 42));
+            Assert.Equal(("ready", "Film"), Say("movie", "", null, mediaStatus: 5));
+            Assert.Equal(("out:18 Dec 2099", "Not released yet"), Say("movie", "", null, release: "2099-12-18"));
+        }
+
+        [Fact]
+        public async Task A_title_requested_in_pieces_shows_every_season_asked_for_across_its_requests()
+        {
+            var now = DateTime.UtcNow;
+            var seerr = new Seerr();
+            var newer = Req(7, "tv", "Silo", now.AddDays(-1), mediaStatus: 3); newer.RequestedSeasons = new[] { 2 };
+            var older = Req(7, "tv", "Silo", now.AddDays(-9), mediaStatus: 3); older.RequestedSeasons = new[] { 1 };
+            newer.Seasons = older.Seasons = Seasons("3,3,1");
+            seerr.Requests.AddRange(new[] { newer, older });
+            var (home, _, _, _) = Build(seerr: seerr);
+            var card = Assert.Single(await home.DownloadsAsync());
+            Assert.Contains("S1–2", card.Sublabel);
         }
 
         [Fact]

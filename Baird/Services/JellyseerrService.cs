@@ -324,7 +324,7 @@ namespace Baird.Services
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
 
-                var wanted = new List<(int Id, int Status, int MediaId, int TmdbId, string MediaType, int MediaStatus, string CreatedAt, string UpdatedAt)>();
+                var wanted = new List<(int Id, int Status, int MediaId, int TmdbId, string MediaType, int MediaStatus, string CreatedAt, string UpdatedAt, IReadOnlyList<int> Seasons)>();
                 var recentSince = DateTime.UtcNow.AddDays(-14); // Home's Downloads row keeps arrived titles for two weeks
 
                 if (doc.RootElement.TryGetProperty("results", out var resultsArray))
@@ -347,7 +347,7 @@ namespace Baird.Services
                         bool isCompleted = mediaStatus == 4 || mediaStatus == 5;
                         if (isInFlight || (isCompleted && updatedDate >= recentSince))
                             wanted.Add((item.GetProperty("id").GetInt32(), status, mediaId, tmdbId, mediaType, mediaStatus,
-                                item.GetProperty("createdAt").GetString() ?? "", updatedAt));
+                                item.GetProperty("createdAt").GetString() ?? "", updatedAt, RequestedSeasonsOf(item)));
                     }
                 }
 
@@ -374,6 +374,8 @@ namespace Baird.Services
                             DownloadProgress = d.Status?.Progress() is { } p ? p * 100 : null,
                             ReleaseDate = d.ReleaseDate,
                             Seasons = d.Status?.Seasons ?? Array.Empty<JellyseerrSeason>(),
+                            RequestedSeasons = w.Seasons,
+                            Downloads = d.Status?.Downloads ?? Array.Empty<JellyseerrDownload>(),
                         };
                     }
                     finally { gate.Release(); }
@@ -387,6 +389,15 @@ namespace Baird.Services
                 Console.WriteLine($"[JellyseerrService] Get requests error: {ex.Message}");
                 return Array.Empty<JellyseerrRequest>();
             }
+        }
+
+        /// <summary>The seasons one request asked for (a request item's "seasons" array), in order, specials left out.</summary>
+        internal static IReadOnlyList<int> RequestedSeasonsOf(JsonElement requestItem)
+        {
+            if (!requestItem.TryGetProperty("seasons", out var seasons) || seasons.ValueKind != JsonValueKind.Array) return Array.Empty<int>();
+            return seasons.EnumerateArray()
+                .Select(s => s.TryGetProperty("seasonNumber", out var n) && n.ValueKind == JsonValueKind.Number ? n.GetInt32() : 0)
+                .Where(n => n > 0).Distinct().OrderBy(n => n).ToList();
         }
 
         private async Task<(string Title, string PosterPath, string? ReleaseDate, JellyseerrMediaStatus? Status)> GetMediaDetailsAsync(int tmdbId, string mediaType, CancellationToken cancellationToken)

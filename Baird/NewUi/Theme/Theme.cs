@@ -22,6 +22,11 @@ namespace Baird.NewUi.Theme
         /// <summary>Downloads that have arrived ("✓ Ready").</summary>
         public static readonly IBrush Ready = new SolidColorBrush(Color.Parse("#4CD964"));
         public static readonly IBrush Missing = new SolidColorBrush(Color.Parse("#FFB38A"));
+        // Downloads states (dark ink on each, except Complete): amber waiting, lavender not out yet, red said no, dark green the whole show.
+        public static readonly IBrush Waiting = new SolidColorBrush(Color.Parse("#FFCC66"));
+        public static readonly IBrush Soon = new SolidColorBrush(Color.Parse("#C9B8FF"));
+        public static readonly IBrush Complete = new SolidColorBrush(Color.Parse("#137A2B"));
+        public static readonly IBrush Declined = new SolidColorBrush(Color.Parse("#FF6B5E"));
         public static readonly IBrush Pill = new SolidColorBrush(Color.Parse("#29FFFFFF"));
         public static readonly IBrush CardBack = new SolidColorBrush(Color.Parse("#1A1A1E"));
         /// <summary>Panels over video. There's no live blur of the picture (mpv/Chromium draw it), so glass is a tint.</summary>
