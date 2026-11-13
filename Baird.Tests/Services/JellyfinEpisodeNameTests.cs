@@ -18,3 +18,23 @@ namespace Baird.Tests.Services
             Assert.Equal(expected, JellyfinService.EpisodeTitle(name));
     }
 }
+
+namespace Baird.Tests.Services
+{
+    /// <summary>Jellyfin has a description for most films; Baird used to ask for none and show a blank one.</summary>
+    public class JellyfinSynopsisTests
+    {
+        [Fact]
+        public void A_jellyfin_reply_carries_the_overview()
+        {
+            const string json = "{\"Items\":[{\"Name\":\"Alien\",\"Id\":\"a1\",\"Type\":\"Movie\",\"ProductionYear\":1979,\"Overview\":\"In space.\"}],\"TotalRecordCount\":1}";
+            var r = System.Text.Json.JsonSerializer.Deserialize(json, AppJsonContext.Default.MovieQueryResult)!;
+            Assert.Equal("In space.", r.Items[0].Overview);
+            Assert.Equal("In space.", JellyfinService.SynopsisOf(r.Items[0]));
+        }
+
+        [Fact]
+        public void No_overview_is_an_empty_synopsis() =>
+            Assert.Equal("", JellyfinService.SynopsisOf(new MovieItem { Name = "x", Id = "1", Type = "Movie" }));
+    }
+}

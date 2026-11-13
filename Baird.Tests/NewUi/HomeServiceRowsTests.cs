@@ -18,6 +18,13 @@ namespace Baird.Tests.NewUi
             Assert.Equal(new[] { "Netflix", "Disney+", "ITVX", "Channel 4", "BBC iPlayer" }, HomeData.ServiceRows.Select(r => r.Title));
 
         [Fact]
+        public void Provider_ids_are_the_ones_Seerr_lists_for_the_uk()
+        {
+            // Checked against the real Seerr's watch providers (GB), 2026-11-13: ITVX is 41 (54 returns nothing).
+            Assert.Equal(new[] { ("Netflix", 8), ("Disney+", 337), ("ITVX", 41), ("Channel 4", 103), ("BBC iPlayer", 38) }, HomeData.ServiceRows);
+        }
+
+        [Fact]
         public async Task ServiceTrending_interleaves_movies_and_tv_capped_at_20()
         {
             var s = new HomeDataTests.Seerr

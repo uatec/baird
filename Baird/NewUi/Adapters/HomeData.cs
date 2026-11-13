@@ -250,10 +250,10 @@ namespace Baird.NewUi.Adapters
             catch (Exception ex) { Console.WriteLine($"[HomeData] Discover failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
         }
 
-        /// <summary>The per-service rows on Home, in order, with each service's TMDB watch-provider id (UK).</summary>
+        /// <summary>The per-service rows on Home, in order, with each service's TMDB watch-provider id (UK; checked against Seerr's own provider list).</summary>
         public static readonly IReadOnlyList<(string Title, int ProviderId)> ServiceRows = new[]
         {
-            ("Netflix", 8), ("Disney+", 337), ("ITVX", 54), ("Channel 4", 103), ("BBC iPlayer", 38),
+            ("Netflix", 8), ("Disney+", 337), ("ITVX", 41), ("Channel 4", 103), ("BBC iPlayer", 38),
         };
 
         private const int ServiceRowCards = 20;

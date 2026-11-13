@@ -77,12 +77,15 @@ namespace Baird.NewUi.Screens
             _ = LoadAsync();
             _ctx.UpNextChanged += () => _ = RefreshUpNextAsync();
             _ctx.LibraryChanged += () => { _downloadsAt = DateTime.MinValue; _ = RefreshDownloadsAsync(); };
-            // Keep On now current while Home is up (programmes change all day).
+            // Keep On now (programmes change all day) and Downloads (progress, new requests) current while Home is up.
             var refresh = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-            refresh.Tick += (_, _) => { if (_root.IsEffectivelyVisible && _root.GetVisualRoot() != null) _ = RefreshOnNowAsync(); };
+            refresh.Tick += (_, _) => { if (_root.IsEffectivelyVisible && _root.GetVisualRoot() != null) RefreshInBackground(); };
             _root.AttachedToVisualTree += (_, _) => refresh.Start();
             _root.DetachedFromVisualTree += (_, _) => refresh.Stop();
         }
+
+        /// <summary>What the timer does while Home is up: On now and Downloads read again, in place, without moving the lit card.</summary>
+        public void RefreshInBackground() { _ = RefreshOnNowAsync(); _ = RefreshDownloadsAsync(); }
 
         private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         /// <summary>Completes once Home's rows are on screen (the start-up animation waits for it).</summary>
@@ -156,11 +159,12 @@ namespace Baird.NewUi.Screens
         }
 
         private const string DownloadsRow = "Downloads";
-        private static readonly TimeSpan DownloadsEvery = TimeSpan.FromMinutes(2);
+        /// <summary>How long Downloads is left alone before the background refresh asks Seerr again (tests shorten it).</summary>
+        public TimeSpan DownloadsEvery { get; set; } = TimeSpan.FromSeconds(45);
         private DateTime _downloadsAt = DateTime.MinValue;
         private IReadOnlyList<HomeCard> _downloads = Array.Empty<HomeCard>();
 
-        /// <summary>Puts Downloads (what's been requested and where it's got to) after Continue watching; at most every couple of minutes.</summary>
+        /// <summary>Puts Downloads (what's been requested, newest first, and where each has got to) after the watchlist; not more often than <see cref="DownloadsEvery"/>.</summary>
         public async Task RefreshDownloadsAsync()
         {
             if (DateTime.UtcNow - _downloadsAt < DownloadsEvery) return;

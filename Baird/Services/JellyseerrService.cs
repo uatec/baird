@@ -278,7 +278,8 @@ namespace Baird.Services
                     if (n <= 0) continue; // specials
                     seasons.Add(new JellyseerrSeason(n, Int(s, "episodeCount"), seasonStatus.TryGetValue(n, out var st) ? st : 1));
                 }
-            return new JellyseerrMediaStatus(status, seasons, downloads);
+            var overview = root.TryGetProperty("overview", out var ov) && ov.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(ov.GetString()) ? ov.GetString() : null;
+            return new JellyseerrMediaStatus(status, seasons, downloads, overview);
         }
 
         public async Task<JellyseerrRequestResponse> RequestSeasonsAsync(int mediaId, string mediaType, IReadOnlyList<int>? seasons, CancellationToken cancellationToken = default)
