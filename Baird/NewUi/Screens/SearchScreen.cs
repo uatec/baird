@@ -26,7 +26,7 @@ namespace Baird.NewUi.Screens
     /// </summary>
     public sealed class SearchScreen : IScreen
     {
-        public static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(450);
+        public static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(2000);
         private enum Zone { Keyboard, Results, None }
         private enum Shape { Top, Poster, Wide, Chip }
 
