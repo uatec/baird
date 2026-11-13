@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Baird.NewUi.Adapters;
 using Baird.NewUi.Controls;
 using Baird.NewUi.Core;
 using Baird.NewUi.Model;
@@ -18,11 +19,13 @@ using Baird.NewUi.Theme;
 namespace Baird.NewUi.Screens
 {
     /// <summary>
-    /// Home: a hero that describes the lit card (no buttons of its own), then rows — Up next, On now, Watchlist,
-    /// Discover. ▴ off the top row returns false so the shell lights the tab bar.
+    /// Home: a hero that describes the lit card (no buttons of its own), then rows — Continue watching, On now, Watchlist,
+    /// Downloads, Discover, then what is popular on each streaming service. ▴ off the top row returns false so the shell lights the tab bar.
     /// </summary>
     public sealed class HomeScreen : IScreen
     {
+        /// <summary>The first row (what you were partway through, plus what is playing now).</summary>
+        private const string ContinueWatching = "Continue watching";
         private const double RowTop = 590;
         private static readonly Dictionary<CardShape, double> RowHeight = new() { [CardShape.Wide] = 412, [CardShape.Poster] = 520 };
         private static readonly Dictionary<CardShape, double> Step = new() { [CardShape.Wide] = 384 + 36, [CardShape.Poster] = 216 + 36 };
@@ -96,16 +99,22 @@ namespace Baird.NewUi.Screens
             var upNext = _ctx.Home.UpNextAsync();
             var onNow = _ctx.Home.OnNowAsync(now);
             var watch = _ctx.Home.WatchlistAsync();
+            var downloads = _ctx.Home.DownloadsAsync();
             var disc = _ctx.Home.DiscoverAsync();
-            await Task.WhenAll(upNext, onNow, watch, disc);
+            var services = HomeData.ServiceRows.Select(r => _ctx.Home.ServiceTrendingAsync(r.ProviderId)).ToList();
+            await Task.WhenAll(new Task[] { upNext, onNow, watch, downloads, disc }.Concat(services));
             _ctx.Channels = onNow.Result.Where(c => c.Channel != null).Select(c => c.Channel!).ToList();
-            Dispatcher.UIThread.Post(() => Build(new (string, string, CardShape, IReadOnlyList<HomeCard>)[]
+            var rows = new List<(string, string, CardShape, IReadOnlyList<HomeCard>)>
             {
-                ("Up next", "Up next", CardShape.Wide, upNext.Result),
+                (ContinueWatching, ContinueWatching, CardShape.Wide, upNext.Result),
                 ("On now", "On now", CardShape.Wide, onNow.Result),
                 ("Your watchlist", "In your watchlist", CardShape.Poster, watch.Result),
+                ("Downloads", "Downloads", CardShape.Poster, downloads.Result),
                 ("Discover", "Discover", CardShape.Poster, disc.Result),
-            }));
+            };
+            for (var i = 0; i < HomeData.ServiceRows.Count; i++)
+                rows.Add((HomeData.ServiceRows[i].Title, HomeData.ServiceRows[i].Title, CardShape.Poster, services[i].Result));
+            Dispatcher.UIThread.Post(() => Build(rows));
             Dispatcher.UIThread.Post(() => _ready.TrySetResult());
         }
 
@@ -115,7 +124,7 @@ namespace Baird.NewUi.Screens
         {
             var list = rows.Select(r => (r.Title, r.Eyebrow, r.Shape, (IReadOnlyList<HomeCard>)r.Cards.Where(c => c.Badge != "playing").ToList())).ToList();
             if (_ctx.NowPlaying is not { } now) return list;
-            if (list.Count == 0 || list[0].Shape != CardShape.Wide) list.Insert(0, ("Up next", "Up next", CardShape.Wide, Array.Empty<HomeCard>()));
+            if (list.Count == 0 || list[0].Shape != CardShape.Wide) list.Insert(0, (ContinueWatching, ContinueWatching, CardShape.Wide, Array.Empty<HomeCard>()));
             var first = list[0];
             list[0] = (first.Title, first.Item2, first.Shape, first.Item4.Where(c => c.Id != now.Id).Prepend(now).ToList());
             return list;
@@ -276,7 +285,7 @@ namespace Baird.NewUi.Screens
                     _ctx.Activate(_rowList[_pos.Row].Cards[_pos.Col].Data);
                     return true;
                 case UiAction.HoldOk:
-                    _ctx.Nav.OpenOverlay(new OverlayRef(_rowList[_pos.Row].Title == "Up next" ? "itemactions-upnext" : "itemactions", _rowList[_pos.Row].Cards[_pos.Col].Data));
+                    _ctx.Nav.OpenOverlay(new OverlayRef(_rowList[_pos.Row].Title == ContinueWatching ? "itemactions-upnext" : "itemactions", _rowList[_pos.Row].Cards[_pos.Col].Data));
                     return true;
             }
             return false;
@@ -324,7 +333,7 @@ namespace Baird.NewUi.Screens
 
         private async Task RefreshUpNextAsync()
         {
-            if (_rowList.Count == 0 || _rowList[0].Title != "Up next") return;
+            if (_rowList.Count == 0 || _rowList[0].Title != ContinueWatching) return;
             var cards = await _ctx.Home.UpNextAsync();
             Dispatcher.UIThread.Post(() =>
             {
