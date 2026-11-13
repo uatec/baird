@@ -25,7 +25,7 @@ namespace Baird.NewUi.Screens
         private readonly NewUiContext _ctx;
         private readonly ITimers _timers;
         private readonly NumberEntry _entry;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly StackPanel _digits = new() { Orientation = Orientation.Horizontal, Spacing = 12 };
         private readonly TextBlock _name = new() { FontSize = 34, FontWeight = FontWeight.Bold, Foreground = T.Text };
         private readonly TextBlock _sub = new() { FontSize = 24, Foreground = T.Text2, MaxWidth = 520, TextTrimming = TextTrimming.CharacterEllipsis };

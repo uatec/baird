@@ -33,7 +33,7 @@ namespace Baird.NewUi.Shell
         private static readonly Dictionary<Place, string> TabLabels = new() { [Place.Home] = "Home", [Place.LiveTv] = "Live TV", [Place.Search] = "Search", [Place.Settings] = "Settings" };
 
         private readonly ShellDeps _d;
-        public Panel Stage { get; } = new() { Width = 1920, Height = 1080, ClipToBounds = true };
+        public Panel Stage { get; } = new() { Width = T.W, Height = T.H, ClipToBounds = true };
         private readonly Panel _placeHost = new();
         private readonly Panel _pageHost = new();
         private readonly Panel _overlayHost = new();
@@ -116,6 +116,19 @@ namespace Baird.NewUi.Shell
             clock.Start();
             _clock.Text = DateTime.Now.ToString("HH:mm");
             Render();
+        }
+
+        /// <summary>
+        /// Interface size: lay the interface out on a stage of 1920/scale × 1080/scale, which the Viewbox fits to the window, so a smaller
+        /// size gives smaller components and room for more of them. Screens that aren't showing are rebuilt at the new size when next visited.
+        /// </summary>
+        public void SetStageScale(double scale)
+        {
+            var (w, h) = (T.W, T.H);
+            T.SetScale(scale);
+            if (T.W == w && T.H == h) return;
+            Stage.Width = T.W; Stage.Height = T.H;
+            foreach (var k in _places.Where(kv => !_placeHost.Children.Contains(kv.Value.View)).Select(kv => kv.Key).ToList()) _places.Remove(k);
         }
 
         public IScreen PlaceScreen(Place p)

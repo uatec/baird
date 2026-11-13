@@ -48,7 +48,7 @@ namespace Baird.NewUi.Screens
 
         private readonly NewUiContext _ctx;
         private readonly ITimers _timers;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly TextBlock _queryText = new() { FontSize = 36, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 560 };
         // The caret sits right after the last letter, or before the hint while nothing is typed.
         private readonly Border _caret = new() { Width = 3, Height = 40, Background = T.Text, VerticalAlignment = VerticalAlignment.Center };
@@ -142,7 +142,7 @@ namespace Baird.NewUi.Screens
             _column = new Border
             {
                 Width = ColumnW,
-                Height = 1080 - ColumnTop,
+                Height = T.H - ColumnTop,
                 ClipToBounds = true,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,

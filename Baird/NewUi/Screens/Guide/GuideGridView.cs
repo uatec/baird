@@ -65,7 +65,7 @@ namespace Baird.NewUi.Screens
         public GuideGridView(GuideGeometry? geometry = null)
         {
             _g = geometry ?? GuideGeometry.Rows;
-            Width = 1920; Height = 1080;
+            
             IsHitTestVisible = false;
 
             _hl = new Border
@@ -81,13 +81,13 @@ namespace Baird.NewUi.Screens
             var dot = new Border { Width = 13, Height = 13, CornerRadius = new CornerRadius(7), Background = T.Live };
             if (_g.IsColumns)
             {
-                _now = new Panel { Height = 13, Width = 1920 - _g.ChStart + 6, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(_g.ChStart - 6, -6, 0, 0), Opacity = 0 };
+                _now = new Panel { Height = 13, Width = T.W - _g.ChStart + 6, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(_g.ChStart - 6, -6, 0, 0), Opacity = 0 };
                 line.Height = 3; line.VerticalAlignment = VerticalAlignment.Center;
                 dot.HorizontalAlignment = HorizontalAlignment.Left;
             }
             else
             {
-                _now = new Panel { Width = 13, Height = 1080 - _g.ChStart + 28, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(-5, _g.ChStart - 28, 0, 0), Opacity = 0 };
+                _now = new Panel { Width = 13, Height = T.H - _g.ChStart + 28, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(-5, _g.ChStart - 28, 0, 0), Opacity = 0 };
                 line.Width = 3; line.HorizontalAlignment = HorizontalAlignment.Center;
                 dot.VerticalAlignment = VerticalAlignment.Top; dot.Margin = new Thickness(0, -6, 0, 0);
             }
@@ -96,15 +96,15 @@ namespace Baird.NewUi.Screens
 
             if (_g.IsColumns)
             {
-                Children.Add(Clip(0, _g.TimeStart - 14, 180, 1080 - _g.TimeStart + 14, _rulerTrack));
-                Children.Add(Clip(_g.ChStart, 500, 1920 - _g.ChStart, 52, _chTrack));
-                Children.Add(Clip(_g.ChStart, _g.TimeStart, 1920 - _g.ChStart, 1080 - _g.TimeStart, _track));
+                Children.Add(Clip(0, _g.TimeStart - 14, 180, T.H - _g.TimeStart + 14, _rulerTrack));
+                Children.Add(Clip(_g.ChStart, 500, T.W - _g.ChStart, 52, _chTrack));
+                Children.Add(Clip(_g.ChStart, _g.TimeStart, T.W - _g.ChStart, T.H - _g.TimeStart, _track));
             }
             else
             {
-                Children.Add(Clip(_g.TimeStart, 506, 1920 - _g.TimeStart, 36, _rulerTrack));
-                Children.Add(Clip(0, _g.ChStart, _g.TimeStart, 1080 - _g.ChStart, _chTrack));
-                Children.Add(Clip(_g.TimeStart, _g.ChStart, 1920 - _g.TimeStart, 1080 - _g.ChStart, _track));
+                Children.Add(Clip(_g.TimeStart, 506, T.W - _g.TimeStart, 36, _rulerTrack));
+                Children.Add(Clip(0, _g.ChStart, _g.TimeStart, T.H - _g.ChStart, _chTrack));
+                Children.Add(Clip(_g.TimeStart, _g.ChStart, T.W - _g.TimeStart, T.H - _g.ChStart, _track));
             }
             Children.Add(_now);
             Children.Add(new Border

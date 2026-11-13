@@ -37,7 +37,7 @@ namespace Baird.NewUi.Screens
         private readonly NewUiContext _ctx;
         private CatalogueTitle _title;
         private ShowDetails? _details;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080, Background = Brushes.Black };
+        private readonly Panel _root = new() { Background = Brushes.Black };
         private readonly Panel _art = new();
         private readonly Panel _content = new();
         private readonly StackPanel _body = new() { Width = 1000, Spacing = 0, Margin = new Thickness(T.SafeX, 96, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
@@ -398,7 +398,7 @@ namespace Baird.NewUi.Screens
             if (_tabEls.Count == 0) { _tabScroll = 0; _tabs.RenderTransform = Motion.None; return; }
             var widths = _tabEls.Select(t => { if (t.DesiredSize.Width <= 0) t.Measure(Size.Infinity); return t.DesiredSize.Width; }).ToList();
             var focus = _rows[_pos.Row] == RowKind.Seasons ? _pos.Col : _season;
-            _tabScroll = StripScroll(widths, TabSpacing, focus, _tabScroll, 1920 - 2 * T.SafeX, 20);
+            _tabScroll = StripScroll(widths, TabSpacing, focus, _tabScroll, T.W - 2 * T.SafeX, 20);
             _tabs.RenderTransform = TransformOperations.Parse($"translate({-_tabScroll}px, 0px)");
         }
 

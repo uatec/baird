@@ -36,6 +36,25 @@ namespace Baird.Tests.NewUi
             return (shell, nav, video, w);
         }
 
+        [AvaloniaFact]
+        public void A_smaller_interface_size_gives_a_bigger_stage_that_still_fills_the_screen()
+        {
+            var (shell, _, _, w) = Build();
+            try
+            {
+                shell.SetStageScale(0.8);
+                Dispatcher.UIThread.RunJobs();
+                Assert.Equal(2400, shell.Stage.Width, 3);
+                Assert.Equal(1350, shell.Stage.Height, 3);
+                // The viewbox scales it back down to the window: no small rectangle in the middle.
+                var vb = shell.Children.OfType<Avalonia.Controls.Viewbox>().Single();
+                Assert.Equal(1920, vb.Bounds.Width, 1);
+                Assert.Equal(1080, vb.Bounds.Height, 1);
+                Assert.Equal(0.8, Avalonia.VisualExtensions.TranslatePoint(shell.Stage, new Avalonia.Point(2400, 0), shell).Value.X / 2400 * 1.0, 3);
+            }
+            finally { shell.SetStageScale(1.0); w.Close(); }
+        }
+
         private static async Task Wait(int ms) { var until = DateTime.UtcNow.AddMilliseconds(ms); while (DateTime.UtcNow < until) { Dispatcher.UIThread.RunJobs(); await Task.Delay(15); } }
         private static Panel PlaceHost(Shell s) => (Panel)s.Stage.Children[0];
         private static Panel PageHost(Shell s) => (Panel)s.Stage.Children[1];

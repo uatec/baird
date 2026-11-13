@@ -24,6 +24,7 @@ namespace Baird.NewUi.Screens
     public sealed class HomeScreen : IScreen
     {
         private const double RowTop = 590;
+        private const double PeekAbove = 90, PeekGap = 24, PeekOpacity = 0.55; // the sliver of the row above that shows: how tall, how far over the current row, how dim
         private static readonly Dictionary<CardShape, double> RowHeight = new() { [CardShape.Wide] = 412, [CardShape.Poster] = 520 };
         private static readonly Dictionary<CardShape, double> Step = new() { [CardShape.Wide] = 384 + 36, [CardShape.Poster] = 216 + 36 };
 
@@ -38,11 +39,11 @@ namespace Baird.NewUi.Screens
         }
 
         private readonly NewUiContext _ctx;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080, Background = Brushes.Transparent };
+        private readonly Panel _root = new() { Background = Brushes.Transparent };
         private readonly Panel _heroArt = new();
         private readonly Border _scrim;
         private readonly StackPanel _hero = new() { Width = 900, Spacing = 0, Margin = new Thickness(T.SafeX, 160, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
-        private readonly Canvas _rows = new() { Width = 1920, Height = 1080 };
+        private readonly Canvas _rows = new();
         private List<Row> _rowList = new();
         private (int Row, int Col) _pos = (0, 0);
         private readonly Dictionary<int, int> _memory = new();
@@ -230,8 +231,12 @@ namespace Baird.NewUi.Screens
             {
                 var r = _rowList[i];
                 var above = i < _pos.Row;
-                r.View.Opacity = above ? 0 : 1;
-                r.View.RenderTransform = TransformOperations.Parse($"translate(0px, {(above ? RowTop - 200 : y)}px)");
+                // The row just above peeks in as a dimmed sliver over the current one (as the next row does below), so you can tell there's more above.
+                var peek = i == _pos.Row - 1 && _lit;
+                r.View.Opacity = peek ? PeekOpacity : above ? 0 : 1;
+                var h = r.View.Bounds.Height > 0 ? r.View.Bounds.Height : RowHeight[r.Shape] - 80;
+                r.View.Clip = peek ? new RectangleGeometry(new Rect(0, Math.Max(0, h - PeekAbove), T.W, PeekAbove)) : null;
+                r.View.RenderTransform = TransformOperations.Parse($"translate(0px, {(peek ? y - h - PeekGap : above ? RowTop - 200 : y)}px)");
                 if (!above) y += RowHeight[r.Shape];
                 var col = i == _pos.Row ? _pos.Col : (_memory.TryGetValue(i, out var m) ? m : 0);
                 r.Track.RenderTransform = TransformOperations.Parse($"translate({-Math.Max(0, col - 1) * Step[r.Shape]}px, 0px)");

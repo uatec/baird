@@ -122,6 +122,7 @@ namespace Baird.NewUi
             CodeEntry? codeEntry = null;
 
             var scale = double.TryParse(config["Baird:NewUiSize"], NumberStyles.Float, CultureInfo.InvariantCulture, out var s) && s > 0 ? s : 1.0;
+            global::Baird.NewUi.Theme.T.SetScale(scale);
             _shell = new Shell.Shell(new Shell.ShellDeps(
                 surface, nav,
                 CreatePlace: p => p switch
@@ -389,9 +390,8 @@ namespace Baird.NewUi
 
         private void ApplyScale(double scale)
         {
-            // Interface size: scales the UI (not the picture) about the centre, for TVs that overscan.
-            _shell.Stage.RenderTransformOrigin = RelativePoint.Center;
-            _shell.Stage.RenderTransform = new ScaleTransform(scale, scale);
+            // Interface size: the UI (not the picture) is laid out on a larger or smaller stage that still fills the screen.
+            _shell.SetStageScale(scale);
         }
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

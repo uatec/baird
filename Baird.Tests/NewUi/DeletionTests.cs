@@ -152,7 +152,7 @@ namespace Baird.Tests.NewUi
             menu.OnAction(Baird.NewUi.Core.UiAction.Ok, false);
             await System.Threading.Tasks.Task.Delay(20);
             var page = Xunit.Assert.Single(rig.Ctx.Nav.State.Pages);
-            Xunit.Assert.Same(series, page.Params);
+            Xunit.Assert.Equal(series with { FocusItemId = "s1e2" }, page.Params); // opened on that episode
         }
     }
 }

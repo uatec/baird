@@ -14,7 +14,7 @@ namespace Baird.NewUi.Screens
     /// </summary>
     public sealed class StillWatchingPrompt : IStillWatching
     {
-        private readonly Panel _root = new() { Width = 1920, Height = 1080, IsHitTestVisible = false, IsVisible = false };
+        private readonly Panel _root = new() { IsHitTestVisible = false, IsVisible = false };
 
         public Control View => _root;
         public bool IsShowing => _root.IsVisible;

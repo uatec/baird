@@ -62,6 +62,26 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task The_row_above_peeks_in_dimmed_and_cropped_and_rows_further_up_stay_hidden()
+        {
+            var (home, _, _) = await Shown();
+            var rows = home.View.GetLogicalDescendants().OfType<Avalonia.Controls.Canvas>().First().Children;
+            Assert.Null(rows[0].Clip); // on the first row nothing is above
+            home.OnAction(UiAction.Down, false);
+            await Wait(700);
+            Assert.InRange(rows[0].Opacity, 0.2, 0.9); // the row just above peeks in
+            Assert.NotNull(rows[0].Clip);              // cropped to a sliver
+            Assert.Equal(1, rows[1].Opacity);          // the lit row is whole
+            Assert.Null(rows[1].Clip);
+            if (rows.Count > 2 && home.OnAction(UiAction.Down, false))
+            {
+                await Wait(700);
+                Assert.Equal(0, rows[0].Opacity);      // two up: out of sight
+                Assert.NotNull(rows[1].Clip);
+            }
+        }
+
+        [AvaloniaFact]
         public async Task Up_on_the_first_row_is_left_to_the_shell()
         {
             var (home, _, _) = await Shown();

@@ -54,10 +54,11 @@ namespace Baird.NewUi.Shell
     /// <summary>The lit element is always fully on screen: move a scroller just enough (prototype: keepInView).</summary>
     public static class KeepInView
     {
-        public static void Ensure(Control scroller, Control lit, Visual stage, double lift = 0.07, double top = T.SafeTop, double bottom = T.SafeBottom)
+        public static void Ensure(Control scroller, Control lit, Visual stage, double lift = 0.07, double top = T.SafeTop, double? bottomOrNull = null)
         {
             var p = lit.TranslatePoint(new Point(0, 0), stage);
             if (p == null) return;
+            var bottom = bottomOrNull ?? T.SafeBottom;
             var h = lit.Bounds.Height;
             var grow = h * lift + 8;
             var y = scroller.Tag is double d ? d : 0;

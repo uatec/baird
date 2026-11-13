@@ -44,7 +44,7 @@ namespace Baird.NewUi.Screens
         private readonly Dictionary<string, IReadOnlyList<Programme>> _schedules = new();
         private readonly Dictionary<int, ChannelRow> _rows = new();
         private HashSet<int> _prevWanted = new();
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly Canvas _track = new();
         private readonly Border _hl;
         private int _index;

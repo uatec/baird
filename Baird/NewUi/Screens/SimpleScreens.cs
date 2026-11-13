@@ -66,7 +66,7 @@ namespace Baird.NewUi.Screens
     /// <summary>A vertical list with a title on the left: Settings, and the Search placeholder.</summary>
     public abstract class ListScreen : IScreen
     {
-        protected readonly Panel Root = new() { Width = 1920, Height = 1080, Background = new SolidColorBrush(Color.Parse("#F0000000")) };
+        protected readonly Panel Root = new() { Background = new SolidColorBrush(Color.Parse("#F0000000")) };
         protected readonly StackPanel List = new() { Spacing = 6, Width = 1060, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(760, 150, 0, 0) };
         protected List<ListRow> Rows = new();
         protected int Index;
@@ -110,7 +110,7 @@ namespace Baird.NewUi.Screens
             var y = 0.0;
             for (var i = 0; i < Rows.Count && i < Index; i++) y += RowH + List.Spacing + (_groups.ContainsKey(Rows[i]) ? HeadingH + List.Spacing : 0);
             if (Rows.Count > 0 && _groups.ContainsKey(Rows[Index])) y += HeadingH + List.Spacing;
-            const double view = T.SafeBottom - 150 - 30;
+            var view = T.SafeBottom - 150 - 30;
             List.RenderTransform = TransformOperations.Parse($"translate(0px, {-Math.Max(0, y + RowH - view)}px)");
         }
 
@@ -286,7 +286,7 @@ namespace Baird.NewUi.Screens
     /// <summary>A page that isn't built yet (none are reachable in phase 1; a safe fallback).</summary>
     public sealed class EmptyScreen : IScreen
     {
-        public Control View { get; } = new Border { Width = 1920, Height = 1080, Background = Brushes.Black };
+        public Control View { get; } = new Border { Background = Brushes.Black };
         public bool OnAction(UiAction a, bool repeat) => a != UiAction.Back && a != UiAction.Up;
     }
 }

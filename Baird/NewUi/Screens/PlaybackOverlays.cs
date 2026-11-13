@@ -126,7 +126,7 @@ namespace Baird.NewUi.Screens
     public sealed class InfoBar : IScreen
     {
         private readonly NewUiContext _ctx;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly StackPanel _bar = new() { Spacing = 10 };
         private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
         private IDisposable? _idle;
@@ -213,7 +213,7 @@ namespace Baird.NewUi.Screens
                 frac = p.Duration > TimeSpan.Zero ? p.Position / p.Duration : 0;
                 left = Fmt(p.Position); right = $"−{Fmt(p.Duration - p.Position)}"; mid = p.Duration > TimeSpan.Zero ? $"Ends at {DateTime.Now + (p.Duration - p.Position):HH:mm}" : "";
             }
-            const double trackWidth = 1920 - 128 - 88;
+            var trackWidth = T.W - 128 - 88;
             var track = new Grid { Height = 8 };
             track.Children.Add(new Border { Background = new SolidColorBrush(Color.Parse("#2EFFFFFF")), CornerRadius = new CornerRadius(4) });
             track.Children.Add(new Border { Background = T.Text, CornerRadius = new CornerRadius(4), HorizontalAlignment = HorizontalAlignment.Left, Width = Math.Clamp(frac, 0, 1) * trackWidth });
@@ -288,7 +288,7 @@ namespace Baird.NewUi.Screens
     {
         private readonly NewUiContext _ctx;
         private readonly Action _openGuide;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly StackPanel _list = new() { Spacing = 8 };
         private readonly List<(string Label, Action Run)> _items = new();
         private int _index;
@@ -372,7 +372,7 @@ namespace Baird.NewUi.Screens
         private readonly Func<string?> _request;
         private readonly Func<string, System.Threading.Tasks.Task> _submit;
         private readonly Action _cancel;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080, Background = new SolidColorBrush(Color.Parse("#B3000000")) };
+        private readonly Panel _root = new() { Background = new SolidColorBrush(Color.Parse("#B3000000")) };
         private readonly TextBlock _ask = new() { FontSize = 30, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, MaxWidth = 1100, TextAlignment = TextAlignment.Center };
         private readonly StackPanel _boxes = new() { Orientation = Orientation.Horizontal, Spacing = 18, HorizontalAlignment = HorizontalAlignment.Center };
         private string _code = "";
@@ -446,7 +446,7 @@ namespace Baird.NewUi.Screens
         private readonly NewUiContext _ctx;
         private readonly ITimers _timers;
         private readonly HomeCard _next;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Spacing = 14 };
         private readonly Arc _ring = new() { Width = 72, Height = 72, StartAngle = -90, SweepAngle = 0, Stroke = Brushes.White, StrokeThickness = 5 };
         private readonly TextBlock _count = new() { FontSize = 26, FontWeight = FontWeight.Bold, Foreground = T.Text, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -589,7 +589,7 @@ namespace Baird.NewUi.Screens
     {
         private readonly NewUiContext _ctx;
         private readonly HomeCard _card;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly StackPanel _list = new() { Spacing = 8 };
         private readonly List<(string Label, Action Run)> _items = new();
         private int _index;
