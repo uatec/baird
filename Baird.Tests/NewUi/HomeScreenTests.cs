@@ -281,17 +281,30 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public async Task Downloads_is_the_row_after_continue_watching()
+        public async Task Rows_are_in_the_agreed_order()
         {
-            var seerr = new HomeDataTests.Seerr();
+            var seerr = new HomeDataTests.Seerr
+            {
+                Movies = { new() { Id = 2, MediaType = "movie", Title = "Heat", PosterPath = "/h.jpg" } },
+            };
             seerr.Requests.Add(new JellyseerrRequest { Id = 1, Status = 2, TmdbId = 9, MediaType = "tv", Title = "Severance", CreatedAt = DateTime.UtcNow.ToString("o"), UpdatedAt = DateTime.UtcNow.ToString("o"), MediaInfoStatus = 2 });
             var (home, _, _) = await Shown(seerr);
-            await Wait(100);
-            var rows = home.CurrentRows();
-            Assert.Equal("Continue watching", rows[0].Title);
-            Assert.Equal("Downloads", rows[1].Title);
-            Assert.Equal("Severance", rows[1].Cards.Single().Label);
+            await Wait(300);
+            Assert.Equal(new[] { "Continue watching", "On now", "Your watchlist", "Downloads", "Discover", "Netflix", "Disney+", "ITVX", "Channel 4", "BBC iPlayer" },
+                home.CurrentRows().Select(r => r.Title));
+            Assert.Equal("Severance", home.CurrentRows().Single(r => r.Title == "Downloads").Cards.Single().Label);
             Assert.Equal("Casper", ((Card)home.LitElement!).Data.Label); // Home still opens on Continue watching
+        }
+
+        [AvaloniaFact]
+        public async Task A_service_row_with_no_cards_is_left_out()
+        {
+            var (home, _, _) = await Shown();
+            await Wait(300);
+            var titles = home.CurrentRows().Select(r => r.Title).ToList();
+            Assert.DoesNotContain("Netflix", titles);
+            Assert.DoesNotContain("Downloads", titles);
+            Assert.Equal(new[] { "Continue watching", "On now", "Your watchlist", "Discover" }, titles);
         }
     }
 }

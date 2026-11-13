@@ -249,6 +249,50 @@ namespace Baird.NewUi.Adapters
             }
             catch (Exception ex) { Console.WriteLine($"[HomeData] Discover failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
         }
+
+        /// <summary>The per-service rows on Home, in order, with each service's TMDB watch-provider id (UK).</summary>
+        public static readonly IReadOnlyList<(string Title, int ProviderId)> ServiceRows = new[]
+        {
+            ("Netflix", 8), ("Disney+", 337), ("ITVX", 54), ("Channel 4", 103), ("BBC iPlayer", 38),
+        };
+
+        private const int ServiceRowCards = 20;
+        /// <summary>How long a complete trending list is reused, so coming back to Home doesn't ask Seerr again.</summary>
+        public TimeSpan ServiceCacheLifetime { get; init; } = TimeSpan.FromMinutes(30);
+        /// <summary>How long an empty or half answer (movies or series missing) is reused before Seerr is asked again.</summary>
+        public TimeSpan ServiceRetryLifetime { get; init; } = TimeSpan.FromMinutes(2);
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (DateTime At, TimeSpan Keep, IReadOnlyList<HomeCard> Cards)> _service = new();
+
+        /// <summary>What's popular on one streaming service in the UK (Seerr/TMDB): movies and series interleaved.</summary>
+        public async Task<IReadOnlyList<HomeCard>> ServiceTrendingAsync(int providerId)
+        {
+            if (_seerr == null) return Array.Empty<HomeCard>();
+            if (_service.TryGetValue(providerId, out var hit) && DateTime.UtcNow - hit.At < hit.Keep) return hit.Cards;
+            var failed = false;
+            async Task<List<JellyseerrSearchResult>> Ask(string type)
+            {
+                try { return (await _seerr.GetProviderTrendingAsync(providerId, type).ConfigureAwait(false)).ToList(); }
+                catch (Exception ex) { failed = true; Console.WriteLine($"[HomeData] Trending {type} for provider {providerId} failed: {ex.Message}"); return new(); }
+            }
+            var movies = Ask("movie");
+            var tv = Ask("tv");
+            await Task.WhenAll(movies, tv).ConfigureAwait(false);
+            var m = movies.Result; var t = tv.Result;
+            var merged = new List<JellyseerrSearchResult>();
+            for (var i = 0; i < Math.Max(m.Count, t.Count) && merged.Count < ServiceRowCards; i++)
+            {
+                if (i < m.Count) merged.Add(m[i]);
+                if (i < t.Count && merged.Count < ServiceRowCards) merged.Add(t[i]);
+            }
+            IReadOnlyList<HomeCard> cards = merged.Select(r => new HomeCard(r.MediaType == "tv" ? CardKind.Series : CardKind.Film, $"tmdb:{r.MediaType}:{r.Id}", r.Title,
+                    r.ReleaseDate is { Length: >= 4 } d ? d[..4] : null,
+                    r.PosterPath is { Length: > 0 } pp ? $"https://image.tmdb.org/t/p/w500{pp}" : null,
+                    null, null, "Seerr", PlayVia.None, Synopsis: r.Overview)).ToList();
+            // Only a full answer (movies and series, no errors) is kept for long; an empty or half answer is retried soon.
+            var complete = !failed && m.Count > 0 && t.Count > 0;
+            _service[providerId] = (DateTime.UtcNow, complete ? ServiceCacheLifetime : ServiceRetryLifetime, cards);
+            return cards;
+        }
         /// <summary>
         /// Where a request has got to, as a card badge: "ready", "dl:42" (with the progress for a bar), "partial",
         /// "out:18 Dec" (not released yet), "searching" (released, nothing found yet) or "requested" (awaiting approval).

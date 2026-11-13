@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Baird.NewUi.Adapters;
 using Baird.NewUi.Controls;
 using Baird.NewUi.Core;
 using Baird.NewUi.Model;
@@ -105,14 +106,53 @@ namespace Baird.NewUi.Screens
             Dispatcher.UIThread.Post(() => Build(new (string, string, CardShape, IReadOnlyList<HomeCard>)[]
             {
                 ("Continue watching", "Continue watching", CardShape.Wide, upNext.Result),
-                (DownloadsRow, DownloadsRow, CardShape.Poster, _downloads),
                 ("On now", "On now", CardShape.Wide, onNow.Result),
                 ("Your watchlist", "In your watchlist", CardShape.Poster, watch.Result),
+                (DownloadsRow, DownloadsRow, CardShape.Poster, _downloads),
                 ("Discover", "Discover", CardShape.Poster, disc.Result),
-            }));
+            }.Concat(ServiceRowsNow())));
             Dispatcher.UIThread.Post(() => _ready.TrySetResult());
             // Downloads asks Seerr about every request, which can be slow: it joins Home when it answers rather than holding it up.
-            await RefreshDownloadsAsync();
+            await Task.WhenAll(RefreshDownloadsAsync(), RefreshServiceRowsAsync());
+        }
+
+        private static readonly TimeSpan ServiceRowsEvery = TimeSpan.FromMinutes(5);
+        private DateTime _servicesAt = DateTime.MinValue;
+        private IReadOnlyList<IReadOnlyList<HomeCard>> _services = Array.Empty<IReadOnlyList<HomeCard>>();
+
+        private IEnumerable<(string, string, CardShape, IReadOnlyList<HomeCard>)> ServiceRowsNow() =>
+            _services.Select((cards, i) => (HomeData.ServiceRows[i].Title, HomeData.ServiceRows[i].Title, CardShape.Poster, cards));
+
+        /// <summary>The order Home's rows are always in; rows that aren't known yet (or are empty) are simply missing.</summary>
+        private static int RowRank(string title)
+        {
+            string[] fixedRows = { "Continue watching", "On now", "Your watchlist", DownloadsRow, "Discover" };
+            var i = Array.IndexOf(fixedRows, title);
+            if (i >= 0) return i;
+            var s = HomeData.ServiceRows.Select(r => r.Title).ToList().IndexOf(title);
+            return s >= 0 ? fixedRows.Length + s : int.MaxValue;
+        }
+
+        /// <summary>
+        /// Adds what's popular on each streaming service after Discover. Each is its own Seerr question (the data layer caches
+        /// the answers), so the rows join Home when they arrive instead of holding it up.
+        /// </summary>
+        public async Task RefreshServiceRowsAsync()
+        {
+            if (DateTime.UtcNow - _servicesAt < ServiceRowsEvery) return;
+            _servicesAt = DateTime.UtcNow;
+            IReadOnlyList<IReadOnlyList<HomeCard>> all;
+            try { all = await Task.WhenAll(HomeData.ServiceRows.Select(r => _ctx.Home.ServiceTrendingAsync(r.ProviderId))); }
+            catch (Exception ex) { Console.WriteLine($"[Home] Service rows failed: {ex.Message}"); return; }
+            void Apply()
+            {
+                _services = all;
+                if (_rowList.Count == 0) return; // the first Build includes them
+                var rows = CurrentRows().Where(r => !HomeData.ServiceRows.Any(sr => sr.Title == r.Title)).ToList();
+                rows.AddRange(ServiceRowsNow().Select(r => (r.Item1, r.Item2, r.Item3, r.Item4)));
+                RebuildIfChanged(rows.OrderBy(r => RowRank(r.Title)).ToList());
+            }
+            Dispatcher.UIThread.Post(Apply);
         }
 
         private const string DownloadsRow = "Downloads";
@@ -133,9 +173,8 @@ namespace Baird.NewUi.Screens
                 _downloads = cards;
                 if (_rowList.Count == 0) return; // the first Build includes it
                 var rows = CurrentRows().Where(r => r.Title != DownloadsRow).ToList();
-                var at = rows.Count > 0 && rows[0].Title == "Continue watching" ? 1 : 0;
-                rows.Insert(at, (DownloadsRow, DownloadsRow, CardShape.Poster, cards));
-                RebuildIfChanged(rows);
+                rows.Add((DownloadsRow, DownloadsRow, CardShape.Poster, cards));
+                RebuildIfChanged(rows.OrderBy(r => RowRank(r.Title)).ToList());
             }
             Dispatcher.UIThread.Post(Apply); // always queued, so it lands after the first Build that LoadRowsAsync posts
         }
@@ -346,7 +385,7 @@ namespace Baird.NewUi.Screens
                 if (playing != null && _overVideo && playing != _seenPlaying) { _pos = (0, 0); _memory.Clear(); }
                 _seenPlaying = playing;
             }
-            _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync(); _ = RefreshDownloadsAsync();
+            _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync(); _ = RefreshDownloadsAsync(); _ = RefreshServiceRowsAsync();
             Layout();
         }
         public void OnFocusIn() { _lit = true; Layout(); }
