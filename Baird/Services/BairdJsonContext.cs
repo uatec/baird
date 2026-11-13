@@ -23,6 +23,7 @@ namespace Baird
     [JsonSerializable(typeof(EpgProgram))]
     [JsonSerializable(typeof(List<EpgProgram>))]
     [JsonSerializable(typeof(List<Baird.NewUi.Model.Reminder>))]
+    [JsonSerializable(typeof(Dictionary<string, Baird.NewUi.Adapters.ShowLink>))]
     internal partial class BairdJsonContext : JsonSerializerContext
     {
     }

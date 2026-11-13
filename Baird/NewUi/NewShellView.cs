@@ -86,14 +86,16 @@ namespace Baird.NewUi
                 return new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
                     new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
             };
-            // A finished episode's show gives Up next its next episode (or, through Seerr, the next season to get).
+            // A finished episode's show gives Up next its next episode (or, through Seerr, the next season to get). The show is the
+            // one the episode was played from (any service); older Jellyfin history is traced through Jellyfin itself.
+            _ctx.ShowLinks = new ShowLinks(ShowLinks.DefaultPath);
             home.FindNextAfter = async (item, ct) =>
             {
-                if (!item.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase)) return null;
-                if (await services.Jellyfin.GetSeriesOfAsync(item.Id) is not { } series) return null;
-                var title = new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
-                    new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
-                return await _ctx.Shows!.FollowingAsync(title, ct);
+                var title = _ctx.ShowLinks!.TitleFor(item.Id);
+                if (title == null && item.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase) && await services.Jellyfin.GetSeriesOfAsync(item.Id) is { } series)
+                    title = new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
+                        new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
+                return title == null ? null : await _ctx.Shows!.FollowingAsync(title, ct);
             };
             _ctx.OpenGuide = (id, at) => GuideScreen.OpenSchedule(_shell!, nav, id, at);
             _ctx.Prefetch = new Prefetcher(_ctx.Shows, timers);
