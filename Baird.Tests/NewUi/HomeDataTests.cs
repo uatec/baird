@@ -68,7 +68,7 @@ namespace Baird.Tests.NewUi
             public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
         }
 
-        internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false)
+        internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false, IJellyseerrService? seerr = null)
         {
             var items = new[]
             {
@@ -86,7 +86,7 @@ namespace Baird.Tests.NewUi
             var epg = new MockEpgService();
             var now = DateTimeOffset.UtcNow;
             epg.MockSchedules["ch1"] = new List<EpgProgram> { new() { Id = "p1", ChannelId = "ch1", Title = "News at Six", StartUnix = now.AddMinutes(-15).ToUnixTimeSeconds(), StopUnix = now.AddMinutes(15).ToUnixTimeSeconds() } };
-            return (new HomeData(data, epg, new Seerr()), history, epg, data);
+            return (new HomeData(data, epg, seerr ?? new Seerr()), history, epg, data);
         }
 
         [Fact]

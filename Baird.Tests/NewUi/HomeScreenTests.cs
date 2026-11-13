@@ -22,12 +22,12 @@ namespace Baird.Tests.NewUi
     {
         internal sealed record Rig(NewUiContext Ctx, PlaybackControllerTests.FakeEngine Engine, PlaybackControllerTests.FakeTimers Timers, List<string> Toasts, List<Channel> Tuned);
 
-        internal static Rig Context()
+        internal static Rig Context(IJellyseerrService? seerr = null)
         {
             var engine = new PlaybackControllerTests.FakeEngine();
             var timers = new PlaybackControllerTests.FakeTimers();
             var playback = new PlaybackController(engine, a => a(), timers, () => timers.Now, null);
-            var ctx = new NewUiContext(new Navigator(), playback, HomeDataTests.Build().Home, () => DateTimeOffset.UtcNow);
+            var ctx = new NewUiContext(new Navigator(), playback, HomeDataTests.Build(seerr: seerr).Home, () => DateTimeOffset.UtcNow);
             var toasts = new List<string>();
             var tuned = new List<Channel>();
             ctx.Toast = toasts.Add;
@@ -35,9 +35,9 @@ namespace Baird.Tests.NewUi
             return new Rig(ctx, engine, timers, toasts, tuned);
         }
 
-        private static async Task<(HomeScreen Home, Rig Rig, Window Window)> Shown()
+        private static async Task<(HomeScreen Home, Rig Rig, Window Window)> Shown(IJellyseerrService? seerr = null)
         {
-            var rig = Context();
+            var rig = Context(seerr);
             var home = new HomeScreen(rig.Ctx);
             await home.LoadAsync();
             var w = new Window { Width = 1920, Height = 1080, Content = home.View };
@@ -49,6 +49,30 @@ namespace Baird.Tests.NewUi
         private static async Task Wait(int ms) { var until = DateTime.UtcNow.AddMilliseconds(ms); while (DateTime.UtcNow < until) { Dispatcher.UIThread.RunJobs(); await Task.Delay(15); } }
 
         private static IEnumerable<Card> Cards(Control root) => root.GetLogicalDescendants().OfType<Card>();
+
+        [AvaloniaFact]
+        public async Task Rows_are_in_the_agreed_order()
+        {
+            var seerr = new HomeServiceRowsTests.Seerr
+            {
+                Trending = { new() { Id = 1, MediaType = "movie", Title = "Alien", PosterPath = "/a.jpg" } },
+                Movies = { new() { Id = 2, MediaType = "movie", Title = "Heat", PosterPath = "/h.jpg" } },
+                Requests = { new() { Status = 2, TmdbId = 3, MediaType = "movie", Title = "Dune", DownloadProgress = 30, MediaInfoStatus = 3 } },
+            };
+            var (home, _, _) = await Shown(seerr);
+            Assert.Equal(new[] { "Continue watching", "On now", "Your watchlist", "Downloads", "Discover", "Netflix", "Disney+", "ITVX", "Channel 4", "BBC iPlayer" },
+                home.CurrentRows().Select(r => r.Title));
+        }
+
+        [AvaloniaFact]
+        public async Task A_service_row_with_no_cards_is_left_out()
+        {
+            var (home, _, _) = await Shown();
+            var titles = home.CurrentRows().Select(r => r.Title).ToList();
+            Assert.DoesNotContain("Netflix", titles);
+            Assert.DoesNotContain("Downloads", titles);
+            Assert.Equal("Continue watching", titles[0]);
+        }
 
         [AvaloniaFact]
         public async Task Home_shows_its_rows_with_exactly_one_lit_card()

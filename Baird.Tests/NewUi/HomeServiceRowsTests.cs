@@ -13,12 +13,12 @@ namespace Baird.Tests.NewUi
     {
         internal sealed class Seerr : IJellyseerrService
         {
-            public List<JellyseerrSearchResult> Movies = new(), Tv = new();
+            public List<JellyseerrSearchResult> Movies = new(), Tv = new(), Trending = new();
             public List<JellyseerrRequest> Requests = new();
             public bool MoviesThrow;
             public int Calls;
             public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string q, int p, CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
-            public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
+            public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrSearchResult>>(Trending);
             public Task<IEnumerable<JellyseerrSearchResult>> GetProviderTrendingAsync(int providerId, string mediaType, CancellationToken ct = default)
             {
                 Interlocked.Increment(ref Calls);
