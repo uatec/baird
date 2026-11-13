@@ -308,6 +308,40 @@ namespace Baird.Tests.NewUi
             Assert.Equal(0.4, s3[0].Download!.Value, 3);
         }
 
+        private static async Task<HomeCard?> FollowingAfter(World w, string finishedId)
+        {
+            w.History.Add(new HistoryItem { Id = finishedId, LastPosition = TimeSpan.FromMinutes(22), Duration = TimeSpan.FromMinutes(22), LastWatched = DateTime.Now, IsFinished = true });
+            var r = await w.Search.SearchAsync("simpsons", Channels, DateTimeOffset.UtcNow);
+            return await w.Shows.FollowingAsync(r.Top!.Title!);
+        }
+
+        [Fact]
+        public async Task After_finishing_an_episode_up_next_offers_the_next_one_in_the_library()
+        {
+            var next = await FollowingAfter(Build(), "s1e2");
+            Assert.Equal("s2e1", next!.Id);
+            Assert.Equal(CardKind.Episode, next.Kind);
+        }
+
+        [Fact]
+        public async Task After_the_last_episode_you_have_seerr_offers_the_show_to_get_the_next_one()
+        {
+            var next = await FollowingAfter(Build(), "s2e1");
+            Assert.Equal("tmdb:tv:456", next!.Id);
+            Assert.Equal("Seerr", next.Source);
+            Assert.Equal("get", next.Badge);
+            Assert.Equal("Next: S2 E2", next.Sublabel);
+        }
+
+        [Fact]
+        public async Task Up_next_offers_nothing_for_a_show_you_are_part_way_through()
+        {
+            var w = Build();
+            w.History.Add(new HistoryItem { Id = "s1e1", LastPosition = TimeSpan.FromMinutes(5), Duration = TimeSpan.FromMinutes(22), LastWatched = DateTime.Now });
+            var r = await w.Search.SearchAsync("simpsons", Channels, DateTimeOffset.UtcNow);
+            Assert.Null(await w.Shows.FollowingAsync(r.Top!.Title!));
+        }
+
         [Fact]
         public async Task The_primary_button_plays_the_first_episode_then_resumes_then_moves_on()
         {

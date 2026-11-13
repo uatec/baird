@@ -401,6 +401,8 @@ namespace Baird.Services
                 StreamUrl = $"https://www.bbc.co.uk/iplayer/episode/{x.Id}",
                 Source = "BBC iPlayer",
                 Duration = x.Duration,
+                SeriesId = brandId,
+                SeriesName = x.Title,
             };
         }
     }

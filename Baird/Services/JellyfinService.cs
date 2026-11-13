@@ -444,6 +444,8 @@ namespace Baird.Services
                 Subtitle = episode ? EpisodeTitle(m.Name) : "",
                 Synopsis = "", // TODO: should this stuff just be nullable or expicitly empty? or a subtype for Groupings
                 Duration = duration,
+                SeriesId = m.Type?.Equals("Episode", StringComparison.OrdinalIgnoreCase) == true && !string.IsNullOrEmpty(m.SeriesId) ? m.SeriesId : null,
+                SeriesName = m.Type?.Equals("Episode", StringComparison.OrdinalIgnoreCase) == true && !string.IsNullOrEmpty(m.SeriesName) ? m.SeriesName : null,
             };
         }
 

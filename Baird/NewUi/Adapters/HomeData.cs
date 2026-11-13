@@ -100,7 +100,20 @@ namespace Baird.NewUi.Adapters
         private bool IsHidden(string id, DateTime lastWatched) =>
             Hidden().TryGetValue(id, out var at) && DateTime.TryParse(at, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var when) && when >= lastWatched;
 
-        /// <summary>Continue watching: what you've watched for a minute or more, most recent first — channels, and videos you haven't finished.</summary>
+        /// <summary>
+        /// What comes after a finished episode (or null): set by the shell, which knows how to find the show. See <see cref="ShowData.FollowingAsync"/>.
+        /// </summary>
+        public Func<MediaItemViewModel, CancellationToken, Task<HomeCard?>>? FindNextAfter { get; set; }
+        /// <summary>How many of the most recently finished items are asked about, and for how long each may take.</summary>
+        public const int MaxFinishedLookups = 6;
+        public static readonly TimeSpan NextLookupTimeout = TimeSpan.FromSeconds(8);
+        private static readonly TimeSpan NextCacheFor = TimeSpan.FromMinutes(5);
+        private readonly Dictionary<string, (DateTime When, HomeCard? Next)> _nextCache = new();
+
+        /// <summary>
+        /// Continue watching: what you've watched for a minute or more, most recent first — channels, and videos you haven't finished.
+        /// A finished episode leaves it, but its show's next episode (found through the library and Seerr) takes its place.
+        /// </summary>
         public async Task<IReadOnlyList<HomeCard>> UpNextAsync()
         {
             try
@@ -109,9 +122,43 @@ namespace Baird.NewUi.Adapters
                     .Where(i => !IsHidden(i.Id, i.History?.LastWatched ?? DateTime.MinValue))
                     .OrderByDescending(i => i.History?.LastWatched ?? DateTime.MinValue).ToList();
                 var cards = await Task.WhenAll(items.Select(async i => i.IsLive || i.Type == MediaType.Channel ? await ChannelCardAsync(i).ConfigureAwait(false) : ItemCard(i))).ConfigureAwait(false);
-                return cards.Where(c => c != null).Select(c => c!).ToList();
+                var list = items.Zip(cards, (m, c) => (When: m.History?.LastWatched ?? DateTime.MinValue, Card: c)).Where(x => x.Card != null).Select(x => (x.When, Card: x.Card!)).ToList();
+
+                if (FindNextAfter != null)
+                    list.AddRange(await NextEpisodesAsync(list.Select(x => x.Card.Id).ToHashSet()).ConfigureAwait(false));
+                return list.OrderByDescending(x => x.When).Select(x => x.Card).ToList();
             }
             catch (Exception ex) { Console.WriteLine($"[HomeData] Continue watching failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
+        }
+
+        private async Task<IReadOnlyList<(DateTime When, HomeCard Card)>> NextEpisodesAsync(HashSet<string> already)
+        {
+            IEnumerable<MediaItemViewModel> history;
+            try { history = await _data.GetHistoryItemsAsync().ConfigureAwait(false); }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Finished episodes failed: {ex.Message}"); return Array.Empty<(DateTime, HomeCard)>(); }
+
+            var finished = history.Where(i => i.History is { IsFinished: true } && !i.IsLive && i.Type == MediaType.Video && !IsHidden(i.Id, i.History!.LastWatched))
+                .OrderByDescending(i => i.History!.LastWatched).Take(MaxFinishedLookups).ToList();
+            var found = await Task.WhenAll(finished.Select(async m =>
+            {
+                var key = $"{m.Id}@{m.History!.LastWatched.Ticks}";
+                lock (_nextCache)
+                    if (_nextCache.TryGetValue(key, out var hit) && DateTime.UtcNow - hit.When < NextCacheFor) return hit.Next;
+                try
+                {
+                    using var cts = new CancellationTokenSource(NextLookupTimeout);
+                    var next = await FindNextAfter!(m, cts.Token).ConfigureAwait(false);
+                    lock (_nextCache) _nextCache[key] = (DateTime.UtcNow, next);
+                    return next;
+                }
+                catch (Exception ex) { Console.WriteLine($"[HomeData] Next after {m.Name} failed: {ex.Message}"); return null; }
+            })).ConfigureAwait(false);
+
+            var result = new List<(DateTime, HomeCard)>();
+            var seen = new HashSet<string>(already);
+            for (var k = 0; k < finished.Count; k++)
+                if (found[k] is { } card && seen.Add(card.Id)) result.Add((finished[k].History!.LastWatched, card));
+            return result;
         }
 
         /// <summary>A channel in Continue watching looks like its On now card (what's on now, no progress bar). Null if it can't be tuned any more.</summary>

@@ -94,6 +94,16 @@ namespace Baird.NewUi
                     .ToList();
                 return (eps, series.Name);
             };
+            // A finished episode's show gives Continue watching its next episode (or, through Seerr, the next season to get). Episodes say
+            // which show they belong to; older Jellyfin history (cached before they did) is traced through Jellyfin itself.
+            home.FindNextAfter = async (item, ct) =>
+            {
+                var title = ShowData.SeriesOf(item.Data);
+                if (title == null && item.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase) && await services.Jellyfin.GetSeriesOfAsync(item.Id) is { } series)
+                    title = new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, null, null,
+                        new[] { new Model.TitleSource("Jellyfin", series.Id, Model.PlayVia.Mpv) });
+                return title == null ? null : await _ctx.Shows!.FollowingAsync(title, ct);
+            };
             _ctx.OpenGuide = (id, at) => GuideScreen.OpenSchedule(_shell!, nav, id, at);
             _ctx.Prefetch = new Prefetcher(_ctx.Shows, timers);
             var guideData = new GuideData(home, services.Epg);
