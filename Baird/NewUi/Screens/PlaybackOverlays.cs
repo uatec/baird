@@ -169,6 +169,21 @@ namespace Baird.NewUi.Screens
             _idle = DispatcherTimer.RunOnce(() => { if (_ctx.Nav.State.Overlay?.Name == "info") _ctx.Nav.CloseOverlay(); }, TimeSpan.FromSeconds(5));
         }
 
+        /// <summary>The live bar's playhead (0 = left end, 1 = live) and the clock time at its left end.</summary>
+        public readonly record struct LiveBar(double Fraction, DateTimeOffset LeftEdge);
+
+        /// <summary>
+        /// The scale of the live bar: from the start of the programme on air to now (live), but never narrower than ten minutes (a
+        /// programme that has only just begun), thirty with no programme information, nor than how far behind you are.
+        /// </summary>
+        public static LiveBar LiveScale(TimeSpan behind, Programme? programme, DateTimeOffset now)
+        {
+            var minimum = TimeSpan.FromMinutes(programme == null ? 30 : 10);
+            var window = programme != null && now - programme.Start > minimum ? now - programme.Start : minimum;
+            if (behind > window) window = behind;
+            return new LiveBar(window > TimeSpan.Zero ? Math.Clamp(1 - behind / window, 0, 1) : 1, now - window);
+        }
+
         private static string Fmt(TimeSpan t) => t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
 
         private void Draw()
@@ -197,16 +212,15 @@ namespace Baird.NewUi.Screens
             _bar.Children.Add(new TextBlock { Text = now.Kind == "live" ? _ctx.Programme?.Title ?? "No programme information" : now.Title, FontSize = 56, FontWeight = FontWeight.Bold, Foreground = T.Text, Margin = new Thickness(0, 4, 0, 14) });
 
             double frac; string left, mid, right;
+            var behind = p.EffectiveBehindLive;
             if (now.Kind == "live")
             {
-                var prog = _ctx.Programme;
-                if (prog != null)
-                {
-                    frac = prog.ProgressAt(_ctx.Now() - p.BehindLive);
-                    left = prog.Start.LocalDateTime.ToString("HH:mm"); right = prog.End.LocalDateTime.ToString("HH:mm");
-                }
-                else { frac = 0; left = ""; right = ""; }
-                mid = p.BehindLive > TimeSpan.FromSeconds(30) ? $"{(int)p.BehindLive.TotalMinutes} min behind live" : "Live";
+                // The bar is a timeshift scale: its right end is live, where the playhead sits, and it moves left as you rewind or
+                // pause (a pause is a rewind at a second per second). Its left end is the programme's start, at least ten minutes back.
+                var scale = LiveScale(behind, _ctx.Programme, _ctx.Now());
+                frac = scale.Fraction;
+                left = scale.LeftEdge.LocalDateTime.ToString("HH:mm"); right = _ctx.Now().LocalDateTime.ToString("HH:mm");
+                mid = behind > TimeSpan.FromSeconds(30) ? $"{(int)behind.TotalMinutes} min behind live" : "Live";
             }
             else
             {
@@ -220,9 +234,9 @@ namespace Baird.NewUi.Screens
             if (_scrub)
                 // The playhead, while ◂ ▸ move it.
                 track.Children.Add(new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(11), Background = T.Text, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(Math.Clamp(frac, 0, 1) * trackWidth - 11, -7, 0, -7), BoxShadow = T.FocusGlow });
-            if (now.Kind == "live" && _ctx.Programme is { } lp)
-                // The live edge, in red, when time-shifted.
-                track.Children.Add(new Border { Background = T.Live, Width = 4, CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(Math.Clamp(lp.ProgressAt(_ctx.Now()), 0, 1) * trackWidth - 2, -4, 0, -4), IsVisible = p.BehindLive > TimeSpan.FromSeconds(30) });
+            if (now.Kind == "live")
+                // The live edge, in red, at the right end, when time-shifted.
+                track.Children.Add(new Border { Background = T.Live, Width = 4, CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(trackWidth - 2, -4, 0, -4), IsVisible = behind > TimeSpan.FromSeconds(30) });
             _bar.Children.Add(track);
             var times = new Grid { Margin = new Thickness(0, 8, 0, 0) };
             times.Children.Add(new TextBlock { Text = left, FontSize = 22, Foreground = T.Text2 });
