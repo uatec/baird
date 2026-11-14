@@ -62,6 +62,12 @@ namespace Baird.Tests.NewUi
         {
             public readonly List<JellyseerrRequest> Asked = new();
             public readonly List<(int TmdbId, string Type)> Removed = new();
+            public readonly List<(int TmdbId, string Type)> Discarded = new();
+            public Task<(bool Ok, string Message)> DiscardRequestAsync(int tmdbId, string type, CancellationToken ct = default)
+            {
+                Discarded.Add((tmdbId, type));
+                return Task.FromResult((true, "Cancelled"));
+            }
             public Task<(bool Ok, string Message)> RemoveMediaAsync(int tmdbId, string type, CancellationToken ct = default)
             {
                 Removed.Add((tmdbId, type));
