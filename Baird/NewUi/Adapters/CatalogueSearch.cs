@@ -243,6 +243,22 @@ namespace Baird.NewUi.Adapters
             return null;
         }
 
+        /// <summary>
+        /// The film or series a programme on air is, found by its name in the library, on the streaming services and in Seerr
+        /// (the guide doesn't say which it is). An entry with an episode title is an episode of a series, so a series wins; else
+        /// the best match. Null when nothing has that name.
+        /// </summary>
+        public async Task<CatalogueTitle?> FindProgrammeAsync(Programme programme, IReadOnlyList<Channel> channels, DateTimeOffset now, CancellationToken ct = default)
+        {
+            var results = await SearchAsync(programme.Title, channels, now, null, ct).ConfigureAwait(false);
+            var wanted = SearchRelevance.Normalize(programme.Title);
+            var same = (results.Top is { Title: { } top } ? new[] { top } : Array.Empty<CatalogueTitle>())
+                .Concat(results.Titles.Where(h => h.Title != null).Select(h => h.Title!))
+                .Where(t => t.Kind != TitleKind.Episode && SearchRelevance.Normalize(t.Name) == wanted)
+                .ToList();
+            return (string.IsNullOrWhiteSpace(programme.Subtitle) ? null : same.FirstOrDefault(t => t.Kind == TitleKind.Series)) ?? same.FirstOrDefault();
+        }
+
         // ------------------------------------------------------------------ the search
         /// <summary>
         /// Search everything, reporting results as each source answers (<paramref name="progress"/>, in order, from any

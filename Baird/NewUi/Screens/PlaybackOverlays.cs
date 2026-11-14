@@ -606,6 +606,15 @@ namespace Baird.NewUi.Screens
             if (card.Kind == CardKind.Channel && card.Channel is { } ch)
             {
                 _items.Add(("Watch now", () => ctx.PlayLive(ch)));
+                // What is on is often a film or an episode of a series: go straight to its page, or to the guide.
+                if (card.Programme is { NoInfo: false } prog && !string.IsNullOrWhiteSpace(prog.Title) && ctx.Search != null && ctx.Shows != null)
+                    _items.Add(($"Open “{prog.Title}”", (Action)(async () =>
+                    {
+                        ctx.Toast($"Looking for {prog.Title}…");
+                        var title = await ctx.Search.FindProgrammeAsync(prog, ctx.Channels, ctx.Now());
+                        if (title != null) ctx.OpenShow(title);
+                        else ctx.Toast($"Baird can't find {prog.Title} in your library, on a streaming service or in Seerr.");
+                    })));
                 if (openSchedule != null) _items.Add(("This channel's schedule", () => openSchedule(ch.Id)));
             }
             else

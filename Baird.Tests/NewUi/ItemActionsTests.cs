@@ -90,5 +90,68 @@ namespace Baird.Tests.NewUi
             home.OnAction(UiAction.HoldOk, false);
             Assert.Equal("itemactions-upnext", rig.Ctx.Nav.State.Overlay?.Name);
         }
+
+        // ---- a live channel: the guide, or straight to what is on ----
+        private static HomeCard LiveChannel(string? title, string? subtitle = null, bool noInfo = false)
+        {
+            var ch = new Channel("ch4", "104", "Channel 4", null, "http://tvh/4");
+            var now = DateTimeOffset.UtcNow;
+            var p = title == null ? null : new Programme("p1", "ch4", title, subtitle, "synopsis", now.AddMinutes(-20), now.AddMinutes(40), noInfo);
+            return new HomeCard(CardKind.Channel, "ch4", "104  Channel 4", p?.Title, null, null, "live", "TV", PlayVia.Mpv, "http://tvh/4", Channel: ch, Programme: p);
+        }
+
+        [AvaloniaFact]
+        public void A_channel_with_a_programme_on_offers_the_guide_or_that_programmes_page()
+        {
+            var rig = HomeScreenTests.Context();
+            var w = CatalogueTests.Build();
+            rig.Ctx.Search = w.Search; rig.Ctx.Shows = w.Shows;
+            var menu = new ItemActions(rig.Ctx, LiveChannel("The Simpsons", "Bart the Genius"), _ => { });
+            Assert.Equal(new[] { "Watch now", "Open “The Simpsons”", "This channel's schedule" }, menu.Items);
+        }
+
+        [AvaloniaFact]
+        public void A_stretch_the_guide_has_nothing_for_offers_no_page()
+        {
+            var rig = HomeScreenTests.Context();
+            var w = CatalogueTests.Build();
+            rig.Ctx.Search = w.Search; rig.Ctx.Shows = w.Shows;
+            Assert.DoesNotContain(menu(rig, LiveChannel("Channel 4", noInfo: true)), i => i.StartsWith("Open"));
+            Assert.DoesNotContain(menu(rig, LiveChannel(null)), i => i.StartsWith("Open"));
+            static System.Collections.Generic.IReadOnlyList<string> menu(HomeScreenTests.Rig r, HomeCard c) => new ItemActions(r.Ctx, c, _ => { }).Items;
+        }
+
+        [AvaloniaFact]
+        public async Task Open_the_programme_finds_its_series_or_film_page_by_name()
+        {
+            var rig = HomeScreenTests.Context();
+            var w = CatalogueTests.Build();
+            rig.Ctx.Search = w.Search; rig.Ctx.Shows = w.Shows; rig.Ctx.Channels = CatalogueTests.Channels;
+            var menu = new ItemActions(rig.Ctx, LiveChannel("The Simpsons", "Bart the Genius"), _ => { });
+            rig.Ctx.Nav.OpenOverlay(new OverlayRef("itemactions", LiveChannel("The Simpsons")));
+            for (var i = 0; i < menu.Items.ToList().IndexOf("Open “The Simpsons”"); i++) menu.OnAction(UiAction.Down, false);
+            menu.OnAction(UiAction.Ok, false);
+            await Task.Delay(300);
+            var page = rig.Ctx.Nav.State.Pages.Single();
+            Assert.Equal("show", page.Name);
+            var title = (CatalogueTitle)page.Params!;
+            Assert.Equal("The Simpsons", title.Name);
+            Assert.Equal(TitleKind.Series, title.Kind);
+        }
+
+        [AvaloniaFact]
+        public async Task A_programme_nothing_knows_says_so_rather_than_opening_nothing()
+        {
+            var rig = HomeScreenTests.Context();
+            var w = CatalogueTests.Build();
+            rig.Ctx.Search = w.Search; rig.Ctx.Shows = w.Shows; rig.Ctx.Channels = CatalogueTests.Channels;
+            var menu = new ItemActions(rig.Ctx, LiveChannel("Zzyzx Road Live"), _ => { });
+            rig.Ctx.Nav.OpenOverlay(new OverlayRef("itemactions", LiveChannel("Zzyzx Road Live")));
+            for (var i = 0; i < menu.Items.ToList().IndexOf("Open “Zzyzx Road Live”"); i++) menu.OnAction(UiAction.Down, false);
+            menu.OnAction(UiAction.Ok, false);
+            await Task.Delay(300);
+            Assert.Empty(rig.Ctx.Nav.State.Pages);
+            Assert.Contains(rig.Toasts, t => t.Contains("Zzyzx Road Live") && t.Contains("can't find"));
+        }
     }
 }
