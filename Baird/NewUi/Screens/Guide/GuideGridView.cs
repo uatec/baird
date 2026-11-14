@@ -65,7 +65,7 @@ namespace Baird.NewUi.Screens
         public GuideGridView(GuideGeometry? geometry = null)
         {
             _g = geometry ?? GuideGeometry.Rows;
-            
+
             IsHitTestVisible = false;
 
             _hl = new Border

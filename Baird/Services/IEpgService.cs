@@ -14,5 +14,8 @@ namespace Baird.Services
             IEnumerable<string> channelIds,
             int limitPerChannel = 10,
             CancellationToken cancellationToken = default);
+
+        /// <summary>Ask the tuner to refresh the guide over the air now, if nothing is using it. Never throws; throttled.</summary>
+        void RequestGrab() { }
     }
 }

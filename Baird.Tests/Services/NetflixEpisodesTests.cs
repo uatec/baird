@@ -19,14 +19,17 @@ namespace Baird.Tests.Services
                 {
                     ["videos"] = new JsonArray(new JsonObject
                     {
-                        ["__typename"] = "Show", ["videoId"] = 80057281,
+                        ["__typename"] = "Show",
+                        ["videoId"] = 80057281,
                         ["seasons"] = new JsonObject
                         {
                             ["edges"] = new JsonArray(seasons.Select(s => (JsonNode)new JsonObject
                             {
                                 ["node"] = new JsonObject
                                 {
-                                    ["__typename"] = "Season", ["videoId"] = s.Id, ["title"] = s.Title,
+                                    ["__typename"] = "Season",
+                                    ["videoId"] = s.Id,
+                                    ["title"] = s.Title,
                                     ["episodes"] = new JsonObject { ["totalCount"] = s.Count },
                                 },
                             }).ToArray()),
@@ -39,8 +42,13 @@ namespace Baird.Tests.Services
         {
             ["node"] = new JsonObject
             {
-                ["__typename"] = "Episode", ["number"] = number, ["videoId"] = id, ["title"] = title, ["runtimeSec"] = runtime,
-                ["isAvailable"] = playable, ["isPlayable"] = playable,
+                ["__typename"] = "Episode",
+                ["number"] = number,
+                ["videoId"] = id,
+                ["title"] = title,
+                ["runtimeSec"] = runtime,
+                ["isAvailable"] = playable,
+                ["isPlayable"] = playable,
                 ["artwork"] = new JsonObject { ["url"] = $"https://img/{id}.jpg" },
                 ["contextualSynopsis"] = synopsis == null ? null : new JsonObject { ["text"] = synopsis },
             },

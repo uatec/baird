@@ -97,6 +97,7 @@ namespace Baird.NewUi.Playback
         /// <summary>Tune a channel. The ident can show it immediately; the tuner gets the channel you rest on.</summary>
         public void PlayLive(Channel channel)
         {
+            ClearParked();
             SaveCurrent();
             ResetWatched();
             Current = new NowPlaying("live", channel.Id, channel.Name, channel.StreamUrl, channel);
@@ -108,6 +109,7 @@ namespace Baird.NewUi.Playback
 
         public void PlayItem(string itemId, string url, TimeSpan resume, string title)
         {
+            ClearParked();
             SaveCurrent();
             ResetWatched();
             _tuneTimer?.Dispose();
@@ -170,6 +172,7 @@ namespace Baird.NewUi.Playback
 
         private void OnEnded()
         {
+            if (Released) return; // we stopped it ourselves to free the tuner; it is not a dropped stream
             // A live stream has no end: if it drops, tune it again (unless it keeps dropping straight away).
             if (Current is { Kind: "live" } live)
             {
@@ -258,11 +261,74 @@ namespace Baird.NewUi.Playback
 
         public void Stop()
         {
+            ClearParked();
             SaveCurrent();
             ResetWatched();
             _tuneTimer?.Dispose(); _loadTimer?.Dispose();
             _engine.Stop();
             Current = null; IsLoading = false; IsAudioOnly = false;
+            Changed?.Invoke();
+        }
+
+        /// <summary>How long a paused picture waits before the stream is dropped (a wrong button is undone instantly within this).</summary>
+        public static readonly TimeSpan ParkGrace = TimeSpan.FromSeconds(5);
+        private IDisposable? _parkTimer;
+        private bool _parked, _parkedWasPaused;
+        private double _releasedAt;
+        /// <summary>Nothing is on the screen: the picture was left for a menu and the stream has been let go (the tuner is free).
+        /// <see cref="Current"/> is kept, so coming back tunes or resumes it.</summary>
+        public bool Released { get; private set; }
+
+        private void ClearParked()
+        {
+            _parkTimer?.Dispose(); _parkTimer = null; _parked = false; Released = false;
+        }
+
+        /// <summary>The picture was left for a menu: pause it now, and drop the stream after <see cref="ParkGrace"/>.</summary>
+        public void Park()
+        {
+            if (Current == null || _parked || Released || Failure != null) return;
+            _parked = true;
+            _parkedWasPaused = IsPaused || _engine.State == PlaybackState.Paused;
+            if (!_parkedWasPaused) { _pausedAt = _now(); _engine.Pause(); }
+            _parkTimer?.Dispose();
+            _parkTimer = _timers.After(ParkGrace, Release);
+            Changed?.Invoke();
+        }
+
+        private void Release()
+        {
+            _parkTimer = null;
+            if (!_parked || Current == null) return;
+            _parked = false; Released = true;
+            _releasedAt = Position.TotalSeconds;
+            SaveCurrent();
+            _tuneTimer?.Dispose(); _loadTimer?.Dispose();
+            _engine.Stop();
+            IsLoading = false; IsPaused = false; _pausedAt = null; BehindLive = TimeSpan.Zero;
+            Changed?.Invoke();
+        }
+
+        /// <summary>The picture is back: within the grace it carries on (a live channel jumps to now); after it, it tunes or resumes again.</summary>
+        public void Unpark()
+        {
+            if (Current == null) return;
+            if (Released)
+            {
+                Released = false;
+                Failure = null; _saved = false; _quickDrops = 0;
+                Start(Current.Url, Current.Kind == "live" ? null : _releasedAt > 1 ? _releasedAt : null);
+                return;
+            }
+            if (!_parked) return;
+            _parkTimer?.Dispose(); _parkTimer = null; _parked = false;
+            if (!_parkedWasPaused)
+            {
+                if (_pausedAt is { } at && Current.Kind == "live") BehindLive += _now() - at;
+                _pausedAt = null;
+                _engine.Resume();
+                if (Current.Kind == "live" && BehindLive > TimeSpan.Zero) SeekRelative(BehindLive); // fast-forward to the latest
+            }
             Changed?.Invoke();
         }
 

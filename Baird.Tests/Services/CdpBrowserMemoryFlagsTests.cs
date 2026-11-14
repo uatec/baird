@@ -31,7 +31,7 @@ namespace Baird.Tests.Services
         [Fact]
         public void Every_disabled_feature_is_in_one_flag_because_Chromium_honours_only_the_last()
         {
-            Assert.Single(Flags.Where(f => f.StartsWith("--disable-features=")));
+            Assert.Single(Flags, f => f.StartsWith("--disable-features="));
         }
 
         [Fact]

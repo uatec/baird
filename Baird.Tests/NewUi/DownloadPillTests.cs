@@ -40,8 +40,15 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaTheory]
-        [InlineData("requested")] [InlineData("searching")] [InlineData("out:18 Dec")] [InlineData("dl:42")] [InlineData("part")]
-        [InlineData("ready")] [InlineData("complete")] [InlineData("notfound")] [InlineData("declined")]
+        [InlineData("requested")]
+        [InlineData("searching")]
+        [InlineData("out:18 Dec")]
+        [InlineData("dl:42")]
+        [InlineData("part")]
+        [InlineData("ready")]
+        [InlineData("complete")]
+        [InlineData("notfound")]
+        [InlineData("declined")]
         public void Pill_text_is_easy_to_read_on_its_colour(string badge)
         {
             var (_, back, fore) = PillOf(badge);
