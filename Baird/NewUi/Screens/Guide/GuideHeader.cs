@@ -37,7 +37,7 @@ namespace Baird.NewUi.Screens
 
         public GuideHeader()
         {
-            
+
             IsHitTestVisible = false;
             _scrimHost.Children.Add(_ambient);
             _scrimHost.Children.Add(new Border

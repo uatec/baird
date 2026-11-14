@@ -38,7 +38,7 @@ namespace RiveSharp
         public bool LoadFile(Stream stream)
         {
             var data = new byte[stream.Length];
-            stream.Read(data, 0, data.Length);
+            stream.ReadExactly(data);
             return LoadFile(data);
         }
 

@@ -51,8 +51,12 @@ namespace Baird.Services
             ["operationName"] = "PreviewModalEpisodeSelectorSeasonEpisodes",
             ["variables"] = new JsonObject
             {
-                ["playbackRedirectEnabled"] = true, ["includeEntitlementLock"] = false, ["seasonId"] = long.Parse(seasonId),
-                ["count"] = MaxEpisodes, ["opaqueImageFormat"] = "WEBP", ["artworkContext"] = new JsonObject(),
+                ["playbackRedirectEnabled"] = true,
+                ["includeEntitlementLock"] = false,
+                ["seasonId"] = long.Parse(seasonId),
+                ["count"] = MaxEpisodes,
+                ["opaqueImageFormat"] = "WEBP",
+                ["artworkContext"] = new JsonObject(),
             },
             ["extensions"] = Persisted(EpisodesQueryId),
         }.ToJsonString();
