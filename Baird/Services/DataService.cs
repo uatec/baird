@@ -125,10 +125,13 @@ namespace Baird.Services
 
             // Only unfinished items, newest first. Looked up a few at a time until the row is full: entries further back are never
             // asked about, and ones nothing can supply (deleted from the server long ago) cost nothing after the first miss.
-            var unfinished = historyItems.Where(x => !x.IsFinished).OrderByDescending(x => x.LastWatched).ToList();
+            // A channel has no length (saved with a duration of 0), and the old rule marked every such entry finished, so entries
+            // with no duration are looked at too: a channel among them is kept, a video that ended is not.
+            var unfinished = historyItems.Where(x => !x.IsFinished || x.Duration <= TimeSpan.Zero).OrderByDescending(x => x.LastWatched).ToList();
             var found = new List<MediaItemViewModel>();
             for (var i = 0; i < unfinished.Count && found.Count < ContinueWatchingMax; i += LookupBatch)
-                found.AddRange(await HydrateHistoryItems(unfinished.Skip(i).Take(LookupBatch)).ConfigureAwait(false));
+                found.AddRange((await HydrateHistoryItems(unfinished.Skip(i).Take(LookupBatch)).ConfigureAwait(false))
+                    .Where(m => m.History is not { IsFinished: true } || m.IsLive || m.Type == MediaType.Channel));
 
             return UnifyAndHydrate(found.Take(ContinueWatchingMax));
         }

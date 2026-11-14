@@ -21,6 +21,13 @@ namespace Baird.Services
         private readonly string _filePath;
         private List<HistoryItem> _historyCache;
 
+        /// <summary>History in a file of the caller's choosing (tests).</summary>
+        internal JsonHistoryService(string filePath)
+        {
+            _filePath = filePath;
+            _historyCache = LoadHistory();
+        }
+
         public JsonHistoryService()
         {
             var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".baird");
@@ -64,11 +71,12 @@ namespace Baird.Services
         {
             if (media == null || string.IsNullOrEmpty(media.Id)) return;
 
-            UpdateItem(media.Id, position, duration);
+            // A channel has no end (it is saved with a duration of 0), so it cannot be finished.
+            UpdateItem(media.Id, position, duration, live: media.IsLive || media.Type == MediaType.Channel);
             await SaveHistoryAsync();
         }
 
-        private void UpdateItem(string id, TimeSpan position, TimeSpan duration)
+        private void UpdateItem(string id, TimeSpan position, TimeSpan duration, bool live = false)
         {
             var existing = _historyCache.FirstOrDefault(x => x.Id == id);
             if (existing == null)
@@ -97,7 +105,7 @@ namespace Baird.Services
                 if (remainingSeconds < (duration.TotalSeconds * 0.05)) isFinished = true;
             }
 
-            existing.IsFinished = isFinished;
+            existing.IsFinished = isFinished && !live;
         }
 
         public async Task<List<HistoryItem>> GetHistoryAsync()

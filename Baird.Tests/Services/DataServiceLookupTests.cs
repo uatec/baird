@@ -132,5 +132,23 @@ namespace Baird.Tests.Services
             await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => svc.GetItemAsync("gone")));
             Assert.Equal(1, p.Asked["gone"]);
         }
+
+        [Fact]
+        public async Task Channels_saved_as_finished_by_the_old_rule_still_show_in_continue_watching_but_finished_videos_do_not()
+        {
+            var (svc, p, h, _) = Make();
+            var now = new DateTime(2026, 11, 13, 22, 0, 0);
+            h.Items = new List<HistoryItem>
+            {
+                new() { Id = "itv1", LastWatched = now, Duration = TimeSpan.Zero, LastPosition = TimeSpan.FromMinutes(40), IsFinished = true },   // a channel, wrongly "finished"
+                new() { Id = "clip", LastWatched = now.AddMinutes(-5), Duration = TimeSpan.Zero, LastPosition = TimeSpan.FromMinutes(3), IsFinished = true }, // a video that ended
+                new() { Id = "film", LastWatched = now.AddMinutes(-10), Duration = TimeSpan.FromHours(2), LastPosition = TimeSpan.FromHours(2), IsFinished = true },
+            };
+            p.Answer = id => id == "itv1" ? Data(id) with { IsLive = true, Type = MediaType.Channel } : Data(id);
+
+            var row = (await svc.GetContinueWatchingAsync()).ToList();
+
+            Assert.Equal(new[] { "itv1" }, row.Select(r => r.Id));
+        }
     }
 }
