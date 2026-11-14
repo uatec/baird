@@ -89,6 +89,36 @@ namespace Baird.Tests.NewUi
             Assert.Equal("Alien", s.ResultRows[0][0].Title!.Name);
         }
 
+        [Fact]
+        public void The_search_waits_two_seconds_after_the_last_key_because_remote_typing_is_slow()
+        {
+            Assert.True(SearchScreen.Debounce >= TimeSpan.FromSeconds(2), $"{SearchScreen.Debounce.TotalMilliseconds} ms");
+        }
+
+        [AvaloniaFact]
+        public async Task Results_all_appear_at_once_when_every_source_has_answered_and_a_spinner_shows_until_then()
+        {
+            var home = HomeScreenTests.Context();
+            var (search, shows, jellyfin, _) = CatalogueTests.Slow();
+            home.Ctx.Search = search; home.Ctx.Shows = shows; home.Ctx.Channels = CatalogueTests.Channels; home.Ctx.Timers = home.Timers;
+            var s = new SearchScreen(home.Ctx);
+            Show(s.View);
+            foreach (var ch in "loki") TypeLetter(s, ch);
+            home.Timers.Advance(SearchScreen.Debounce); // the search starts in the background
+            await Wait(400); // iPlayer and Seerr answered long ago; Jellyfin has not
+
+            Assert.Empty(s.ResultRows.SelectMany(r => r)); // nothing is drawn until everything can be, so nothing moves under the cursor
+            Assert.True(s.IsSearching);                     // the spinner
+            Assert.Contains("Jellyfin", s.StatusText);       // and the status line says who is being waited for
+
+            jellyfin.Gate.SetResult();
+            await Wait(400);
+            Assert.False(s.IsSearching);
+            var titles = s.ResultRows.SelectMany(r => r).Where(h => h.Title != null).ToList();
+            Assert.Equal("Loki", s.ResultRows[0][0].Title!.Name);
+            Assert.Contains(titles, h => h.Title!.Sources.Any(x => x.Service == "Jellyfin")); // the slow source is in the one render
+        }
+
         [AvaloniaFact]
         public async Task Results_are_grouped_top_result_then_shows_and_films_then_on_tv()
         {
@@ -368,29 +398,25 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public async Task Search_shows_fast_sources_first_checks_the_slow_library_and_keeps_the_lit_result_lit()
+        public async Task Search_waits_for_the_slow_library_and_draws_everything_once_with_nothing_still_checking()
         {
+            // It used to show fast sources first and add the slow library afterwards, which moved results about while the viewer
+            // was moving to the one they wanted. Now nothing is drawn until every source has answered (or timed out).
             var (rig, jf) = SlowRig();
             var s = new SearchScreen(rig.Ctx);
             Show(s.View);
             foreach (var ch in "loki") TypeLetter(s, ch);
             rig.Timers.Advance(SearchScreen.Debounce);
             var run = s.RunAsync();
-            await Until(() => s.ResultRows.SelectMany(r => r).Any(h => h.Title?.Name == "Loki") && s.ResultRows.SelectMany(r => r).Any(h => h.Title?.Name == "Loki Odyssey"));
-            var loki = s.ResultRows.SelectMany(r => r).Single(h => h.Title?.Name == "Loki");
-            Assert.EndsWith("Checking your library…", loki.Card.Sublabel);
-            Assert.Null(loki.Card.Badge);
-
-            // Light Loki Odyssey (iPlayer, already in), then let Jellyfin answer: Loki Odyssey stays lit.
-            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false);
-            for (var i = 0; i < 6 && ((Card)s.LitElement!).Data.Label != "Loki Odyssey"; i++) s.OnAction(UiAction.Down, false);
-            Assert.Equal("Loki Odyssey", ((Card)s.LitElement!).Data.Label);
+            await Wait(300);
+            Assert.Empty(s.ResultRows.SelectMany(r => r));
             jf.Gate.SetResult();
             await run;
             Dispatcher.UIThread.RunJobs();
-            Assert.Equal("Loki Odyssey", ((Card)s.LitElement!).Data.Label);
-            var found = s.ResultRows.SelectMany(r => r).Single(h => h.Title?.Name == "Loki").Title!;
-            Assert.Equal("loki", found.Best!.ItemId);
+            var loki = s.ResultRows.SelectMany(r => r).Single(h => h.Title?.Name == "Loki");
+            Assert.DoesNotContain("Checking your library", loki.Card.Sublabel ?? "");
+            Assert.Equal("loki", loki.Title!.Best!.ItemId);
+            Assert.Contains(s.ResultRows.SelectMany(r => r), h => h.Title?.Name == "Loki Odyssey"); // the fast source's result is in the same render
         }
 
         [AvaloniaFact]

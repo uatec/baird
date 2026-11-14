@@ -26,7 +26,11 @@ namespace Baird.NewUi.Screens
     /// </summary>
     public sealed class SearchScreen : IScreen
     {
-        public static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(450);
+        /// <summary>
+        /// How long after the last key the search starts. Typing with a TV remote is slow, and a search started between two
+        /// letters only throws results away, so this is long (2 s).
+        /// </summary>
+        public static readonly TimeSpan Debounce = TimeSpan.FromSeconds(2);
         private enum Zone { Keyboard, Results, None }
         private enum Shape { Top, Poster, Wide, Chip }
 
@@ -59,6 +63,11 @@ namespace Baird.NewUi.Screens
         /// <summary>"Nothing called …": in the results column, where the results would be.</summary>
         private readonly TextBlock _empty = new() { FontSize = 30, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, MaxWidth = 760, LineHeight = 42, Margin = new Thickness(Pad, 40, 0, 0), IsVisible = false };
         public TextBlock EmptyMessage => _empty;
+        /// <summary>Turns while a search waits for its sources; the results are drawn once, when all have answered (or timed out).</summary>
+        private readonly Baird.NewUi.Controls.Spinner _spinner = new(44, 5) { IsVisible = false, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(Pad, 56, 0, 0) };
+        internal bool IsSearching => _spinner.IsVisible;
+        internal string StatusText => _status.Text ?? "";
+        private IReadOnlyList<string> _pending = Array.Empty<string>();
         private readonly OnScreenKeyboard _kb = new(700);
         private readonly StackPanel _inner = new() { Spacing = RowGap, Margin = new Thickness(Pad, Pad, Pad, 0) };
         private readonly Border _column;
@@ -147,7 +156,7 @@ namespace Baird.NewUi.Screens
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(ColumnLeft, ColumnTop, 0, 0),
-                Child = new Panel { Children = { _inner, _empty } },
+                Child = new Panel { Children = { _inner, _empty, _spinner } },
             };
             _root.Children.Add(left);
             _root.Children.Add(_column);
@@ -222,6 +231,7 @@ namespace Baird.NewUi.Screens
             if (_inDownloads) _entry.Children.Add(_tag);
             if (_query.Length > 0) { _caret.Margin = new Thickness(2, 0, 0, 0); _entry.Children.Add(_queryText); _entry.Children.Add(_caret); }
             else { _caret.Margin = new Thickness(0, 0, 10, 0); _entry.Children.Add(_caret); _entry.Children.Add(_queryText); }
+            if (_searching && _rows.Count == 0) _spinner.Start(); else _spinner.Stop();
             var nothing = !_searching && _query.Trim().Length > 0 && _rows.Count == 0 && _shownQuery == _query.Trim();
             _empty.IsVisible = nothing;
             if (nothing) _empty.Text = $"Nothing called “{_query.Trim()}” yet. Try fewer letters, or a channel number.";
@@ -237,11 +247,11 @@ namespace Baird.NewUi.Screens
         /// <summary>While results are still arriving: which library sources haven't answered yet.</summary>
         private string Waiting()
         {
-            var pending = _results.Query == _query.Trim() ? _results.Pending : Array.Empty<string>();
+            var pending = _pending;
             return pending.Count == 0 ? "Searching…" : $"Still checking {string.Join(", ", pending.Select(n => n == "TvHeadend" ? "Live TV" : n))}…";
         }
 
-        /// <summary>Runs the search for the current query (the debounce has passed); results show as each source answers. Tests await it.</summary>
+        /// <summary>Runs the search for the current query (the debounce has passed); results are drawn once, when every source has answered or timed out. Tests await it.</summary>
         public async Task RunAsync()
         {
             var q = _query.Trim();
@@ -250,13 +260,16 @@ namespace Baird.NewUi.Screens
             if (q.Length == 0) { _searching = false; Show(SearchResults.Empty); return; }
             if (_ctx.Search == null) { Show(SearchResults.Empty); return; }
             var cts = _cts = new CancellationTokenSource();
-            _searching = true; DrawField();
+            // The last query's results no longer fit: clear them, and draw the new ones once, all together, when every source has
+            // answered. Drawing them as they arrive reordered the list while the viewer was moving to what they wanted.
+            _results = SearchResults.Empty; _pending = Array.Empty<string>();
+            _searching = true; Build(); DrawField();
             try
             {
                 var r = await _ctx.Search.SearchAsync(q, _ctx.Channels, _ctx.Now(),
-                    partial => OnUi(() => { if (!cts.IsCancellationRequested && _query.Trim() == q) Show(partial); }), cts.Token);
+                    partial => OnUi(() => { if (!cts.IsCancellationRequested && _query.Trim() == q) { _pending = partial.Pending; DrawField(); } }), cts.Token);
                 if (cts.IsCancellationRequested) return;
-                OnUi(() => { if (!cts.IsCancellationRequested && _query.Trim() == q) { _searching = false; Show(r); } });
+                OnUi(() => { if (!cts.IsCancellationRequested && _query.Trim() == q) { _searching = false; _pending = Array.Empty<string>(); Show(r); DrawField(); } });
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
