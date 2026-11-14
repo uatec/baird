@@ -293,40 +293,99 @@ namespace Baird.NewUi.Adapters
             _service[providerId] = (DateTime.UtcNow, complete ? ServiceCacheLifetime : ServiceRetryLifetime, cards);
             return cards;
         }
-        /// <summary>
-        /// Where a request has got to, as a card badge: "ready", "dl:42" (with the progress for a bar), "partial",
-        /// "out:18 Dec" (not released yet), "searching" (released, nothing found yet) or "requested" (awaiting approval).
-        /// </summary>
-        public static (string Badge, double? Progress) DownloadBadge(JellyseerrRequest r, DateTime today)
-        {
-            if (r.MediaInfoStatus == 5) return ("ready", null);
-            if (r.DownloadProgress is { } p) return ($"dl:{p:0}", p / 100);
-            if (r.MediaInfoStatus == 4) return ("partial", null);
-            if (r.MediaInfoStatus == 3) // processing: approved, being looked for
-            {
-                if (DateTime.TryParse(r.ReleaseDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var out_) && out_.Date > today.Date)
-                    return ($"out:{out_:d MMM}{(out_.Year != today.Year ? $" {out_.Year}" : "")}", null);
-                return ("searching", null);
-            }
-            return ("requested", null);
-        }
+        /// <summary>A Downloads tile's two messages: <see cref="Badge"/> is the state (the pill), <see cref="Scope"/> says which part.</summary>
+        public sealed record DownloadView(string Badge, double? Progress, string Scope);
 
-        /// <summary>"S1–3 ready · S4 coming": which seasons are here, partly here, or on the way (runs of the same state joined).</summary>
-        public static string SeasonLine(IReadOnlyList<JellyseerrSeason> seasons)
+        /// <summary>A request nobody has found anything for after this long says "Not found" instead of "Searching".</summary>
+        public static readonly TimeSpan NotFoundAfter = TimeSpan.FromDays(3);
+
+        private static DateTime When(string s) => DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var d) ? d : DateTime.MinValue;
+
+        /// <summary>"S1–3", "S1, S3–4": season numbers as runs.</summary>
+        public static string Runs(IEnumerable<int> numbers)
         {
-            static string? State(int status) => status switch { 5 => "ready", 4 => "partly", 2 or 3 => "coming", _ => null };
             var parts = new List<string>();
-            int? from = null, to = null; string? state = null;
-            void Flush() { if (state != null) parts.Add($"S{from}{(to != from ? $"–{to}" : "")} {state}"); }
-            foreach (var s in seasons.Where(s => s.Number > 0).OrderBy(s => s.Number))
+            int? from = null, to = null;
+            void Flush() { if (from != null) parts.Add(from == to ? $"S{from}" : $"S{from}–{to}"); }
+            foreach (var n in numbers.Distinct().OrderBy(n => n))
             {
-                var st = State(s.Status);
-                if (st != null && st == state && to == s.Number - 1) { to = s.Number; continue; }
+                if (from != null && n == to + 1) { to = n; continue; }
                 Flush();
-                from = to = st == null ? null : s.Number; state = st;
+                from = to = n;
             }
             Flush();
-            return string.Join(" · ", parts);
+            return string.Join(", ", parts);
+        }
+
+        /// <summary>The seasons asked for across all of a title's requests (a series can be requested a season at a time).</summary>
+        public static Dictionary<(string Type, int Tmdb), IReadOnlyList<int>> RequestedSeasonsByTitle(IEnumerable<JellyseerrRequest> requests) =>
+            requests.Where(r => r.MediaType == "tv").GroupBy(r => (r.MediaType, r.TmdbId))
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<int>)g.SelectMany(r => r.RequestedSeasons).Distinct().OrderBy(n => n).ToList());
+
+        /// <summary>
+        /// Where a request has got to. The pill: "requested" (awaiting approval), "searching", "out:18 Dec" (not released),
+        /// "dl:42" (downloading, with a progress bar), "part" (some of what was asked for is here), "ready" (everything that was
+        /// asked for is here, but not the whole show), "complete" (the whole show), "notfound" (nothing found for days) or
+        /// "declined". The scope line says which seasons, and how many episodes are still to come.
+        /// </summary>
+        /// <param name="requested">The seasons asked for across the title's requests; empty when Seerr doesn't say (then the seasons it knows of stand in).</param>
+        public static DownloadView Describe(JellyseerrRequest r, IReadOnlyCollection<int> requested, DateTime now)
+        {
+            var askedAt = When(r.CreatedAt);
+            var asked = askedAt > DateTime.MinValue ? askedAt.ToLocalTime().ToString("d MMM") : null;
+            var overall = r.DownloadProgress;
+            var progress = overall / 100;
+            string? notOut = DateTime.TryParse(r.ReleaseDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var rel) && rel.Date > now.Date
+                ? $"out:{rel:d MMM}{(rel.Year != now.Year ? $" {rel.Year}" : "")}" : null;
+            // Approved and being looked for (Seerr's media "processing" or further on), as against still awaiting approval.
+            var looking = r.Status != 1 && r.MediaInfoStatus >= 3;
+            var waitedLong = askedAt > DateTime.MinValue && now - askedAt >= NotFoundAfter;
+
+            if (r.MediaType != "tv")
+            {
+                if (r.Status == 3) return new("declined", null, "Declined");
+                if (r.MediaInfoStatus == 5) return new("ready", null, "Film");
+                if (overall is { } pc) return new($"dl:{pc:0}", pc / 100, "Downloading");
+                if (!looking) return new("requested", null, asked == null ? "Requested" : $"Asked {asked}");
+                if (notOut != null) return new(notOut, null, "Not released yet");
+                return waitedLong ? new("notfound", null, "Nothing found yet") : new("searching", null, "Looking for it");
+            }
+
+            var status = new Dictionary<int, int>();
+            foreach (var s in r.Seasons) status[s.Number] = s.Status;
+            int Of(int n) => status.TryGetValue(n, out var st) ? st : 1;
+            var all = r.Seasons.Where(s => s.Number > 0).Select(s => s.Number).ToList();
+            // A season deleted (7) or blocklisted (6) is neither here nor on the way, so it is no longer part of what was asked for.
+            var asking = (requested.Count > 0 ? requested.Where(n => n > 0) : all.Where(n => Of(n) >= 2)).Where(n => Of(n) is not (6 or 7)).Distinct().OrderBy(n => n).ToList();
+            var scope = asking.Count > 0 ? Runs(asking) : "";
+            string With(string tail) => scope.Length == 0 ? tail : $"{scope} · {tail}";
+
+            if (r.Status == 3) return new("declined", null, With("declined"));
+            if (r.MediaInfoStatus == 5 || (all.Count > 0 && all.All(n => Of(n) == 5)))
+                return new("complete", null, all.Count > 1 ? $"All {all.Count} seasons" : "The whole series");
+            var ready = asking.Where(n => Of(n) == 5).ToList();
+            var onTheWay = asking.Where(n => Of(n) != 5).ToList();
+            if (asking.Count > 0 && onTheWay.Count == 0)
+                return new("ready", null, all.Count > asking.Count ? $"{scope} of {all.Count} seasons" : scope);
+
+            int Coming(IEnumerable<int> seasons) => r.Downloads.Where(d => d.Season is { } s && seasons.Contains(s)).Select(d => (d.Season, d.Episode)).Distinct().Count();
+            string ToGo(int episodes) => episodes == 1 ? "1 episode to go" : $"{episodes} episodes to go";
+
+            if (ready.Count > 0 || asking.Any(n => Of(n) == 4))
+            {
+                var eps = Coming(onTheWay);
+                // Short words: the line has one row of a poster tile ("S1 ready · S2 6 to go" fits, "...6 episodes to go" doesn't).
+                var rest = $"{Runs(onTheWay)} {(eps > 0 ? $"{eps} to go" : onTheWay.All(n => Of(n) == 4) ? "partly" : "coming")}";
+                return new("part", progress, ready.Count > 0 ? $"{Runs(ready)} ready · {rest}" : rest);
+            }
+            if (overall is { } p)
+            {
+                var eps = Coming(asking);
+                return new($"dl:{p:0}", p / 100, eps > 0 ? With(ToGo(eps)) : scope);
+            }
+            if (!looking) return new("requested", null, asked == null ? scope : With($"asked {asked}"));
+            if (notOut != null) return new(notOut, null, With("not out yet"));
+            return waitedLong ? new("notfound", null, With("not found yet")) : new("searching", null, With("looking for it"));
         }
 
         /// <summary>How long a request that has arrived stays in Downloads.</summary>
@@ -342,24 +401,23 @@ namespace Baird.NewUi.Adapters
             try
             {
                 var cutoff = DateTime.UtcNow - KeepArrivedFor;
-                static DateTime When(string s) => DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var d) ? d : DateTime.MinValue;
-                return (await _seerr.GetRequestsAsync().ConfigureAwait(false))
+                var requests = (await _seerr.GetRequestsAsync().ConfigureAwait(false)).ToList();
+                var asked = RequestedSeasonsByTitle(requests);
+                return requests
+                    .Where(r => r.MediaInfoStatus is not (6 or 7)) // deleted from the server, or blocklisted: nothing left to follow
                     .Where(r => r.MediaInfoStatus != 5 || When(r.UpdatedAt) >= cutoff)
                     .OrderByDescending(r => When(r.CreatedAt))
                     .DistinctBy(r => (r.MediaType, r.TmdbId))
                     .Select(r =>
                     {
                         var tv = r.MediaType == "tv";
-                        var (badge, progress) = DownloadBadge(r, DateTime.Now);
-                        var asked = When(r.CreatedAt);
-                        var seasons = tv ? SeasonLine(r.Seasons) : "";
-                        var sub = seasons.Length > 0 ? seasons : asked > DateTime.MinValue ? $"Requested {asked.ToLocalTime():d MMM}" : tv ? "Series" : "Film";
+                        var view = Describe(r, asked.TryGetValue((r.MediaType, r.TmdbId), out var seasons) ? seasons : Array.Empty<int>(), DateTime.Now);
                         var poster = r.PosterPath is { Length: > 0 } pp ? $"https://image.tmdb.org/t/p/w500{pp}" : null;
                         var kind = tv ? TitleKind.Series : TitleKind.Film;
                         var title = new CatalogueTitle($"tmdb:{r.MediaType}:{r.TmdbId}", kind, r.Title, CatalogueSearch.YearOf(r.ReleaseDate), poster, null,
                             Array.Empty<TitleSource>(), new SeerrRef(r.TmdbId, r.MediaType, r.MediaInfoStatus == 0 ? 1 : r.MediaInfoStatus));
-                        return new HomeCard(tv ? CardKind.Series : CardKind.Film, $"tmdb:{r.MediaType}:{r.TmdbId}", r.Title, sub, poster,
-                            progress, badge, "Seerr", PlayVia.None, Title: title);
+                        return new HomeCard(tv ? CardKind.Series : CardKind.Film, $"tmdb:{r.MediaType}:{r.TmdbId}", r.Title, view.Scope, poster,
+                            view.Progress, view.Badge, "Seerr", PlayVia.None, Title: title);
                     })
                     .ToList();
             }

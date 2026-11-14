@@ -85,6 +85,10 @@ namespace Baird.Services
         public int MediaId { get; set; } // Seerr's media id (not TMDB's)
         public string? ReleaseDate { get; set; } // a film's release date, or a series' first air date (yyyy-MM-dd)
         public IReadOnlyList<JellyseerrSeason> Seasons { get; set; } = System.Array.Empty<JellyseerrSeason>();
+        /// <summary>The seasons this request asked for (empty for a film, or when Seerr doesn't say). A series can be requested in pieces.</summary>
+        public IReadOnlyList<int> RequestedSeasons { get; set; } = System.Array.Empty<int>();
+        /// <summary>The episodes (or film) Radarr/Sonarr is downloading now.</summary>
+        public IReadOnlyList<JellyseerrDownload> Downloads { get; set; } = System.Array.Empty<JellyseerrDownload>();
         public bool IsAvailable => MediaInfoStatus == 5 || MediaInfoStatus == 4;
     }
 
