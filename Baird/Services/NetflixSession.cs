@@ -112,8 +112,9 @@ namespace Baird.Services
 
         private async Task<NetflixListOutcome<T>> ListAsync<T>(string what, string body, Func<string?, NetflixList<T>> parse, CancellationToken ct)
         {
-            if (IsPlaybackActive) return new(null, "Netflix is playing; its episode lists are not read until playback ends.");
-            if (_hub.BlockedFor(Owner) is { } blocked) return new(null, $"{blocked} Episode lists are paused.");
+            // The shared tab is playing (Netflix or another service): leave it alone and ask Netflix directly, as search does.
+            var busy = IsPlaybackActive ? "Netflix is playing" : _hub.BlockedFor(Owner) is { } blocked ? blocked : null;
+            if (busy != null) return await ListDirectAsync(what, body, parse, busy, ct);
 
             await _hub.Gate.WaitAsync(ct);
             try
@@ -124,11 +125,47 @@ namespace Baird.Services
                 var reply = parse(await Browser.PostNetflixGraphQlAsync(body, ct));
                 AddLog(reply.Ok ? $"{what}: {reply.Items.Count} in {sw.ElapsedMilliseconds} ms"
                                 : $"{what} error {reply.ErrorCode}: {reply.ErrorMessage}{(reply.NeedsNewTemplate ? " (Netflix changed its request ids)" : "")}");
+                // Keep the signed-in cookies, so the lists can be had while the tab plays something else.
+                if (reply.Ok) _cookieHeader = await Browser.GetNetflixCookieHeaderAsync(ct) ?? _cookieHeader;
                 return reply.Ok ? new(reply.Items, null) : new(null, $"Netflix {what.ToLowerInvariant()} error {reply.ErrorCode}: {reply.ErrorMessage}");
             }
             finally
             {
                 _hub.Gate.Release();
+            }
+        }
+
+        /// <summary>The same request, sent to Netflix with the browser's cookies instead of through its page (for when the tab is busy).</summary>
+        private async Task<NetflixListOutcome<T>> ListDirectAsync<T>(string what, string body, Func<string?, NetflixList<T>> parse, string busy, CancellationToken ct)
+        {
+            if (_cookieHeader == null) return new(null, $"{busy}, and no Netflix cookies have been taken yet, so the {what.ToLowerInvariant()} are not read.");
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, "https://www.netflix.com/graphql")
+                {
+                    Content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, "application/json"),
+                };
+                req.Headers.TryAddWithoutValidation("Cookie", _cookieHeader);
+                req.Headers.TryAddWithoutValidation("Origin", "https://www.netflix.com");
+                req.Headers.TryAddWithoutValidation("Referer", "https://www.netflix.com/browse");
+                req.Headers.TryAddWithoutValidation("User-Agent", BrowserUserAgent);
+                using var res = await DirectHttp.SendAsync(req, ct);
+                var text = await res.Content.ReadAsStringAsync(ct);
+                if (!res.IsSuccessStatusCode)
+                {
+                    AddLog($"Direct {what.ToLowerInvariant()}: Netflix refused (HTTP {(int)res.StatusCode})");
+                    return new(null, $"Netflix refused the direct {what.ToLowerInvariant()} call (HTTP {(int)res.StatusCode}).");
+                }
+                var reply = parse(text);
+                AddLog(reply.Ok ? $"Direct {what.ToLowerInvariant()}: {reply.Items.Count} in {sw.ElapsedMilliseconds} ms" : $"Direct {what.ToLowerInvariant()} error {reply.ErrorCode}: {reply.ErrorMessage}");
+                return reply.Ok ? new(reply.Items, null) : new(null, $"Netflix {what.ToLowerInvariant()} error {reply.ErrorCode}: {reply.ErrorMessage}");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                AddLog($"Direct {what.ToLowerInvariant()} failed: {ex.Message}");
+                return new(null, $"Netflix direct {what.ToLowerInvariant()} call failed: {ex.Message}");
             }
         }
 

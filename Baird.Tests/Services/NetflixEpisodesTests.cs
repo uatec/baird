@@ -232,5 +232,82 @@ namespace Baird.Tests.Services
             Assert.Empty(await p.GetChildrenAsync("netflix:80057281|next"));
             Assert.Empty(await p.GetChildrenAsync("jellyfin:1"));
         }
+
+        // ---- while the shared browser is busy: ask Netflix directly, as search does ----
+        private sealed class DirectHttp : System.Net.Http.HttpMessageHandler
+        {
+            public readonly System.Collections.Generic.List<(System.Net.Http.HttpRequestMessage Request, string Body)> Requests = new();
+            public System.Net.HttpStatusCode Status = System.Net.HttpStatusCode.OK;
+            protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, System.Threading.CancellationToken ct)
+            {
+                var body = await request.Content!.ReadAsStringAsync(ct);
+                Requests.Add((request, body));
+                var reply = Op(body) == "PreviewModalEpisodeSelector"
+                    ? NetflixEpisodeFixtures.Seasons((80077209, "Stranger Things", 8), (80117715, "Stranger Things 2", 9))
+                    : NetflixEpisodeFixtures.Episodes(NetflixEpisodeFixtures.Episode(1, 80117716, "Chapter One: MADMAX"));
+                return new System.Net.Http.HttpResponseMessage(Status) { Content = new System.Net.Http.StringContent(reply) };
+            }
+        }
+
+        private (NetflixProvider Provider, NetflixSession Session, MockCdpBrowserService Svc, DirectHttp Http) Idle(string? cookies = "NetflixId=abc; SecureNetflixId=def")
+        {
+            var svc = new MockCdpBrowserService { CookieHeader = cookies };
+            var http = new DirectHttp();
+            var p = Provider(svc, b => Op(b) == "PreviewModalEpisodeSelector"
+                ? NetflixEpisodeFixtures.Seasons((80077209, "Stranger Things", 8), (80117715, "Stranger Things 2", 9))
+                : NetflixEpisodeFixtures.Episodes(NetflixEpisodeFixtures.Episode(1, 80117716, "Chapter One: MADMAX")), out var session);
+            session.DirectHttp = new System.Net.Http.HttpClient(http);
+            return (p, session, svc, http);
+        }
+
+        [Fact]
+        public async Task While_netflix_itself_plays_a_series_still_lists_its_seasons_through_a_direct_call_with_the_browsers_cookies()
+        {
+            var (p, session, svc, http) = Idle();
+            Assert.Equal(2, (await p.GetChildrenAsync("netflix:80057281")).Count()); // idle: in the browser, and the cookies are kept
+            var inBrowser = svc.GraphQlBodies.Count;
+            session.IsPlaybackActive = true;                                         // another Netflix video is now playing in it
+
+            var kids = (await p.GetChildrenAsync("netflix:80057281")).ToList();
+
+            Assert.Equal(new[] { "Season 1", "Season 2" }, kids.Select(k => k.Name)); // not the "Play next episode" stub
+            Assert.Equal(inBrowser, svc.GraphQlBodies.Count);                          // the playing tab was not touched
+            var (req, body) = Assert.Single(http.Requests);
+            Assert.Equal("https://www.netflix.com/graphql", req.RequestUri!.ToString());
+            Assert.Equal("NetflixId=abc; SecureNetflixId=def", req.Headers.GetValues("Cookie").Single());
+            Assert.Equal("PreviewModalEpisodeSelector", Op(body));
+        }
+
+        [Fact]
+        public async Task While_another_service_plays_the_episodes_of_a_season_come_the_same_way()
+        {
+            var (p, session, svc, http) = Idle();
+            await p.GetChildrenAsync("netflix:80057281");
+            session.Hub.ActivePlayback = "ITVX";
+
+            var kids = (await p.GetChildrenAsync("netflix:80057281|s2:80117715")).ToList();
+
+            Assert.Equal("Chapter One: MADMAX", kids.Single().Name);
+            Assert.Equal("PreviewModalEpisodeSelectorSeasonEpisodes", Op(Assert.Single(http.Requests).Body));
+        }
+
+        [Fact]
+        public async Task A_direct_call_Netflix_refuses_falls_back_to_the_play_next_entry()
+        {
+            var (p, session, _, http) = Idle();
+            await p.GetChildrenAsync("netflix:80057281");
+            session.IsPlaybackActive = true;
+            http.Status = System.Net.HttpStatusCode.Forbidden;
+            Assert.Equal("Play next episode", (await p.GetChildrenAsync("netflix:80057281")).Single().Name);
+        }
+
+        [Fact]
+        public async Task Before_any_cookies_have_been_taken_a_busy_browser_means_the_play_next_entry()
+        {
+            var (p, session, _, http) = Idle(cookies: null);
+            session.IsPlaybackActive = true;
+            Assert.Equal("Play next episode", (await p.GetChildrenAsync("netflix:80057281")).Single().Name);
+            Assert.Empty(http.Requests);
+        }
     }
 }
