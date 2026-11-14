@@ -298,5 +298,54 @@ namespace Baird.Tests.NewUi
             Assert.NotNull(c.Failure);
             Assert.False(raised);
         }
+
+        [Fact]
+        public void Parked_live_pauses_then_stops_after_the_grace_and_retunes_on_return()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("1")); t.Advance(PlaybackController.TuneDebounce); e.Loaded();
+            c.Park();
+            Assert.Contains("pause", e.Calls);
+            t.Advance(TimeSpan.FromSeconds(4));
+            Assert.DoesNotContain("stop", e.Calls);
+            t.Advance(TimeSpan.FromSeconds(2));
+            Assert.Contains("stop", e.Calls);
+            Assert.True(c.Released);
+            Assert.NotNull(c.Current);
+            e.Ended(); // the stop must not look like a dropped stream
+            Assert.Single(e.Plays);
+            c.Unpark();
+            Assert.Equal(2, e.Plays.Count);
+            Assert.Equal(("http://tvh/1", (double?)null), e.Plays[1]);
+            Assert.False(c.Released);
+        }
+
+        [Fact]
+        public void Coming_back_within_the_grace_resumes_and_a_live_channel_jumps_to_now()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("1")); t.Advance(PlaybackController.TuneDebounce); e.Loaded();
+            c.Park();
+            t.Advance(TimeSpan.FromSeconds(3));
+            c.Unpark();
+            Assert.Contains("resume", e.Calls);
+            Assert.Contains("rel 3", e.Calls);
+            Assert.Equal(TimeSpan.Zero, c.BehindLive);
+            t.Advance(TimeSpan.FromSeconds(10));
+            Assert.DoesNotContain("stop", e.Calls);
+            Assert.Single(e.Plays);
+        }
+
+        [Fact]
+        public void Parked_video_resumes_where_it_was_after_being_released()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
+            e.TimePositionSeconds = 754;
+            c.Park(); t.Advance(PlaybackController.ParkGrace);
+            Assert.Contains("stop", e.Calls);
+            c.Unpark();
+            Assert.Equal(("http://jf/ep1", (double?)754), e.Plays[1]);
+        }
     }
 }

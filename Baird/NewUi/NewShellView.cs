@@ -288,6 +288,14 @@ namespace Baird.NewUi
                 if (playback.Current is { Kind: "live", Channel: { } ch } && nav.State.AtVideo && nav.State.Overlay == null) ident.Show(ch, _ctx.Programme);
             };
             playback.Loaded += ident.Loaded;
+            // Leaving the picture for any menu pauses it and, a few seconds on, lets the stream go (tuner and decoder free);
+            // coming back picks it up (live jumps to now; anything else resumes where it was).
+            nav.Changed += () =>
+            {
+                var st = nav.State;
+                if (st.Video == null) return;
+                if (st.AtVideo && st.Pages.Count == 0) playback.Unpark(); else playback.Park();
+            };
             nav.Changed += () =>
             {
                 if (nav.State.Overlay != null) upNextCard.Opacity = 0;
@@ -303,7 +311,7 @@ namespace Baird.NewUi
             Shell.Motion.Animate(surface, Shell.Motion.Med);
             void FrameVideo()
             {
-                var frame = GuideScreen.ShowsPreview(nav.State, playback.Current != null) && !surface.ShowingBrowser;
+                var frame = GuideScreen.ShowsPreview(nav.State, playback.Current != null && !playback.Released) && !surface.ShowingBrowser;
                 var r = GuideHeader.PreviewRect;
                 var tl = frame ? _shell.Stage.TranslatePoint(r.TopLeft, surface) : null;
                 var br = frame ? _shell.Stage.TranslatePoint(r.BottomRight, surface) : null;
