@@ -20,8 +20,14 @@ namespace Baird.Services
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         }
 
+        private static readonly System.Text.RegularExpressions.Regex Pid = new("^[0-9a-z]{8}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>A BBC programme id (8 lowercase letters and digits, like b006q2x0). Every other service's ids are not iPlayer's to ask the BBC about.</summary>
+        public static bool IsPid(string id) => Pid.IsMatch(id ?? "");
+
         public Task<MediaItemData?> GetItemAsync(string id)
         {
+            if (!IsPid(id)) return Task.FromResult<MediaItemData?>(null);
             // BBC iPlayer doesn't expose single item lookup easily for arbitrary IDs
             // But we can construct the URL and maybe parse it if we were scraping?
             // Or we can search for the ID specifically?
@@ -220,6 +226,7 @@ namespace Baird.Services
                     brandId = parts[0];
                     if (parts.Length > 1) targetSeason = parts[1];
                 }
+                if (!IsPid(brandId)) return Enumerable.Empty<MediaItemData>(); // another service's id: not the BBC's to look up
 
                 // Fetch episodes for a brand/programme
                 // Using per_page=100 to get a good chunk of episodes. Pagination not implemented for now.
