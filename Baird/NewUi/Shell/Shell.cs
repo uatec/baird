@@ -19,7 +19,9 @@ namespace Baird.NewUi.Shell
         Func<PageRef, IScreen> CreatePage,
         Func<OverlayRef, IScreen> CreateOverlay,
         Func<UiAction, bool, bool> VideoAction,
-        Func<string> BackToVideoLabel);
+        Func<string> BackToVideoLabel,
+        // A digit nothing on screen wanted: starts a channel number (null: digits are not special).
+        Func<int, bool>? ChannelNumber = null);
 
     /// <summary>
     /// The new UI's layer stack and global keys (ported from the prototype's app.js):
@@ -322,6 +324,9 @@ namespace Baird.NewUi.Shell
             var screen = ActiveScreen;
             var handled = screen != null ? screen.OnAction(a, repeat) : _d.VideoAction(a, repeat);
             if (handled) return;
+            // A digit nothing here uses (Search types them, the Guide jumps with them, a code box takes them) is a channel number, on
+            // any screen and not only while watching. An open menu or dialog is not interrupted.
+            if (InputMap.DigitOf(a) is { } digit && st.Overlay == null && _d.ChannelNumber?.Invoke(digit) == true) return;
             // Over the video, Pg±, digits and ⏮/⏭ keep their meaning whatever overlay is up.
             if (st.Overlay != null && st.Video != null && st.AtVideo && st.Pages.Count == 0
                 && (a is UiAction.PageUp or UiAction.PageDown or UiAction.Prev or UiAction.Next || InputMap.DigitOf(a) != null)

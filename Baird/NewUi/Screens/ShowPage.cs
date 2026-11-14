@@ -485,7 +485,7 @@ namespace Baird.NewUi.Screens
 
         public bool OnAction(UiAction a, bool repeat)
         {
-            if (_details == null) return a is not (UiAction.Back or UiAction.Up);
+            if (_details == null) return a is not (UiAction.Back or UiAction.Up) && InputMap.DigitOf(a) == null; // digits are channel numbers: not ours to swallow
             switch (a)
             {
                 case UiAction.Up when _pos.Row == 0: return false;
