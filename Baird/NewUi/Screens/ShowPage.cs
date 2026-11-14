@@ -329,6 +329,13 @@ namespace Baird.NewUi.Screens
             if (t.Kind == TitleKind.Film && t.Best is { Service: "Jellyfin" } jf && _ctx.Deleter is { } deleter
                 && FilmCard(jf) with { Title = t } is var card && deleter.CanDelete(card))
                 list.Add(new("Delete…", null, false, () => ItemActions.ConfirmDelete(_ctx, deleter, card)));
+            // A download in progress (nothing of it in the library yet) can be dropped without waiting for it to finish.
+            if (t.Seerr is { Status: 2 or 3 } sr && t.Sources.Count == 0 && _ctx.Deleter is { } discarder
+                && (t.Kind == TitleKind.Film ? d.FilmState == SeasonState.Requested
+                    : d.Seasons.Any(s => s.State == SeasonState.Requested) && d.Seasons.All(s => s.State is not (SeasonState.Available or SeasonState.Partial)))
+                && new HomeCard(t.Kind == TitleKind.Film ? CardKind.Film : CardKind.Series, $"tmdb:{sr.MediaType}:{sr.TmdbId}", t.Name, null, t.ImageUrl, null, null, "Seerr", PlayVia.None, Title: t) is var asked
+                && discarder.CanDiscard(asked))
+                list.Add(new("Discard download…", null, false, () => ItemActions.ConfirmDiscard(_ctx, discarder, asked)));
             if (list.Count == 0) list.Add(new("Not available", null, false, () => _ctx.Toast($"{t.Name} isn't streaming anywhere Baird knows, and Seerr doesn't know it.")));
             return list;
         }

@@ -427,6 +427,52 @@ namespace Baird.Services
             }
         }
 
+        /// <summary>A title's Seerr media id and the ids of its requests, from its details; null when Seerr has no media for it.</summary>
+        internal static (int Media, IReadOnlyList<int> Requests)? MediaAndRequestsOf(JsonElement details)
+        {
+            if (!details.TryGetProperty("mediaInfo", out var info) || info.ValueKind != JsonValueKind.Object
+                || !info.TryGetProperty("id", out var idProp) || idProp.ValueKind != JsonValueKind.Number) return null;
+            var requests = info.TryGetProperty("requests", out var rs) && rs.ValueKind == JsonValueKind.Array
+                ? rs.EnumerateArray().Select(r => r.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.Number ? i.GetInt32() : 0).Where(i => i > 0).ToList()
+                : new List<int>();
+            return (idProp.GetInt32(), requests);
+        }
+
+        public async Task<(bool Ok, string Message)> DiscardRequestAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var endpoint = mediaType == "movie" ? $"api/v1/movie/{tmdbId}" : $"api/v1/tv/{tmdbId}";
+                var response = await _httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode) return (false, $"Seerr couldn't find it ({(int)response.StatusCode}).");
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+                if (MediaAndRequestsOf(doc.RootElement) is not var (mediaId, requests)) return (true, "Seerr has nothing for it.");
+
+                // Radarr/Sonarr: take it out where they have it (a request still awaiting approval isn't in them yet, so a
+                // refusal here is expected and not an error).
+                var files = await _httpClient.DeleteAsync($"api/v1/media/{mediaId}/file?is4k=false", cancellationToken).ConfigureAwait(false);
+                if (!files.IsSuccessStatusCode) Console.WriteLine($"[JellyseerrService] Radarr/Sonarr had nothing to remove for {mediaType} {tmdbId} ({(int)files.StatusCode}).");
+
+                // Seerr: cancel every request for it, then forget the title so it can be requested again.
+                var failed = 0;
+                foreach (var id in requests)
+                {
+                    var r = await _httpClient.DeleteAsync($"api/v1/request/{id}", cancellationToken).ConfigureAwait(false);
+                    if (!r.IsSuccessStatusCode) { failed++; Console.WriteLine($"[JellyseerrService] Cancelling request {id} failed: {r.StatusCode}"); }
+                }
+                if (failed > 0) return (false, $"Seerr didn't cancel {failed} of {requests.Count} request{(requests.Count == 1 ? "" : "s")}.");
+                var media = await _httpClient.DeleteAsync($"api/v1/media/{mediaId}", cancellationToken).ConfigureAwait(false);
+                if (!media.IsSuccessStatusCode) Console.WriteLine($"[JellyseerrService] Clearing {mediaType} {tmdbId} from Seerr failed: {media.StatusCode}");
+                Console.WriteLine($"[JellyseerrService] Discarded {mediaType} {tmdbId} (media {mediaId}, {requests.Count} request(s))");
+                return (true, "Cancelled");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine($"[JellyseerrService] Discarding {mediaType} {tmdbId} error: {ex.Message}");
+                return (false, ex.Message);
+            }
+        }
+
         public async Task<(bool Ok, string Message)> RemoveMediaAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
         {
             try

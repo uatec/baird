@@ -638,8 +638,10 @@ namespace Baird.NewUi.Screens
                     }
                     ));
                 }
-                else if (card.Source == "Seerr") _items.Add(("Open the page to request it", () => ctx.Activate(card)));
-                if (ctx.Deleter is { } deleter && deleter.CanDelete(card) && card.Badge != "playing")
+                else if (card.Source == "Seerr") _items.Add((card.Badge == "get" ? "Open the page to request it" : "Open the page", () => ctx.Activate(card)));
+                if (ctx.Deleter is { } discarder && discarder.CanDiscard(card) && card.Badge != "playing")
+                    _items.Add(("Discard this download…", (Action)(() => ConfirmDiscard(ctx, discarder, card))));
+                else if (ctx.Deleter is { } deleter && deleter.CanDelete(card) && card.Badge != "playing")
                     _items.Add(("Delete from the server…", (Action)(() => ConfirmDelete(ctx, deleter, card))));
                 if (fromUpNext && card.Badge != "playing")
                     _items.Add(("Forget this", async () =>
@@ -670,6 +672,24 @@ namespace Baird.NewUi.Screens
                 },
             });
             Draw();
+        }
+
+        /// <summary>"Discard …?": cancels a request that hasn't arrived. Nothing in the library is touched (Keep it is lit).</summary>
+        public static void ConfirmDiscard(NewUiContext ctx, Adapters.Deletion deleter, HomeCard card)
+        {
+            ctx.Nav.OpenOverlay(new OverlayRef("choices", new ChoiceList($"Discard {card.Label}?",
+                "This cancels the request and takes it out of Radarr and Sonarr. Nothing in Jellyfin is touched, and you can request it again.", new[]
+                {
+                    new Choice("Keep it", null, () => { }),
+                    new Choice("Discard it", null, async () =>
+                    {
+                        ctx.Toast($"Discarding {card.Label}…");
+                        var (ok, message) = await deleter.DiscardAsync(card);
+                        ctx.Toast(message);
+                        if (!ok) return;
+                        ctx.RaiseLibraryChanged(); // Home's and Search's Downloads, and its own page, read again
+                    }),
+                })));
         }
 
         /// <summary>"Delete … for good?": the files go from the server, so it asks first (Keep it is lit).</summary>

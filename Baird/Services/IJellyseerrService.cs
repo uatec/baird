@@ -36,6 +36,14 @@ namespace Baird.Services
         /// </summary>
         Task<(bool Ok, string Message)> RemoveMediaAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default) =>
             Task.FromResult((false, "Seerr can't delete."));
+
+        /// <summary>
+        /// Cancel a title's requests that haven't arrived (a download in progress, or one still waiting for approval): Seerr
+        /// drops the requests, Radarr/Sonarr are told to remove it where they have it, and Seerr forgets the title so it can be
+        /// requested again. Nothing in Jellyfin is touched.
+        /// </summary>
+        Task<(bool Ok, string Message)> DiscardRequestAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default) =>
+            Task.FromResult((false, "Seerr can't cancel requests."));
     }
 
     /// <summary>Seerr's state of one title (with TMDB's description of it, when Seerr has one). Status: 1 unknown, 2 pending, 3 processing, 4 partly available, 5 available.</summary>

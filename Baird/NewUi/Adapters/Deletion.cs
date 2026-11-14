@@ -49,6 +49,38 @@ namespace Baird.NewUi.Adapters
             return c.Kind != CardKind.Episode && _seerr != null && SeerrOf(c) is { Status: >= 2 };
         }
 
+        /// <summary>
+        /// Can this card be discarded: a request that hasn't arrived (waiting, searching, downloading), with nothing in the library
+        /// yet. Once some of it is here, what's left to discard isn't separable from it: that's a delete.
+        /// </summary>
+        public bool CanDiscard(HomeCard c)
+        {
+            if (_seerr == null || c.Kind == CardKind.Episode || c.Kind == CardKind.Channel) return false;
+            if (JellyfinIdOf(c) != null || c.Title is { Sources.Count: > 0 }) return false;
+            if (c.Badge is "part" or "ready" or "complete" or "partial" or "get" or "declined") return false;
+            return SeerrOf(c) is { Status: 2 or 3 };
+        }
+
+        /// <summary>Cancels the request (and takes it out of Radarr/Sonarr); the library is left alone.</summary>
+        public async Task<(bool Ok, string Message)> DiscardAsync(HomeCard c, CancellationToken ct = default)
+        {
+            var name = c.Label;
+            if (_seerr == null || SeerrOf(c) is not { } seerr) return (false, $"Couldn't discard {name}: Seerr doesn't know it.");
+            try
+            {
+                var (ok, message) = await _seerr.DiscardRequestAsync(seerr.TmdbId, seerr.MediaType, ct).ConfigureAwait(false);
+                if (!ok) return (false, $"Couldn't discard {name}: {message}");
+                _search?.ForgetDownloads();
+                Deleted?.Invoke();
+                return (true, $"Discarded {name}.");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine($"[Deletion] Discarding {name} failed: {ex.Message}");
+                return (false, $"Couldn't discard {name}: {ex.Message}");
+            }
+        }
+
         public async Task<(bool Ok, string Message)> DeleteAsync(HomeCard c, CancellationToken ct = default)
         {
             var name = c.Label;

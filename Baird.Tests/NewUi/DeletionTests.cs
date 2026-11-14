@@ -128,6 +128,78 @@ namespace Baird.Tests.NewUi
             var get = new HomeCard(CardKind.Film, "tmdb:movie:7", "Andor", null, null, null, "get", "Seerr", PlayVia.None);
             Assert.DoesNotContain("Delete from the server…", new ItemActions(rig.Ctx, get).Items);
         }
+
+        // ---- discarding what hasn't arrived ----
+        [Fact]
+        public async Task A_request_still_on_its_way_can_be_discarded_without_touching_the_library()
+        {
+            var (d, w) = Build();
+            w.Seerr.Asked.Add(CatalogueTests.Asked(95396, "tv", "Severance", 1, mediaStatus: 3));
+            var card = await Found(w, "Severance");
+            Assert.True(d.CanDiscard(card));
+            var changed = 0;
+            d.Deleted += () => changed++;
+            var (ok, message) = await d.DiscardAsync(card);
+            Assert.True(ok, message);
+            Assert.Equal(new[] { (95396, "tv") }, w.Seerr.Discarded);
+            Assert.Empty(w.Seerr.Removed);
+            Assert.Empty(w.Jellyfin.Deleted);
+            Assert.Equal("Discarded Severance.", message);
+            Assert.Equal(1, changed);
+        }
+
+        [Fact]
+        public async Task Only_what_is_on_its_way_can_be_discarded()
+        {
+            var (d, w) = Build();
+            w.Seerr.Asked.Add(CatalogueTests.Asked(456, "tv", "The Simpsons", 30, mediaStatus: 4)); // partly here
+            Assert.False(d.CanDiscard(await Found(w, "The Simpsons")));       // it's in Jellyfin: that's a delete
+            Assert.False(d.CanDiscard(await Found(w, "Alien")));              // here
+            Assert.False(d.CanDiscard(new HomeCard(CardKind.Film, "tmdb:movie:7", "Andor", null, null, null, "get", "Seerr", PlayVia.None))); // never requested
+            var onItsWay = new HomeCard(CardKind.Series, "tmdb:tv:1", "X", null, null, null, "dl:42", "Seerr", PlayVia.None,
+                Title: new CatalogueTitle("tmdb:tv:1", TitleKind.Series, "X", null, null, null, Array.Empty<TitleSource>(), new SeerrRef(1, "tv", 3)));
+            Assert.True(d.CanDiscard(onItsWay));
+            Assert.False(d.CanDiscard(onItsWay with { Badge = "part" })); // some of it is here: discarding would not be "the rest"
+        }
+
+        [AvaloniaFact]
+        public async Task Hold_ok_on_a_download_in_progress_offers_discard_which_asks_first()
+        {
+            var rig = HomeScreenTests.Context();
+            var w = CatalogueTests.Build();
+            rig.Ctx.Search = w.Search; rig.Ctx.Shows = w.Shows;
+            rig.Ctx.Deleter = new Deletion(w.Data, w.Seerr, w.Search);
+            w.Seerr.Asked.Add(CatalogueTests.Asked(95396, "tv", "Severance", 1, mediaStatus: 3));
+            var card = await Found(w, "Severance");
+
+            var menu = new ItemActions(rig.Ctx, card);
+            Assert.Contains("Discard this download…", menu.Items);
+            Assert.DoesNotContain("Delete from the server…", menu.Items); // nothing is on the server yet
+            rig.Ctx.Nav.OpenOverlay(new OverlayRef("itemactions", card));
+            for (var i = 0; i < menu.Items.ToList().IndexOf("Discard this download…"); i++) menu.OnAction(UiAction.Down, false);
+            menu.OnAction(UiAction.Ok, false);
+
+            var ask = Assert.IsType<ChoiceList>(rig.Ctx.Nav.State.Overlay!.Params);
+            Assert.Equal("Discard Severance?", ask.Title);
+            Assert.Equal("Keep it", ask.Choices[0].Label); // the safe choice is lit first
+            Assert.Empty(w.Seerr.Discarded);
+            ask.Choices[1].Run();
+            await Task.Delay(80);
+            Assert.Equal(new[] { (95396, "tv") }, w.Seerr.Discarded);
+            Assert.Contains("Discarded Severance.", rig.Toasts);
+        }
+
+        [AvaloniaFact]
+        public async Task A_title_that_has_arrived_still_offers_delete_not_discard()
+        {
+            var rig = HomeScreenTests.Context();
+            var w = CatalogueTests.Build();
+            rig.Ctx.Search = w.Search; rig.Ctx.Shows = w.Shows;
+            rig.Ctx.Deleter = new Deletion(w.Data, w.Seerr, w.Search);
+            var menu = new ItemActions(rig.Ctx, await Found(w, "Alien"));
+            Assert.Contains("Delete from the server…", menu.Items);
+            Assert.DoesNotContain("Discard this download…", menu.Items);
+        }
     }
 }
 

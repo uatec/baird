@@ -42,11 +42,12 @@ namespace Baird.Tests.NewUi
             Assert.Equal("From the card.", d.Title.Synopsis);
         }
 
-        private static async Task<(ShowPage Page, HomeScreenTests.Rig Rig, CatalogueTests.World World)> Open(HomeCard card, bool withDeleter = true)
+        private static async Task<(ShowPage Page, HomeScreenTests.Rig Rig, CatalogueTests.World World)> Open(HomeCard card, bool withDeleter = true, Action<CatalogueTests.World>? setup = null)
         {
             var rig = HomeScreenTests.Context();
             var w = CatalogueTests.Build();
             rig.Ctx.Search = w.Search; rig.Ctx.Shows = w.Shows;
+            setup?.Invoke(w);
             if (withDeleter) rig.Ctx.Deleter = new Deletion(w.Data, w.Seerr, w.Search);
             var page = new ShowPage(rig.Ctx, ShowData.FromCard(card));
             await page.Loaded;
@@ -111,6 +112,46 @@ namespace Baird.Tests.NewUi
             await Task.Delay(150);
             Assert.True(changed >= 1, "nobody was told the library changed");
             Assert.Equal(before + 1, (await w.Search.DownloadsAsync("")).Count); // not the copy kept from before the request
+        }
+
+        // ---- discarding a download in progress, from its page ----
+        [AvaloniaFact]
+        public async Task A_film_being_downloaded_offers_discard_and_asks_first()
+        {
+            var (page, rig, w) = await Open(SeerrFilm(999, "The Simpsons Movie", year: "2007"),
+                setup: w => w.Seerr.Status[999] = new JellyseerrMediaStatus(3, Array.Empty<JellyseerrSeason>(), new[] { new JellyseerrDownload(null, null, 100, 25) }));
+            Assert.Contains("Discard download…", page.ButtonLabels);
+            var at = page.ButtonLabels.ToList().IndexOf("Discard download…");
+            for (var i = 0; i < at; i++) page.OnAction(UiAction.Right, false);
+            page.OnAction(UiAction.Ok, false);
+            var ask = Assert.IsType<ChoiceList>(rig.Ctx.Nav.State.Overlay!.Params);
+            Assert.Equal("Discard The Simpsons Movie?", ask.Title);
+            ask.Choices[1].Run();
+            await Task.Delay(100);
+            Assert.Equal(new[] { (999, "movie") }, w.Seerr.Discarded);
+        }
+
+        [AvaloniaFact]
+        public async Task Nothing_to_discard_when_it_is_here_or_was_never_requested()
+        {
+            var (here, _, _) = await Open(SeerrFilm(348, "Alien", year: "1979"));
+            Assert.DoesNotContain("Discard download…", here.ButtonLabels);
+            var (never, _, _) = await Open(SeerrFilm(1234, "Heat"));
+            Assert.DoesNotContain("Discard download…", never.ButtonLabels);
+        }
+
+        [AvaloniaFact]
+        public async Task A_series_being_downloaded_can_be_discarded_but_one_that_is_partly_here_cannot()
+        {
+            var coming = new HomeCard(CardKind.Series, "tmdb:tv:7001", "Silo", "2023", null, null, "get", "Seerr", PlayVia.None);
+            var (page, _, _) = await Open(coming, setup: w => w.Seerr.Status[7001] = new JellyseerrMediaStatus(3,
+                new[] { new JellyseerrSeason(1, 10, 3), new JellyseerrSeason(2, 10, 1) }, new[] { new JellyseerrDownload(1, 1, 100, 60) }));
+            Assert.Contains("Discard download…", page.ButtonLabels);
+
+            // The Simpsons: seasons 1-2 are in Jellyfin: whatever is still coming is not separable from what is here.
+            var here = new HomeCard(CardKind.Series, "tmdb:tv:456", "The Simpsons", "1989", null, null, null, "Seerr", PlayVia.None);
+            var (partly, _, _) = await Open(here);
+            Assert.DoesNotContain("Discard download…", partly.ButtonLabels);
         }
     }
 }

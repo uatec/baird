@@ -40,5 +40,16 @@ namespace Baird.Tests.Services
             using var movie = System.Text.Json.JsonDocument.Parse("{\"id\":1}");
             Assert.Empty(JellyseerrService.RequestedSeasonsOf(movie.RootElement));
         }
+
+        [Fact]
+        public void A_titles_media_and_request_ids_are_read_from_its_details()
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse("{\"mediaInfo\":{\"id\":5,\"status\":3,\"requests\":[{\"id\":11},{\"id\":12}]}}");
+            var (media, requests) = JellyseerrService.MediaAndRequestsOf(doc.RootElement)!.Value;
+            Assert.Equal(5, media);
+            Assert.Equal(new[] { 11, 12 }, requests);
+            using var none = System.Text.Json.JsonDocument.Parse("{\"name\":\"x\"}");
+            Assert.Null(JellyseerrService.MediaAndRequestsOf(none.RootElement));
+        }
     }
 }
