@@ -144,6 +144,24 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void Pausing_live_tv_is_like_rewinding_a_second_per_second_and_resuming_does_not_make_it_jump()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("101")); t.Advance(TimeSpan.FromSeconds(1)); e.Loaded();
+            Assert.Equal(TimeSpan.Zero, c.EffectiveBehindLive);          // at live
+            c.TogglePause(); t.Advance(TimeSpan.FromSeconds(40));
+            Assert.Equal(TimeSpan.FromSeconds(40), c.EffectiveBehindLive); // paused: already 40 s behind, though BehindLive is only settled on resume
+            t.Advance(TimeSpan.FromSeconds(20));
+            Assert.Equal(TimeSpan.FromSeconds(60), c.EffectiveBehindLive);
+            c.TogglePause();
+            Assert.Equal(TimeSpan.FromSeconds(60), c.EffectiveBehindLive); // resumed: no jump
+            t.Advance(TimeSpan.FromSeconds(30));
+            Assert.Equal(TimeSpan.FromSeconds(60), c.EffectiveBehindLive); // playing: stays as far behind
+            c.SeekRelative(TimeSpan.FromSeconds(-30));
+            Assert.Equal(TimeSpan.FromSeconds(90), c.EffectiveBehindLive); // rewinding adds to it
+        }
+
+        [Fact]
         public void Switching_items_saves_progress_of_the_one_left_once()
         {
             var (c, e, t, saved) = Build();

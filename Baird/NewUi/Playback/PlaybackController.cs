@@ -52,6 +52,12 @@ namespace Baird.NewUi.Playback
         public bool IsLoading { get; private set; }
         public string? Failure { get; private set; }
         public TimeSpan BehindLive { get; private set; }
+
+        /// <summary>
+        /// How far behind live the picture is right now. While paused it keeps growing, a second per second (pausing is rewinding at
+        /// that speed), where <see cref="BehindLive"/> is only settled when playing resumes.
+        /// </summary>
+        public TimeSpan EffectiveBehindLive => BehindLive + (_pausedAt is { } at && Current?.Kind == "live" ? _now() - at : TimeSpan.Zero);
         public bool IsPaused { get; private set; }
         /// <summary>What loaded is sound only (a radio channel): there is no picture to show.</summary>
         public bool IsAudioOnly { get; private set; }
