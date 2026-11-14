@@ -124,6 +124,14 @@ namespace Baird.NewUi
             }
         }
 
+        /// <summary>Starts typing a channel number with this digit (the number panel; it tunes once the number is complete). False when no channels are known yet.</summary>
+        public bool TryEnterChannelNumber(int digit)
+        {
+            if (Channels.Count == 0) return false;
+            Nav.OpenOverlay(new OverlayRef("number", digit));
+            return true;
+        }
+
         public void PlayLive(Channel channel)
         {
             var cur = Playback.Current;

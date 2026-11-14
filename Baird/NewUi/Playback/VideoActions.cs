@@ -21,9 +21,7 @@ namespace Baird.NewUi.Playback
             var p = _ctx.Playback;
             if (InputMap.DigitOf(a) is { } digit)
             {
-                if (_ctx.Channels.Count == 0) return false;
-                _ctx.Nav.OpenOverlay(new OverlayRef("number", digit));
-                return true;
+                return _ctx.TryEnterChannelNumber(digit);
             }
             switch (a)
             {

@@ -163,7 +163,8 @@ namespace Baird.NewUi
                     _ => new EmptyScreen(),
                 },
                 VideoAction: videoActions.OnAction,
-                BackToVideoLabel: () => playback.Current?.Title ?? "what's playing"));
+                BackToVideoLabel: () => playback.Current?.Title ?? "what's playing",
+                ChannelNumber: _ctx.TryEnterChannelNumber));
             _ctx.Toast = _shell.Toast;
             _ctx.FlashBackChip = _shell.FlashBackChip;
             _shell.Stage.Children.Insert(0, ident); // over the picture, under everything else

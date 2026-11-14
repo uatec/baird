@@ -349,7 +349,7 @@ namespace Baird.NewUi.Screens
 
         public bool OnAction(UiAction a, bool repeat)
         {
-            if (_rowList.Count == 0) return a != UiAction.Up && a != UiAction.Back;
+            if (_rowList.Count == 0) return a != UiAction.Up && a != UiAction.Back && InputMap.DigitOf(a) == null; // digits are channel numbers: not ours to swallow
             switch (a)
             {
                 case UiAction.Up when _pos.Row == 0: return false;
