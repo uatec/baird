@@ -12,6 +12,8 @@ jobs:
   # The iPhone Shortcut, signed on a Mac (its artifact can be opened on a phone to try it before a release).
   shortcut:
     uses: ./.github/workflows/shortcut.yml
+    secrets:
+      ROUTINEHUB_API_KEY: ${{ secrets.ROUTINEHUB_API_KEY }}
 
   test:
     runs-on: ubuntu-latest
