@@ -152,6 +152,12 @@ namespace Baird.NewUi.Screens
                 if (options.GetScreensaverMinutes != null && options.SetScreensaverMinutes != null)
                     rows.Add(_saver = new ListRow("Screensaver in menus after", SaverText(options.GetScreensaverMinutes())));
             }
+            if (options?.Phones != null)
+            {
+                rows.Add(_connectPhone = new ListRow("Connect a phone", "OK to show the codes"));
+                rows.Add(_forgetPhones = new ListRow("Connected phones", PhonesText(options.Phones.Connected())));
+                groups[_connectPhone] = "Phones";
+            }
             _updates = updates;
             if (updates != null) { rows.Add(_update = new ListRow("Software update", $"{updates.Current} · checking…")); _ = CheckAsync(); }
             if (options?.Sources != null)
@@ -175,9 +181,10 @@ namespace Baird.NewUi.Screens
         }
 
         private readonly SettingsOptions? _options;
-        private readonly ListRow? _subtitles, _autoplay, _about, _saver;
+        private readonly ListRow? _subtitles, _autoplay, _about, _saver, _connectPhone, _forgetPhones;
 
         public static string SaverText(int minutes) => "‹  " + (minutes <= 0 ? "Never" : minutes % 60 == 0 ? $"{minutes / 60} hour{(minutes == 60 ? "" : "s")}" : $"{minutes} minutes") + "  ›";
+        private static string PhonesText(int n) => n == 0 ? "None" : $"{n} · OK to forget {(n == 1 ? "it" : "them")}";
         private readonly Dictionary<string, ListRow> _sources = new();
         public Task Loaded { get; private set; } = Task.CompletedTask;
         public IReadOnlyList<(string Label, string Value)> RowTexts => Rows.Select(r => (r.LabelText, r.ValueText)).ToList();
@@ -225,6 +232,7 @@ namespace Baird.NewUi.Screens
         public override void OnShow()
         {
             if (_layout != null) _layout.Value = LayoutText(_getLayout!()); // the guide's strip may have switched it
+            if (_forgetPhones != null) _forgetPhones.Value = PhonesText(_options!.Phones!.Connected()); // back from connecting one
             if (_options?.Sources != null) Loaded = RefreshSourcesAsync();
         }
 
@@ -243,6 +251,12 @@ namespace Baird.NewUi.Screens
                 return true;
             }
             var lit = Index < Rows.Count ? Rows[Index] : null;
+            if (lit != null && lit == _connectPhone && a == UiAction.Ok) { _options!.Phones!.Connect(); return true; }
+            if (lit != null && lit == _forgetPhones && a == UiAction.Ok)
+            {
+                if (_options!.Phones!.Connected() > 0) { _options.Phones.ForgetAll(); lit.Value = "Forgotten · connect them again to use them"; }
+                return true;
+            }
             if (lit != null && (lit == _subtitles || lit == _autoplay) && a is UiAction.Left or UiAction.Right or UiAction.Ok)
             {
                 if (lit == _subtitles) { var on = !_options!.GetSubtitles(); _options.SetSubtitles(on); lit.Value = OnOff(on); }
@@ -283,13 +297,16 @@ namespace Baird.NewUi.Screens
     /// </summary>
     public sealed record SettingsOptions(Func<bool> GetSubtitles, Action<bool> SetSubtitles, Func<bool> GetAutoplay, Action<bool> SetAutoplay,
         Func<Task<IReadOnlyList<SourceStatus>>>? Sources = null, IReadOnlyList<string>? SourceRows = null, string? About = null,
-        Func<int>? GetScreensaverMinutes = null, Action<int>? SetScreensaverMinutes = null)
+        Func<int>? GetScreensaverMinutes = null, Action<int>? SetScreensaverMinutes = null, PhoneSettings? Phones = null)
     {
         /// <summary>The screensaver delays Settings steps through, in minutes. Zero is never.</summary>
         public static readonly int[] ScreensaverChoices = { 5, 10, 15, 30, 60, 0 };
         public static readonly string[] DefaultSourceRows = { "Freesat (TvHeadend)", "Jellyfin", "Seerr requests", "Netflix", "Disney+" };
         public IReadOnlyList<string> SourceNames => SourceRows ?? DefaultSourceRows;
     }
+
+    /// <summary>Settings' Phones rows: how many are connected, show the codes to connect one, forget them all.</summary>
+    public sealed record PhoneSettings(Func<int> Connected, Action Connect, Action ForgetAll);
 
     /// <summary>A page that isn't built yet (none are reachable in phase 1; a safe fallback).</summary>
     public sealed class EmptyScreen : IScreen

@@ -14,6 +14,7 @@ using Baird.NewUi.Lifecycle;
 using Baird.NewUi.Playback;
 using Baird.NewUi.Screens;
 using Baird.Services;
+using Baird.Services.Cast;
 using Microsoft.Extensions.Configuration;
 
 namespace Baird.NewUi
@@ -59,7 +60,8 @@ namespace Baird.NewUi
             var timers = new DispatcherTimers();
             var router = new EngineRouter(mpv, services.BrowserEngines);
             var playback = new PlaybackController(router, a => Dispatcher.UIThread.Post(a), timers, () => DateTimeOffset.Now,
-                (id, pos, dur) => _ = history.SaveAsync(id, pos, dur), mpv.ConfigureForSource);
+                // Links sent from a phone aren't in any catalogue: nothing to resume them from.
+                (id, pos, dur) => { if (!id.StartsWith(PhoneItemPrefix, StringComparison.Ordinal)) _ = history.SaveAsync(id, pos, dur); }, mpv.ConfigureForSource);
             // A live channel that won't load may be a wedged tuner: restart TvHeadend (rate-limited), then tune it again.
             var tuner = TunerRecovery.ForThisMachine();
             playback.LiveLoadFailed += async failed =>
@@ -118,6 +120,10 @@ namespace Baird.NewUi
             playback.SubtitlesDefault = Flag(config["Baird:Subtitles"]);
             var updates = UpdateService.ForThisMachine(config);
             var sourceStatus = SourceStatusReader.For(services, () => _ctx.Channels.Count, !string.IsNullOrEmpty(config["JELLYSEERR_API_KEY"]), () => DateTimeOffset.Now);
+            // Phones: share a link to "Play on Baird" (an iPhone Shortcut) and it plays here. Settings › Connect a phone pairs one.
+            var phonesOn = CastServer.Enabled(config);
+            var phonePort = CastServer.PortFrom(config);
+            var pairings = new PhonePairings(PhonePairings.DefaultPath, () => DateTimeOffset.Now);
             var settingsOptions = new SettingsOptions(
                 () => playback.SubtitlesDefault,
                 v => { playback.SubtitlesDefault = v; IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "Subtitles", v ? "true" : "false"); },
@@ -131,7 +137,8 @@ namespace Baird.NewUi
                     _saverMinutes = m;
                     if (_life != null) _life.MenuIdleAfter = TimeSpan.FromMinutes(m);
                     IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "ScreensaverMinutes", m.ToString(CultureInfo.InvariantCulture));
-                });
+                },
+                Phones: phonesOn ? new PhoneSettings(() => pairings.Connected, () => nav.OpenPage(new PageRef(PhonesPageName, null, "Connect a phone")), pairings.ForgetAll) : null);
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
             _ctx.CycleAudio = () => router.ActiveBrowser == null ? mpv.CycleAudio() : null;
@@ -156,6 +163,7 @@ namespace Baird.NewUi
                     }, () => _ctx.GuideLayout, l => _ctx.SetGuideLayout(l), updates, settingsOptions),
                 },
                 CreatePage: p => p.Name == "show" && p.Params is Model.CatalogueTitle t ? new ShowPage(_ctx, t)
+                    : p.Name == PhonesPageName ? new PhonesPage(CastServer.BaseUrl(config, phonePort), pairings.Issue)
                     : p.Name == Shell.Shell.GuidePage ? GuideScreen.ForPage(_ctx, guideData.LoadAsync, timers, p) : new EmptyScreen(),
                 CreateOverlay: o => o.Name switch
                 {
@@ -415,8 +423,32 @@ namespace Baird.NewUi
             _life.MenuIdleAfter = TimeSpan.FromMinutes(_saverMinutes);
             _life.Start();
 
+            if (phonesOn)
+            {
+                _phones = new CastServer(new CastApi(pairings, link => PlayFromPhoneAsync(link, router), CastApi.FindShortcut), phonePort);
+                _phones.Start();
+            }
+
             Content = _shell;
             _holdTick.Tick += (_, _) => { if (_hold.Tick() is { } held) Dispatch(held, false); };
+        }
+
+        public const string PhoneItemPrefix = "phone:";
+        private const string PhonesPageName = "phones";
+        private CastServer? _phones; // lives as long as Baird does
+
+        /// <summary>A link shared from a phone: wake the TV, then play it like any card (it replaces what's playing, as casting does).</summary>
+        private async System.Threading.Tasks.Task<string> PlayFromPhoneAsync(CastLink link, EngineRouter router)
+        {
+            var title = await CastTitles.LookupAsync(link);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                _life.HandleInput(RemoteInput.Other); // TV on, Baird's input, screensaver off
+                var via = router.BrowserFor(link.PlayUrl) != null ? Model.PlayVia.Browser : Model.PlayVia.Mpv;
+                _ctx.PlayItem(new Model.HomeCard(Model.CardKind.Film, PhoneItemPrefix + link.PlayUrl, title, link.Service, null, null, null,
+                    link.Service, via, link.PlayUrl, link.Start));
+            });
+            return $"Playing “{title}” on Baird";
         }
 
         private void ApplyScale(double scale)

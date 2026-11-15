@@ -1,0 +1,46 @@
+name: Shortcut
+
+# Builds the "Play on Baird" iPhone Shortcut from shortcut/build_shortcut.py and signs it ("anyone" mode) on a Mac:
+# iOS only imports signed Shortcuts, and only macOS signs them. The signed file is uploaded as the "shortcut" artifact;
+# the release puts it in Baird's zip, and Baird serves it to phones (Settings > Connect a phone).
+# Signing is allowed to fail (the artifact is then missing) so it never blocks a Baird release.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  shortcut:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build (unsigned)
+        run: |
+          mkdir -p out
+          python3 shortcut/build_shortcut.py out/unsigned.shortcut
+          plutil -lint out/unsigned.shortcut
+
+      - name: Sign
+        id: sign
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          shortcuts sign --mode anyone --input out/unsigned.shortcut --output "out/Play on Baird.shortcut"
+          ls -l out
+
+      - name: Upload signed Shortcut
+        if: steps.sign.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shortcut
+          path: out/Play on Baird.shortcut
+          if-no-files-found: error
+
+      - name: Say if signing failed
+        if: steps.sign.outcome != 'success'
+        run: echo "::warning::The Shortcut couldn't be signed on this runner; Baird ships without it."
