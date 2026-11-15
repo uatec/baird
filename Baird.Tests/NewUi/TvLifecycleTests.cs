@@ -222,6 +222,22 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void The_menu_screensaver_delay_can_be_changed_and_zero_means_never()
+        {
+            var r = Build();
+            r.Life.MenuIdleAfter = TimeSpan.FromMinutes(15);
+            r.Wait(TimeSpan.FromMinutes(14));
+            Assert.False(r.Saver.IsActive);
+            r.Wait(TimeSpan.FromMinutes(1));
+            Assert.True(r.Saver.IsActive);
+
+            var never = Build();
+            never.Life.MenuIdleAfter = TimeSpan.Zero;
+            never.Wait(TimeSpan.FromHours(48));
+            Assert.False(never.Saver.IsActive);
+        }
+
+        [Fact]
         public void Activity_keeps_the_screensaver_away()
         {
             var r = Build();

@@ -137,20 +137,10 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public void Settings_interface_switch_asks_to_switch_to_classic_and_restart()
-        {
-            var asked = new List<UiMode>();
-            var s = new SettingsScreen(() => UiMode.New, asked.Add, 1.0, _ => { });
-            s.OnAction(UiAction.Right, false);
-            Assert.Equal(UiMode.Classic, asked.Single());
-        }
-
-        [AvaloniaFact]
         public void Settings_interface_size_steps_by_ten_percent_within_80_to_130()
         {
             var sizes = new List<double>();
-            var s = new SettingsScreen(() => UiMode.New, _ => { }, 1.25, sizes.Add);
-            s.OnAction(UiAction.Down, false);
+            var s = new SettingsScreen(1.25, sizes.Add);
             s.OnAction(UiAction.Right, false);
             s.OnAction(UiAction.Right, false);
             Assert.Equal(new[] { 1.3, 1.3 }, sizes);

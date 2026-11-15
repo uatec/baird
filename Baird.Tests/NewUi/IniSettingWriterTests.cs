@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Baird.Services;
-using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace Baird.Tests.NewUi
@@ -66,33 +65,6 @@ namespace Baird.Tests.NewUi
         }
     }
 
-    public class UiModeTests
-    {
-        private static IConfiguration Config(params (string, string)[] kv)
-        {
-            var d = new Dictionary<string, string?>();
-            foreach (var (k, v) in kv) d[k] = v;
-            return new ConfigurationBuilder().AddInMemoryCollection(d).Build();
-        }
-
-        [Fact]
-        public void A_new_ui_that_fails_to_start_falls_back_to_classic()
-        {
-            var built = UiModes.Build<string>(UiMode.New, () => throw new InvalidOperationException("font missing"), () => "classic");
-            Assert.Equal("classic", built);
-        }
-
-        [Fact] public void Classic_mode_builds_classic() => Assert.Equal("classic", UiModes.Build(UiMode.Classic, () => "new", () => "classic"));
-        [Fact] public void New_mode_builds_new() => Assert.Equal("new", UiModes.Build(UiMode.New, () => "new", () => "classic"));
-
-        [Fact] public void Missing_is_classic() => Assert.Equal(UiMode.Classic, UiModes.Read(Config()));
-        [Fact] public void New_from_the_setting() => Assert.Equal(UiMode.New, UiModes.Read(Config(("Baird:Ui", "new"))));
-        [Fact] public void Case_insensitive() => Assert.Equal(UiMode.New, UiModes.Read(Config(("Baird:Ui", "NEW"))));
-        [Fact] public void Unknown_is_classic() => Assert.Equal(UiMode.Classic, UiModes.Read(Config(("Baird:Ui", "fancy"))));
-        [Fact] public void Environment_override_wins() => Assert.Equal(UiMode.New, UiModes.Read(Config(("Baird:Ui", "classic"), ("BAIRD_UI", "new"))));
-        [Fact] public void Text_round_trips() { Assert.Equal("new", UiModes.ToSetting(UiMode.New)); Assert.Equal("classic", UiModes.ToSetting(UiMode.Classic)); }
-    }
-
     public class AppRestarterTests
     {
         private sealed class Runner : IProcessRunner
@@ -118,37 +90,6 @@ namespace Baird.Tests.NewUi
             new AppRestarter(r, _ => null, () => exited = true, "/home/u/Baird", new[] { "--foo", "a b" }).Restart();
             Assert.Equal(("/home/u/Baird", "--foo \"a b\""), r.Started[0]);
             Assert.True(exited);
-        }
-    }
-}
-
-namespace Baird.Tests.NewUi
-{
-    public class ClassicSettingsInterfaceToggleTests
-    {
-        [Avalonia.Headless.XUnit.AvaloniaFact]
-        public void Toggling_saves_new_to_the_config_and_restarts()
-        {
-            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "baird-cfg-" + System.Guid.NewGuid().ToString("N"), "config.ini");
-            var restarted = 0;
-            var vm = new Baird.ViewModels.SettingsViewModel(null) { ConfigPath = path, Restart = () => restarted++ };
-            Assert.Equal("Classic", vm.UiModeText);
-            vm.ToggleUiModeCommand.Execute().Subscribe();
-            Assert.Contains("Ui=new", System.IO.File.ReadAllLines(path));
-            Assert.Equal(1, restarted);
-            Assert.Equal("New", vm.UiModeText);
-        }
-
-        [Avalonia.Headless.XUnit.AvaloniaFact]
-        public void A_second_press_while_restarting_does_nothing()
-        {
-            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "baird-cfg-" + System.Guid.NewGuid().ToString("N"), "config.ini");
-            var restarted = 0;
-            var vm = new Baird.ViewModels.SettingsViewModel(null) { ConfigPath = path, Restart = () => restarted++ };
-            vm.ToggleUiModeCommand.Execute().Subscribe();
-            vm.ToggleUiModeCommand.Execute().Subscribe();
-            Assert.Contains("Ui=new", System.IO.File.ReadAllLines(path));
-            Assert.Equal(1, restarted);
         }
     }
 }

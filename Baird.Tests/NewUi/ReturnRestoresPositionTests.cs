@@ -92,7 +92,7 @@ namespace Baird.Tests.NewUi
         [AvaloniaFact]
         public void Settings_keeps_its_position_through_every_departure()
         {
-            var s = new SettingsScreen(() => UiMode.New, _ => { }, 1.0, _ => { }, () => GuideLayout.Rows, _ => { });
+            var s = new SettingsScreen(1.0, _ => { }, () => GuideLayout.Rows, _ => { });
             Show(s.View);
             Press(s, UiAction.Down, UiAction.Down);
             var lit = s.LitElement;

@@ -31,6 +31,7 @@ namespace Baird.NewUi
         private readonly NewUiContext _ctx;
         private Key? _lastKey;
         private readonly TvLifecycle _life;
+        private int _saverMinutes = 10;
         private readonly ICecService _cec;
         private CecRemoteControl? _tvRemote;
         private readonly Key _voiceKey;
@@ -113,6 +114,7 @@ namespace Baird.NewUi
             // Settings: subtitles and autoplay (Baird:Subtitles / Baird:Autoplay in config.ini, on unless set to false).
             static bool Flag(string? v) => v == null || !(v.Equals("false", StringComparison.OrdinalIgnoreCase) || v.Equals("off", StringComparison.OrdinalIgnoreCase) || v == "0");
             _ctx.Autoplay = Flag(config["Baird:Autoplay"]);
+            _saverMinutes = int.TryParse(config["Baird:ScreensaverMinutes"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var sm) && sm >= 0 ? sm : 10;
             playback.SubtitlesDefault = Flag(config["Baird:Subtitles"]);
             var updates = UpdateService.ForThisMachine(config);
             var sourceStatus = SourceStatusReader.For(services, () => _ctx.Channels.Count, !string.IsNullOrEmpty(config["JELLYSEERR_API_KEY"]), () => DateTimeOffset.Now);
@@ -122,7 +124,14 @@ namespace Baird.NewUi
                 () => _ctx.Autoplay,
                 v => { _ctx.Autoplay = v; IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "Autoplay", v ? "true" : "false"); },
                 () => sourceStatus.ReadAsync(),
-                About: $"{updates.Current} · new interface");
+                About: updates.Current,
+                GetScreensaverMinutes: () => _saverMinutes,
+                SetScreensaverMinutes: m =>
+                {
+                    _saverMinutes = m;
+                    if (_life != null) _life.MenuIdleAfter = TimeSpan.FromMinutes(m);
+                    IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "ScreensaverMinutes", m.ToString(CultureInfo.InvariantCulture));
+                });
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
             _ctx.CycleAudio = () => router.ActiveBrowser == null ? mpv.CycleAudio() : null;
@@ -140,7 +149,7 @@ namespace Baird.NewUi
                     Place.Home => new HomeScreen(_ctx),
                     Place.LiveTv => new GuideScreen(_ctx, guideData.LoadAsync, timers),
                     Place.Search => new SearchScreen(_ctx),
-                    _ => new SettingsScreen(() => UiMode.New, mode => { UiModes.Save(mode); AppRestarter.ForThisProcess().Restart(); }, scale, v =>
+                    _ => new SettingsScreen(scale, v =>
                     {
                         ApplyScale(v);
                         IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "NewUiSize", v.ToString("0.0", CultureInfo.InvariantCulture));
@@ -403,6 +412,7 @@ namespace Baird.NewUi
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
                 inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn, stillWatching, new FileIdleState());
             _ = System.Threading.Tasks.Task.Run(() => services.Screensaver.InitializeAsync());
+            _life.MenuIdleAfter = TimeSpan.FromMinutes(_saverMinutes);
             _life.Start();
 
             Content = _shell;

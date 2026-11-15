@@ -423,7 +423,7 @@ namespace Baird.Tests.NewUi
         {
             var layout = GuideLayout.Rows;
             var set = new List<GuideLayout>();
-            var s = new SettingsScreen(() => UiMode.New, _ => { }, 1.0, _ => { }, () => layout, l => { layout = l; set.Add(l); });
+            var s = new SettingsScreen(1.0, _ => { }, () => layout, l => { layout = l; set.Add(l); });
             s.OnAction(UiAction.Down, false);
             s.OnAction(UiAction.Down, false);
             s.OnAction(UiAction.Right, false);

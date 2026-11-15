@@ -35,6 +35,8 @@ namespace Baird.NewUi.Lifecycle
     {
         /// <summary>Nobody watches a menu for fun.</summary>
         public static readonly TimeSpan MenuIdle = TimeSpan.FromMinutes(10);
+        /// <summary>How long in a menu with no key before the screensaver starts. Zero means never. The "Still watching?" wait for a loaded stream is separate.</summary>
+        public TimeSpan MenuIdleAfter { get; set; } = MenuIdle;
         public static readonly TimeSpan PromptWait = TimeSpan.FromMinutes(5);   // declared before StreamIdle, which uses it
         /// <summary>Idle time with a stream loaded before asking whether anyone is still there (3 hours less the 5 minutes to answer).</summary>
         public static readonly TimeSpan StreamIdle = TimeSpan.FromHours(3) - PromptWait;
@@ -220,7 +222,7 @@ namespace Baird.NewUi.Lifecycle
             {
                 if (idleFor >= StreamIdle) { AskStillWatching(); return; }
             }
-            else if (idleFor >= MenuIdle) { StartSaver(); return; }
+            else if (MenuIdleAfter > TimeSpan.Zero && idleFor >= MenuIdleAfter) { StartSaver(); return; }
             ScheduleCheck();
         }
 
