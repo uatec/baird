@@ -51,16 +51,29 @@ namespace Baird.NewUi.Adapters
             || source == ItvxProvider.SourceName || source == Channel4Provider.SourceName ? PlayVia.Browser : PlayVia.Mpv;
 
         /// <summary>"S4 E2 · The Griffin Incident" when the provider says which episode it is, else the episode's title.</summary>
-        private static string EpisodeLine(MediaItemViewModel m) =>
-            System.Text.RegularExpressions.Regex.IsMatch(m.Details ?? "", @"^S\d+ E\d+$") ? $"{m.Details} · {m.Subtitle}" : m.Subtitle;
+        private static string EpisodeLine(MediaItemViewModel m)
+        {
+            var title = !string.IsNullOrWhiteSpace(m.Subtitle) ? m.Subtitle : m.Name;
+            var code = System.Text.RegularExpressions.Regex.Match(m.Details ?? "", @"^S(\d+)[ :]E(\d+)$");
+            return code.Success ? $"S{code.Groups[1].Value} E{code.Groups[2].Value} · {title}" : title;
+        }
 
-        private static HomeCard ItemCard(MediaItemViewModel m) =>
-            new(m.Type == MediaType.Brand ? CardKind.Series : !string.IsNullOrWhiteSpace(m.Subtitle) ? CardKind.Episode : CardKind.Film,
-                m.Id, m.Name,
-                m.Type == MediaType.Brand ? m.Details : !string.IsNullOrWhiteSpace(m.Subtitle) ? EpisodeLine(m) : m.Details,
+        /// <summary>
+        /// An episode is an episode when it names its show (every service does) or has a title of its own (Jellyfin history);
+        /// its card is headed by the show, with the episode's number and title under it.
+        /// </summary>
+        private static HomeCard ItemCard(MediaItemViewModel m)
+        {
+            var series = m.Type == MediaType.Brand ? null : ShowData.SeriesOf(m.Data);
+            var episode = m.Type != MediaType.Brand && (series != null || !string.IsNullOrWhiteSpace(m.Subtitle));
+            double? progress = m.History is { } h && !h.IsFinished && h.LastPosition > TimeSpan.Zero ? m.Progress : null;
+            return new(m.Type == MediaType.Brand ? CardKind.Series : episode ? CardKind.Episode : CardKind.Film,
+                m.Id, episode && series != null ? series.Name : m.Name,
+                m.Type == MediaType.Brand ? m.Details : episode ? EpisodeLine(m) : m.Details,
                 string.IsNullOrEmpty(m.ImageUrl) ? null : m.ImageUrl,
-                m.History is { } h && !h.IsFinished && h.LastPosition > TimeSpan.Zero ? m.Progress : null,
-                null, m.Source, m.StreamUrl is { Length: > 0 } ? ViaOf(m.Source) : PlayVia.None, m.StreamUrl, m.LastPosition, Synopsis: m.Synopsis);
+                progress,
+                null, m.Source, m.StreamUrl is { Length: > 0 } ? ViaOf(m.Source) : PlayVia.None, m.StreamUrl, m.LastPosition, Synopsis: m.Synopsis, Series: series);
+        }
 
         /// <summary>Items taken off Continue watching (id → when), so they stay off until watched again. Null = not remembered.</summary>
         public string? HiddenPath { get; init; }

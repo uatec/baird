@@ -143,6 +143,23 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public async Task An_episode_from_any_service_is_headed_by_its_show_and_knows_it()
+        {
+            // Disney+ (and the other browser services) name the episode itself and leave the subtitle empty; the show is in SeriesId/SeriesName.
+            var disney = Item("disney:ep:1", "Homer the Heretic", source: "Disney+") with { Details = "S4:E3", Subtitle = "", SeriesId = "disney:simpsons", SeriesName = "The Simpsons" };
+            var history = new History();
+            history.Items.Add(new HistoryItem { Id = disney.Id, LastPosition = TimeSpan.FromMinutes(10), Duration = TimeSpan.FromMinutes(22), LastWatched = DateTime.Now });
+            var data = new DataService(new List<IMediaProvider> { new Baird.Tests.Mocks.MockMediaProvider("P", new[] { disney }) }, history, new Watchlist(), new MediaItemCache(), new MockMediaDataCache());
+            var card = (await new HomeData(data, new MockEpgService(), new Seerr()).UpNextAsync()).Single();
+
+            Assert.Equal(CardKind.Episode, card.Kind);
+            Assert.Equal("The Simpsons", card.Label);
+            Assert.Equal("S4 E3 · Homer the Heretic", card.Sublabel);
+            Assert.Equal("The Simpsons", card.Series!.Name);
+            Assert.Equal("disney:simpsons", card.Series.Sources[0].ItemId);
+        }
+
+        [Fact]
         public async Task On_now_lists_numbered_channels_in_order_with_the_current_programme_or_none()
         {
             var (home, _, _, _) = Build();

@@ -56,6 +56,8 @@ namespace Baird.Services
         public PlaybackState State => _state;
         public double TimePositionSeconds => Volatile.Read(ref _position);
         public double DurationSeconds => Volatile.Read(ref _duration);
+        /// <summary>Jump each advert to its end (on by default; Baird:Channel4SkipAdverts=false keeps them).</summary>
+        public bool SkipAdverts { get; set; } = true;
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(500);
         /// <summary>How long the page may take to play a video (adverts included) before the play fails.</summary>
         public TimeSpan StartTimeout { get; set; } = TimeSpan.FromSeconds(90);
@@ -347,6 +349,16 @@ namespace Baird.Services
             {
                 _advert = advert;
                 Console.WriteLine(advert ? "[Channel4Engine] An advert plays." : "[Channel4Engine] The programme plays.");
+            }
+            if (advert && SkipAdverts && state.OtherVideoPlaying)
+            {
+                try
+                {
+                    var r = await _service.PageDriver.EvaluateAsync(Channel4PlayerControl.SkipAdvertScript);
+                    if (r is { ValueKind: System.Text.Json.JsonValueKind.String } done) Console.WriteLine($"[Channel4Engine] Advert {done.GetString()}.");
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { Console.WriteLine($"[Channel4Engine] Couldn't skip the advert: {ex.Message}"); }
             }
             if (!advert) Volatile.Write(ref _position, state.CurrentTime);
             // The page's own length is exact (the programme page only gives minutes). It is the programme's even while an advert plays
