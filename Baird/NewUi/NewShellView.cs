@@ -425,7 +425,7 @@ namespace Baird.NewUi
 
             if (phonesOn)
             {
-                _phones = new CastServer(new CastApi(pairings, link => PlayFromPhoneAsync(link, router), CastApi.FindShortcut), phonePort);
+                _phones = new CastServer(new CastApi(pairings, link => PlayFromPhoneAsync(link, router), CastApi.FindShortcut, () => config["Baird:ShortcutLink"]), phonePort);
                 _phones.Start();
             }
 

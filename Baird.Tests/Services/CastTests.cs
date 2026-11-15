@@ -225,6 +225,18 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
+        public async Task An_icloud_link_wins_over_the_file_and_is_read_each_time()
+        {
+            string? link = null;
+            var api = new CastApi(_pairings, _ => Task.FromResult(""), () => null, () => link);
+            Assert.DoesNotContain("class=\"button\"", Encoding.UTF8.GetString((await api.HandleAsync(new CastRequest("GET", "/phone/x", ""))).Body));
+            link = "https://www.icloud.com/shortcuts/abc123";
+            Assert.Contains("href=\"https://www.icloud.com/shortcuts/abc123\"", Encoding.UTF8.GetString((await api.HandleAsync(new CastRequest("GET", "/phone/x", ""))).Body));
+            link = "javascript:alert(1)"; // not a web link: ignored
+            Assert.DoesNotContain("javascript", Encoding.UTF8.GetString((await api.HandleAsync(new CastRequest("GET", "/phone/x", ""))).Body));
+        }
+
+        [Fact]
         public async Task The_shortcut_is_missing_until_a_build_ships_it() =>
             Assert.Equal(404, (await Api().HandleAsync(new CastRequest("GET", "/shortcut", ""))).Status);
 

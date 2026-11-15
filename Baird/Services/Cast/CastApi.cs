@@ -40,12 +40,17 @@ namespace Baird.Services.Cast
         private readonly PhonePairings _pairings;
         private readonly Func<CastLink, Task<string>> _play;
         private readonly Func<string?> _shortcutPath;
+        private readonly Func<string?> _shortcutLink;
 
         /// <param name="play">Plays the link on the TV; returns what to tell the phone ("Playing “…” on Baird").</param>
         /// <param name="shortcutPath">Where the signed Shortcut is, or null when this build has none.</param>
-        public CastApi(PhonePairings pairings, Func<CastLink, Task<string>> play, Func<string?> shortcutPath)
+        /// <param name="shortcutLink">
+        /// An iCloud link to the Shortcut (Baird:ShortcutLink), for a Shortcut built by hand on an iPhone (its iCloud link is
+        /// signed by its owner's account). Wins over the file; read each time, so a changed config.ini takes effect at once.
+        /// </param>
+        public CastApi(PhonePairings pairings, Func<CastLink, Task<string>> play, Func<string?> shortcutPath, Func<string?>? shortcutLink = null)
         {
-            _pairings = pairings; _play = play; _shortcutPath = shortcutPath;
+            _pairings = pairings; _play = play; _shortcutPath = shortcutPath; _shortcutLink = shortcutLink ?? (() => null);
         }
 
         /// <summary>
@@ -67,11 +72,11 @@ namespace Baird.Services.Cast
             {
                 var token = path.Length > PhonePath.Length ? path[PhonePath.Length..] : "";
                 if (method == "POST") return await PlayAsync(token, r.Body);
-                if (method == "GET") return CastResponse.Html(200, SetupPage(_shortcutPath() != null));
+                if (method == "GET") return CastResponse.Html(200, SetupPage(InstallHref()));
             }
             switch (method, path)
             {
-                case ("GET", ""): return CastResponse.Html(200, SetupPage(_shortcutPath() != null));
+                case ("GET", ""): return CastResponse.Html(200, SetupPage(InstallHref()));
                 case ("GET", "/shortcut"):
                     if (_shortcutPath() is not { } file) return CastResponse.Html(404, Page("Not ready yet", "<p>This version of Baird doesn't have the Shortcut. Update Baird, then try again.</p>"));
                     return new CastResponse(200, "application/octet-stream", await File.ReadAllBytesAsync(file), ShortcutFile);
@@ -127,10 +132,18 @@ namespace Baird.Services.Cast
             return new CastResponse(200, "application/json; charset=utf-8", stream.ToArray());
         }
 
-        private static string SetupPage(bool hasShortcut) => Page("Play on Baird", hasShortcut
+        /// <summary>Where "Add the Shortcut" goes: the iCloud link if one is set, else the shipped file, else nowhere.</summary>
+        private string? InstallHref()
+        {
+            var link = _shortcutLink()?.Trim();
+            if (!string.IsNullOrEmpty(link) && link.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return link;
+            return _shortcutPath() != null ? "/shortcut" : null;
+        }
+
+        private static string SetupPage(string? installHref) => Page("Play on Baird", installHref != null
             ? $"""
               <p>Send videos from this phone to the TV.</p>
-              <a class="button" href="/shortcut">Add the “{ShortcutName}” Shortcut</a>
+              <a class="button" href="{WebUtility.HtmlEncode(installHref)}">Add the “{ShortcutName}” Shortcut</a>
               <ol>
                 <li>Tap the button above, then <b>Add Shortcut</b>.</li>
                 <li>In YouTube (or Safari, iPlayer, Netflix…) tap <b>Share</b>, then <b>{ShortcutName}</b>.</li>
