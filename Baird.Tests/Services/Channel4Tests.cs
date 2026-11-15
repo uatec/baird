@@ -478,6 +478,18 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
+        public async Task An_advert_that_plays_again_is_jumped_only_a_few_times_not_on_every_poll()
+        {
+            var (b, _, engine) = Engine();
+            b.States.Enqueue(FakeChannel4Browser.State(Episode, auth: true, video: true, t: 0, duration: 2089.9, paused: true, otherVideo: true, advertTime: 0.3));
+            b.LastState = FakeChannel4Browser.State(Episode, auth: true, video: true, t: 0, duration: 2089.9, paused: true, otherVideo: true, advertTime: 2.3);
+            engine.SkipRetry = TimeSpan.FromHours(1);
+            await engine.PlayAsync(Episode);
+            for (var i = 0; i < 6; i++) await engine.PollOnceAsync();
+            Assert.Single(b.ControlScripts, c => c.Contains("ad.currentTime = ad.duration"));
+        }
+
+        [Fact]
         public async Task A_page_waiting_on_its_Play_button_gets_it_pressed()
         {
             var (b, _, engine) = Engine();

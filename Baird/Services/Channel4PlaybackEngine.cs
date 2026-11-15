@@ -58,6 +58,21 @@ namespace Baird.Services
         public double DurationSeconds => Volatile.Read(ref _duration);
         /// <summary>Jump each advert to its end (on by default; Baird:Channel4SkipAdverts=false keeps them).</summary>
         public bool SkipAdverts { get; set; } = true;
+        /// <summary>An advert is jumped at most this many times, this far apart: jumping on every poll loops the picture (seen on ITVX).</summary>
+        public TimeSpan SkipRetry { get; set; } = TimeSpan.FromSeconds(3);
+        public int MaxSkipsPerAdvert { get; set; } = 3;
+        private int _skipAttempts;
+        private DateTime _lastSkipAt;
+
+        private bool SkipNow(bool advertPlaying)
+        {
+            if (!SkipAdverts || !advertPlaying) { if (!advertPlaying) _skipAttempts = 0; return false; }
+            var now = DateTime.UtcNow;
+            if (_skipAttempts >= MaxSkipsPerAdvert || (_skipAttempts > 0 && now - _lastSkipAt < SkipRetry)) return false;
+            _skipAttempts++;
+            _lastSkipAt = now;
+            return true;
+        }
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(500);
         /// <summary>How long the page may take to play a video (adverts included) before the play fails.</summary>
         public TimeSpan StartTimeout { get; set; } = TimeSpan.FromSeconds(90);
@@ -350,7 +365,7 @@ namespace Baird.Services
                 _advert = advert;
                 Console.WriteLine(advert ? "[Channel4Engine] An advert plays." : "[Channel4Engine] The programme plays.");
             }
-            if (advert && SkipAdverts && state.OtherVideoPlaying)
+            if (SkipNow(advert && state.OtherVideoPlaying))
             {
                 try
                 {
