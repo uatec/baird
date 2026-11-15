@@ -79,6 +79,7 @@ namespace Baird.NewUi
             // An episode started from Home (not its show page): find its show, so the end card can offer the next one.
             _ctx.SeriesOf = async card =>
             {
+                if (card.Series is { } known) return known;   // the episode says which show it belongs to (every service but older Jellyfin history)
                 if (!card.Source.StartsWith("Jellyfin", StringComparison.OrdinalIgnoreCase)) return null;
                 if (await services.Jellyfin.GetSeriesOfAsync(card.Id) is not { } series) return null;
                 return new Model.CatalogueTitle($"Series:{series.Id}", Model.TitleKind.Series, series.Name, null, services.Jellyfin.ImageUrlOf(series.Id), null,
