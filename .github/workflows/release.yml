@@ -12,6 +12,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The iPhone Shortcut, signed on a Mac; shipped in the zip when signing worked.
+  shortcut:
+    uses: ./.github/workflows/shortcut.yml
+
   test:
     runs-on: ubuntu-latest
     permissions:
@@ -37,7 +41,7 @@ jobs:
   # very same binary that gets zipped and released. The tag is only created
   # (by action-gh-release) after the smoke test passes.
   build-and-release:
-    needs: test
+    needs: [test, shortcut]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
@@ -75,6 +79,13 @@ jobs:
 
       - name: Startup smoke test (gate)
         run: ./smoke_test.sh publish/linux-arm64/Baird
+
+      - name: Add the signed iPhone Shortcut
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: shortcut
+          path: publish/linux-arm64
 
       - name: Zip Application
         run: |
