@@ -98,5 +98,38 @@ namespace Baird.Tests.Services
             Assert.NotNull(result);
             Assert.False(result.IsFinished, "Long video with >10m remaining should NOT be finished");
         }
+
+        private static MediaItemViewModel Media(string id, bool live) =>
+            new(new MediaItemData { Id = id, Name = id, Details = "", ImageUrl = "", IsLive = live, Source = "Test", Type = live ? MediaType.Channel : MediaType.Video, Synopsis = "", Subtitle = "", StreamUrl = "http://test" });
+
+        [Fact]
+        public async Task A_live_channel_watched_for_a_minute_is_never_finished()
+        {
+            // A channel has no end: it is saved with a duration of 0, which used to look like "past the end" (finished) and
+            // kept every watched channel out of Continue watching.
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "hist-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                var service = new JsonHistoryService(path);
+                await service.UpsertAsync(Media("itv1", live: true), TimeSpan.FromMinutes(1), TimeSpan.Zero);
+                var h = service.GetProgress("itv1")!;
+                Assert.False(h.IsFinished);
+                Assert.Equal(TimeSpan.FromMinutes(1), h.LastPosition);
+            }
+            finally { try { System.IO.File.Delete(path); } catch { } }
+        }
+
+        [Fact]
+        public async Task A_video_with_no_known_length_that_played_to_the_end_is_still_finished()
+        {
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "hist-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                var service = new JsonHistoryService(path);
+                await service.UpsertAsync(Media("clip", live: false), TimeSpan.FromMinutes(3), TimeSpan.Zero);
+                Assert.True(service.GetProgress("clip")!.IsFinished);
+            }
+            finally { try { System.IO.File.Delete(path); } catch { } }
+        }
     }
 }

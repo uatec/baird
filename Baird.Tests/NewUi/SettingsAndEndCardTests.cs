@@ -22,6 +22,7 @@ namespace Baird.Tests.NewUi
         private sealed class Saved
         {
             public bool Subs = true, Autoplay = true;
+            public int SaverMinutes = 10;
             public readonly List<string> Writes = new();
         }
 
@@ -31,8 +32,27 @@ namespace Baird.Tests.NewUi
             var options = new SettingsOptions(() => saved.Subs, v => { saved.Subs = v; saved.Writes.Add($"Subtitles={v}"); },
                 () => saved.Autoplay, v => { saved.Autoplay = v; saved.Writes.Add($"Autoplay={v}"); },
                 sources ?? (() => Task.FromResult<IReadOnlyList<SourceStatus>>(new[] { new SourceStatus("Jellyfin", "Connected", SourceHealth.Ok) })),
-                About: "1.2.3 · new interface");
-            return (new SettingsScreen(() => UiMode.New, _ => { }, 1.0, _ => { }, options: options), saved);
+                About: "1.2.3 · new interface",
+                GetScreensaverMinutes: () => saved.SaverMinutes, SetScreensaverMinutes: m => { saved.SaverMinutes = m; saved.Writes.Add($"ScreensaverMinutes={m}"); });
+            return (new SettingsScreen(1.0, _ => { }, options: options), saved);
+        }
+
+        [AvaloniaFact]
+        public void Screensaver_row_steps_through_the_delays_and_saves_each()
+        {
+            var (s, saved) = Settings();
+            GoTo(s, "Screensaver in menus after");
+            Assert.Contains(("Screensaver in menus after", "‹  10 minutes  ›"), s.RowTexts);
+            s.OnAction(UiAction.Right, false);
+            Assert.Equal(15, saved.SaverMinutes);
+            s.OnAction(UiAction.Left, false);
+            s.OnAction(UiAction.Left, false);
+            Assert.Equal(5, saved.SaverMinutes);
+            s.OnAction(UiAction.Left, false);
+            Assert.Equal(0, saved.SaverMinutes);
+            Assert.Contains(("Screensaver in menus after", "‹  Never  ›"), s.RowTexts);
+            s.OnAction(UiAction.Right, false);
+            Assert.Equal(5, saved.SaverMinutes);
         }
 
         private static void GoTo(SettingsScreen s, string label)

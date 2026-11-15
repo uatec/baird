@@ -25,12 +25,13 @@ namespace Baird.Tests.NewUi
             n.Back(); Assert.Equal("search", TopName(n)); n.Back(); Assert.Equal(Place.Home, n.Top);
         }
         [Fact]
-        public void Back_from_the_video_retraces_the_journey()
+        public void Back_from_the_video_goes_home_and_back_again_returns_to_it()
         {
-            var n = new Navigator(); n.OpenPage(Page("search")); n.OpenPage(Page("show")); n.Play(new("vod", "loki"));
+            var n = new Navigator(); n.SetPlace(Place.Search); n.OpenPage(Page("show")); n.Play(new("vod", "loki"));
             Assert.Equal("video", n.Top);
-            n.Back(); Assert.Equal("show", TopName(n)); Assert.NotNull(n.State.Video);
-            n.Back(); Assert.Equal("search", TopName(n)); n.Back(); Assert.Equal(Place.Home, n.Top);
+            n.Back(); Assert.Equal(Place.Home, n.Top); Assert.NotNull(n.State.Video); // Home, with what's playing
+            n.Back(); Assert.Equal("video", n.Top);
+            n.Back(); Assert.Equal(Place.Home, n.Top); // and round again
         }
         [Fact]
         public void Back_from_a_video_started_on_home_goes_home_and_keeps_it()
@@ -53,7 +54,7 @@ namespace Baird.Tests.NewUi
         public void Home_clears_pages_and_keeps_the_video()
         {
             var n = new Navigator(); n.Play(new("live", "bbc1")); n.OpenPage(Page("guide")); n.Home();
-            Assert.Equal(Place.Home, n.Top); Assert.NotNull(n.State.Video); n.Back(); Assert.Equal(Place.Home, n.Top);
+            Assert.Equal(Place.Home, n.Top); Assert.NotNull(n.State.Video); n.Back(); Assert.Equal("video", n.Top);
         }
         [Fact]
         public void Actions_over_a_page_close_to_that_page()
@@ -64,7 +65,8 @@ namespace Baird.Tests.NewUi
         public void Changing_channel_on_the_video_keeps_the_origin()
         {
             var n = new Navigator(); n.OpenPage(Page("search")); n.Play(new("live", "bbc1")); n.Play(new("live", "bbc2"));
-            n.Back(); Assert.Equal("search", TopName(n));
+            n.Back(); Assert.Equal(Place.Home, n.Top);
+            n.Back(); Assert.Equal("video", n.Top); Assert.Equal("bbc2", n.State.Video!.Ref);
         }
         [Fact]
         public void Stop_returns_to_the_origin_pages()
@@ -84,10 +86,10 @@ namespace Baird.Tests.NewUi
             var n = new Navigator(); n.SetPlace(Place.Search); n.OpenPage(Page("show")); n.Back(); Assert.Equal(Place.Search, n.Top);
         }
         [Fact]
-        public void A_video_from_a_place_backs_to_the_place()
+        public void A_video_from_any_place_backs_to_home()
         {
             var n = new Navigator(); n.SetPlace(Place.LiveTv); n.Play(new("live", "bbc1")); n.Back();
-            Assert.Equal(Place.LiveTv, n.Top); Assert.NotNull(n.State.Video);
+            Assert.Equal(Place.Home, n.Top); Assert.NotNull(n.State.Video);
         }
         [Fact]
         public void Play_keep_overlay_keeps_the_channel_list()

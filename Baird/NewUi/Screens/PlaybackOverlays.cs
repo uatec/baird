@@ -19,7 +19,8 @@ namespace Baird.NewUi.Screens
 {
     /// <summary>
     /// The tuning transition: while the tuner locks (1–2 s on DVB) the picture is dimmed and an ident shows the channel,
-    /// what's on and a spinner; it fades once the stream has loaded (and at least ~1.5 s have passed).
+    /// what's on and a spinner; the spinner stops when the picture arrives and the ident fades soon after (it stays at
+    /// least ~1.5 s, so it never flashes).
     /// </summary>
     public sealed class TuneIdent : Panel
     {
@@ -28,11 +29,10 @@ namespace Baird.NewUi.Screens
         private readonly TextBlock _num = new() { FontSize = 72, FontWeight = FontWeight.Bold, Foreground = T.Text2, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock _name = new() { FontSize = 40, FontWeight = FontWeight.Bold, Foreground = T.Text };
         private readonly TextBlock _prog = new() { FontSize = 26, Foreground = T.Text2 };
-        private readonly Arc _spinner = new() { Width = 44, Height = 44, StartAngle = 0, SweepAngle = 90, Stroke = Brushes.White, StrokeThickness = 4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(30, 0, 0, 0) };
+        private readonly Controls.Spinner _spinner = new(44, 4) { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(30, 0, 0, 0) };
         private DateTime _shownAt;
         private bool _loaded;
         private IDisposable? _hide;
-        private DispatcherTimer? _spin;
 
         public TuneIdent()
         {
@@ -56,10 +56,27 @@ namespace Baird.NewUi.Screens
         }
 
         public void Show(Channel ch, Programme? now) =>
-            Present(ch.Number, ch.Name, now != null ? $"{now.Title} · until {now.End.LocalDateTime:HH:mm}" : "No programme information", spinner: true, cap: TimeSpan.FromSeconds(12));
+            Present(ch.Number, ch.Name, Describe(now), spinner: true, cap: TimeSpan.FromSeconds(12));
 
-        /// <summary>An on-demand title loading: its name and the current step ("Signing in to Netflix…"). Up until it loads.</summary>
-        public void ShowStatus(string title, string status) => Present("", title, status, spinner: true, cap: null);
+        /// <summary>What's on arrived after the ident went up: only the words change (it doesn't start again).</summary>
+        public void ShowProgramme(Programme now) => _prog.Text = Describe(now);
+
+        /// <summary>"The Simpsons · Twisting 1-2-3 · until 19:30": the show, then the episode (when the guide names it).</summary>
+        public static string Describe(Programme? now) => now == null ? "No programme information"
+            : $"{now.Title}{(now.Subtitle is { Length: > 0 } ep && ep != now.Title ? $" · {ep}" : "")} · until {now.End.LocalDateTime:HH:mm}";
+
+        /// <summary>
+        /// An on-demand title loading: its name (an episode's show, then the episode) and the current step ("Signing in to
+        /// Netflix…"). Up until it loads.
+        /// </summary>
+        public void ShowStatus(HomeCard? card, string title, string status)
+        {
+            var (name, sub) = Words(card, title, status);
+            Present("", name, sub, spinner: true, cap: null);
+        }
+
+        public static (string Name, string Sub) Words(HomeCard? card, string title, string status) =>
+            card?.Subheading is { } episode ? (card.Heading, $"{episode}\n{status}") : (card?.Heading ?? title, status);
 
         /// <summary>A play that failed: stays up (dimmed picture) until the viewer moves on.</summary>
         public void ShowFailure(string title, string message) => Present("", title, message, spinner: false, cap: null);
@@ -72,17 +89,11 @@ namespace Baird.NewUi.Screens
             _prog.Text = sub;
             _prog.TextWrapping = TextWrapping.Wrap;
             _prog.MaxWidth = 1100;
-            _spinner.IsVisible = spinner;
             _shownAt = DateTime.UtcNow; _loaded = false;
             _dim.Opacity = 0.75; _card.Opacity = 1;
             _hide?.Dispose();
             _hide = null;
-            if (_spin == null)
-            {
-                _spin = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
-                _spin.Tick += (_, _) => _spinner.StartAngle = (_spinner.StartAngle + 12) % 360;
-            }
-            if (spinner && !Motion.Lite) _spin.Start(); else _spin.Stop();
+            if (spinner) _spinner.Start(); else _spinner.Stop();
             // A tune never stays up forever (a failed one shows its own message).
             if (cap is { } c) _hide = DispatcherTimer.RunOnce(Hide, c);
         }
@@ -92,6 +103,7 @@ namespace Baird.NewUi.Screens
         {
             if (_loaded) return;
             _loaded = true;
+            _spinner.Stop(); // the picture's here
             var wait = TimeSpan.FromMilliseconds(1500) - (DateTime.UtcNow - _shownAt);
             _hide?.Dispose();
             _hide = DispatcherTimer.RunOnce(Hide, wait > TimeSpan.Zero ? wait : TimeSpan.FromMilliseconds(1));
@@ -100,10 +112,11 @@ namespace Baird.NewUi.Screens
         public void Hide()
         {
             _dim.Opacity = 0; _card.Opacity = 0;
-            _spin?.Stop();
+            _spinner.Stop();
         }
 
         public bool Showing => _card.Opacity > 0;
+        public bool Spinning => _spinner.Spinning;
     }
 
     /// <summary>
@@ -113,7 +126,7 @@ namespace Baird.NewUi.Screens
     public sealed class InfoBar : IScreen
     {
         private readonly NewUiContext _ctx;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly StackPanel _bar = new() { Spacing = 10 };
         private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
         private IDisposable? _idle;
@@ -156,6 +169,21 @@ namespace Baird.NewUi.Screens
             _idle = DispatcherTimer.RunOnce(() => { if (_ctx.Nav.State.Overlay?.Name == "info") _ctx.Nav.CloseOverlay(); }, TimeSpan.FromSeconds(5));
         }
 
+        /// <summary>The live bar's playhead (0 = left end, 1 = live) and the clock time at its left end.</summary>
+        public readonly record struct LiveBar(double Fraction, DateTimeOffset LeftEdge);
+
+        /// <summary>
+        /// The scale of the live bar: from the start of the programme on air to now (live), but never narrower than ten minutes (a
+        /// programme that has only just begun), thirty with no programme information, nor than how far behind you are.
+        /// </summary>
+        public static LiveBar LiveScale(TimeSpan behind, Programme? programme, DateTimeOffset now)
+        {
+            var minimum = TimeSpan.FromMinutes(programme == null ? 30 : 10);
+            var window = programme != null && now - programme.Start > minimum ? now - programme.Start : minimum;
+            if (behind > window) window = behind;
+            return new LiveBar(window > TimeSpan.Zero ? Math.Clamp(1 - behind / window, 0, 1) : 1, now - window);
+        }
+
         private static string Fmt(TimeSpan t) => t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
 
         private void Draw()
@@ -184,32 +212,31 @@ namespace Baird.NewUi.Screens
             _bar.Children.Add(new TextBlock { Text = now.Kind == "live" ? _ctx.Programme?.Title ?? "No programme information" : now.Title, FontSize = 56, FontWeight = FontWeight.Bold, Foreground = T.Text, Margin = new Thickness(0, 4, 0, 14) });
 
             double frac; string left, mid, right;
+            var behind = p.EffectiveBehindLive;
             if (now.Kind == "live")
             {
-                var prog = _ctx.Programme;
-                if (prog != null)
-                {
-                    frac = prog.ProgressAt(_ctx.Now() - p.BehindLive);
-                    left = prog.Start.LocalDateTime.ToString("HH:mm"); right = prog.End.LocalDateTime.ToString("HH:mm");
-                }
-                else { frac = 0; left = ""; right = ""; }
-                mid = p.BehindLive > TimeSpan.FromSeconds(30) ? $"{(int)p.BehindLive.TotalMinutes} min behind live" : "Live";
+                // The bar is a timeshift scale: its right end is live, where the playhead sits, and it moves left as you rewind or
+                // pause (a pause is a rewind at a second per second). Its left end is the programme's start, at least ten minutes back.
+                var scale = LiveScale(behind, _ctx.Programme, _ctx.Now());
+                frac = scale.Fraction;
+                left = scale.LeftEdge.LocalDateTime.ToString("HH:mm"); right = _ctx.Now().LocalDateTime.ToString("HH:mm");
+                mid = behind > TimeSpan.FromSeconds(30) ? $"{(int)behind.TotalMinutes} min behind live" : "Live";
             }
             else
             {
                 frac = p.Duration > TimeSpan.Zero ? p.Position / p.Duration : 0;
                 left = Fmt(p.Position); right = $"−{Fmt(p.Duration - p.Position)}"; mid = p.Duration > TimeSpan.Zero ? $"Ends at {DateTime.Now + (p.Duration - p.Position):HH:mm}" : "";
             }
-            const double trackWidth = 1920 - 128 - 88;
+            var trackWidth = T.W - 128 - 88;
             var track = new Grid { Height = 8 };
             track.Children.Add(new Border { Background = new SolidColorBrush(Color.Parse("#2EFFFFFF")), CornerRadius = new CornerRadius(4) });
             track.Children.Add(new Border { Background = T.Text, CornerRadius = new CornerRadius(4), HorizontalAlignment = HorizontalAlignment.Left, Width = Math.Clamp(frac, 0, 1) * trackWidth });
             if (_scrub)
                 // The playhead, while ◂ ▸ move it.
                 track.Children.Add(new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(11), Background = T.Text, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(Math.Clamp(frac, 0, 1) * trackWidth - 11, -7, 0, -7), BoxShadow = T.FocusGlow });
-            if (now.Kind == "live" && _ctx.Programme is { } lp)
-                // The live edge, in red, when time-shifted.
-                track.Children.Add(new Border { Background = T.Live, Width = 4, CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(Math.Clamp(lp.ProgressAt(_ctx.Now()), 0, 1) * trackWidth - 2, -4, 0, -4), IsVisible = p.BehindLive > TimeSpan.FromSeconds(30) });
+            if (now.Kind == "live")
+                // The live edge, in red, at the right end, when time-shifted.
+                track.Children.Add(new Border { Background = T.Live, Width = 4, CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(trackWidth - 2, -4, 0, -4), IsVisible = behind > TimeSpan.FromSeconds(30) });
             _bar.Children.Add(track);
             var times = new Grid { Margin = new Thickness(0, 8, 0, 0) };
             times.Children.Add(new TextBlock { Text = left, FontSize = 22, Foreground = T.Text2 });
@@ -275,7 +302,7 @@ namespace Baird.NewUi.Screens
     {
         private readonly NewUiContext _ctx;
         private readonly Action _openGuide;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly StackPanel _list = new() { Spacing = 8 };
         private readonly List<(string Label, Action Run)> _items = new();
         private int _index;
@@ -359,7 +386,7 @@ namespace Baird.NewUi.Screens
         private readonly Func<string?> _request;
         private readonly Func<string, System.Threading.Tasks.Task> _submit;
         private readonly Action _cancel;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080, Background = new SolidColorBrush(Color.Parse("#B3000000")) };
+        private readonly Panel _root = new() { Background = new SolidColorBrush(Color.Parse("#B3000000")) };
         private readonly TextBlock _ask = new() { FontSize = 30, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, MaxWidth = 1100, TextAlignment = TextAlignment.Center };
         private readonly StackPanel _boxes = new() { Orientation = Orientation.Horizontal, Spacing = 18, HorizontalAlignment = HorizontalAlignment.Center };
         private string _code = "";
@@ -433,7 +460,7 @@ namespace Baird.NewUi.Screens
         private readonly NewUiContext _ctx;
         private readonly ITimers _timers;
         private readonly HomeCard _next;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Spacing = 14 };
         private readonly Arc _ring = new() { Width = 72, Height = 72, StartAngle = -90, SweepAngle = 0, Stroke = Brushes.White, StrokeThickness = 5 };
         private readonly TextBlock _count = new() { FontSize = 26, FontWeight = FontWeight.Bold, Foreground = T.Text, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -576,7 +603,7 @@ namespace Baird.NewUi.Screens
     {
         private readonly NewUiContext _ctx;
         private readonly HomeCard _card;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly StackPanel _list = new() { Spacing = 8 };
         private readonly List<(string Label, Action Run)> _items = new();
         private int _index;
@@ -593,6 +620,15 @@ namespace Baird.NewUi.Screens
             if (card.Kind == CardKind.Channel && card.Channel is { } ch)
             {
                 _items.Add(("Watch now", () => ctx.PlayLive(ch)));
+                // What is on is often a film or an episode of a series: go straight to its page, or to the guide.
+                if (card.Programme is { NoInfo: false } prog && !string.IsNullOrWhiteSpace(prog.Title) && ctx.Search != null && ctx.Shows != null)
+                    _items.Add(($"Open “{prog.Title}”", (Action)(async () =>
+                    {
+                        ctx.Toast($"Looking for {prog.Title}…");
+                        var title = await ctx.Search.FindProgrammeAsync(prog, ctx.Channels, ctx.Now());
+                        if (title != null) ctx.OpenShow(title);
+                        else ctx.Toast($"Baird can't find {prog.Title} in your library, on a streaming service or in Seerr.");
+                    })));
                 if (openSchedule != null) _items.Add(("This channel's schedule", () => openSchedule(ch.Id)));
             }
             else
@@ -607,15 +643,13 @@ namespace Baird.NewUi.Screens
                 var onItsPage = ctx.Nav.State.Pages.LastOrDefault()?.Params is CatalogueTitle shown && shown.Key == Adapters.ShowData.FromCard(card).Key;
                 if (ctx.Shows != null && card.Kind != CardKind.Episode && !onItsPage)
                     _items.Add(("Open the page", () => ctx.OpenShow(Adapters.ShowData.FromCard(card))));
-                // An episode doesn't know its show: look it up, then open the page on that season and episode.
-                var onAShowPage = ctx.Nav.State.Pages.LastOrDefault()?.Params is CatalogueTitle { Kind: TitleKind.Series };
-                if (ctx.Shows != null && card.Kind == CardKind.Episode && ctx.FindSeries != null && !onAShowPage)
-                    _items.Add(("Open the series", async () =>
+                // An episode: its series' page, opened on that season and that episode.
+                else if (ctx.Shows != null && card.Kind == CardKind.Episode && ctx.SeriesOf is { } seriesOf && ctx.Nav.State.Pages.Count == 0)
+                    _items.Add(("Open the series", (Action)(async () =>
                     {
-                        if (await ctx.FindSeries(card) is { } series) ctx.OpenShow(series with { FocusItemId = card.Id });
-                        else ctx.Toast($"{card.Label}'s series isn't available.");
-                    }
-                    ));
+                        if (await seriesOf(card) is { } series) ctx.OpenShow(series with { FocusItemId = card.Id });
+                        else ctx.Toast($"Baird can't find which series {card.Label} is from.");
+                    })));
                 if (ctx.Shows != null && card.Source != "Seerr")
                 {
                     var title = Adapters.ShowData.FromCard(card);
@@ -627,13 +661,17 @@ namespace Baird.NewUi.Screens
                     }
                     ));
                 }
-                else if (card.Source == "Seerr") _items.Add(("Open the page to request it", () => ctx.Activate(card)));
+                else if (card.Source == "Seerr") _items.Add((card.Badge == "get" ? "Open the page to request it" : "Open the page", () => ctx.Activate(card)));
+                if (ctx.Deleter is { } discarder && discarder.CanDiscard(card) && card.Badge != "playing")
+                    _items.Add(("Discard this download…", (Action)(() => ConfirmDiscard(ctx, discarder, card))));
+                else if (ctx.Deleter is { } deleter && deleter.CanDelete(card) && card.Badge != "playing")
+                    _items.Add(("Delete from the server…", (Action)(() => ConfirmDelete(ctx, deleter, card))));
                 if (fromUpNext && card.Badge != "playing")
-                    _items.Add(("Remove from Up next", async () =>
+                    _items.Add(("Forget this", async () =>
                     {
                         await ctx.Home.HideFromUpNextAsync(card.Id);
                         ctx.RaiseUpNextChanged();
-                        ctx.Toast($"{card.Label} is off Up next. It comes back if you watch it again.");
+                        ctx.Toast($"{card.Label} is off Continue watching. It comes back if you watch it again.");
                     }
                     ));
             }
@@ -657,6 +695,47 @@ namespace Baird.NewUi.Screens
                 },
             });
             Draw();
+        }
+
+        /// <summary>"Discard …?": cancels a request that hasn't arrived. Nothing in the library is touched (Keep it is lit).</summary>
+        public static void ConfirmDiscard(NewUiContext ctx, Adapters.Deletion deleter, HomeCard card)
+        {
+            ctx.Nav.OpenOverlay(new OverlayRef("choices", new ChoiceList($"Discard {card.Label}?",
+                "This cancels the request and takes it out of Radarr and Sonarr. Nothing in Jellyfin is touched, and you can request it again.", new[]
+                {
+                    new Choice("Keep it", null, () => { }),
+                    new Choice("Discard it", null, async () =>
+                    {
+                        ctx.Toast($"Discarding {card.Label}…");
+                        var (ok, message) = await deleter.DiscardAsync(card);
+                        ctx.Toast(message);
+                        if (!ok) return;
+                        ctx.RaiseLibraryChanged(); // Home's and Search's Downloads, and its own page, read again
+                    }),
+                })));
+        }
+
+        /// <summary>"Delete … for good?": the files go from the server, so it asks first (Keep it is lit).</summary>
+        public static void ConfirmDelete(NewUiContext ctx, Adapters.Deletion deleter, HomeCard card)
+        {
+            var what = card.Kind switch { CardKind.Series => "this series, every episode", CardKind.Episode => "this episode", _ => "this film" };
+            ctx.Nav.OpenOverlay(new OverlayRef("choices", new ChoiceList($"Delete {card.Label} for good?",
+                $"This deletes {what} from the server. It can't be undone.", new[]
+                {
+                    new Choice("Keep it", null, () => { }),
+                    new Choice("Delete for good", null, async () =>
+                    {
+                        ctx.Toast($"Deleting {card.Label}…");
+                        var (ok, message) = await deleter.DeleteAsync(card);
+                        ctx.Toast(message);
+                        if (!ok) return;
+                        // Its own page has nothing left to show.
+                        if (card.Kind != CardKind.Episode && ctx.Nav.State.Pages.LastOrDefault()?.Params is CatalogueTitle shown
+                            && shown.Key == Adapters.ShowData.FromCard(card).Key) ctx.Nav.Back();
+                        ctx.RaiseLibraryChanged();
+                        ctx.RaiseUpNextChanged();
+                    }),
+                })));
         }
 
         private void Draw()

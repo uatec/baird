@@ -66,7 +66,7 @@ namespace Baird.NewUi.Screens
     /// <summary>A vertical list with a title on the left: Settings, and the Search placeholder.</summary>
     public abstract class ListScreen : IScreen
     {
-        protected readonly Panel Root = new() { Width = 1920, Height = 1080, Background = new SolidColorBrush(Color.Parse("#F0000000")) };
+        protected readonly Panel Root = new() { Background = new SolidColorBrush(Color.Parse("#F0000000")) };
         protected readonly StackPanel List = new() { Spacing = 6, Width = 1060, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(760, 150, 0, 0) };
         protected List<ListRow> Rows = new();
         protected int Index;
@@ -110,7 +110,7 @@ namespace Baird.NewUi.Screens
             var y = 0.0;
             for (var i = 0; i < Rows.Count && i < Index; i++) y += RowH + List.Spacing + (_groups.ContainsKey(Rows[i]) ? HeadingH + List.Spacing : 0);
             if (Rows.Count > 0 && _groups.ContainsKey(Rows[Index])) y += HeadingH + List.Spacing;
-            const double view = T.SafeBottom - 150 - 30;
+            var view = T.SafeBottom - 150 - 30;
             List.RenderTransform = TransformOperations.Parse($"translate(0px, {-Math.Max(0, y + RowH - view)}px)");
         }
 
@@ -125,33 +125,32 @@ namespace Baird.NewUi.Screens
         public void OnFocusOut() { _lit = false; Draw(); }
     }
 
-    /// <summary>New-mode Settings: Interface (Classic / New, restarts) and Interface size. ◂ ▸ change values.</summary>
+    /// <summary>Settings: Interface size, guide layout, playback options, sources and updates. ◂ ▸ change values.</summary>
     public sealed class SettingsScreen : ListScreen
     {
-        private readonly Func<UiMode> _getMode;
-        private readonly Action<UiMode> _setModeAndRestart;
-        private readonly ListRow _interface, _size;
+        private readonly ListRow _size;
         private double _scale;
         private readonly Action<double> _setScale;
         private readonly Func<Model.GuideLayout>? _getLayout;
         private readonly Action<Model.GuideLayout>? _setLayout;
         private readonly ListRow? _layout;
 
-        public SettingsScreen(Func<UiMode> getMode, Action<UiMode> setModeAndRestart, double scale, Action<double> setScale,
+        public SettingsScreen(double scale, Action<double> setScale,
             Func<Model.GuideLayout>? getGuideLayout = null, Action<Model.GuideLayout>? setGuideLayout = null, UpdateService? updates = null,
             SettingsOptions? options = null) : base("Settings", null)
         {
-            _getMode = getMode; _setModeAndRestart = setModeAndRestart; _scale = scale; _setScale = setScale;
+            _scale = scale; _setScale = setScale;
             _getLayout = getGuideLayout; _setLayout = setGuideLayout; _options = options;
-            _interface = new ListRow("Interface", "New  ·  ◂ ▸ to switch to Classic");
             _size = new ListRow("Interface size", $"‹  {_scale * 100:0}%  ›");
-            var rows = new List<ListRow> { _interface, _size };
-            var groups = new Dictionary<ListRow, string> { [_interface] = "Picture and sound" };
+            var rows = new List<ListRow> { _size };
+            var groups = new Dictionary<ListRow, string> { [_size] = "Picture and sound" };
             if (_getLayout != null && _setLayout != null) rows.Add(_layout = new ListRow("Guide layout", LayoutText(_getLayout())));
             if (options != null)
             {
                 rows.Add(_subtitles = new ListRow("Subtitles by default", OnOff(options.GetSubtitles())));
                 rows.Add(_autoplay = new ListRow("Play the next episode automatically", OnOff(options.GetAutoplay())));
+                if (options.GetScreensaverMinutes != null && options.SetScreensaverMinutes != null)
+                    rows.Add(_saver = new ListRow("Screensaver in menus after", SaverText(options.GetScreensaverMinutes())));
             }
             _updates = updates;
             if (updates != null) { rows.Add(_update = new ListRow("Software update", $"{updates.Current} · checking…")); _ = CheckAsync(); }
@@ -176,7 +175,9 @@ namespace Baird.NewUi.Screens
         }
 
         private readonly SettingsOptions? _options;
-        private readonly ListRow? _subtitles, _autoplay, _about;
+        private readonly ListRow? _subtitles, _autoplay, _about, _saver;
+
+        public static string SaverText(int minutes) => "‹  " + (minutes <= 0 ? "Never" : minutes % 60 == 0 ? $"{minutes / 60} hour{(minutes == 60 ? "" : "s")}" : $"{minutes} minutes") + "  ›";
         private readonly Dictionary<string, ListRow> _sources = new();
         public Task Loaded { get; private set; } = Task.CompletedTask;
         public IReadOnlyList<(string Label, string Value)> RowTexts => Rows.Select(r => (r.LabelText, r.ValueText)).ToList();
@@ -248,13 +249,17 @@ namespace Baird.NewUi.Screens
                 else { var on = !_options!.GetAutoplay(); _options.SetAutoplay(on); lit.Value = OnOff(on); }
                 return true;
             }
-            if (Index == 0 && a is UiAction.Left or UiAction.Right or UiAction.Ok)
+            if (lit != null && lit == _saver && a is UiAction.Left or UiAction.Right or UiAction.Ok)
             {
-                _interface.Value = "Switching to Classic… Baird restarts";
-                _setModeAndRestart(_getMode() == UiMode.New ? UiMode.Classic : UiMode.New);
+                var choices = SettingsOptions.ScreensaverChoices;
+                var at = Array.IndexOf(choices, _options!.GetScreensaverMinutes!());
+                if (at < 0) at = Array.IndexOf(choices, 10);
+                at = (at + (a == UiAction.Left ? -1 : 1) + choices.Length) % choices.Length;
+                _options.SetScreensaverMinutes!(choices[at]);
+                lit.Value = SaverText(choices[at]);
                 return true;
             }
-            if (Index == 1 && a is UiAction.Left or UiAction.Right)
+            if (Index == 0 && a is UiAction.Left or UiAction.Right)
             {
                 _scale = Math.Clamp(Math.Round(_scale + (a == UiAction.Left ? -0.1 : 0.1), 1), 0.8, 1.3);
                 _size.Value = $"‹  {_scale * 100:0}%  ›";
@@ -277,8 +282,11 @@ namespace Baird.NewUi.Screens
     /// write ~/.baird/config.ini), the sources' status rows (refreshed each time Settings is shown), and About.
     /// </summary>
     public sealed record SettingsOptions(Func<bool> GetSubtitles, Action<bool> SetSubtitles, Func<bool> GetAutoplay, Action<bool> SetAutoplay,
-        Func<Task<IReadOnlyList<SourceStatus>>>? Sources = null, IReadOnlyList<string>? SourceRows = null, string? About = null)
+        Func<Task<IReadOnlyList<SourceStatus>>>? Sources = null, IReadOnlyList<string>? SourceRows = null, string? About = null,
+        Func<int>? GetScreensaverMinutes = null, Action<int>? SetScreensaverMinutes = null)
     {
+        /// <summary>The screensaver delays Settings steps through, in minutes. Zero is never.</summary>
+        public static readonly int[] ScreensaverChoices = { 5, 10, 15, 30, 60, 0 };
         public static readonly string[] DefaultSourceRows = { "Freesat (TvHeadend)", "Jellyfin", "Seerr requests", "Netflix", "Disney+" };
         public IReadOnlyList<string> SourceNames => SourceRows ?? DefaultSourceRows;
     }
@@ -286,7 +294,7 @@ namespace Baird.NewUi.Screens
     /// <summary>A page that isn't built yet (none are reachable in phase 1; a safe fallback).</summary>
     public sealed class EmptyScreen : IScreen
     {
-        public Control View { get; } = new Border { Width = 1920, Height = 1080, Background = Brushes.Black };
+        public Control View { get; } = new Border { Background = Brushes.Black };
         public bool OnAction(UiAction a, bool repeat) => a != UiAction.Back && a != UiAction.Up;
     }
 }
