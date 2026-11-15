@@ -345,7 +345,9 @@ namespace Baird.NewUi
             playback.Ended += () =>
             {
                 // The end of an episode: offer the next one (the card plays it by itself after a countdown).
-                if (playback.Current is { Kind: "vod" } && _ctx.NextEpisode() is { } next)
+                var upNext = playback.Current is { Kind: "vod" } ? _ctx.NextEpisode() : null;
+                Console.WriteLine($"[NewUi] '{playback.Current?.Title}' ended: {(upNext != null ? "offering the next episode" : "stopping, back to the menus")}.");
+                if (upNext is { } next)
                 {
                     nav.OpenOverlay(new OverlayRef("upnext", next));
                     return;

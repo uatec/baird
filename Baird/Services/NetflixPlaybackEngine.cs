@@ -332,9 +332,28 @@ namespace Baird.Services
             lock (_commandLock) return _commands;
         }
 
+        private string? _lastShape;
+        private DateTime _lastBeat = DateTime.MinValue;
+
+        /// <summary>The page without its query string (it can carry tracking ids).</summary>
+        private static string Where(string url) => WatchId(url) is { } id ? $"/watch/{id}" : url.Split('?')[0];
+
+        /// <summary>
+        /// Logs what the page looks like whenever it changes shape (video found/ended, which page, near the end, missing polls),
+        /// and a line every 30 s, so a hang or an early end can be read back from the journal.
+        /// </summary>
+        private void TracePoll(VideoPlaybackStatus s, string? playId, bool nearEnd, double length)
+        {
+            var shape = $"found={s.Found} ended={s.Ended} paused={s.Paused} page={Where(s.Url)} playing={playId} nearEnd={nearEnd}";
+            var beat = DateTime.UtcNow - _lastBeat > TimeSpan.FromSeconds(30);
+            if (shape == _lastShape && !beat) return;
+            _lastShape = shape; _lastBeat = DateTime.UtcNow;
+            Console.WriteLine($"[NetflixEngine] Poll: {shape} pos={TimePositionSeconds:F0}/{length:F0}s readyState={s.ReadyState} missing={_missingPolls}");
+        }
+
         private async Task EndAsync(string why)
         {
-            Console.WriteLine($"[NetflixEngine] Playback ended: {why}.");
+            Console.WriteLine($"[NetflixEngine] Playback ended: {why}; position {TimePositionSeconds:F0}/{DurationSeconds:F0}s, title {_playId}, {_missingPolls} polls without the title.");
             await StopAsync();
             StreamEnded?.Invoke(this, EventArgs.Empty);
         }
@@ -370,13 +389,14 @@ namespace Baird.Services
             var playId = _playId;
             var length = DurationSeconds > 0 ? DurationSeconds : status.Duration;
             var nearEnd = length > 0 && TimePositionSeconds >= length - TitleEndMarginSeconds;
+            TracePoll(status, playId, nearEnd, length);
 
             // Netflix carries on by itself when a title finishes: autoplay of the next episode or a suggestion (another /watch/
             // id), or a trailer or the browse page. Whatever it chooses, the title Baird was playing is over; Baird decides what
             // follows (the next episode, or Home) rather than leaving the viewer on Netflix's pick.
             if (status.Url.Length > 0 && (!onWatchPage || (playId != null && WatchId(status.Url) is { } now && now != playId)))
             {
-                if (++_missingPolls >= MissingPollsForEnd) { await EndAsync($"the page left {playId} ({status.Url})"); return; }
+                if (++_missingPolls >= MissingPollsForEnd) { await EndAsync($"the page left {playId} for {Where(status.Url)}"); return; }
                 return;
             }
             // The video has played out: end now (an ended video well before the title's end is an advert or preview; carry on).
@@ -389,7 +409,7 @@ namespace Baird.Services
             {
                 var limit = nearEnd ? MissingPollsNearEnd : onWatchPage ? MissingPollsOnWatchPageForEnd : MissingPollsForEnd;
                 if (++_missingPolls < limit) return;
-                await EndAsync(status.Found ? "the video ended" : $"no video on the page any more ({status.Url})");
+                await EndAsync(status.Found ? "the video ended" : $"no video on the page any more ({Where(status.Url)})");
                 return;
             }
 
