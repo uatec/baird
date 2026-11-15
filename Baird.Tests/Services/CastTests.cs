@@ -263,6 +263,17 @@ namespace Baird.Tests.Services
         [InlineData("8.8.8.8", false)]
         public void Only_home_network_addresses_go_in_the_qr(string ip, bool home) =>
             Assert.Equal(home, CastServer.IsHomeNetwork(System.Net.IPAddress.Parse(ip)));
+
+        [Theory]
+        [InlineData(null, "baird", true, "http://baird:8099")]           // the hostname: router DNS at home, MagicDNS away
+        [InlineData(null, "Baird", true, "http://baird:8099")]
+        [InlineData(null, "baird", false, null)]                         // not on a home network: nothing to show
+        [InlineData("baird.local", "baird", true, "http://baird.local:8099")]
+        [InlineData("192.168.1.5:9000", "baird", true, "http://192.168.1.5:9000")]
+        [InlineData("https://tv.example/", "baird", true, "https://tv.example")]
+        [InlineData("  ", "baird", true, "http://baird:8099")]
+        public void The_qr_uses_the_hostname_unless_an_address_is_set(string? phoneAddress, string host, bool onHomeNetwork, string? expected) =>
+            Assert.Equal(expected, CastServer.BaseUrl(phoneAddress, 8099, host, onHomeNetwork));
     }
 
     public class CastServerTests

@@ -39,18 +39,31 @@ namespace Baird.Services.Cast
             int.TryParse(config["Baird:PhonePort"], out var p) && p is > 0 and < 65536 ? p : DefaultPort;
 
         /// <summary>
-        /// The address a phone reaches Baird at, for the QR codes: Baird:PhoneAddress if set (a name that survives the router
-        /// handing out a new IP, e.g. "baird.local"), else this machine's home-network IPv4 address. Null when it has none.
+        /// The address a phone reaches Baird at, for the QR code: Baird:PhoneAddress if set, else this machine's hostname
+        /// ("http://baird:8099"). A name, not an IP: it survives the router handing out a new IP, the home router's DNS
+        /// answers it on the Wi-Fi (guests included), and Tailscale's MagicDNS answers it away from home. Null when this
+        /// machine isn't on a home network (nothing could reach it).
         /// </summary>
-        public static string? BaseUrl(IConfiguration config, int port)
+        public static string? BaseUrl(IConfiguration config, int port) =>
+            BaseUrl(config["Baird:PhoneAddress"], port, SafeHostName(), HomeAddress() != null);
+
+        internal static string? BaseUrl(string? phoneAddress, int port, string? hostName, bool onHomeNetwork)
         {
-            if (config["Baird:PhoneAddress"] is { Length: > 0 } set)
+            if (phoneAddress is { Length: > 0 } set && set.Trim().TrimEnd('/') is { Length: > 0 } trimmed)
             {
-                set = set.Trim().TrimEnd('/');
-                if (set.Contains("://")) return set;
-                return set.Contains(':') ? $"http://{set}" : $"http://{set}:{port}";
+                if (trimmed.Contains("://")) return trimmed;
+                return trimmed.Contains(':') ? $"http://{trimmed}" : $"http://{trimmed}:{port}";
             }
-            return HomeAddress() is { } ip ? $"http://{ip}:{port}" : null;
+            if (!onHomeNetwork) return null;
+            var name = hostName?.Trim();
+            if (string.IsNullOrEmpty(name) || name.Equals("localhost", StringComparison.OrdinalIgnoreCase)) return HomeAddress() is { } ip ? $"http://{ip}:{port}" : null;
+            return $"http://{name.ToLowerInvariant()}:{port}";
+        }
+
+        private static string? SafeHostName()
+        {
+            try { return Dns.GetHostName(); }
+            catch (Exception ex) { Console.WriteLine($"[Cast] Couldn't read the hostname: {ex.Message}"); return null; }
         }
 
         /// <summary>The private IPv4 address of a wired or Wi-Fi interface (not loopback, not Tailscale's 100.64/10).</summary>
