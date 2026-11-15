@@ -51,11 +51,9 @@ namespace Baird
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 // Desktop development support
-                var uiMode = Baird.Services.UiModes.Read(Configuration);
-                Console.WriteLine($"[App] Interface: {uiMode}");
                 desktop.MainWindow = new Window
                 {
-                    Content = Baird.Services.UiModes.Build<Control>(uiMode, () => new Baird.NewUi.NewShellView(Configuration), () => new MainView(Configuration)),
+                    Content = new Baird.NewUi.NewShellView(Configuration),
                     Title = "Baird",
                     Background = Brushes.Black,
                 };
@@ -100,8 +98,7 @@ namespace Baird
             else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
             {
                 // Framebuffer support
-                singleViewPlatform.MainView = Baird.Services.UiModes.Read(Configuration) == Baird.Services.UiMode.New
-                    ? new Baird.NewUi.NewShellView(Configuration) : new MainView(Configuration);
+                singleViewPlatform.MainView = new Baird.NewUi.NewShellView(Configuration);
             }
 
             base.OnFrameworkInitializationCompleted();

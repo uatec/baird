@@ -20,6 +20,10 @@ namespace Baird.NewUi.Lifecycle
     public sealed class TvLifecycle
     {
         public static readonly TimeSpan IdleTimeout = TimeSpan.FromHours(2);
+
+        /// <summary>How long with no key before the screensaver starts. Zero means never. Changing it re-arms the timer.</summary>
+        public TimeSpan IdleAfter { get => _idleAfter; set { _idleAfter = value; ArmIdle(); } }
+        private TimeSpan _idleAfter = IdleTimeout;
         public static readonly TimeSpan AssertCooldown = TimeSpan.FromSeconds(30);
         public static readonly TimeSpan PowerCooldown = TimeSpan.FromSeconds(2);
         public static readonly TimeSpan UnblockFallback = TimeSpan.FromSeconds(6);
@@ -168,10 +172,12 @@ namespace Baird.NewUi.Lifecycle
         private void ArmIdle()
         {
             _idle?.Dispose();
-            _idle = _timers.After(IdleTimeout, () =>
+            _idle = null;
+            if (_idleAfter <= TimeSpan.Zero) return;
+            _idle = _timers.After(_idleAfter, () =>
             {
                 if (_saver.IsActive) return;
-                Console.WriteLine("[TvLifecycle] Two idle hours: screensaver.");
+                Console.WriteLine($"[TvLifecycle] Idle for {_idleAfter}: screensaver.");
                 if (_player.IsPlaying) { _player.Pause(); _pausedForSaver = true; }
                 _saver.Activate();
             });
