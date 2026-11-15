@@ -153,6 +153,12 @@ namespace Baird.NewUi.Screens
                 rows.Add(_subtitles = new ListRow("Subtitles by default", OnOff(options.GetSubtitles())));
                 rows.Add(_autoplay = new ListRow("Play the next episode automatically", OnOff(options.GetAutoplay())));
             }
+            if (options?.Phones != null)
+            {
+                rows.Add(_connectPhone = new ListRow("Connect a phone", "OK to show the codes"));
+                rows.Add(_forgetPhones = new ListRow("Connected phones", PhonesText(options.Phones.Connected())));
+                groups[_connectPhone] = "Phones";
+            }
             _updates = updates;
             if (updates != null) { rows.Add(_update = new ListRow("Software update", $"{updates.Current} · checking…")); _ = CheckAsync(); }
             if (options?.Sources != null)
@@ -176,7 +182,8 @@ namespace Baird.NewUi.Screens
         }
 
         private readonly SettingsOptions? _options;
-        private readonly ListRow? _subtitles, _autoplay, _about;
+        private readonly ListRow? _subtitles, _autoplay, _about, _connectPhone, _forgetPhones;
+        private static string PhonesText(int n) => n == 0 ? "None" : $"{n} · OK to forget {(n == 1 ? "it" : "them")}";
         private readonly Dictionary<string, ListRow> _sources = new();
         public Task Loaded { get; private set; } = Task.CompletedTask;
         public IReadOnlyList<(string Label, string Value)> RowTexts => Rows.Select(r => (r.LabelText, r.ValueText)).ToList();
@@ -224,6 +231,7 @@ namespace Baird.NewUi.Screens
         public override void OnShow()
         {
             if (_layout != null) _layout.Value = LayoutText(_getLayout!()); // the guide's strip may have switched it
+            if (_forgetPhones != null) _forgetPhones.Value = PhonesText(_options!.Phones!.Connected()); // back from connecting one
             if (_options?.Sources != null) Loaded = RefreshSourcesAsync();
         }
 
@@ -242,6 +250,12 @@ namespace Baird.NewUi.Screens
                 return true;
             }
             var lit = Index < Rows.Count ? Rows[Index] : null;
+            if (lit != null && lit == _connectPhone && a == UiAction.Ok) { _options!.Phones!.Connect(); return true; }
+            if (lit != null && lit == _forgetPhones && a == UiAction.Ok)
+            {
+                if (_options!.Phones!.Connected() > 0) { _options.Phones.ForgetAll(); lit.Value = "Forgotten · connect them again to use them"; }
+                return true;
+            }
             if (lit != null && (lit == _subtitles || lit == _autoplay) && a is UiAction.Left or UiAction.Right or UiAction.Ok)
             {
                 if (lit == _subtitles) { var on = !_options!.GetSubtitles(); _options.SetSubtitles(on); lit.Value = OnOff(on); }
@@ -277,11 +291,15 @@ namespace Baird.NewUi.Screens
     /// write ~/.baird/config.ini), the sources' status rows (refreshed each time Settings is shown), and About.
     /// </summary>
     public sealed record SettingsOptions(Func<bool> GetSubtitles, Action<bool> SetSubtitles, Func<bool> GetAutoplay, Action<bool> SetAutoplay,
-        Func<Task<IReadOnlyList<SourceStatus>>>? Sources = null, IReadOnlyList<string>? SourceRows = null, string? About = null)
+        Func<Task<IReadOnlyList<SourceStatus>>>? Sources = null, IReadOnlyList<string>? SourceRows = null, string? About = null,
+        PhoneSettings? Phones = null)
     {
         public static readonly string[] DefaultSourceRows = { "Freesat (TvHeadend)", "Jellyfin", "Seerr requests", "Netflix", "Disney+" };
         public IReadOnlyList<string> SourceNames => SourceRows ?? DefaultSourceRows;
     }
+
+    /// <summary>Settings' Phones rows: how many are connected, show the codes to connect one, forget them all.</summary>
+    public sealed record PhoneSettings(Func<int> Connected, Action Connect, Action ForgetAll);
 
     /// <summary>A page that isn't built yet (none are reachable in phase 1; a safe fallback).</summary>
     public sealed class EmptyScreen : IScreen
