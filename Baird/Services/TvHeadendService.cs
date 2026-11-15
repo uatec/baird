@@ -183,6 +183,33 @@ namespace Baird.Services
             return string.IsNullOrWhiteSpace(prog?.Title) ? null : prog.Title;
         }
 
+        /// <summary>The tuner's idle-time guide grab can't beat playback, so opening the guide asks for one when nothing is being watched.</summary>
+        private static readonly TimeSpan GrabEvery = TimeSpan.FromMinutes(30);
+        private DateTime _lastGrabRequest = DateTime.MinValue;
+
+        public void RequestGrab() => _ = RequestGrabAsync();
+
+        public async Task RequestGrabAsync()
+        {
+            lock (_scheduleCache)
+            {
+                if (DateTime.UtcNow - _lastGrabRequest < GrabEvery) return;
+                _lastGrabRequest = DateTime.UtcNow;
+            }
+            try
+            {
+                var json = await _httpClient.GetStringAsync("api/status/subscriptions").ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(json);
+                // The tuner's own housekeeping ("scan", "epggrab") yields to a grab; a person watching or recording does not.
+                var busy = doc.RootElement.TryGetProperty("entries", out var entries) && entries.EnumerateArray().Any(e =>
+                    e.TryGetProperty("title", out var t) && t.GetString() is not ("scan" or "epggrab"));
+                if (busy) { Console.WriteLine("[TvHeadendService] EPG grab skipped: the tuner is in use"); return; }
+                (await _httpClient.GetAsync("api/epggrab/ota/trigger?trigger=600").ConfigureAwait(false)).EnsureSuccessStatusCode();
+                Console.WriteLine("[TvHeadendService] EPG over-the-air grab requested");
+            }
+            catch (Exception ex) { Console.WriteLine($"[TvHeadendService] EPG grab request failed: {ex.Message}"); }
+        }
+
         public async Task<EpgProgram?> GetCurrentProgrammeAsync(string channelId)
         {
             var schedule = await GetChannelScheduleAsync(channelId, limit: 5).ConfigureAwait(false);

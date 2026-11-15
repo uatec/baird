@@ -27,7 +27,7 @@ namespace Baird.NewUi.Screens
         private readonly ChoiceList _list;
         private readonly List<ListRow> _rows;
         private int _index;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080, Background = new SolidColorBrush(Color.Parse("#99000000")) };
+        private readonly Panel _root = new() { Background = new SolidColorBrush(Color.Parse("#99000000")) };
 
         public Control View => _root;
         public Control? LitElement => _rows.Count > 0 ? _rows[_index] : null;

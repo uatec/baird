@@ -22,7 +22,7 @@ namespace Baird.Tests.NewUi
         private sealed class Saved
         {
             public bool Subs = true, Autoplay = true;
-            public int SaverMinutes = 120;
+            public int SaverMinutes = 10;
             public readonly List<string> Writes = new();
         }
 
@@ -41,18 +41,18 @@ namespace Baird.Tests.NewUi
         public void Screensaver_row_steps_through_the_delays_and_saves_each()
         {
             var (s, saved) = Settings();
-            GoTo(s, "Screensaver after");
-            Assert.Contains(("Screensaver after", "‹  2 hours  ›"), s.RowTexts);
+            GoTo(s, "Screensaver in menus after");
+            Assert.Contains(("Screensaver in menus after", "‹  10 minutes  ›"), s.RowTexts);
             s.OnAction(UiAction.Right, false);
-            Assert.Equal(240, saved.SaverMinutes);
-            s.OnAction(UiAction.Right, false);
+            Assert.Equal(15, saved.SaverMinutes);
+            s.OnAction(UiAction.Left, false);
+            s.OnAction(UiAction.Left, false);
+            Assert.Equal(5, saved.SaverMinutes);
+            s.OnAction(UiAction.Left, false);
             Assert.Equal(0, saved.SaverMinutes);
-            Assert.Contains(("Screensaver after", "‹  Never  ›"), s.RowTexts);
-            s.OnAction(UiAction.Left, false);
-            s.OnAction(UiAction.Left, false);
-            s.OnAction(UiAction.Left, false);
-            Assert.Equal(60, saved.SaverMinutes);
-            Assert.Contains(("Screensaver after", "‹  1 hour  ›"), s.RowTexts);
+            Assert.Contains(("Screensaver in menus after", "‹  Never  ›"), s.RowTexts);
+            s.OnAction(UiAction.Right, false);
+            Assert.Equal(5, saved.SaverMinutes);
         }
 
         private static void GoTo(SettingsScreen s, string label)

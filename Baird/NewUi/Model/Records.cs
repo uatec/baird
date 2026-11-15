@@ -28,5 +28,12 @@ namespace Baird.NewUi.Model
     public sealed record HomeCard(
         CardKind Kind, string Id, string Label, string? Sublabel, string? ImageUrl, double? Progress, string? Badge,
         string Source, PlayVia Via, string? StreamUrl = null, TimeSpan Resume = default, Channel? Channel = null, Programme? Programme = null,
-        string? Synopsis = null, CatalogueTitle? Title = null);
+        string? Synopsis = null, CatalogueTitle? Title = null, string? Show = null)
+    {
+        /// <summary>What to call it while it loads: an episode under its show's name ("The Simpsons"), else its own.</summary>
+        public string Heading => Kind == CardKind.Episode && Show is { Length: > 0 } s ? s : Label;
+
+        /// <summary>The line under <see cref="Heading"/>: the episode's own title, when the heading is the show's.</summary>
+        public string? Subheading => Heading != Label ? Label : null;
+    }
 }

@@ -64,4 +64,32 @@ namespace Baird.Tests.NewUi
             Assert.Equal(new[] { "X=1", "[Baird]", "UiScale=1.2", "Ui=new" }, File.ReadAllLines(PathOf));
         }
     }
+
+    public class AppRestarterTests
+    {
+        private sealed class Runner : IProcessRunner
+        {
+            public readonly List<(string File, string Args)> Started = new();
+            public void Start(string file, string args) => Started.Add((file, args));
+        }
+
+        [Fact]
+        public void Under_systemd_it_asks_systemd_to_restart_the_service_and_does_not_exit_itself()
+        {
+            var r = new Runner(); var exited = false;
+            new AppRestarter(r, name => name == "INVOCATION_ID" ? "abc" : null, () => exited = true, "/opt/baird/Baird", new string[0]).Restart();
+            Assert.Single(r.Started);
+            Assert.Equal(("systemctl", "--user restart baird.service"), r.Started[0]);
+            Assert.False(exited);
+        }
+
+        [Fact]
+        public void Run_by_hand_it_starts_a_fresh_copy_with_the_same_arguments_then_exits()
+        {
+            var r = new Runner(); var exited = false;
+            new AppRestarter(r, _ => null, () => exited = true, "/home/u/Baird", new[] { "--foo", "a b" }).Restart();
+            Assert.Equal(("/home/u/Baird", "--foo \"a b\""), r.Started[0]);
+            Assert.True(exited);
+        }
+    }
 }

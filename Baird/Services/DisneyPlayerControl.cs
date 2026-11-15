@@ -33,9 +33,12 @@ namespace Baird.Services
             const labelOf = (e) => ((e.getAttribute && e.getAttribute('aria-label')) || e.textContent || '').replace(/\s+/g, ' ').trim();
             const shown = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };";
 
-        /// <summary>JS that finds the playing video: the one with a source, else the first.</summary>
+        /// <summary>
+        /// JS that finds the playing video: one with a source that has not ended (an advert's video ends before the programme's),
+        /// else one with a source, else the first.
+        /// </summary>
         public const string FindVideo =
-            "const v = [...document.querySelectorAll('video')].find(x => x.readyState > 0 && x.currentSrc) || document.querySelector('video');";
+            "const vs = [...document.querySelectorAll('video')].filter(x => x.readyState > 0 && x.currentSrc); const v = vs.find(x => !x.ended) || vs[0] || document.querySelector('video');";
 
         /// <summary>The prompt shown for Disney+'s end card (the next episode is about to start).</summary>
         public const string NextEpisodeLabel = "Next episode";

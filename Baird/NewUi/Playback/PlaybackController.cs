@@ -26,7 +26,8 @@ namespace Baird.NewUi.Playback
         public const int MaxRetries = 3;
         /// <summary>Flicking channels: only the channel you rest on is tuned.</summary>
         public static readonly TimeSpan TuneDebounce = TimeSpan.FromMilliseconds(250);
-        private static readonly TimeSpan MinSaved = TimeSpan.FromSeconds(10);
+        /// <summary>Watching this long puts a channel or video in history (Home's Continue watching); less is just flicking past.</summary>
+        public static readonly TimeSpan WatchedAfter = TimeSpan.FromSeconds(60);
 
         private readonly IPlaybackEngine _engine;
         private readonly Action<Action> _post;
@@ -35,7 +36,8 @@ namespace Baird.NewUi.Playback
         private readonly Action<string, TimeSpan, TimeSpan>? _save;
         private readonly Action<bool>? _configure;
 
-        private IDisposable? _loadTimer, _tuneTimer;
+        private IDisposable? _loadTimer, _tuneTimer, _watchTimer;
+        private bool _watched;
         private int _retries;
         private double? _start;
         private DateTimeOffset? _pausedAt;
@@ -50,15 +52,27 @@ namespace Baird.NewUi.Playback
         public bool IsLoading { get; private set; }
         public string? Failure { get; private set; }
         public TimeSpan BehindLive { get; private set; }
+
+        /// <summary>
+        /// How far behind live the picture is right now. While paused it keeps growing, a second per second (pausing is rewinding at
+        /// that speed), where <see cref="BehindLive"/> is only settled when playing resumes.
+        /// </summary>
+        public TimeSpan EffectiveBehindLive => BehindLive + (_pausedAt is { } at && Current?.Kind == "live" ? _now() - at : TimeSpan.Zero);
         public bool IsPaused { get; private set; }
+        /// <summary>What loaded is sound only (a radio channel): there is no picture to show.</summary>
+        public bool IsAudioOnly { get; private set; }
         public PlaybackState State => _engine.State;
         public TimeSpan Position => TimeSpan.FromSeconds(Math.Max(0, _engine.TimePositionSeconds));
         public TimeSpan Duration => TimeSpan.FromSeconds(Math.Max(0, _engine.DurationSeconds));
 
         public event Action? Changed;
         public event Action? Ended;
+        /// <summary>The engine has been asked to change stream (after the tune debounce): only now may the picture change.</summary>
+        public event Action? Started;
         /// <summary>The first frame of a newly loaded stream is on its way (tuning can end).</summary>
         public event Action? Loaded;
+        /// <summary>A live channel gave up loading after every retry (the tuner may be wedged); it is still <see cref="Current"/>.</summary>
+        public event Action<NowPlaying>? LiveLoadFailed;
 
         /// <param name="configure">Sets mpv up for the source before each play (true = live: deinterlace, no loudnorm).</param>
         public PlaybackController(IPlaybackEngine engine, Action<Action> post, ITimers timers, Func<DateTimeOffset> now, Action<string, TimeSpan, TimeSpan>? save,
@@ -83,9 +97,11 @@ namespace Baird.NewUi.Playback
         /// <summary>Tune a channel. The ident can show it immediately; the tuner gets the channel you rest on.</summary>
         public void PlayLive(Channel channel)
         {
+            ClearParked();
             SaveCurrent();
+            ResetWatched();
             Current = new NowPlaying("live", channel.Id, channel.Name, channel.StreamUrl, channel);
-            BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; IsLoading = true; _saved = false; _quickDrops = 0;
+            BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; IsLoading = true; IsAudioOnly = false; _saved = false; _quickDrops = 0;
             _tuneTimer?.Dispose(); _loadTimer?.Dispose();
             _tuneTimer = _timers.After(TuneDebounce, () => Start(channel.StreamUrl, null));
             Changed?.Invoke();
@@ -93,9 +109,12 @@ namespace Baird.NewUi.Playback
 
         public void PlayItem(string itemId, string url, TimeSpan resume, string title)
         {
+            ClearParked();
             SaveCurrent();
+            ResetWatched();
             _tuneTimer?.Dispose();
             Current = new NowPlaying("vod", itemId, title, url, null);
+            IsAudioOnly = false;
             BehindLive = TimeSpan.Zero; _pausedAt = null; IsPaused = false; Failure = null; _saved = false;
             _loadTimer?.Dispose();
             Start(url, resume > TimeSpan.Zero ? resume.TotalSeconds : null);
@@ -106,6 +125,7 @@ namespace Baird.NewUi.Playback
             _retries = 0; _start = start;
             IsLoading = true;
             _configure?.Invoke(Current?.Kind == "live");
+            Started?.Invoke();
             _engine.Play(url, start);
             // Browser services (Netflix, Disney+, ITVX, Channel 4) have their own timeouts and failures.
             if (_engine is EngineRouter r && r.BrowserFor(url) != null) _loadTimer?.Dispose();
@@ -132,6 +152,7 @@ namespace Baird.NewUi.Playback
                     Failure = $"{Current.Title} isn't loading. Try again, or another channel.";
                     Console.WriteLine($"[Playback] {Failure}");
                     Changed?.Invoke();
+                    if (Current.Kind == "live") LiveLoadFailed?.Invoke(Current);
                 }
             });
         }
@@ -140,7 +161,10 @@ namespace Baird.NewUi.Playback
         {
             _loadTimer?.Dispose();
             IsLoading = false; Failure = null;
+            IsAudioOnly = _engine.IsAudioOnly;
             _loadedAt = _now();
+            // The minute counts from the first picture; a live stream that re-tunes keeps the same minute.
+            if (_watchTimer == null && !_watched) _watchTimer = _timers.After(WatchedAfter, () => { _watched = true; Persist(); });
             _engine.SetSubtitle(SubtitlesOn); // each play gets the subtitles you chose
             Loaded?.Invoke();
             Changed?.Invoke();
@@ -148,6 +172,7 @@ namespace Baird.NewUi.Playback
 
         private void OnEnded()
         {
+            if (Released) return; // we stopped it ourselves to free the tuner; it is not a dropped stream
             // A live stream has no end: if it drops, tune it again (unless it keeps dropping straight away).
             if (Current is { Kind: "live" } live)
             {
@@ -164,6 +189,7 @@ namespace Baird.NewUi.Playback
                 Changed?.Invoke();
                 return;
             }
+            _watched = true; // played to the end: it counts, however short
             SaveCurrent();
             Ended?.Invoke();
         }
@@ -235,21 +261,95 @@ namespace Baird.NewUi.Playback
 
         public void Stop()
         {
+            ClearParked();
             SaveCurrent();
+            ResetWatched();
             _tuneTimer?.Dispose(); _loadTimer?.Dispose();
             _engine.Stop();
-            Current = null; IsLoading = false;
+            Current = null; IsLoading = false; IsAudioOnly = false;
             Changed?.Invoke();
         }
 
+        /// <summary>How long a paused picture waits before the stream is dropped (a wrong button is undone instantly within this).</summary>
+        public static readonly TimeSpan ParkGrace = TimeSpan.FromSeconds(5);
+        private IDisposable? _parkTimer;
+        private bool _parked, _parkedWasPaused;
+        private double _releasedAt;
+        /// <summary>Nothing is on the screen: the picture was left for a menu and the stream has been let go (the tuner is free).
+        /// <see cref="Current"/> is kept, so coming back tunes or resumes it.</summary>
+        public bool Released { get; private set; }
+
+        private void ClearParked()
+        {
+            _parkTimer?.Dispose(); _parkTimer = null; _parked = false; Released = false;
+        }
+
+        /// <summary>The picture was left for a menu: pause it now, and drop the stream after <see cref="ParkGrace"/>.</summary>
+        public void Park()
+        {
+            if (Current == null || _parked || Released || Failure != null) return;
+            _parked = true;
+            _parkedWasPaused = IsPaused || _engine.State == PlaybackState.Paused;
+            if (!_parkedWasPaused) { _pausedAt = _now(); _engine.Pause(); }
+            _parkTimer?.Dispose();
+            _parkTimer = _timers.After(ParkGrace, Release);
+            Changed?.Invoke();
+        }
+
+        private void Release()
+        {
+            _parkTimer = null;
+            if (!_parked || Current == null) return;
+            _parked = false; Released = true;
+            _releasedAt = Position.TotalSeconds;
+            SaveCurrent();
+            _tuneTimer?.Dispose(); _loadTimer?.Dispose();
+            _engine.Stop();
+            IsLoading = false; IsPaused = false; _pausedAt = null; BehindLive = TimeSpan.Zero;
+            Changed?.Invoke();
+        }
+
+        /// <summary>The picture is back: within the grace it carries on (a live channel jumps to now); after it, it tunes or resumes again.</summary>
+        public void Unpark()
+        {
+            if (Current == null) return;
+            if (Released)
+            {
+                Released = false;
+                Failure = null; _saved = false; _quickDrops = 0;
+                Start(Current.Url, Current.Kind == "live" ? null : _releasedAt > 1 ? _releasedAt : null);
+                return;
+            }
+            if (!_parked) return;
+            _parkTimer?.Dispose(); _parkTimer = null; _parked = false;
+            if (!_parkedWasPaused)
+            {
+                if (_pausedAt is { } at && Current.Kind == "live") BehindLive += _now() - at;
+                _pausedAt = null;
+                _engine.Resume();
+                if (Current.Kind == "live" && BehindLive > TimeSpan.Zero) SeekRelative(BehindLive); // fast-forward to the latest
+            }
+            Changed?.Invoke();
+        }
+
+        private void ResetWatched()
+        {
+            _watchTimer?.Dispose(); _watchTimer = null; _watched = false;
+        }
+
+        /// <summary>Writes the current position to history (channels too: they have no end, so no progress).</summary>
+        private void Persist()
+        {
+            if (Current == null || _save == null) return;
+            _save(Current.ItemId, Position, Current.Kind == "live" ? TimeSpan.Zero : Duration);
+        }
+
+        /// <summary>On leaving: update history, but only for something watched long enough (it was written when the minute passed).</summary>
         private void SaveCurrent()
         {
-            if (Current == null || _saved || _save == null) return;
-            var pos = Position;
-            if (Current.Kind == "vod" && pos < MinSaved) return;
-            if (Current.Kind == "live") return; // live progress isn't resumable; history of channels stays with the classic rules for now
+            if (Current == null || _saved || !_watched) return;
             _saved = true;
-            _save(Current.ItemId, pos, Duration);
+            Persist();
         }
     }
 }

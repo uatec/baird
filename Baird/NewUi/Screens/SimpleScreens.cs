@@ -66,7 +66,7 @@ namespace Baird.NewUi.Screens
     /// <summary>A vertical list with a title on the left: Settings, and the Search placeholder.</summary>
     public abstract class ListScreen : IScreen
     {
-        protected readonly Panel Root = new() { Width = 1920, Height = 1080, Background = new SolidColorBrush(Color.Parse("#F0000000")) };
+        protected readonly Panel Root = new() { Background = new SolidColorBrush(Color.Parse("#F0000000")) };
         protected readonly StackPanel List = new() { Spacing = 6, Width = 1060, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(760, 150, 0, 0) };
         protected List<ListRow> Rows = new();
         protected int Index;
@@ -110,7 +110,7 @@ namespace Baird.NewUi.Screens
             var y = 0.0;
             for (var i = 0; i < Rows.Count && i < Index; i++) y += RowH + List.Spacing + (_groups.ContainsKey(Rows[i]) ? HeadingH + List.Spacing : 0);
             if (Rows.Count > 0 && _groups.ContainsKey(Rows[Index])) y += HeadingH + List.Spacing;
-            const double view = T.SafeBottom - 150 - 30;
+            var view = T.SafeBottom - 150 - 30;
             List.RenderTransform = TransformOperations.Parse($"translate(0px, {-Math.Max(0, y + RowH - view)}px)");
         }
 
@@ -150,7 +150,7 @@ namespace Baird.NewUi.Screens
                 rows.Add(_subtitles = new ListRow("Subtitles by default", OnOff(options.GetSubtitles())));
                 rows.Add(_autoplay = new ListRow("Play the next episode automatically", OnOff(options.GetAutoplay())));
                 if (options.GetScreensaverMinutes != null && options.SetScreensaverMinutes != null)
-                    rows.Add(_saver = new ListRow("Screensaver after", SaverText(options.GetScreensaverMinutes())));
+                    rows.Add(_saver = new ListRow("Screensaver in menus after", SaverText(options.GetScreensaverMinutes())));
             }
             _updates = updates;
             if (updates != null) { rows.Add(_update = new ListRow("Software update", $"{updates.Current} · checking…")); _ = CheckAsync(); }
@@ -253,7 +253,7 @@ namespace Baird.NewUi.Screens
             {
                 var choices = SettingsOptions.ScreensaverChoices;
                 var at = Array.IndexOf(choices, _options!.GetScreensaverMinutes!());
-                if (at < 0) at = Array.IndexOf(choices, 120);
+                if (at < 0) at = Array.IndexOf(choices, 10);
                 at = (at + (a == UiAction.Left ? -1 : 1) + choices.Length) % choices.Length;
                 _options.SetScreensaverMinutes!(choices[at]);
                 lit.Value = SaverText(choices[at]);
@@ -286,7 +286,7 @@ namespace Baird.NewUi.Screens
         Func<int>? GetScreensaverMinutes = null, Action<int>? SetScreensaverMinutes = null)
     {
         /// <summary>The screensaver delays Settings steps through, in minutes. Zero is never.</summary>
-        public static readonly int[] ScreensaverChoices = { 15, 30, 60, 120, 240, 0 };
+        public static readonly int[] ScreensaverChoices = { 5, 10, 15, 30, 60, 0 };
         public static readonly string[] DefaultSourceRows = { "Freesat (TvHeadend)", "Jellyfin", "Seerr requests", "Netflix", "Disney+" };
         public IReadOnlyList<string> SourceNames => SourceRows ?? DefaultSourceRows;
     }
@@ -294,7 +294,7 @@ namespace Baird.NewUi.Screens
     /// <summary>A page that isn't built yet (none are reachable in phase 1; a safe fallback).</summary>
     public sealed class EmptyScreen : IScreen
     {
-        public Control View { get; } = new Border { Width = 1920, Height = 1080, Background = Brushes.Black };
+        public Control View { get; } = new Border { Background = Brushes.Black };
         public bool OnAction(UiAction a, bool repeat) => a != UiAction.Back && a != UiAction.Up;
     }
 }

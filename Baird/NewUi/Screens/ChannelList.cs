@@ -25,6 +25,7 @@ namespace Baird.NewUi.Screens
     /// thumbnail, what's on and a to-scale timeline of the next 3 hours each. One highlight slides between rows and the
     /// list scrolls under it (rows are built once, only around the visible window). Each press moves one channel; it
     /// tunes once you rest about a second (OK tunes now and closes). Back closes it; left alone it goes after 6 s.
+    /// The channel on screen says "tuning…" until its picture arrives, then "watching".
     /// </summary>
     public sealed class ChannelList : IScreen
     {
@@ -34,13 +35,16 @@ namespace Baird.NewUi.Screens
         public const int Visible = 7;
         public const double Row = 112;
 
+        /// <summary>Opened by channel up/down, which has already tuned away from <paramref name="FromChannelId"/>.</summary>
+        public sealed record Stepped(string FromChannelId);
+
         private readonly NewUiContext _ctx;
         private readonly ITimers _timers;
         private readonly IReadOnlyList<Channel> _channels;
         private readonly Dictionary<string, IReadOnlyList<Programme>> _schedules = new();
         private readonly Dictionary<int, ChannelRow> _rows = new();
         private HashSet<int> _prevWanted = new();
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly Canvas _track = new();
         private readonly Border _hl;
         private int _index;
@@ -48,6 +52,8 @@ namespace Baird.NewUi.Screens
         private IDisposable? _rest, _idle, _firstStep;
 
         public Control View => _root;
+        /// <summary>The channel the highlight was first drawn on.</summary>
+        public Channel? OpenedOn { get; }
         public (double X, double Y) EnterFrom => (-80, 0);
         public Channel? Lit => _channels.Count > 0 ? _channels[_index] : null;
         /// <summary>The highlight (one Border that slides from row to row).</summary>
@@ -55,10 +61,14 @@ namespace Baird.NewUi.Screens
         public IReadOnlyCollection<ChannelRow> Rows => _rows.Values;
         public ChannelRow? RowOf(string channelId) => _rows.Values.FirstOrDefault(r => r.Channel.Id == channelId);
 
-        public ChannelList(NewUiContext ctx, ITimers timers, UiAction? step = null, Func<DateTimeOffset, Task<GuideModel>>? guide = null)
+        /// <param name="opened">How it was opened: ▴ / ▾ (that press moves one channel too), or <see cref="Stepped"/>.</param>
+        public ChannelList(NewUiContext ctx, ITimers timers, object? opened = null, Func<DateTimeOffset, Task<GuideModel>>? guide = null)
         {
             _ctx = ctx; _timers = timers; _channels = ctx.Channels;
-            _index = Math.Max(0, _channels.ToList().FindIndex(c => c.Id == ctx.Playback.Current?.Channel?.Id));
+            var watching = Math.Max(0, IndexOf(ctx.Playback.Current?.Channel?.Id));
+            // Channel up/down has tuned already: start on the channel you were on, so the first press visibly moves.
+            _index = opened is Stepped st && IndexOf(st.FromChannelId) is >= 0 and var from ? from : watching;
+            OpenedOn = _channels.Count > 0 ? _channels[_index] : null;
 
             _hl = new Border { Width = ChannelRow.Width0, Height = ChannelRow.Height0, CornerRadius = new CornerRadius(16), Background = T.FocusFill, BoxShadow = BoxShadows.Parse("0 14 34 0 #73000000"), ZIndex = 0 };
             _hl.Classes.Add("focused");
@@ -76,10 +86,31 @@ namespace Baird.NewUi.Screens
                 Child = new Panel { Children = { window, hint } },
             });
             Draw();
+            if (_index != watching) { _index = watching; Draw(); } // the highlight slides on as the strip arrives
             Bump();
             _ = LoadAsync(guide);
+            _ctx.Playback.Changed += ShowStatus;
             // Opened by ▴ / ▾: that press also moves one channel, a moment after the list arrives.
-            if (step is UiAction.Up or UiAction.Down) _firstStep = _timers.After(FirstStep, () => OnAction(step.Value, false));
+            if (opened is UiAction step and (UiAction.Up or UiAction.Down)) _firstStep = _timers.After(FirstStep, () => OnAction(step, false));
+        }
+
+        private int IndexOf(string? channelId)
+        {
+            for (var i = 0; i < _channels.Count; i++) if (_channels[i].Id == channelId) return i;
+            return -1;
+        }
+
+        private string? StatusOf(Channel c)
+        {
+            var p = _ctx.Playback;
+            if (c.Id != p.Current?.Channel?.Id) return null;
+            return p.Failure != null ? "not playing" : p.IsLoading ? "tuning…" : "watching";
+        }
+
+        /// <summary>Tuning, then watching: the rows follow the player.</summary>
+        private void ShowStatus()
+        {
+            foreach (var r in _rows.Values) r.Status = StatusOf(r.Channel);
         }
 
         /// <summary>Schedules from the guide (now, next and the timeline), else what's on now from On now.</summary>
@@ -118,7 +149,7 @@ namespace Baird.NewUi.Screens
                 wanted.Add(j);
                 if (_rows.ContainsKey(j)) continue;
                 var c = _channels[j];
-                var row = new ChannelRow(c, _schedules.TryGetValue(c.Id, out var s) ? s : Array.Empty<Programme>(), _ctx.Now(), c.Id == _ctx.Playback.Current?.Channel?.Id) { ZIndex = 1 };
+                var row = new ChannelRow(c, _schedules.TryGetValue(c.Id, out var s) ? s : Array.Empty<Programme>(), _ctx.Now(), StatusOf(c)) { ZIndex = 1 };
                 Canvas.SetTop(row, j * Row);
                 _rows[j] = row;
                 _track.Children.Add(row);
@@ -160,7 +191,7 @@ namespace Baird.NewUi.Screens
             _rest?.Dispose();
             if (Lit is not { } ch || ch.Id == _ctx.Playback.Current?.Channel?.Id) return;
             _ctx.PlayLive(ch);
-            foreach (var r in _rows.Values) r.Watching = r.Channel.Id == ch.Id;
+            ShowStatus();
         }
 
         public bool OnAction(UiAction a, bool repeat)
@@ -194,7 +225,7 @@ namespace Baird.NewUi.Screens
             return false;
         }
 
-        public void Destroy() { _rest?.Dispose(); _idle?.Dispose(); _firstStep?.Dispose(); }
+        public void Destroy() { _rest?.Dispose(); _idle?.Dispose(); _firstStep?.Dispose(); _ctx.Playback.Changed -= ShowStatus; }
     }
 
     /// <summary>Live TV's "up next" corner card: in a programme's last 5 minutes, once per programme.</summary>

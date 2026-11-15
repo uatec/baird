@@ -259,9 +259,44 @@ namespace Baird.Tests.Services
             engine.StreamEnded += (_, _) => ended++;
             await engine.PlayAsync(SeriesUrl);
 
-            b.PollReply = () => FakeDisneyBrowser.Poll(2037, ended: true);
+            b.PollReply = () => FakeDisneyBrowser.Poll(2037, ended: true, titleSeconds: 2030, titleLength: 2037);
             await engine.PollOnceAsync();
             await engine.PollOnceAsync(); // already idle: nothing more
+
+            Assert.Equal(1, ended);
+            Assert.Equal(PlaybackState.Idle, engine.State);
+        }
+
+        [Fact]
+        public async Task An_advert_that_ends_before_the_programme_does_not_end_playback()
+        {
+            // Measured on the Pi (2026-11-12): titles of 1300-1416 s "ended" 21-91 s in. The advert's video ends, then the programme plays.
+            var (b, _, engine) = Engine();
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(SeriesUrl); // 2037 s long
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, ended: true);
+            for (var i = 0; i < 10; i++) await engine.PollOnceAsync();
+            Assert.Equal(0, ended);
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(23, titleSeconds: 1, titleLength: 2037); // the programme starts
+            await engine.PollOnceAsync();
+
+            Assert.Equal(0, ended);
+            Assert.Equal(PlaybackState.Playing, engine.State);
+        }
+
+        [Fact]
+        public async Task An_ended_video_far_from_the_end_still_ends_playback_after_a_minute()
+        {
+            var (b, _, engine) = Engine();
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(SeriesUrl);
+
+            b.PollReply = () => FakeDisneyBrowser.Poll(30, ended: true);
+            for (var i = 0; i < 120; i++) await engine.PollOnceAsync();
 
             Assert.Equal(1, ended);
             Assert.Equal(PlaybackState.Idle, engine.State);

@@ -90,6 +90,8 @@ namespace Baird.Mpv
         // Cached reads — safe (and non-blocking) to call from the UI/render thread.
         public double TimePositionSeconds => Volatile.Read(ref _timePosSeconds);
         public double DurationSeconds => Volatile.Read(ref _durationSeconds);
+        private volatile bool _audioOnly;
+        public bool IsAudioOnly => _audioOnly;
         public string CurrentPath => _currentPath ?? "None";
 
         public MpvPlayer(IReadOnlyDictionary<string, string>? optionOverrides = null)
@@ -298,6 +300,7 @@ namespace Baird.Mpv
                         State = _isMpvPaused ? PlaybackState.Paused : PlaybackState.Playing;
                         // Safe here: this is not the render thread.
                         LogAudioTracks();
+                        _audioOnly = DetectAudioOnly();
                         FileLoaded?.Invoke(this, EventArgs.Empty);
                     }
                     else if (evt.EventId == LibMpv.MpvEventId.PropertyChange)
@@ -629,6 +632,7 @@ namespace Baird.Mpv
         {
             // Set Loading before the load is queued so a fast FileLoaded can't be overwritten.
             State = PlaybackState.Loading;
+            _audioOnly = false;
             Volatile.Write(ref _timePosSeconds, 0);
 
             // Any Play supersedes an iPlayer resolution still in flight.
@@ -755,6 +759,21 @@ namespace Baird.Mpv
             Post(() => SetOption(name, value));
         }
 
+        /// <summary>Forward and backward demuxer cache for a player that runs for hours (the screensaver).</summary>
+        public const string LeanForwardCache = "32MiB", LeanBackCache = "0";
+
+        /// <summary>
+        /// Shrinks the demuxer cache from mpv's default (150 MiB ahead and 150 MiB behind, per file). Measured on the Pi playing three
+        /// of the screensaver's 2K .mov files in a row: 451 MB resident after two minutes by default, 197 MB with this. The screensaver
+        /// runs for hours, and the default cache was most of Baird's memory growth. Queued ahead of the next Play; [Mpv] overrides in
+        /// config.ini still win.
+        /// </summary>
+        public void LimitCache()
+        {
+            SetUnlessOverridden("demuxer-max-bytes", LeanForwardCache);
+            SetUnlessOverridden("demuxer-max-back-bytes", LeanBackCache);
+        }
+
         /// <summary>Queues a property write unless config.ini's [Mpv] section pins that option.</summary>
         private void SetUnlessOverridden(string name, string value)
         {
@@ -815,6 +834,20 @@ namespace Baird.Mpv
                 return $"Audio: {(string.IsNullOrWhiteSpace(title) ? lang ?? aid : title)}";
             }
             return $"Audio track {aid}";
+        }
+
+        /// <summary>True when the file has an audio track and no real video track (cover art doesn't count).</summary>
+        private bool DetectAudioOnly()
+        {
+            int count = GetPropertyInt("track-list/count");
+            bool audio = false;
+            for (int i = 0; i < count; i++)
+            {
+                var type = GetPropertyString($"track-list/{i}/type");
+                if (type == "audio") audio = true;
+                else if (type == "video" && GetPropertyString($"track-list/{i}/albumart") != "yes") return false;
+            }
+            return audio;
         }
 
         private void LogAudioTracks()

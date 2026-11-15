@@ -20,7 +20,7 @@ namespace Baird.NewUi.Screens
         private static readonly TimeSpan TickEvery = TimeSpan.FromMilliseconds(500);
         private readonly NewUiContext _ctx;
         private readonly Reminder _r;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080 };
+        private readonly Panel _root = new();
         private readonly TextBlock _eyebrow = new() { FontSize = 22, FontWeight = FontWeight.SemiBold, Foreground = T.Text2 };
         private readonly TextBlock _title = new() { FontSize = 40, FontWeight = FontWeight.Bold, Foreground = T.Text, LetterSpacing = -0.8, TextWrapping = TextWrapping.Wrap, MaxLines = 2, Margin = new Thickness(0, 10, 0, 8) };
         private readonly TextBlock _then = new() { FontSize = 24, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap };
