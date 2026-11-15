@@ -28,7 +28,11 @@ namespace Baird.NewUi.Adapters
         public HomeData(IDataService data, IEpgService epg, IJellyseerrService? seerr, ProgrammeArt? art = null)
         {
             _data = data; _epg = epg; _seerr = seerr; _art = art;
+            if (_data != null) _data.WatchlistUpdated += (_, _) => WatchlistChanged?.Invoke();
         }
+
+        /// <summary>The watchlist gained or lost a title (possibly raised off the UI thread).</summary>
+        public event Action? WatchlistChanged;
 
         /// <summary>Fills in a picture for programmes the guide has none for, within <see cref="ArtBudget"/>.</summary>
         public async Task<Programme?[]> WithArtAsync(Programme?[] programmes)

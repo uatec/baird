@@ -76,6 +76,7 @@ namespace Baird.NewUi.Screens
             _root.Children.Add(_rows);
             _ = LoadAsync();
             _ctx.UpNextChanged += () => _ = RefreshUpNextAsync();
+            _ctx.Home.WatchlistChanged += () => _ = RefreshWatchlistAsync();
             // Keep On now current while Home is up (programmes change all day).
             var refresh = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
             refresh.Tick += (_, _) => { if (_root.IsEffectivelyVisible && _root.GetVisualRoot() != null) _ = RefreshOnNowAsync(); };
@@ -327,6 +328,34 @@ namespace Baird.NewUi.Screens
                 var rows = CurrentRows();
                 rows[i] = (rows[i].Title, rows[i].Eyebrow, rows[i].Shape, cards);
                 if (RebuildIfChanged(rows)) { _heroKey = null; Layout(); }
+            }
+            if (Dispatcher.UIThread.CheckAccess()) Apply(); else Dispatcher.UIThread.Post(Apply);
+        }
+
+        private const string WatchlistTitle = "Your watchlist";
+        /// <summary>The fixed rows in the order Home shows them (service rows follow).</summary>
+        private static readonly string[] FixedOrder = { ContinueWatching, "On now", WatchlistTitle, "Downloads", "Discover" };
+
+        /// <summary>Something was added to (or removed from) the watchlist: refresh that row in place, adding or dropping it as needed.</summary>
+        public async Task RefreshWatchlistAsync()
+        {
+            IReadOnlyList<HomeCard> cards;
+            try { cards = await _ctx.Home.WatchlistAsync(); }
+            catch (Exception ex) { Console.WriteLine($"[Home] Watchlist refresh failed: {ex.Message}"); return; }
+            void Apply()
+            {
+                if (_rowList.Count == 0) return; // still loading: the first load reads the current list
+                var rows = CurrentRows();
+                var i = rows.FindIndex(r => r.Title == WatchlistTitle);
+                var row = (WatchlistTitle, "In your watchlist", CardShape.Poster, cards);
+                if (i >= 0) rows[i] = row;
+                else
+                {
+                    // Not on screen yet (it was empty): slot it in after the fixed rows that come before it.
+                    var at = rows.Count(r => Array.IndexOf(FixedOrder, r.Title) is >= 0 and < 2);
+                    rows.Insert(at, row);
+                }
+                RebuildIfChanged(rows);
             }
             if (Dispatcher.UIThread.CheckAccess()) Apply(); else Dispatcher.UIThread.Post(Apply);
         }

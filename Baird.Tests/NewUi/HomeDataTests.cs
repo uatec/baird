@@ -39,14 +39,14 @@ namespace Baird.Tests.NewUi
             public Task<List<HistoryItem>> GetHistoryAsync() => Task.FromResult(Items);
             public HistoryItem? GetProgress(string id) => Items.FirstOrDefault(i => i.Id == id);
         }
-        private sealed class Watchlist : IWatchlistService
+        internal sealed class Watchlist : IWatchlistService
         {
+            private readonly HashSet<string> _ids = new() { "film1" };
             public event EventHandler? WatchlistUpdated;
-            public Task AddAsync(string id) => Task.CompletedTask;
-            public Task RemoveAsync(string id) => Task.CompletedTask;
-            public Task<HashSet<string>> GetWatchlistIdsAsync() => Task.FromResult(new HashSet<string> { "film1" });
-            public bool IsOnWatchlist(string id) => id == "film1";
-            void Unused() => WatchlistUpdated?.Invoke(this, EventArgs.Empty);
+            public Task AddAsync(string id) { if (_ids.Add(id)) WatchlistUpdated?.Invoke(this, EventArgs.Empty); return Task.CompletedTask; }
+            public Task RemoveAsync(string id) { if (_ids.Remove(id)) WatchlistUpdated?.Invoke(this, EventArgs.Empty); return Task.CompletedTask; }
+            public Task<HashSet<string>> GetWatchlistIdsAsync() => Task.FromResult(new HashSet<string>(_ids));
+            public bool IsOnWatchlist(string id) => _ids.Contains(id);
         }
         private sealed class Failing : IMediaProvider
         {
@@ -68,7 +68,7 @@ namespace Baird.Tests.NewUi
             public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrRequest>());
         }
 
-        internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false, IJellyseerrService? seerr = null)
+        internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false, IJellyseerrService? seerr = null, Watchlist? watchlist = null)
         {
             var items = new[]
             {
@@ -82,7 +82,7 @@ namespace Baird.Tests.NewUi
             history.Items.Add(new HistoryItem { Id = "ep1", LastPosition = TimeSpan.FromMinutes(10), Duration = TimeSpan.FromMinutes(50), LastWatched = DateTime.Now.AddHours(-1) });
             history.Items.Add(new HistoryItem { Id = "film1", LastPosition = TimeSpan.FromMinutes(40), Duration = TimeSpan.FromMinutes(100), LastWatched = DateTime.Now });
             history.Items.Add(new HistoryItem { Id = "ch1", LastPosition = TimeSpan.FromMinutes(5), Duration = TimeSpan.Zero, LastWatched = DateTime.Now });
-            var data = new DataService(providers, history, new Watchlist(), new MediaItemCache(), new MockMediaDataCache());
+            var data = new DataService(providers, history, watchlist ?? new Watchlist(), new MediaItemCache(), new MockMediaDataCache());
             var epg = new MockEpgService();
             var now = DateTimeOffset.UtcNow;
             epg.MockSchedules["ch1"] = new List<EpgProgram> { new() { Id = "p1", ChannelId = "ch1", Title = "News at Six", StartUnix = now.AddMinutes(-15).ToUnixTimeSeconds(), StopUnix = now.AddMinutes(15).ToUnixTimeSeconds() } };

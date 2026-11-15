@@ -22,12 +22,12 @@ namespace Baird.Tests.NewUi
     {
         internal sealed record Rig(NewUiContext Ctx, PlaybackControllerTests.FakeEngine Engine, PlaybackControllerTests.FakeTimers Timers, List<string> Toasts, List<Channel> Tuned);
 
-        internal static Rig Context(IJellyseerrService? seerr = null)
+        internal static Rig Context(IJellyseerrService? seerr = null, HomeDataTests.Watchlist? watchlist = null)
         {
             var engine = new PlaybackControllerTests.FakeEngine();
             var timers = new PlaybackControllerTests.FakeTimers();
             var playback = new PlaybackController(engine, a => a(), timers, () => timers.Now, null);
-            var ctx = new NewUiContext(new Navigator(), playback, HomeDataTests.Build(seerr: seerr).Home, () => DateTimeOffset.UtcNow);
+            var ctx = new NewUiContext(new Navigator(), playback, HomeDataTests.Build(seerr: seerr, watchlist: watchlist).Home, () => DateTimeOffset.UtcNow);
             var toasts = new List<string>();
             var tuned = new List<Channel>();
             ctx.Toast = toasts.Add;
@@ -35,9 +35,9 @@ namespace Baird.Tests.NewUi
             return new Rig(ctx, engine, timers, toasts, tuned);
         }
 
-        private static async Task<(HomeScreen Home, Rig Rig, Window Window)> Shown(IJellyseerrService? seerr = null)
+        private static async Task<(HomeScreen Home, Rig Rig, Window Window)> Shown(IJellyseerrService? seerr = null, HomeDataTests.Watchlist? watchlist = null)
         {
-            var rig = Context(seerr);
+            var rig = Context(seerr, watchlist);
             var home = new HomeScreen(rig.Ctx);
             await home.LoadAsync();
             var w = new Window { Width = 1920, Height = 1080, Content = home.View };
@@ -62,6 +62,21 @@ namespace Baird.Tests.NewUi
             var (home, _, _) = await Shown(seerr);
             Assert.Equal(new[] { "Continue watching", "On now", "Your watchlist", "Downloads", "Discover", "Netflix", "Disney+", "ITVX", "Channel 4", "BBC iPlayer" },
                 home.CurrentRows().Select(r => r.Title));
+        }
+
+        [AvaloniaFact]
+        public async Task Adding_to_the_watchlist_updates_the_Home_row_as_it_happens()
+        {
+            var list = new HomeDataTests.Watchlist();
+            var (home, rig, _) = await Shown(watchlist: list);
+            int Count() => home.CurrentRows().First(r => r.Title == "Your watchlist").Cards.Count;
+            Assert.Equal(1, Count());
+            await list.AddAsync("ep1");
+            await Wait(300);
+            Assert.Equal(2, Count());
+            await list.RemoveAsync("ep1");
+            await Wait(300);
+            Assert.Equal(1, Count());
         }
 
         [AvaloniaFact]
