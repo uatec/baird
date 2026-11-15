@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Baird.Services.Cast
 {
-    public sealed record CastRequest(string Method, string Path, string? Authorization, string Body);
+    public sealed record CastRequest(string Method, string Path, string Body);
 
     public sealed record CastResponse(int Status, string ContentType, byte[] Body, string? FileName = null)
     {
@@ -17,17 +17,24 @@ namespace Baird.Services.Cast
     /// <summary>
     /// What Baird's phone server answers (no sockets here: <see cref="CastServer"/> carries the requests).
     /// <list type="bullet">
-    /// <item>GET / — the page the install QR opens: a button that adds the "Play on Baird" Shortcut.</item>
+    /// <item>GET /phone/&lt;token&gt; — what the TV's code opens in the camera: a button that adds the "Play on Baird" Shortcut.</item>
     /// <item>GET /shortcut — the signed Shortcut file.</item>
-    /// <item>POST /play — {"url": "…"} (or the link as plain text) with "Authorization: Bearer &lt;token&gt;": plays it.</item>
+    /// <item>POST /phone/&lt;token&gt; — {"url": "…"} (or the link as plain text): plays it.</item>
     /// </list>
-    /// /play always answers 200 with {"status": "ok" | "unpaired" | "error", "message": "…"}: the Shortcut reads the status
-    /// (an unpaired phone forgets its pairing, so the next share scans the TV again) and shows the message as a notification.
+    /// One code does both: the camera opens it to install the Shortcut, and the Shortcut scans the same code on its first run
+    /// and keeps the address, token and all. The token is in the path rather than a header: on plain HTTP it's no more exposed
+    /// there, and the Shortcut only has to remember one address.
+    /// POST always answers 200 with {"status": "ok" | "unpaired" | "error", "message": "…"}: the Shortcut reads the status
+    /// (an unpaired phone forgets its address, so the next share scans the TV again) and shows the message as a notification.
     /// </summary>
     public sealed class CastApi
     {
         public const string ShortcutName = "Play on Baird";
         public const string ShortcutFile = ShortcutName + ".shortcut";
+        public const string PhonePath = "/phone/";
+
+        /// <summary>What the TV's code holds: this phone's own address on Baird.</summary>
+        public static string PhoneUrl(string baseUrl, string token) => baseUrl.TrimEnd('/') + PhonePath + token;
         private const int MaxBody = 16 * 1024;
 
         private readonly PhonePairings _pairings;
@@ -55,24 +62,29 @@ namespace Baird.Services.Cast
         public async Task<CastResponse> HandleAsync(CastRequest r)
         {
             var path = r.Path.TrimEnd('/');
-            switch (r.Method.ToUpperInvariant(), path)
+            var method = r.Method.ToUpperInvariant();
+            if ((path + "/").StartsWith(PhonePath, StringComparison.Ordinal))
+            {
+                var token = path.Length > PhonePath.Length ? path[PhonePath.Length..] : "";
+                if (method == "POST") return await PlayAsync(token, r.Body);
+                if (method == "GET") return CastResponse.Html(200, SetupPage(_shortcutPath() != null));
+            }
+            switch (method, path)
             {
                 case ("GET", ""): return CastResponse.Html(200, SetupPage(_shortcutPath() != null));
                 case ("GET", "/shortcut"):
                     if (_shortcutPath() is not { } file) return CastResponse.Html(404, Page("Not ready yet", "<p>This version of Baird doesn't have the Shortcut. Update Baird, then try again.</p>"));
                     return new CastResponse(200, "application/octet-stream", await File.ReadAllBytesAsync(file), ShortcutFile);
-                case ("POST", "/play"): return await PlayAsync(r);
                 default: return CastResponse.Html(404, Page("Not found", "<p>Nothing here.</p>"));
             }
         }
 
-        private async Task<CastResponse> PlayAsync(CastRequest r)
+        private async Task<CastResponse> PlayAsync(string token, string body)
         {
-            var token = r.Authorization is { } a && a.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? a[7..].Trim() : null;
             if (!_pairings.Accept(token))
-                return Reply("unpaired", "This phone isn't connected to Baird any more. Share again, then scan the code in Baird's Settings › Phones.");
-            if (r.Body.Length > MaxBody) return Reply("error", "That's too long to be a link.");
-            var shared = SharedText(r.Body);
+                return Reply("unpaired", "This phone isn't connected to Baird any more. Share again, then scan the code in Baird's Settings › Connect a phone.");
+            if (body.Length > MaxBody) return Reply("error", "That's too long to be a link.");
+            var shared = SharedText(body);
             if (CastLinks.Resolve(shared) is not { } link)
                 return Reply("error", string.IsNullOrWhiteSpace(shared) ? "Nothing was shared. Share a video's link to Play on Baird." : "That isn't a link Baird can play.");
             Console.WriteLine($"[Cast] Playing {link.Service}: {link.PlayUrl}");
@@ -122,7 +134,7 @@ namespace Baird.Services.Cast
               <ol>
                 <li>Tap the button above, then <b>Add Shortcut</b>.</li>
                 <li>In YouTube (or Safari, iPlayer, Netflix…) tap <b>Share</b>, then <b>{ShortcutName}</b>.</li>
-                <li>The first time, point the phone at the second code on the TV.</li>
+                <li>The first time, it asks to scan: point it at the same code on the TV.</li>
               </ol>
               """
             : "<p>This version of Baird doesn't have the Shortcut yet. Update Baird, then scan the code again.</p>");

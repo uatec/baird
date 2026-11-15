@@ -151,7 +151,7 @@ namespace Baird.Tests.Services
         public async Task A_paired_phone_plays_a_link()
         {
             var token = _pairings.Issue();
-            var r = Read(await Api().HandleAsync(new CastRequest("POST", "/play", $"Bearer {token}", """{"url":"https://youtu.be/dQw4w9WgXcQ"}""")));
+            var r = Read(await Api().HandleAsync(new CastRequest("POST", $"/phone/{token}", """{"url":"https://youtu.be/dQw4w9WgXcQ"}""")));
             Assert.Equal(("ok", "Playing it"), r);
             Assert.Equal("https://www.youtube.com/watch?v=dQw4w9WgXcQ", Assert.Single(_played).PlayUrl);
         }
@@ -160,7 +160,7 @@ namespace Baird.Tests.Services
         public async Task Plain_text_bodies_work_too()
         {
             var token = _pairings.Issue();
-            await Api().HandleAsync(new CastRequest("POST", "/play", $"Bearer {token}", "https://vimeo.com/76979871"));
+            await Api().HandleAsync(new CastRequest("POST", $"/phone/{token}", "https://vimeo.com/76979871"));
             Assert.Single(_played);
         }
 
@@ -168,10 +168,10 @@ namespace Baird.Tests.Services
         public async Task An_unknown_phone_is_told_to_pair_again_and_nothing_plays()
         {
             _pairings.Issue();
-            var r = Read(await Api().HandleAsync(new CastRequest("POST", "/play", "Bearer wrong", """{"url":"https://youtu.be/dQw4w9WgXcQ"}""")));
+            var r = Read(await Api().HandleAsync(new CastRequest("POST", "/phone/wrong", """{"url":"https://youtu.be/dQw4w9WgXcQ"}""")));
             Assert.Equal("unpaired", r.Status);
             Assert.Empty(_played);
-            Assert.Equal("unpaired", Read(await Api().HandleAsync(new CastRequest("POST", "/play", null, "https://youtu.be/dQw4w9WgXcQ"))).Status);
+            Assert.Equal("unpaired", Read(await Api().HandleAsync(new CastRequest("POST", "/phone/", "https://youtu.be/dQw4w9WgXcQ"))).Status);
         }
 
         [Theory]
@@ -181,7 +181,7 @@ namespace Baird.Tests.Services
         public async Task Nothing_playable_is_an_error_message(string body)
         {
             var token = _pairings.Issue();
-            var r = Read(await Api().HandleAsync(new CastRequest("POST", "/play", $"Bearer {token}", body)));
+            var r = Read(await Api().HandleAsync(new CastRequest("POST", $"/phone/{token}", body)));
             Assert.Equal("error", r.Status);
             Assert.Empty(_played);
         }
@@ -191,22 +191,22 @@ namespace Baird.Tests.Services
         {
             var token = _pairings.Issue();
             var api = new CastApi(_pairings, _ => throw new InvalidOperationException("boom"), () => null);
-            Assert.Equal("error", Read(await api.HandleAsync(new CastRequest("POST", "/play", $"Bearer {token}", "https://youtu.be/dQw4w9WgXcQ"))).Status);
+            Assert.Equal("error", Read(await api.HandleAsync(new CastRequest("POST", $"/phone/{token}", "https://youtu.be/dQw4w9WgXcQ"))).Status);
         }
 
         [Fact]
         public async Task The_setup_page_links_the_shortcut_when_there_is_one()
         {
-            var without = await Api().HandleAsync(new CastRequest("GET", "/", null, ""));
+            var without = await Api().HandleAsync(new CastRequest("GET", "/", ""));
             Assert.DoesNotContain("href=\"/shortcut\"", Encoding.UTF8.GetString(without.Body));
 
             _shortcut = Path.GetTempFileName();
             File.WriteAllBytes(_shortcut, new byte[] { 1, 2, 3 });
             try
             {
-                var page = await Api().HandleAsync(new CastRequest("GET", "/", null, ""));
+                var page = await Api().HandleAsync(new CastRequest("GET", "/", ""));
                 Assert.Contains("href=\"/shortcut\"", Encoding.UTF8.GetString(page.Body));
-                var file = await Api().HandleAsync(new CastRequest("GET", "/shortcut", null, ""));
+                var file = await Api().HandleAsync(new CastRequest("GET", "/shortcut", ""));
                 Assert.Equal(new byte[] { 1, 2, 3 }, file.Body);
                 Assert.Equal("Play on Baird.shortcut", file.FileName);
             }
@@ -214,8 +214,19 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
+        public async Task The_camera_opening_a_phone_address_gets_the_setup_page_and_nothing_plays()
+        {
+            var token = _pairings.Issue();
+            var page = await Api().HandleAsync(new CastRequest("GET", $"/phone/{token}", ""));
+            Assert.Equal(200, page.Status);
+            Assert.StartsWith("text/html", page.ContentType);
+            Assert.Empty(_played);
+            Assert.Equal("http://192.168.1.20:8099/phone/abc", CastApi.PhoneUrl("http://192.168.1.20:8099/", "abc"));
+        }
+
+        [Fact]
         public async Task The_shortcut_is_missing_until_a_build_ships_it() =>
-            Assert.Equal(404, (await Api().HandleAsync(new CastRequest("GET", "/shortcut", null, ""))).Status);
+            Assert.Equal(404, (await Api().HandleAsync(new CastRequest("GET", "/shortcut", ""))).Status);
 
         [Theory]
         [InlineData("""{"url":["https://youtu.be/dQw4w9WgXcQ"]}""", "https://youtu.be/dQw4w9WgXcQ")]
@@ -262,11 +273,10 @@ namespace Baird.Tests.Services
             var page = await http.GetAsync($"http://127.0.0.1:{port}/");
             Assert.Equal(System.Net.HttpStatusCode.OK, page.StatusCode);
 
-            var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/play")
+            var req = new HttpRequestMessage(HttpMethod.Post, CastApi.PhoneUrl($"http://127.0.0.1:{port}", token))
             {
                 Content = new StringContent("""{"url":"https://youtu.be/dQw4w9WgXcQ"}""", Encoding.UTF8, "application/json"),
             };
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
             var res = await http.SendAsync(req);
             Assert.Contains("\"status\":\"ok\"", await res.Content.ReadAsStringAsync());
             Assert.Equal("https://www.youtube.com/watch?v=dQw4w9WgXcQ", played);

@@ -8,10 +8,11 @@ iOS only imports signed Shortcuts, and only macOS can sign them, so the .github/
 signs it on a Mac runner; the release ships it in Baird's zip and Baird serves it to phones (Settings > Connect a phone).
 
 What it does, on the share sheet (or with a copied link when run on its own):
-  1. Reads baird-pairing.txt from the Shortcuts folder in iCloud Drive. The first time there is none: it asks the viewer
-     to scan code 2 on the TV ({"baird": "http://<ip>:8099", "token": "..."}) and saves it.
-  2. POSTs {"url": <what was shared>} to <baird>/play with "Authorization: Bearer <token>".
-  3. Shows Baird's answer as a notification. If Baird says "unpaired" (forgotten in Settings), it deletes the pairing so
+  1. Reads baird-phone.txt from the Shortcuts folder in iCloud Drive: this phone's address on Baird. The first time there
+     is none: it asks the viewer to scan the code on the TV (http://<ip>:8099/phone/<token>, the same code the camera
+     opened to install the Shortcut) and saves it.
+  2. POSTs {"url": <what was shared>} to that address.
+  3. Shows Baird's answer as a notification. If Baird says "unpaired" (forgotten in Settings), it deletes the address so
      the next share scans again.
 Baird always answers 200 with {"status", "message"}, so nothing here depends on how Shortcuts treats HTTP errors.
 """
@@ -19,7 +20,7 @@ import plistlib
 import sys
 import uuid
 
-PAIRING_FILE = "baird-pairing.txt"
+PAIRING_FILE = "baird-phone.txt"
 OBJ = "￼"  # where a variable sits in a text field
 _ns = uuid.UUID("6f0b1c8e-4a55-4bd1-9a51-6b2b6f1c0a11")
 
@@ -65,20 +66,20 @@ IS, HAS_NO_VALUE = 4, 101  # Shortcuts' If conditions
 
 
 def actions():
-    first_file, scan, file, pairing, base, token = (uid(n) for n in ("file1", "scan", "file2", "pairing", "base", "token"))
+    first_file, scan, file, address = (uid(n) for n in ("file1", "scan", "file2", "address"))
     response, reply, status, message = (uid(n) for n in ("response", "reply", "status", "message"))
     not_paired, unpaired = uid("if-not-paired"), uid("if-unpaired")
     shortcut_input = {"Type": "ExtensionInput"}
     return [
         action("is.workflow.actions.comment", WFCommentActionText=
                "Play on Baird: sends what you share to Baird, the TV. Built from shortcut/build_shortcut.py in the Baird repo."),
-        # 1. The pairing (Baird's address and this phone's token), or scan it from the TV.
+        # 1. This phone's address on Baird, or scan it from the TV.
         action("is.workflow.actions.documentpicker.open", UUID=first_file, WFGetFilePath=text(PAIRING_FILE),
                WFFileErrorIfNotFound=False, WFShowFilePicker=False),
         action("is.workflow.actions.conditional", GroupingIdentifier=not_paired, WFControlFlowMode=0,
                WFCondition=HAS_NO_VALUE, WFInput=condition_input(first_file, "File")),
         action("is.workflow.actions.alert", WFAlertActionTitle="Connect to Baird",
-               WFAlertActionMessage="On the TV, open Settings › Connect a phone, then point the camera at code 2.",
+               WFAlertActionMessage="On the TV, open Settings › Connect a phone, then point the camera at the code.",
                WFAlertActionCancelButtonShown=False),
         action("is.workflow.actions.scanbarcode", UUID=scan),
         action("is.workflow.actions.documentpicker.save", WFInput=var(scan, "QR/Barcode"), WFAskWhereToSave=False,
@@ -86,17 +87,10 @@ def actions():
         action("is.workflow.actions.conditional", GroupingIdentifier=not_paired, WFControlFlowMode=2),
         action("is.workflow.actions.documentpicker.open", UUID=file, WFGetFilePath=text(PAIRING_FILE),
                WFFileErrorIfNotFound=True, WFShowFilePicker=False),
-        action("is.workflow.actions.detect.dictionary", UUID=pairing, WFInput=var(file, "File")),
-        action("is.workflow.actions.getvalueforkey", UUID=base, WFInput=var(pairing, "Dictionary"),
-               WFGetDictionaryValueType="Value", WFDictionaryKey="baird"),
-        action("is.workflow.actions.getvalueforkey", UUID=token, WFInput=var(pairing, "Dictionary"),
-               WFGetDictionaryValueType="Value", WFDictionaryKey="token"),
+        action("is.workflow.actions.detect.text", UUID=address, WFInput=var(file, "File")),
         # 2. Send it.
-        action("is.workflow.actions.downloadurl", UUID=response,
-               WFURL=text(OBJ + "/play", i0=output(base, "Dictionary Value")),
-               WFHTTPMethod="POST", ShowHeaders=True,
-               WFHTTPHeaders=dictionary([("Authorization", text("Bearer " + OBJ, i7=output(token, "Dictionary Value")))]),
-               WFHTTPBodyType="JSON",
+        action("is.workflow.actions.downloadurl", UUID=response, WFURL=text(OBJ, i0=output(address, "Text")),
+               WFHTTPMethod="POST", WFHTTPBodyType="JSON",
                WFJSONValues=dictionary([("url", text(OBJ, i0=shortcut_input))])),
         # 3. Baird's answer.
         action("is.workflow.actions.detect.dictionary", UUID=reply, WFInput=var(response, "Contents of URL")),

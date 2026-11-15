@@ -116,7 +116,7 @@ namespace Baird.Services.Cast
                     while (read < buffer.Length && (n = await req.InputStream.ReadAsync(buffer.AsMemory(read)).ConfigureAwait(false)) > 0) read += n;
                     body = Encoding.UTF8.GetString(buffer, 0, read);
                 }
-                var res = await _api.HandleAsync(new CastRequest(req.HttpMethod, req.Url?.AbsolutePath ?? "/", req.Headers["Authorization"], body)).ConfigureAwait(false);
+                var res = await _api.HandleAsync(new CastRequest(req.HttpMethod, req.Url?.AbsolutePath ?? "/", body)).ConfigureAwait(false);
                 ctx.Response.StatusCode = res.Status;
                 ctx.Response.ContentType = res.ContentType;
                 if (res.FileName != null) ctx.Response.AddHeader("Content-Disposition", $"attachment; filename=\"{res.FileName}\"");

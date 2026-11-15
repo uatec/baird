@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Text.Json;
 using Avalonia.Headless.XUnit;
 using Baird.NewUi.Controls;
 using Baird.NewUi.Core;
@@ -50,12 +49,12 @@ namespace Baird.Tests.NewUi
                 r => r.Label.Contains("phone"));
 
         [AvaloniaFact]
-        public void The_page_shows_two_codes_and_issues_a_token()
+        public void The_page_shows_one_code_and_issues_a_token()
         {
             var issued = 0;
             var page = new PhonesPage("http://192.168.1.20:8099", () => { issued++; return "abc"; });
             Assert.Equal(1, issued);
-            Assert.Equal(2, page.View.GetLogicalDescendantsOfQr());
+            Assert.Equal(1, page.View.GetLogicalDescendantsOfQr());
             Assert.False(page.OnAction(UiAction.Back, false));
             Assert.True(page.OnAction(UiAction.Ok, false));
         }
@@ -81,14 +80,6 @@ namespace Baird.Tests.NewUi
             using var frame = Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(w);
             frame!.Save(path);
             w.Close();
-        }
-
-        [AvaloniaFact]
-        public void The_pairing_code_holds_the_address_and_token()
-        {
-            using var doc = JsonDocument.Parse(PhonesPage.PairingText("http://192.168.1.20:8099", "abc"));
-            Assert.Equal("http://192.168.1.20:8099", doc.RootElement.GetProperty("baird").GetString());
-            Assert.Equal("abc", doc.RootElement.GetProperty("token").GetString());
         }
     }
 
