@@ -66,7 +66,7 @@ IS, HAS_NO_VALUE = 4, 101  # Shortcuts' If conditions
 
 
 def actions():
-    first_file, scan, file, address = (uid(n) for n in ("file1", "scan", "file2", "address"))
+    first_file, scan, scanned, file, address = (uid(n) for n in ("file1", "scan", "scanned", "file2", "address"))
     response, reply, status, message = (uid(n) for n in ("response", "reply", "status", "message"))
     not_paired, unpaired = uid("if-not-paired"), uid("if-unpaired")
     shortcut_input = {"Type": "ExtensionInput"}
@@ -82,7 +82,9 @@ def actions():
                WFAlertActionMessage="On the TV, open Settings › Connect a phone, then point the camera at the code.",
                WFAlertActionCancelButtonShown=False),
         action("is.workflow.actions.scanbarcode", UUID=scan),
-        action("is.workflow.actions.documentpicker.save", WFInput=var(scan, "QR/Barcode"), WFAskWhereToSave=False,
+        # The scan's result is a picture of the code: saved as it is, the file is an image. A Text action makes it the address.
+        action("is.workflow.actions.gettext", UUID=scanned, WFTextActionText=text(OBJ, i0=output(scan, "QR/Barcode"))),
+        action("is.workflow.actions.documentpicker.save", WFInput=var(scanned, "Text"), WFAskWhereToSave=False,
                WFFileDestinationPath=text(PAIRING_FILE), WFSaveFileOverwrite=True),
         action("is.workflow.actions.conditional", GroupingIdentifier=not_paired, WFControlFlowMode=2),
         action("is.workflow.actions.documentpicker.open", UUID=file, WFGetFilePath=text(PAIRING_FILE),
