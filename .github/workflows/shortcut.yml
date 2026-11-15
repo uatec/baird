@@ -4,18 +4,13 @@ name: Shortcut
 # imports signed Shortcuts. The signed file is uploaded as the "shortcut" artifact; the release puts it in Baird's zip,
 # and Baird serves it to phones (Settings > Connect a phone).
 #
-# Signing, first that works:
-#   1. `shortcuts sign` on the Mac. Needs the Mac signed into iCloud, which GitHub's own Macs aren't
-#      ("In order to do this, you must be signed into iCloud"), so this only works on a self-hosted Mac.
-#   2. RoutineHub's HubSign service (what the Cherri compiler uses off a Mac), if the ROUTINEHUB_API_KEY secret is set.
-#      The Shortcut holds nothing private (each phone's token comes from the TV's QR code), but RoutineHub signs it.
-# Signing is allowed to fail (the artifact is then missing) so it never blocks a Baird release.
+# Signing needs a Mac signed into iCloud, which GitHub's own Macs aren't ("In order to do this, you must be signed
+# into iCloud"), so it only works on a self-hosted Mac. Until then the Shortcut is built by hand on an iPhone and
+# installed from its iCloud link (Baird:ShortcutLink). Signing is allowed to fail (the artifact is then missing) so
+# it never blocks a Baird release.
 
 on:
   workflow_call:
-    secrets:
-      ROUTINEHUB_API_KEY:
-        required: false
   workflow_dispatch:
 
 jobs:
@@ -39,31 +34,6 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
         run: shortcuts sign --mode anyone --input out/unsigned.shortcut --output "out/Play on Baird.shortcut"
-
-      - name: Sign with HubSign
-        id: hubsign
-        if: steps.mac.outcome != 'success'
-        continue-on-error: true
-        timeout-minutes: 5
-        env:
-          ROUTINEHUB_API_KEY: ${{ secrets.ROUTINEHUB_API_KEY }}
-        run: |
-          if [ -z "$ROUTINEHUB_API_KEY" ]; then
-            echo "::warning::No ROUTINEHUB_API_KEY secret, so HubSign can't sign the Shortcut either."
-            exit 1
-          fi
-          plutil -convert xml1 -o out/unsigned.xml.shortcut out/unsigned.shortcut
-          status=$(curl -sS --max-time 60 -o "out/Play on Baird.shortcut" -w '%{http_code}' \
-            -A "baird-ci" \
-            -F "shortcut_name=Play on Baird" \
-            -F "api_key=$ROUTINEHUB_API_KEY" \
-            -F "shortcut_file=@out/unsigned.xml.shortcut;filename=Play on Baird.shortcut" \
-            https://routinehub.co/api/v1/sign-shortcut)
-          echo "HubSign answered HTTP $status"
-          if [ "$status" != "200" ]; then
-            echo "::warning::HubSign answered HTTP $status:"; head -c 500 "out/Play on Baird.shortcut"; echo
-            rm -f "out/Play on Baird.shortcut"; exit 1
-          fi
 
       # A signed Shortcut is an Apple Encrypted Archive: it starts "AEA1".
       - name: Check it's signed
