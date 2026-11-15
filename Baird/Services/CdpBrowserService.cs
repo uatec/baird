@@ -783,6 +783,7 @@ namespace Baird.Services
                     readyState: v.readyState,
                     paused: v.paused,
                     duration: v.duration,
+                    ended: v.ended,
                     url: window.location.href,
                     title: document.title
                 };
@@ -799,7 +800,8 @@ namespace Baird.Services
                     Paused: r.TryGetProperty("paused", out var p) && p.GetBoolean(),
                     Duration: r.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number ? d.GetDouble() : 0, // NaN/Infinity serialise to null
                     Url: r.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "",
-                    Title: r.TryGetProperty("title", out var t) ? t.GetString() ?? "" : ""
+                    Title: r.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
+                    Ended: r.TryGetProperty("ended", out var en) && en.ValueKind == JsonValueKind.True
                 );
             }
 

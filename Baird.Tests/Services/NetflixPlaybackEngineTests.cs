@@ -183,6 +183,98 @@ namespace Baird.Tests.Services
             Assert.Equal(1, ended);
         }
 
+        private static VideoPlaybackStatus At(string url, double t, bool ended = false, bool found = true, double duration = 1500) =>
+            new(found, t, 4, false, duration, url, "Netflix", ended);
+
+        [Fact]
+        public async Task AnEndedVideo_NearTheEndOfTheTitle_EndsAtOnce()
+        {
+            double t = 0;
+            VideoPlaybackStatus? current = null;
+            var (_, _, engine) = Engine(() => current ?? Video(t += 0.4));
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(WatchUrl);
+            current = Video(1490);
+            await engine.PollOnceAsync();
+            current = At(WatchUrl, 1500, ended: true);
+            await engine.PollOnceAsync();
+            Assert.Equal(1, ended);
+        }
+
+        [Fact]
+        public async Task NetflixAutoplayingAnotherTitle_EndsTheOneBairdWasPlaying()
+        {
+            double t = 0;
+            VideoPlaybackStatus? current = null;
+            var (_, _, engine) = Engine(() => current ?? Video(t += 0.4));
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(WatchUrl);
+            await engine.PollOnceAsync(); // settles on the title that was asked for
+            current = At(NetflixProvider.WatchUrl("81234567"), 2);
+            for (var i = 0; i < 6; i++) await engine.PollOnceAsync();
+            Assert.Equal(1, ended);
+        }
+
+        [Fact]
+        public async Task AShowsWatchUrlRedirectingToItsEpisode_IsNotTheEnd()
+        {
+            var episode = NetflixProvider.WatchUrl("81999999");
+            double t = 0;
+            var (_, _, engine) = Engine(() => At(episode, t += 0.4));
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(WatchUrl);
+            for (var i = 0; i < 10; i++) await engine.PollOnceAsync();
+            Assert.Equal(0, ended);
+        }
+
+        [Fact]
+        public async Task NetflixDroppingToTheBrowsePageWithAVideo_EndsPlayback()
+        {
+            double t = 0;
+            VideoPlaybackStatus? current = null;
+            var (_, _, engine) = Engine(() => current ?? Video(t += 0.4));
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(WatchUrl);
+            await engine.PollOnceAsync();
+            current = At("https://www.netflix.com/browse", 3);
+            for (var i = 0; i < 6; i++) await engine.PollOnceAsync();
+            Assert.Equal(1, ended);
+        }
+
+        [Fact]
+        public async Task ABlackScreenAfterTheCredits_EndsWithinSeconds()
+        {
+            double t = 0;
+            VideoPlaybackStatus? current = null;
+            var (_, _, engine) = Engine(() => current ?? Video(t += 0.4));
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(WatchUrl);
+            current = Video(1495);
+            await engine.PollOnceAsync();
+            current = NoVideo();
+            for (var i = 0; i < 6; i++) await engine.PollOnceAsync();
+            Assert.Equal(1, ended);
+        }
+
+        [Fact]
+        public async Task AnEndedVideoMidTitle_IsAnAdvertOrPreview_AndDoesNotEndPlayback()
+        {
+            double t = 0;
+            VideoPlaybackStatus? current = null;
+            var (_, _, engine) = Engine(() => current ?? Video(t += 0.4));
+            var ended = 0;
+            engine.StreamEnded += (_, _) => ended++;
+            await engine.PlayAsync(WatchUrl);
+            current = At(WatchUrl, 30, ended: true);
+            for (var i = 0; i < 6; i++) await engine.PollOnceAsync();
+            Assert.Equal(0, ended);
+        }
+
         [Fact]
         public async Task Pause_ChangesStateAtOnce()
         {

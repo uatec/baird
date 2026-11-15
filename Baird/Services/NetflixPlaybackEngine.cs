@@ -27,6 +27,10 @@ namespace Baird.Services
         /// while staying on /watch/, which must not end playback.
         /// </summary>
         private const int MissingPollsOnWatchPageForEnd = 120;
+        /// <summary>A video that ends, or vanishes, within this many seconds of the title's length means the title is over.</summary>
+        private const double TitleEndMarginSeconds = 120;
+        /// <summary>The same missing-video wait (2.5 s) once the title was nearly over: the credits, then a black screen.</summary>
+        private const int MissingPollsNearEnd = 5;
         /// <summary>Failed polls in a row (no answer, an error, or no reply within <see cref="PollTimeout"/>) before giving up.</summary>
         private const int BadPollsForFailure = 2;
         private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(5);
@@ -52,6 +56,7 @@ namespace Baird.Services
         /// <summary>The code asked for is for the session's own sign-in (else for the flow's verification step on the title).</summary>
         private bool _codeForSession;
         private string? _url;
+        private string? _playId;
         private double _position;
         private double _duration;
         private volatile PlaybackState _state = PlaybackState.Idle;
@@ -60,6 +65,16 @@ namespace Baird.Services
         {
             _session = session;
             _createFlow = createFlow;
+        }
+
+        /// <summary>The title id in a /watch/ URL (digits after the prefix), else null.</summary>
+        internal static string? WatchId(string? url)
+        {
+            if (!Handles(url)) return null;
+            var rest = url![WatchPrefix.Length..];
+            var n = 0;
+            while (n < rest.Length && char.IsAsciiDigit(rest[n])) n++;
+            return n > 0 ? rest[..n] : null;
         }
 
         public static bool Handles(string? url) => url != null && url.StartsWith(WatchPrefix, StringComparison.Ordinal);
@@ -97,6 +112,7 @@ namespace Baird.Services
             var stopping = _stopping; // the browser must be back on its idle page before it opens the next title
             var generation = Interlocked.Increment(ref _generation);
             _url = url;
+            _playId = null;
             _failedRaised = false;
             _failureAction = null;
             _missingPolls = 0;
@@ -316,6 +332,13 @@ namespace Baird.Services
             lock (_commandLock) return _commands;
         }
 
+        private async Task EndAsync(string why)
+        {
+            Console.WriteLine($"[NetflixEngine] Playback ended: {why}.");
+            await StopAsync();
+            StreamEnded?.Invoke(this, EventArgs.Empty);
+        }
+
         public async Task PollOnceAsync()
         {
             if (_state is PlaybackState.Idle or PlaybackState.Loading) return;
@@ -341,13 +364,32 @@ namespace Baird.Services
                 return;
             }
             _badPolls = 0;
-            if (!status.Found)
+            var onWatchPage = Handles(status.Url);
+            // A show's watch URL becomes its next episode's: the id that counts is the one the page settled on when it first played.
+            if (_playId == null && onWatchPage && status.Found) _playId = WatchId(status.Url);
+            var playId = _playId;
+            var length = DurationSeconds > 0 ? DurationSeconds : status.Duration;
+            var nearEnd = length > 0 && TimePositionSeconds >= length - TitleEndMarginSeconds;
+
+            // Netflix carries on by itself when a title finishes: autoplay of the next episode or a suggestion (another /watch/
+            // id), or a trailer or the browse page. Whatever it chooses, the title Baird was playing is over; Baird decides what
+            // follows (the next episode, or Home) rather than leaving the viewer on Netflix's pick.
+            if (status.Url.Length > 0 && (!onWatchPage || (playId != null && WatchId(status.Url) is { } now && now != playId)))
             {
-                var limit = Handles(status.Url) ? MissingPollsOnWatchPageForEnd : MissingPollsForEnd;
+                if (++_missingPolls >= MissingPollsForEnd) { await EndAsync($"the page left {playId} ({status.Url})"); return; }
+                return;
+            }
+            // The video has played out: end now (an ended video well before the title's end is an advert or preview; carry on).
+            if (status.Found && status.Ended && (nearEnd || length <= 0))
+            {
+                await EndAsync("the video ended");
+                return;
+            }
+            if (!status.Found || status.Ended)
+            {
+                var limit = nearEnd ? MissingPollsNearEnd : onWatchPage ? MissingPollsOnWatchPageForEnd : MissingPollsForEnd;
                 if (++_missingPolls < limit) return;
-                Console.WriteLine($"[NetflixEngine] No video on the page any more ({status.Url}): playback ended.");
-                await StopAsync();
-                StreamEnded?.Invoke(this, EventArgs.Empty);
+                await EndAsync(status.Found ? "the video ended" : $"no video on the page any more ({status.Url})");
                 return;
             }
 
