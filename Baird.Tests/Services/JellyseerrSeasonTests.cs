@@ -38,5 +38,19 @@ namespace Baird.Tests.Services
             Assert.Equal("Mark starts a new job.", e1.Synopsis);
             Assert.Equal("3. Episode 3", d.Seasons.Single(s => s.Number == 1).Episodes[2].Label);
         }
+
+        [Fact]
+        public async Task A_hung_season_call_does_not_hold_back_the_first_report()
+        {
+            var w = CatalogueTests.Build();
+            var shows = new ShowData(w.Data, w.Seerr, w.Search, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(200));
+            w.Seerr.HangSeason = true;
+            var sev = ShowData.FromCard(new HomeCard(CardKind.Series, "tmdb:tv:95396", "Severance", "2022", null, null, "get", "Seerr", PlayVia.None));
+            var reports = 0;
+
+            var d = await shows.DetailsAsync(sev, _ => reports++, fresh: true);
+            Assert.True(reports >= 1);
+            Assert.Equal("1. Episode 1", d.Seasons.Single(s => s.Number == 1).Episodes[0].Label);
+        }
     }
 }

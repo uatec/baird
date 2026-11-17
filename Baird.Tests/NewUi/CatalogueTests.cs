@@ -67,8 +67,10 @@ namespace Baird.Tests.NewUi
             public Task<JellyseerrMediaStatus?> GetMediaStatusAsync(int tmdbId, string mediaType, CancellationToken ct = default) =>
                 HangStatus ? new TaskCompletionSource<JellyseerrMediaStatus?>().Task : Task.FromResult(Status.TryGetValue(tmdbId, out var s) ? s : null);
             public readonly Dictionary<(int TmdbId, int Season), JellyseerrSeasonDetails> Seasons = new();
+            /// <summary>Make <see cref="GetSeasonAsync"/> never answer.</summary>
+            public bool HangSeason;
             public Task<JellyseerrSeasonDetails?> GetSeasonAsync(int tmdbId, int season, CancellationToken ct = default) =>
-                Task.FromResult(Seasons.TryGetValue((tmdbId, season), out var d) ? d : null);
+                HangSeason ? new TaskCompletionSource<JellyseerrSeasonDetails?>().Task : Task.FromResult(Seasons.TryGetValue((tmdbId, season), out var d) ? d : null);
             public Task<JellyseerrRequestResponse> RequestSeasonsAsync(int id, string type, IReadOnlyList<int>? seasons, CancellationToken ct = default)
             {
                 Requests.Add((id, type, seasons));

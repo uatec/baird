@@ -193,7 +193,7 @@ namespace Baird.NewUi.Adapters
             var remaining = sources.Select(s => s.Results).ToList();
             var found = new List<MediaItemViewModel>();
             var seasonDetails = new Dictionary<int, JellyseerrSeasonDetails>();
-            var details = await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, ct).ConfigureAwait(false);
+            var details = await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, progress, ct).ConfigureAwait(false);
             progress?.Invoke(details);
             while (remaining.Count > 0)
             {
@@ -205,13 +205,13 @@ namespace Baird.NewUi.Adapters
                 var changed = match != null && !match.Sources.Select(s => s.ItemId).SequenceEqual(t.Sources.Select(s => s.ItemId));
                 if (changed) t = t with { Sources = match!.Sources, ImageUrl = t.ImageUrl ?? match.ImageUrl, Synopsis = t.Synopsis ?? match.Synopsis, Year = t.Year ?? match.Year };
                 if (!changed && remaining.Count > 0) continue;
-                details = changed ? await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, ct).ConfigureAwait(false) : details with { CheckingLibrary = false };
+                details = changed ? await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, progress, ct).ConfigureAwait(false) : details with { CheckingLibrary = false };
                 progress?.Invoke(details);
             }
             return details;
         }
 
-        private async Task<ShowDetails> ComposeAsync(CatalogueTitle t, JellyseerrMediaStatus? status, bool checking, Dictionary<int, JellyseerrSeasonDetails> seasonDetails, CancellationToken ct)
+        private async Task<ShowDetails> ComposeAsync(CatalogueTitle t, JellyseerrMediaStatus? status, bool checking, Dictionary<int, JellyseerrSeasonDetails> seasonDetails, Action<ShowDetails>? early, CancellationToken ct)
         {
             if (t.Kind != TitleKind.Series)
             {
@@ -220,13 +220,14 @@ namespace Baird.NewUi.Adapters
                 return new ShowDetails(t, Array.Empty<Season>(), film, status?.Progress(), checking);
             }
             var library = await LibrarySeasonsAsync(t, ct).ConfigureAwait(false);
-            var details = new ShowDetails(t, Merge(library, status, t.Best?.Service), CheckingLibrary: checking);
+            var details = new ShowDetails(t, Merge(library, status, t.Best?.Service, seasonDetails), CheckingLibrary: checking);
             // Seerr names the episodes the library lacks: ask for the season the page opens on (bounded, so a hung Seerr can't stall it).
             var i = Prefetcher.OpeningSeason(details);
             if (i < 0 || _seerr == null || t.Seerr == null) return details;
             var number = details.Seasons[i].Number;
             if (!seasonDetails.TryGetValue(number, out var season))
             {
+                early?.Invoke(details); // the page paints with placeholder names now; the real ones follow if Seerr answers
                 var seerr = _seerr; var r = t.Seerr;
                 season = await Deadline.Within<JellyseerrSeasonDetails?>(c => seerr.GetSeasonAsync(r.TmdbId, number, c), null, _pieceTimeout, $"[ShowData] Seerr season {number}", ct).ConfigureAwait(false);
                 if (season != null) seasonDetails[number] = season;
