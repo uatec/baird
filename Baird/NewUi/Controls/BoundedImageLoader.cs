@@ -39,15 +39,17 @@ namespace Baird.NewUi.Controls
         private readonly Func<DateTime> _now;
 
         private readonly IDiskImageStore? _disk;
-        private readonly List<Task> _writes = new();
+        private readonly HashSet<Task> _writes = new();
 
         /// <summary>Completes when the background disk writes started so far are done (tests wait on this instead of sleeping).</summary>
-        public Task WritesDoneAsync()
+        internal Task WritesDoneAsync()
         {
             Task[] pending;
-            lock (_writes) { pending = _writes.ToArray(); _writes.Clear(); }
+            lock (_writes) pending = _writes.ToArray();
             return Task.WhenAll(pending);
         }
+
+        internal int PendingWrites { get { lock (_writes) return _writes.Count; } }
 
         private readonly Func<string, Task<byte[]?>> _download;
 
@@ -127,8 +129,16 @@ namespace Baird.NewUi.Controls
             var bmp = Decode(bytes);
             if (_disk != null)   // after the picture is decoded, never in its way
             {
-                var write = Task.Run(() => _disk.Write(url, bytes));
-                lock (_writes) _writes.Add(write);
+                Task? write = null;
+                lock (_writes)   // held while starting, so the write can't finish and look for itself before it is listed
+                {
+                    write = Task.Run(() =>
+                    {
+                        try { _disk.Write(url, bytes); }
+                        finally { lock (_writes) _writes.Remove(write!); }
+                    });
+                    _writes.Add(write);
+                }
             }
             return bmp;
         }

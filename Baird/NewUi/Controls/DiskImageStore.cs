@@ -32,17 +32,25 @@ namespace Baird.NewUi.Controls
         private readonly string _folder;
         private readonly long _budget;
         private readonly object _gate = new();
-        private Dictionary<string, (long Size, DateTime Used)>? _index;   // built from file metadata on first need, never from contents
+        private Dictionary<string, (long Size, DateTime Used, DateTime Touched)>? _index;   // built from file metadata on first need, never from contents
         private long _total;
         private bool _unusable;
 
-        public DiskImageStore(string? folder = null, long budgetBytes = DefaultBudgetBytes)
+        public static readonly TimeSpan TouchEvery = TimeSpan.FromHours(1);
+
+        private readonly Func<DateTime> _now;
+        private readonly Action<string, DateTime> _touch;
+
+        public DiskImageStore(string? folder = null, long budgetBytes = DefaultBudgetBytes, Func<DateTime>? now = null, Action<string, DateTime>? touch = null)
         {
+            _now = now ?? (() => DateTime.UtcNow);
+            _touch = touch ?? File.SetLastWriteTimeUtc;
             _folder = folder ?? DefaultFolder;
             _budget = budgetBytes;
         }
 
-        public static string HashOf(string url) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(url))).ToLowerInvariant();
+        /// <summary>Hash of the link with its access token scrubbed, so a new login (new token) still finds the pictures already stored.</summary>
+        public static string HashOf(string url) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Baird.Services.JsonMediaDataCache.Scrub(url)))).ToLowerInvariant();
 
         private string PathOf(string hash) => Path.Combine(_folder, hash);
 
@@ -59,9 +67,19 @@ namespace Baird.NewUi.Controls
                 if (!File.Exists(path)) return false;
                 var data = File.ReadAllBytes(path);
                 if (data.Length < MinImageBytes || data.Length > MaxImageBytes) { Remove(url); return false; }   // foreign or damaged
-                var now = DateTime.UtcNow;
-                try { File.SetLastWriteTimeUtc(path, now); } catch (Exception) { /* use time is best effort */ }
-                lock (_gate) { if (_index != null && _index.TryGetValue(hash, out var e)) _index[hash] = (e.Size, now); }
+                var now = _now();
+                EnsureIndex();
+                var touch = false;
+                lock (_gate)
+                {
+                    if (_index != null && _index.TryGetValue(hash, out var e))
+                    {
+                        touch = now - e.Touched >= TouchEvery;   // a metadata write per hit is a lot for an SD card
+                        _index[hash] = (e.Size, now, touch ? now : e.Touched);   // use is always remembered here
+                    }
+                }
+                if (touch)
+                    try { _touch(path, now); } catch (Exception) { /* use time is best effort */ }
                 bytes = data;
                 return true;
             }
@@ -83,12 +101,12 @@ namespace Baird.NewUi.Controls
                 var tmp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
                 File.WriteAllBytes(tmp, bytes);
                 File.Move(tmp, path, overwrite: true);
-                var now = DateTime.UtcNow;
+                var now = _now();
                 EnsureIndex();
                 lock (_gate)
                 {
                     if (_index!.TryGetValue(hash, out var old)) _total -= old.Size;
-                    _index[hash] = (bytes.Length, now);
+                    _index[hash] = (bytes.Length, now, now);
                     _total += bytes.Length;
                 }
                 Trim();
@@ -136,7 +154,7 @@ namespace Baird.NewUi.Controls
         private void EnsureIndex()
         {
             lock (_gate) { if (_index != null) return; }
-            var index = new Dictionary<string, (long, DateTime)>();
+            var index = new Dictionary<string, (long, DateTime, DateTime)>();
             long total = 0;
             try
             {
@@ -146,7 +164,7 @@ namespace Baird.NewUi.Controls
                     try { stray.Delete(); } catch (Exception ex) { Console.WriteLine($"[ImageDisk] Can't remove {stray.Name}: {ex.Message}"); }
                 foreach (var f in dir.EnumerateFiles().Where(f => IsHash(f.Name)))
                 {
-                    index[f.Name] = (f.Length, f.LastWriteTimeUtc);
+                    index[f.Name] = (f.Length, f.LastWriteTimeUtc, f.LastWriteTimeUtc);
                     total += f.Length;
                 }
             }

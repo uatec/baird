@@ -163,5 +163,75 @@ namespace Baird.Tests.NewUi
             Assert.NotNull(await loader.ProvideImageAsync(Url));
             Assert.Equal(1, downloads);
         }
+
+        [Fact]
+        public void A_hit_touches_the_file_at_most_once_an_hour_but_always_counts_as_recent_use()
+        {
+            var now = new DateTime(2026, 11, 17, 12, 0, 0, DateTimeKind.Utc);
+            var touches = 0;
+            var store = new DiskImageStore(_dir, budgetBytes: 1000, now: () => now, touch: (_, _) => touches++);
+            store.Write("a", Bytes(400));
+            now = now.AddMinutes(10);
+            store.Write("b", Bytes(400));
+            now = now.AddMinutes(10);
+            Assert.True(store.TryRead("a", out _));
+            now = now.AddMinutes(10);
+            Assert.True(store.TryRead("a", out _));
+            Assert.Equal(0, touches);                       // written 30 minutes ago: not worth an SD-card metadata write
+            now = now.AddMinutes(40);
+            Assert.True(store.TryRead("a", out _));
+            Assert.Equal(1, touches);                       // over an hour since written
+            Assert.True(store.TryRead("a", out _));
+            Assert.Equal(1, touches);                       // and not again straight away
+            now = now.AddMinutes(61);
+            Assert.True(store.TryRead("a", out _));
+            Assert.Equal(2, touches);
+        }
+
+        [Fact]
+        public void A_recent_hit_that_was_not_touched_is_still_not_evicted_before_an_older_untouched_file()
+        {
+            var now = new DateTime(2026, 11, 17, 12, 0, 0, DateTimeKind.Utc);
+            var store = new DiskImageStore(_dir, budgetBytes: 1000, now: () => now, touch: (_, _) => { });
+            store.Write("a", Bytes(400));
+            now = now.AddMinutes(5);
+            store.Write("b", Bytes(400));
+            now = now.AddMinutes(5);
+            Assert.True(store.TryRead("a", out _));         // no file touch (under an hour), but "a" is now newer than "b"
+            now = now.AddMinutes(5);
+            store.Write("c", Bytes(400));
+            Assert.True(store.TryRead("a", out _));
+            Assert.False(store.TryRead("b", out _));
+        }
+
+        [Fact]
+        public void Links_differing_only_in_the_access_token_share_one_file_but_different_pictures_do_not()
+        {
+            var one = "https://jelly/Items/1/Images/Primary?api_key=TOKEN-ONE";
+            var two = "https://jelly/Items/1/Images/Primary?api_key=TOKEN-TWO";
+            var other = "https://jelly/Items/2/Images/Primary?api_key=TOKEN-ONE";
+            Assert.Equal(DiskImageStore.HashOf(one), DiskImageStore.HashOf(two));
+            Assert.NotEqual(DiskImageStore.HashOf(one), DiskImageStore.HashOf(other));
+            new DiskImageStore(_dir).Write(one, Bytes(200));
+            Assert.True(new DiskImageStore(_dir).TryRead(two, out _));   // the next login's token still hits
+        }
+
+        [Fact]
+        public void A_link_with_no_token_is_hashed_as_it_is()
+        {
+            const string plain = "https://img.example/poster.jpg";
+            Assert.Equal(plain, Baird.Services.JsonMediaDataCache.Scrub(plain));
+            Assert.Equal(DiskImageStore.HashOf(plain), DiskImageStore.HashOf(Baird.Services.JsonMediaDataCache.Scrub(plain)));
+        }
+
+        [AvaloniaFact]
+        public async Task Finished_background_writes_do_not_pile_up_in_the_loader()
+        {
+            var png = Png();
+            var loader = new BoundedImageLoader(disk: new DiskImageStore(_dir), download: _ => Task.FromResult<byte[]?>(png));
+            for (var i = 0; i < 5; i++) Assert.NotNull(await loader.ProvideImageAsync($"https://img.example/{i}.png"));
+            await loader.WritesDoneAsync();
+            Assert.Equal(0, loader.PendingWrites);
+        }
     }
 }
