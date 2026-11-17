@@ -21,9 +21,16 @@ namespace Baird.NewUi.Adapters
         private readonly IJellyseerrService? _seerr;
         private readonly CatalogueSearch _search;
 
-        public ShowData(IDataService data, IJellyseerrService? seerr, CatalogueSearch search)
+        private readonly TimeSpan _pieceTimeout;
+
+        /// <summary>How long a page may take to learn everything before it settles for what it has.</summary>
+        public TimeSpan Budget { get; }
+
+        public ShowData(IDataService data, IJellyseerrService? seerr, CatalogueSearch search, TimeSpan? pieceTimeout = null, TimeSpan? budget = null)
         {
             _data = data; _seerr = seerr; _search = search;
+            _pieceTimeout = pieceTimeout ?? TimeSpan.FromSeconds(8);
+            Budget = budget ?? TimeSpan.FromSeconds(8);
             // Watching something changes Resume/Next: what was learnt before is out of date.
             _data.HistoryUpdated += (_, _) => Forget();
         }
@@ -199,8 +206,8 @@ namespace Baird.NewUi.Adapters
         private async Task<JellyseerrMediaStatus?> StatusAsync(CatalogueTitle t, CancellationToken ct)
         {
             if (_seerr == null || t.Seerr == null) return null;
-            try { return await _seerr.GetMediaStatusAsync(t.Seerr.TmdbId, t.Seerr.MediaType, ct).ConfigureAwait(false); }
-            catch (Exception ex) when (ex is not OperationCanceledException) { Console.WriteLine($"[ShowData] Seerr status failed: {ex.Message}"); return null; }
+            var seerr = _seerr; var r = t.Seerr;
+            return await Deadline.Within<JellyseerrMediaStatus?>(c => seerr.GetMediaStatusAsync(r.TmdbId, r.MediaType, c), null, _pieceTimeout, "[ShowData] Seerr status", ct).ConfigureAwait(false);
         }
 
         public sealed record LibrarySeason(int Number, string Label, IReadOnlyList<MediaItemViewModel> Episodes, string? Service = null, string? MoreId = null);
@@ -211,7 +218,7 @@ namespace Baird.NewUi.Adapters
         /// </summary>
         public async Task<IReadOnlyList<LibrarySeason>> LibrarySeasonsAsync(CatalogueTitle t, CancellationToken ct = default)
         {
-            var perSource = await Task.WhenAll(t.Sources.Select(src => SeasonsFromAsync(t, src))).ConfigureAwait(false);
+            var perSource = await Task.WhenAll(t.Sources.Select(src => SeasonsFromAsync(t, src, ct))).ConfigureAwait(false);
             var seasons = new List<LibrarySeason>();
             foreach (var list in perSource)
                 foreach (var s in list)
@@ -219,17 +226,21 @@ namespace Baird.NewUi.Adapters
             return seasons.OrderBy(s => s.Number == 0 ? int.MaxValue : s.Number).ToList();
         }
 
-        private async Task<IReadOnlyList<LibrarySeason>> SeasonsFromAsync(CatalogueTitle t, TitleSource src)
+        /// <summary>A provider's children, or nothing when it doesn't answer in time.</summary>
+        private Task<IEnumerable<MediaItemViewModel>> Children(string id, string what, CancellationToken ct) =>
+            Deadline.Within(_ => _data.GetChildrenAsync(id), Enumerable.Empty<MediaItemViewModel>(), _pieceTimeout, $"[ShowData] Listing {what}", ct);
+
+        private async Task<IReadOnlyList<LibrarySeason>> SeasonsFromAsync(CatalogueTitle t, TitleSource src, CancellationToken ct)
         {
             try
             {
-                var children = (await _data.GetChildrenAsync(src.ItemId).ConfigureAwait(false)).ToList();
+                var children = (await Children(src.ItemId, $"{t.Name} from {src.Service}", ct).ConfigureAwait(false)).ToList();
                 if (children.Count == 0) return Array.Empty<LibrarySeason>();
                 var folders = children.Where(c => c.Type == Baird.Services.MediaType.Brand).ToList();
                 if (folders.Count == 0) return new[] { new LibrarySeason(1, "Season 1", children, src.Service, YouTubeService.NextPageId(src.ItemId, children.Count)) };
                 return await Task.WhenAll(folders.Select(async (f, i) =>
                 {
-                    var eps = (await _data.GetChildrenAsync(f.Id).ConfigureAwait(false)).Where(e => e.Type != Baird.Services.MediaType.Brand).ToList();
+                    var eps = (await Children(f.Id, $"{t.Name} {f.Name} from {src.Service}", ct).ConfigureAwait(false)).Where(e => e.Type != Baird.Services.MediaType.Brand).ToList();
                     // A YouTube channel's seasons are its playlists, which have names rather than numbers.
                     if (f.Source == YouTubeService.SourceName) return new LibrarySeason(i + 1, f.Name, eps, src.Service, YouTubeService.NextPageId(f.Id, eps.Count));
                     var n = SeasonNumberOf(f.Name, i + 1);
