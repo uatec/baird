@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Baird.NewUi.Adapters;
 using Baird.NewUi.Model;
@@ -40,7 +41,7 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
-        public async Task A_hung_season_call_does_not_hold_back_the_first_report()
+        public async Task A_hung_season_call_does_not_make_the_page_time_out()
         {
             var w = CatalogueTests.Build();
             var shows = new ShowData(w.Data, w.Seerr, w.Search, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(200));
@@ -51,6 +52,21 @@ namespace Baird.Tests.Services
             var d = await shows.DetailsAsync(sev, _ => reports++, fresh: true);
             Assert.True(reports >= 1);
             Assert.Equal("1. Episode 1", d.Seasons.Single(s => s.Number == 1).Episodes[0].Label);
+        }
+
+        [Fact]
+        public async Task The_page_is_reported_before_the_season_call_is_made()
+        {
+            var w = CatalogueTests.Build();
+            var shows = new ShowData(w.Data, w.Seerr, w.Search, TimeSpan.FromMilliseconds(300), TimeSpan.FromSeconds(5));
+            w.Seerr.HangSeason = true;
+            var reports = 0;
+            var reportsWhenSeasonAsked = -1;
+            w.Seerr.OnSeasonEntered = () => reportsWhenSeasonAsked = Volatile.Read(ref reports);
+            var sev = ShowData.FromCard(new HomeCard(CardKind.Series, "tmdb:tv:95396", "Severance", "2022", null, null, "get", "Seerr", PlayVia.None));
+
+            await shows.DetailsAsync(sev, _ => Interlocked.Increment(ref reports), fresh: true);
+            Assert.True(reportsWhenSeasonAsked >= 1, $"the season was asked for after {reportsWhenSeasonAsked} reports");
         }
     }
 }

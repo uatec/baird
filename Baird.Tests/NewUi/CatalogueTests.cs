@@ -69,8 +69,13 @@ namespace Baird.Tests.NewUi
             public readonly Dictionary<(int TmdbId, int Season), JellyseerrSeasonDetails> Seasons = new();
             /// <summary>Make <see cref="GetSeasonAsync"/> never answer.</summary>
             public bool HangSeason;
-            public Task<JellyseerrSeasonDetails?> GetSeasonAsync(int tmdbId, int season, CancellationToken ct = default) =>
-                HangSeason ? new TaskCompletionSource<JellyseerrSeasonDetails?>().Task : Task.FromResult(Seasons.TryGetValue((tmdbId, season), out var d) ? d : null);
+            /// <summary>Called as <see cref="GetSeasonAsync"/> is entered.</summary>
+            public Action? OnSeasonEntered;
+            public Task<JellyseerrSeasonDetails?> GetSeasonAsync(int tmdbId, int season, CancellationToken ct = default)
+            {
+                OnSeasonEntered?.Invoke();
+                return HangSeason ? new TaskCompletionSource<JellyseerrSeasonDetails?>().Task : Task.FromResult(Seasons.TryGetValue((tmdbId, season), out var d) ? d : null);
+            }
             public Task<JellyseerrRequestResponse> RequestSeasonsAsync(int id, string type, IReadOnlyList<int>? seasons, CancellationToken ct = default)
             {
                 Requests.Add((id, type, seasons));
