@@ -76,6 +76,8 @@ namespace Baird.NewUi
         public CatalogueSearch? Search { get; set; }
         /// <summary>Show pages' data and requests (null until wired: series cards then toast).</summary>
         public ShowData? Shows { get; set; }
+        /// <summary>The queue for background data work (show refreshes; warming later), paced by the warm gate. Null until wired.</summary>
+        public Adapters.WorkQueue? Work { get; set; }
         /// <summary>Show metadata kept between runs (null until wired). Not used by <see cref="Shows"/> yet.</summary>
         public Adapters.IShowStore? ShowStore { get; set; }
         /// <summary>Prepares the show page of the lit card (null: nothing is prepared).</summary>

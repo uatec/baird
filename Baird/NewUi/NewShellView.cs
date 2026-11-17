@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -74,7 +75,26 @@ namespace Baird.NewUi
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.ShowStore = new DiskShowStore(DiskShowStore.DefaultFolder, timers);
-            _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search, store: _ctx.ShowStore);
+            // Background data work (refreshes now, warming later) goes through one queue that backs off while video plays.
+            // The gate is read on a pool thread, so it only sees values sampled on the UI thread once a second (never libmpv or Navigator directly).
+            var gateInputs = new WarmGateInputs();
+            var sampler = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            sampler.Tick += async (_, _) =>
+            {
+                var playing = playback.Current != null && !playback.IsPaused && !playback.IsLoading;
+                gateInputs.Playing = playing;
+                // Full-screen playback with Home closed: the video is what's on screen (nav.State.AtVideo), nothing else.
+                gateInputs.FullScreen = playing && nav.State.AtVideo && nav.State.Overlay == null;
+                if (!playing || router.ActiveBrowser != null) return;
+                var st = await mpv.SampleAvStatsAsync();   // read on mpv's command thread, safe from here
+                if (st != null) gateInputs.Drops = (st.VoDrops ?? 0) + (st.DecoderDrops ?? 0);
+            };
+            sampler.Start();
+            _ctx.Work = new WorkQueue(timers, new WarmGate(() => gateInputs.Playing, () => gateInputs.Drops, () => gateInputs.FullScreen, () => DateTimeOffset.Now));
+            _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search, store: _ctx.ShowStore)
+            {
+                RefreshSink = (key, run) => _ctx.Work.Submit(new[] { new WorkItem(key, Rank.Page, run) }),   // a stale answer the viewer is looking at
+            };
             _ctx.Deleter = new Deletion(services.Data, services.Seerr, _ctx.Search);
             // Netflix searches in the one shared browser: while another service plays there, say so instead of silently missing it.
             _ctx.SearchNote = () => services.Netflix is { } nf && nf.Hub.ActivePlayback is { } busy && nf.DirectSearchWorks != true
@@ -481,6 +501,16 @@ namespace Baird.NewUi
             }
         }
 
+        /// <summary>What the dispatcher-side sampler last saw; the warm gate reads it from any thread.</summary>
+        private sealed class WarmGateInputs
+        {
+            private volatile bool _playing, _fullScreen;
+            private long _drops;
+            public bool Playing { get => _playing; set => _playing = value; }
+            public bool FullScreen { get => _fullScreen; set => _fullScreen = value; }
+            public long Drops { get => Interlocked.Read(ref _drops); set => Interlocked.Exchange(ref _drops, value); }
+        }
+
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
             if (TopLevel.GetTopLevel(this) is { } top)
@@ -492,6 +522,7 @@ namespace Baird.NewUi
             }
             _tvRemote?.Dispose();
             _tvRemote = null;
+            _ctx.Work?.Dispose();
             base.OnDetachedFromVisualTree(e);
         }
 
