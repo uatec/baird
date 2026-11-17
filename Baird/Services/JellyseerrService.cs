@@ -239,6 +239,47 @@ namespace Baird.Services
             }
         }
 
+        public async Task<JellyseerrSeasonDetails?> GetSeasonAsync(int tmdbId, int season, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync($"api/v1/tv/{tmdbId}/season/{season}", cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[JellyseerrService] Season {season} of {tmdbId} failed: {response.StatusCode}");
+                    return null;
+                }
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                return ParseSeason(json);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine($"[JellyseerrService] Season {season} of {tmdbId} error: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>Reads a season response: each episode's number, name, synopsis and still.</summary>
+        public static JellyseerrSeasonDetails ParseSeason(string json)
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            static string? Text(JsonElement e, string name) =>
+                e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()) ? v.GetString() : null;
+            static int Int(JsonElement e, string name) =>
+                e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+
+            var episodes = new List<JellyseerrEpisode>();
+            if (root.TryGetProperty("episodes", out var eps) && eps.ValueKind == JsonValueKind.Array)
+                foreach (var e in eps.EnumerateArray())
+                {
+                    var still = Text(e, "stillPath");
+                    episodes.Add(new JellyseerrEpisode(Int(e, "episodeNumber"), Text(e, "name") ?? string.Empty, Text(e, "overview"),
+                        still == null ? null : $"https://image.tmdb.org/t/p/w500{still}"));
+                }
+            return new JellyseerrSeasonDetails(Int(root, "seasonNumber"), episodes);
+        }
+
         /// <summary>Reads a movie/tv details response: TMDB's seasons (specials excluded), mediaInfo's per-season status and downloads.</summary>
         public static JellyseerrMediaStatus ParseMediaStatus(string json)
         {

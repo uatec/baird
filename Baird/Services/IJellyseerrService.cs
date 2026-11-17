@@ -23,6 +23,10 @@ namespace Baird.Services
         Task<JellyseerrMediaStatus?> GetMediaStatusAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default) =>
             Task.FromResult<JellyseerrMediaStatus?>(null);
 
+        /// <summary>One season's episodes as TMDB lists them (GET /api/v1/tv/{tmdbId}/season/{n}): names, stills, synopses. Null when Seerr can't say.</summary>
+        Task<JellyseerrSeasonDetails?> GetSeasonAsync(int tmdbId, int season, CancellationToken cancellationToken = default) =>
+            Task.FromResult<JellyseerrSeasonDetails?>(null);
+
         /// <summary>
         /// Request some seasons of a show (Seerr requests whole seasons; it can't request a single episode).
         /// A film, or null seasons, requests the whole title.
@@ -45,6 +49,11 @@ namespace Baird.Services
 
     /// <summary>A season as TMDB lists it, with Seerr's status for it (1 when nothing is known).</summary>
     public sealed record JellyseerrSeason(int Number, int EpisodeCount, int Status);
+
+    /// <summary>One season's episodes, as TMDB describes them.</summary>
+    public sealed record JellyseerrSeasonDetails(int Number, IReadOnlyList<JellyseerrEpisode> Episodes);
+
+    public sealed record JellyseerrEpisode(int Number, string Name, string? Overview, string? StillUrl);
 
     /// <summary>One download in progress (Radarr/Sonarr via Seerr); Season/Episode are set for episodes.</summary>
     public sealed record JellyseerrDownload(int? Season, int? Episode, long Size, long SizeLeft);

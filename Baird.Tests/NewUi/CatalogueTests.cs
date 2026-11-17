@@ -66,6 +66,9 @@ namespace Baird.Tests.NewUi
             public bool HangStatus;
             public Task<JellyseerrMediaStatus?> GetMediaStatusAsync(int tmdbId, string mediaType, CancellationToken ct = default) =>
                 HangStatus ? new TaskCompletionSource<JellyseerrMediaStatus?>().Task : Task.FromResult(Status.TryGetValue(tmdbId, out var s) ? s : null);
+            public readonly Dictionary<(int TmdbId, int Season), JellyseerrSeasonDetails> Seasons = new();
+            public Task<JellyseerrSeasonDetails?> GetSeasonAsync(int tmdbId, int season, CancellationToken ct = default) =>
+                Task.FromResult(Seasons.TryGetValue((tmdbId, season), out var d) ? d : null);
             public Task<JellyseerrRequestResponse> RequestSeasonsAsync(int id, string type, IReadOnlyList<int>? seasons, CancellationToken ct = default)
             {
                 Requests.Add((id, type, seasons));
@@ -117,6 +120,11 @@ namespace Baird.Tests.NewUi
             seerr.Status[456] = new JellyseerrMediaStatus(4,
                 new[] { new JellyseerrSeason(1, 2, 5), new JellyseerrSeason(2, 3, 4), new JellyseerrSeason(3, 2, 3), new JellyseerrSeason(4, 2, 1) },
                 new[] { new JellyseerrDownload(3, 1, 100, 60), new JellyseerrDownload(3, 2, 100, 60) });
+            seerr.Seasons[(95396, 1)] = new JellyseerrSeasonDetails(1, new[]
+            {
+                new JellyseerrEpisode(1, "Good News About Hell", "Mark starts a new job.", "https://image.tmdb.org/t/p/w500/sev1.jpg"),
+                new JellyseerrEpisode(2, "Half Loop", "Helly meets the team.", null),
+            });
             seerr.Status[95396] = new JellyseerrMediaStatus(1, new[] { new JellyseerrSeason(1, 9, 1), new JellyseerrSeason(2, 10, 1) }, Array.Empty<JellyseerrDownload>());
 
             var history = new NoHistory();

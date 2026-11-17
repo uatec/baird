@@ -192,7 +192,8 @@ namespace Baird.NewUi.Adapters
 
             var remaining = sources.Select(s => s.Results).ToList();
             var found = new List<MediaItemViewModel>();
-            var details = await ComposeAsync(t, status, remaining.Count > 0, ct).ConfigureAwait(false);
+            var seasonDetails = new Dictionary<int, JellyseerrSeasonDetails>();
+            var details = await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, ct).ConfigureAwait(false);
             progress?.Invoke(details);
             while (remaining.Count > 0)
             {
@@ -204,13 +205,13 @@ namespace Baird.NewUi.Adapters
                 var changed = match != null && !match.Sources.Select(s => s.ItemId).SequenceEqual(t.Sources.Select(s => s.ItemId));
                 if (changed) t = t with { Sources = match!.Sources, ImageUrl = t.ImageUrl ?? match.ImageUrl, Synopsis = t.Synopsis ?? match.Synopsis, Year = t.Year ?? match.Year };
                 if (!changed && remaining.Count > 0) continue;
-                details = changed ? await ComposeAsync(t, status, remaining.Count > 0, ct).ConfigureAwait(false) : details with { CheckingLibrary = false };
+                details = changed ? await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, ct).ConfigureAwait(false) : details with { CheckingLibrary = false };
                 progress?.Invoke(details);
             }
             return details;
         }
 
-        private async Task<ShowDetails> ComposeAsync(CatalogueTitle t, JellyseerrMediaStatus? status, bool checking, CancellationToken ct)
+        private async Task<ShowDetails> ComposeAsync(CatalogueTitle t, JellyseerrMediaStatus? status, bool checking, Dictionary<int, JellyseerrSeasonDetails> seasonDetails, CancellationToken ct)
         {
             if (t.Kind != TitleKind.Series)
             {
@@ -219,7 +220,18 @@ namespace Baird.NewUi.Adapters
                 return new ShowDetails(t, Array.Empty<Season>(), film, status?.Progress(), checking);
             }
             var library = await LibrarySeasonsAsync(t, ct).ConfigureAwait(false);
-            return new ShowDetails(t, Merge(library, status, t.Best?.Service), CheckingLibrary: checking);
+            var details = new ShowDetails(t, Merge(library, status, t.Best?.Service), CheckingLibrary: checking);
+            // Seerr names the episodes the library lacks: ask for the season the page opens on (bounded, so a hung Seerr can't stall it).
+            var i = Prefetcher.OpeningSeason(details);
+            if (i < 0 || _seerr == null || t.Seerr == null) return details;
+            var number = details.Seasons[i].Number;
+            if (!seasonDetails.TryGetValue(number, out var season))
+            {
+                var seerr = _seerr; var r = t.Seerr;
+                season = await Deadline.Within<JellyseerrSeasonDetails?>(c => seerr.GetSeasonAsync(r.TmdbId, number, c), null, _pieceTimeout, $"[ShowData] Seerr season {number}", ct).ConfigureAwait(false);
+                if (season != null) seasonDetails[number] = season;
+            }
+            return season == null ? details : details with { Seasons = Merge(library, status, t.Best?.Service, seasonDetails) };
         }
 
         private async Task<JellyseerrMediaStatus?> StatusAsync(CatalogueTitle t, CancellationToken ct)
@@ -299,7 +311,7 @@ namespace Baird.NewUi.Adapters
         /// download percentage), or one you can request. Episodes Seerr counts beyond those in the library are listed as
         /// missing or downloading.
         /// </summary>
-        public static IReadOnlyList<Season> Merge(IReadOnlyList<LibrarySeason> library, JellyseerrMediaStatus? status, string? service)
+        public static IReadOnlyList<Season> Merge(IReadOnlyList<LibrarySeason> library, JellyseerrMediaStatus? status, string? service, IReadOnlyDictionary<int, JellyseerrSeasonDetails>? seasonDetails = null)
         {
             var numbers = library.Select(s => s.Number).Concat(status?.Seasons.Select(s => s.Number) ?? Enumerable.Empty<int>())
                 .Distinct().OrderBy(n => n == 0 ? int.MaxValue : n).ToList();
@@ -315,8 +327,13 @@ namespace Baird.NewUi.Adapters
                 var eps = new List<Episode>();
                 if (lib != null) eps.AddRange(lib.Episodes.Select((m, i) => EpisodeOf(m, n, i + 1)));
                 var count = seerr?.EpisodeCount ?? 0;
+                var named = seasonDetails != null && seasonDetails.TryGetValue(n, out var sd) ? sd.Episodes : null;
                 for (var e = eps.Count + 1; e <= count; e++)
-                    eps.Add(new Episode(n, e, $"{e}. Episode {e}", null, null, Pending(e), Download: Dl(e)));
+                {
+                    var info = named?.FirstOrDefault(x => x.Number == e);
+                    var name = string.IsNullOrWhiteSpace(info?.Name) ? $"Episode {e}" : info!.Name;
+                    eps.Add(new Episode(n, e, $"{e}. {name}", null, info?.StillUrl, Pending(e), Download: Dl(e), Synopsis: info?.Overview));
+                }
 
                 var label = lib?.Label ?? (n == 0 ? "Specials" : $"Season {n}");
                 if (lib != null && lib.Episodes.Count > 0)
