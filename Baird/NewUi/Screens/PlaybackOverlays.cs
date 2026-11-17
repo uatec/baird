@@ -166,7 +166,7 @@ namespace Baird.NewUi.Screens
         private void Bump()
         {
             _idle?.Dispose();
-            _idle = DispatcherTimer.RunOnce(() => { if (_ctx.Nav.State.Overlay?.Name == "info") _ctx.Nav.CloseOverlay(); }, TimeSpan.FromSeconds(5));
+            _idle = DispatcherTimer.RunOnce(() => { if (!_ctx.Playback.IsPaused && _ctx.Nav.State.Overlay?.Name == "info") _ctx.Nav.CloseOverlay(); }, TimeSpan.FromSeconds(5));
         }
 
         /// <summary>The live bar's playhead (0 = left end, 1 = live) and the clock time at its left end.</summary>

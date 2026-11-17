@@ -6,7 +6,7 @@ using Baird.NewUi.Model;
 namespace Baird.NewUi.Playback
 {
     /// <summary>
-    /// Keys while the video is in front: OK shows the info bar, ⏯ pauses, ◂ ▸ and ⏮ ⏭ scan, Pg± change channel,
+    /// Keys while the video is in front: OK pauses/plays (and shows the info bar), any arrow shows it, ⏯ pauses, ◂ ▸ and ⏮ ⏭ scan, Pg± change channel,
     /// digits type a channel number. Back is left to the navigator (it returns to where you came from).
     /// </summary>
     public sealed class VideoActions
@@ -29,7 +29,7 @@ namespace Baird.NewUi.Playback
                     if (p.Current == null) return false;
                     if (_ctx.TryActivatePrompt()) return true;
                     if (p.Failure != null && _ctx.FailureAction() != null) { _ = RunFailureActionAsync(); return true; }
-                    _ctx.Nav.OpenOverlay(new OverlayRef("info"));
+                    p.TogglePause(); ShowInfo();
                     return true;
                 case UiAction.PlayPause: p.TogglePause(); ShowInfo(); return true;
                 case UiAction.HoldOk:
@@ -42,7 +42,11 @@ namespace Baird.NewUi.Playback
                 case UiAction.Prev or UiAction.Next:
                     p.SeekRelative(TimeSpan.FromSeconds(a == UiAction.Prev ? -10 : 30)); ShowInfo(); return true;
                 case UiAction.Up or UiAction.Down:
-                    if (p.Current?.Kind != "live" || _ctx.Channels.Count == 0) return false;
+                    if (p.Current?.Kind != "live" || _ctx.Channels.Count == 0)
+                    {
+                        if (p.Current == null) return false;
+                        ShowInfo(); return true;
+                    }
                     _ctx.Nav.OpenOverlay(new OverlayRef("channels", a));
                     return true;
                 case UiAction.PageUp or UiAction.PageDown:
