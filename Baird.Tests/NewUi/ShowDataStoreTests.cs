@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Baird.NewUi.Adapters;
 using Baird.NewUi.Model;
+using Baird.Services;
 using Xunit;
 
 namespace Baird.Tests.NewUi
@@ -232,6 +233,105 @@ namespace Baird.Tests.NewUi
             Assert.True(rig.SeasonCalls.Value > seasons);
             Assert.True(rig.Store.TryGet(title.Key, out var second));
             Assert.Equal(rig.Clock.Now, second!.Stamp);
+        }
+
+        /// <summary>A kept record whose episodes are only numbered ("n. Episode n", no still, no synopsis), as Merge leaves a Seerr-only season.</summary>
+        internal static StoredShow Placeholders(CatalogueTitle t, DateTimeOffset stamp, params int[] episodesPerSeason) =>
+            new(t with { Sources = Array.Empty<TitleSource>(), Seerr = t.Seerr is { } r ? r with { Status = 0 } : null },
+                episodesPerSeason.Select((count, i) => new StoredSeason(i + 1, $"Season {i + 1}",
+                    Enumerable.Range(1, count).Select(n => new StoredEpisode(n, $"{n}. Episode {n}", null, null, null)).ToList(), count)).ToList(),
+                stamp);
+
+        [Fact]
+        public void Stored_reads_the_kept_record_with_no_network()
+        {
+            var rig = Setup();
+            var title = Severance();
+            Assert.Null(rig.Shows.Stored(title));
+            Keep(rig, title, Record(title, rig.Clock.Now - TimeSpan.FromDays(30), 9, 10));
+            var status = rig.W.Seerr.StatusCalls; var searches = rig.W.Seerr.SearchCalls;
+
+            var d = rig.Shows.Stored(title)!;
+
+            Assert.True(d.CheckingLibrary);
+            Assert.Equal("http://img/stored", d.Title.ImageUrl);
+            Assert.Equal(new[] { 9, 10 }, d.Seasons.Select(s => s.Episodes.Count));
+            Assert.Equal("4. Stored S2E4", d.Seasons[1].Episodes[3].Label);
+            Assert.Equal("http://img/s1e3", d.Seasons[0].Episodes[2].ImageUrl);
+            Assert.Equal((status, searches, 0), (rig.W.Seerr.StatusCalls, rig.W.Seerr.SearchCalls, rig.SeasonCalls.Value));
+        }
+
+        [Fact]
+        public async Task EnsureSeasonAsync_fills_a_seerr_only_seasons_names_once()
+        {
+            var rig = Setup();
+            var title = Severance();
+            var stamp = rig.Clock.Now - TimeSpan.FromDays(2);
+            Keep(rig, title, Placeholders(title, stamp, 9, 10));
+
+            var stills = await rig.Shows.EnsureSeasonAsync(title, 1);
+
+            Assert.Equal(new[] { "https://image.tmdb.org/t/p/w500/sev1.jpg" }, stills);
+            Assert.Equal(1, rig.SeasonCalls.Value);
+            var put = Assert.Single(rig.Store.Puts).Show;
+            Assert.Equal(stamp, put.Stamp); // only one season was learnt: the record is no fresher than it was
+            var s1 = put.Seasons[0].Episodes;
+            Assert.Equal("1. Good News About Hell", s1[0].Label);
+            Assert.Equal("Mark starts a new job.", s1[0].Synopsis);
+            Assert.Equal("2. Half Loop", s1[1].Label);
+            Assert.Equal("3. Episode 3", s1[2].Label);                 // Seerr didn't name it: still the placeholder
+            Assert.Equal("1. Episode 1", put.Seasons[1].Episodes[0].Label); // other seasons untouched
+
+            Assert.Equal(stills, await rig.Shows.EnsureSeasonAsync(title, 1)); // named now: no second ask, nothing kept again
+            Assert.Equal(1, rig.SeasonCalls.Value);
+            Assert.Single(rig.Store.Puts);
+        }
+
+        [Fact]
+        public async Task EnsureSeasonAsync_never_overwrites_real_names_and_asks_nothing_for_a_named_or_library_season()
+        {
+            var rig = Setup();
+            var title = Severance();
+            Keep(rig, title, Record(title, rig.Clock.Now, 9, 10)); // every episode already named
+            Assert.Equal(Enumerable.Range(1, 9).Select(n => $"http://img/s1e{n}"), await rig.Shows.EnsureSeasonAsync(title, 1));
+            Assert.Equal(0, rig.SeasonCalls.Value);
+            Assert.Empty(rig.Store.Puts);
+            Assert.Empty(await rig.Shows.EnsureSeasonAsync(title, 7)); // a season the record doesn't have
+
+            var library = new CatalogueTitle("Series:lib", TitleKind.Series, "Library Show", null, null, null, new[] { new TitleSource("Jellyfin", "lib", PlayVia.Mpv) });
+            Keep(rig, library, Placeholders(library, rig.Clock.Now, 3)); // Seerr doesn't know it: nothing to ask
+            Assert.Empty(await rig.Shows.EnsureSeasonAsync(library, 1));
+            Assert.Empty(await rig.Shows.EnsureSeasonAsync(Severance() with { Key = "Series:nothing-kept" }, 1));
+            Assert.Equal(0, rig.SeasonCalls.Value);
+            Assert.Empty(rig.Store.Puts);
+
+            // Seerr answering with a blank name never turns a placeholder into nothing.
+            rig.W.Seerr.Seasons[(95396, 2)] = new JellyseerrSeasonDetails(2, new[] { new JellyseerrEpisode(1, " ", null, null), new JellyseerrEpisode(2, "Goodbye, Mrs. Selvig", null, "http://still/s2e2") });
+            var s2 = Placeholders(title, rig.Clock.Now, 9, 10);
+            Keep(rig, title, s2);
+            Assert.Equal(new[] { "http://still/s2e2" }, await rig.Shows.EnsureSeasonAsync(title, 2));
+            var kept = Assert.Single(rig.Store.Puts).Show.Seasons[1].Episodes;
+            Assert.Equal("1. Episode 1", kept[0].Label);
+            Assert.Equal("2. Goodbye, Mrs. Selvig", kept[1].Label);
+        }
+
+        [Fact]
+        public async Task EnsureSeasonAsync_keeps_nothing_when_seerr_times_out()
+        {
+            var rig = Setup(piece: TimeSpan.FromMilliseconds(100));
+            var title = Severance();
+            var old = Placeholders(title, rig.Clock.Now, 9, 10);
+            Keep(rig, title, old);
+            rig.W.Seerr.HangSeason = true;
+
+            Assert.Empty(await rig.Shows.EnsureSeasonAsync(title, 1));
+            Assert.Empty(rig.Store.Puts);
+            Assert.True(rig.Store.TryGet(title.Key, out var kept));
+            Assert.Same(old, kept);
+
+            rig.W.Seerr.HangSeason = false; // Seerr is back: the next warm fills it in
+            Assert.Single(await rig.Shows.EnsureSeasonAsync(title, 1));
+            Assert.Single(rig.Store.Puts);
         }
 
         [Fact]

@@ -222,6 +222,63 @@ namespace Baird.NewUi.Adapters
             finally { Leave(e, title, null, ct); }
         }
 
+        /// <summary>
+        /// For the warmer: the title's kept record as details, exactly as <see cref="DetailsAsync"/> first reports it (names, art,
+        /// seasons and episodes; availability unknown, <see cref="ShowDetails.CheckingLibrary"/>). Null when nothing is kept (or there
+        /// is no store). Synchronous and from the store only: never any network.
+        /// </summary>
+        public ShowDetails? Stored(CatalogueTitle title) => Kept(title) is { } s ? FromStore(title, s) : null;
+
+        /// <summary>
+        /// For the warmer: makes one season of a kept record fully named and returns its episodes' still URLs (empty when the record
+        /// or the season isn't kept). Only a Seerr-backed series whose kept season has nothing but placeholder episodes ("3. Episode 3",
+        /// no still, no synopsis) asks Seerr for the season (bounded by the piece timeout); its names, stills and synopses fill those
+        /// placeholders (never a real name) and the record is kept again, with its stamp unchanged (only that season was learnt).
+        /// A timeout or failure keeps nothing. A season already named, or a title Seerr doesn't know, costs no network at all.
+        /// Never throws but for cancellation of <paramref name="ct"/>.
+        /// </summary>
+        public async Task<IReadOnlyList<string>> EnsureSeasonAsync(CatalogueTitle title, int seasonNumber, CancellationToken ct = default)
+        {
+            var kept = Kept(title);
+            var season = kept?.Seasons.FirstOrDefault(s => s.Number == seasonNumber);
+            if (kept == null || season == null) return Array.Empty<string>();
+            var r = title.Seerr ?? kept.Title.Seerr;
+            if (_store == null || _seerr == null || r is not { MediaType: "tv" } || !Unnamed(season)) return Stills(season);
+            var seerr = _seerr;
+            var answer = await Deadline.Within<(bool Ok, JellyseerrSeasonDetails? Value)>(async c => (true, await seerr.GetSeasonAsync(r.TmdbId, seasonNumber, c).ConfigureAwait(false)),
+                (false, null), _pieceTimeout, $"[ShowData] Seerr season {seasonNumber}", ct).ConfigureAwait(false);
+            if (!answer.Ok || answer.Value is not { } named) return Stills(season);
+            // Read again: a page may have kept a newer record while Seerr answered. Only placeholders are ever filled.
+            var latest = Kept(title);
+            var now = latest?.Seasons.FirstOrDefault(s => s.Number == seasonNumber);
+            if (latest == null || now == null) return Stills(season);
+            var filled = now with
+            {
+                Episodes = now.Episodes.Select(e => Placeholder(e) && named.Episodes.FirstOrDefault(x => x.Number == e.Number) is { } info && !string.IsNullOrWhiteSpace(info.Name)
+                    ? e with { Label = $"{e.Number}. {info.Name}", ImageUrl = string.IsNullOrEmpty(info.StillUrl) ? null : info.StillUrl, Synopsis = string.IsNullOrWhiteSpace(info.Overview) ? null : info.Overview }
+                    : e).ToList(),
+            };
+            if (filled.Episodes.SequenceEqual(now.Episodes)) return Stills(now);
+            try { _store.Put(title.Key, latest with { Seasons = latest.Seasons.Select(s => s == now ? filled : s).ToList() }); }
+            catch (Exception ex) { Console.WriteLine($"[ShowData] Keeping {title.Name} season {seasonNumber} failed: {ex.Message}"); }
+            return Stills(filled);
+        }
+
+        /// <summary>An episode only numbered ("3. Episode 3": no still, no synopsis), as <see cref="Merge"/> lists one Seerr hasn't named.</summary>
+        private static bool Placeholder(StoredEpisode e) => e.ImageUrl == null && e.Synopsis == null && e.Label == $"{e.Number}. Episode {e.Number}";
+
+        /// <summary>A kept season with episodes, every one of them a placeholder.</summary>
+        private static bool Unnamed(StoredSeason s) => s.Episodes.Count > 0 && s.Episodes.All(Placeholder);
+
+        /// <summary>
+        /// A page's season whose episodes are all placeholders ("3. Episode 3", nothing to play, no still, no synopsis): its names aren't
+        /// loaded yet. (The warmer lights such a season's tab urgently.)
+        /// </summary>
+        public static bool Unnamed(Season s) => s.Episodes.Count > 0 &&
+            s.Episodes.All(e => e.Source == null && e.ImageUrl == null && e.Synopsis == null && e.Label == $"{e.Number}. Episode {e.Number}");
+
+        private static IReadOnlyList<string> Stills(StoredSeason s) => s.Episodes.Select(e => e.ImageUrl).OfType<string>().Where(u => u.Length > 0).ToList();
+
         /// <summary>The title's entry, started when there's none (or it failed) or <paramref name="renew"/> asks. Caller holds the lock.</summary>
         private Entry Join(CatalogueTitle title, bool fresh, StoredShow? stored, bool renew)
         {
