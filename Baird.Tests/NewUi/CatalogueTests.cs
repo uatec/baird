@@ -473,7 +473,7 @@ namespace Baird.Tests.NewUi
             lock (updates) early = updates.Last();
             Assert.Contains("Jellyfin", early.Pending);
             var loki = All(early).Single(h => h.Title?.Name == "Loki");
-            Assert.EndsWith("Checking your library…", loki.Card.Sublabel);
+            Assert.EndsWith("–", loki.Card.Sublabel);
             Assert.Null(loki.Card.Badge); // never "not in your library" while the library is still answering
             Assert.Contains(All(early), h => h.Title?.Name == "Loki Odyssey"); // the fast source is already in
 
@@ -507,7 +507,7 @@ namespace Baird.Tests.NewUi
             ShowDetails first;
             lock (seen) first = seen.Last();
             Assert.True(first.CheckingLibrary);
-            Assert.Equal("Checking your library…", first.Summary);
+            Assert.Equal("–", first.Summary);
             jf.Gate.SetResult();
             var d = await run;
             Assert.False(d.CheckingLibrary);

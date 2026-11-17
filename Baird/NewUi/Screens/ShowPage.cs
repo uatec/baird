@@ -215,7 +215,7 @@ namespace Baird.NewUi.Screens
                 _body.Children.Add(new TextBlock { Text = syn, FontSize = 27, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.WordEllipsis, MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 16, 0, 0) });
 
             _buttonEls = _details == null
-                ? new() { new PillButton("Loading…", null, false) }
+                ? new() { new PillButton("–", null, false) }
                 : _buttons.Select(b => new PillButton(b.Label, b.Icon, b.Primary)).ToList();
             _buttonsRow.Children.Clear();
             foreach (var b in _buttonEls) _buttonsRow.Children.Add(b);

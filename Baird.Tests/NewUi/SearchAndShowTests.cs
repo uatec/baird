@@ -376,7 +376,7 @@ namespace Baird.Tests.NewUi
             var run = s.RunAsync();
             await Until(() => s.ResultRows.SelectMany(r => r).Any(h => h.Title?.Name == "Loki") && s.ResultRows.SelectMany(r => r).Any(h => h.Title?.Name == "Loki Odyssey"));
             var loki = s.ResultRows.SelectMany(r => r).Single(h => h.Title?.Name == "Loki");
-            Assert.EndsWith("Checking your library…", loki.Card.Sublabel);
+            Assert.EndsWith("–", loki.Card.Sublabel);
             Assert.Null(loki.Card.Badge);
 
             // Light Loki Odyssey (iPlayer, already in), then let Jellyfin answer: Loki Odyssey stays lit.
@@ -392,13 +392,29 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task Unknown_availability_reads_as_a_dash_with_no_words()
+        {
+            var (rig, jf) = SlowRig();
+            var title = Baird.NewUi.Adapters.ShowData.FromCard(new HomeCard(CardKind.Series, "tmdb:tv:84958", "Loki", "2021", null, null, null, "Seerr", PlayVia.None));
+            var seen = new List<ShowDetails>();
+            var run = rig.Ctx.Shows.DetailsAsync(title, d => { lock (seen) seen.Add(d); });
+            await Until(() => { lock (seen) return seen.Count > 0; });
+            ShowDetails first;
+            lock (seen) first = seen.First();
+            Assert.Equal("–", first.Summary);
+            Assert.Equal("–", ShowDetails.Checking);
+            jf.Gate.SetResult();
+            await run;
+        }
+
+        [AvaloniaFact]
         public async Task A_show_page_opened_while_the_library_is_checking_says_so_then_offers_play()
         {
             var (rig, jf) = SlowRig();
             var page = new ShowPage(rig.Ctx, ShowDataFor("tmdb:tv:84958", "Loki", "", CardKind.Series));
             Show(page.View);
             await Until(() => page.Details != null);
-            Assert.Equal(new[] { "Checking your library…" }, page.ButtonLabels);
+            Assert.Equal(new[] { "–" }, page.ButtonLabels);
             jf.Gate.SetResult();
             await page.Loaded;
             Dispatcher.UIThread.RunJobs();

@@ -232,7 +232,7 @@ namespace Baird.NewUi.Adapters
         /// <summary>
         /// Search everything, reporting results as each source answers (<paramref name="progress"/>, in order, from any
         /// thread): Seerr, the guide and fast providers first, slow ones as they come. Until every library source has
-        /// answered or timed out, a title with nothing to play says "Checking your library…". Returns the final results.
+        /// answered or timed out, a title with nothing to play shows "–". Returns the final results.
         /// </summary>
         public async Task<SearchResults> SearchAsync(string query, IReadOnlyList<Channel> channels, DateTimeOffset now, Action<SearchResults>? progress = null, CancellationToken ct = default)
         {
