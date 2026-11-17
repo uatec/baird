@@ -82,11 +82,41 @@ namespace Baird.Tests.NewUi
             Assert.Equal("al1", s.Query);
             s.OnAction(UiAction.Del, false);
             Assert.Equal("al", s.Query);
-            Assert.Empty(s.ResultRows); // not yet: the search waits for a pause in typing
+            Assert.DoesNotContain(s.ResultRows.SelectMany(r => r), h => h.Kind == HitKind.Title); // not yet: the search waits for a pause in typing
             rig.Home.Timers.Advance(SearchScreen.Debounce);
             await s.RunAsync();
             Dispatcher.UIThread.RunJobs();
             Assert.Equal("Alien", s.ResultRows[0][0].Title!.Name);
+        }
+
+        [Fact]
+        public void The_search_waits_two_seconds_after_the_last_key_because_remote_typing_is_slow()
+        {
+            Assert.True(SearchScreen.Debounce >= TimeSpan.FromSeconds(2), $"{SearchScreen.Debounce.TotalMilliseconds} ms");
+        }
+
+        [AvaloniaFact]
+        public async Task Results_all_appear_at_once_when_every_source_has_answered_and_a_spinner_shows_until_then()
+        {
+            var home = HomeScreenTests.Context();
+            var (search, shows, jellyfin, _) = CatalogueTests.Slow();
+            home.Ctx.Search = search; home.Ctx.Shows = shows; home.Ctx.Channels = CatalogueTests.Channels; home.Ctx.Timers = home.Timers;
+            var s = new SearchScreen(home.Ctx);
+            Show(s.View);
+            foreach (var ch in "loki") TypeLetter(s, ch);
+            home.Timers.Advance(SearchScreen.Debounce); // the search starts in the background
+            await Wait(400); // iPlayer and Seerr answered long ago; Jellyfin has not
+
+            Assert.Empty(s.ResultRows.SelectMany(r => r)); // nothing is drawn until everything can be, so nothing moves under the cursor
+            Assert.True(s.IsSearching);                     // the spinner
+            Assert.Contains("Jellyfin", s.StatusText);       // and the status line says who is being waited for
+
+            jellyfin.Gate.SetResult();
+            await Wait(400);
+            Assert.False(s.IsSearching);
+            var titles = s.ResultRows.SelectMany(r => r).Where(h => h.Title != null).ToList();
+            Assert.Equal("Loki", s.ResultRows[0][0].Title!.Name);
+            Assert.Contains(titles, h => h.Title!.Sources.Any(x => x.Service == "Jellyfin")); // the slow source is in the one render
         }
 
         [AvaloniaFact]
@@ -264,7 +294,7 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public async Task Play_plays_the_episode_and_back_returns_to_the_page()
+        public async Task Play_plays_the_episode_and_back_goes_home_with_it_playing()
         {
             var (page, rig) = await Simpsons();
             rig.Ctx.OpenShow(page.Details!.Title);
@@ -272,7 +302,9 @@ namespace Baird.Tests.NewUi
             Assert.Equal("s1e1", rig.Ctx.Playback.Current!.ItemId);
             Assert.True(rig.Ctx.Nav.State.AtVideo);
             rig.Ctx.Nav.Back();
-            Assert.Equal("show", rig.Ctx.Nav.State.Pages.Single().Name);
+            Assert.Empty(rig.Ctx.Nav.State.Pages);
+            Assert.Equal(Place.Home, rig.Ctx.Nav.Top);
+            Assert.NotNull(rig.Ctx.Nav.State.Video);
         }
 
         [AvaloniaFact]
@@ -400,29 +432,25 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
-        public async Task Search_shows_fast_sources_first_checks_the_slow_library_and_keeps_the_lit_result_lit()
+        public async Task Search_waits_for_the_slow_library_and_draws_everything_once_with_nothing_still_checking()
         {
+            // It used to show fast sources first and add the slow library afterwards, which moved results about while the viewer
+            // was moving to the one they wanted. Now nothing is drawn until every source has answered (or timed out).
             var (rig, jf) = SlowRig();
             var s = new SearchScreen(rig.Ctx);
             Show(s.View);
             foreach (var ch in "loki") TypeLetter(s, ch);
             rig.Timers.Advance(SearchScreen.Debounce);
             var run = s.RunAsync();
-            await Until(() => s.ResultRows.SelectMany(r => r).Any(h => h.Title?.Name == "Loki") && s.ResultRows.SelectMany(r => r).Any(h => h.Title?.Name == "Loki Odyssey"));
-            var loki = s.ResultRows.SelectMany(r => r).Single(h => h.Title?.Name == "Loki");
-            Assert.EndsWith("–", loki.Card.Sublabel);
-            Assert.Null(loki.Card.Badge);
-
-            // Light Loki Odyssey (iPlayer, already in), then let Jellyfin answer: Loki Odyssey stays lit.
-            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false);
-            for (var i = 0; i < 6 && ((Card)s.LitElement!).Data.Label != "Loki Odyssey"; i++) s.OnAction(UiAction.Down, false);
-            Assert.Equal("Loki Odyssey", ((Card)s.LitElement!).Data.Label);
+            await Wait(300);
+            Assert.Empty(s.ResultRows.SelectMany(r => r));
             jf.Gate.SetResult();
             await run;
             Dispatcher.UIThread.RunJobs();
-            Assert.Equal("Loki Odyssey", ((Card)s.LitElement!).Data.Label);
-            var found = s.ResultRows.SelectMany(r => r).Single(h => h.Title?.Name == "Loki").Title!;
-            Assert.Equal("loki", found.Best!.ItemId);
+            var loki = s.ResultRows.SelectMany(r => r).Single(h => h.Title?.Name == "Loki");
+            Assert.DoesNotContain("Checking your library", loki.Card.Sublabel ?? "");
+            Assert.Equal("loki", loki.Title!.Best!.ItemId);
+            Assert.Contains(s.ResultRows.SelectMany(r => r), h => h.Title?.Name == "Loki Odyssey"); // the fast source's result is in the same render
         }
 
         [AvaloniaFact]
@@ -668,6 +696,47 @@ namespace Baird.Tests.NewUi
             var textEnd = X(s.QueryText, s.View) + s.QueryText.Bounds.Width;
             var gap = X(s.Caret, s.View) - textEnd;
             Assert.InRange(gap, 0, 3); // no space-sized gap between the last letter and the caret
+        }
+
+        [AvaloniaFact]
+        public async Task The_downloads_tag_lists_downloads_typing_filters_them_and_del_leaves()
+        {
+            var rig = Build();
+            rig.World.Seerr.Asked.Add(CatalogueTests.Asked(95396, "tv", "Severance", 1, mediaStatus: 3));
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            s.OnShow();
+            await Wait(50);
+            Assert.Equal("⤓ Downloads", s.ResultRows[0].Single().Card.Label); // the tag, first, with nothing typed
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false); // off the keyboard to the results
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Up, false);
+            s.OnAction(UiAction.Ok, false);
+            await Wait(50);
+            Assert.True(s.InDownloads);
+            Assert.Equal(new[] { "Severance", "The Simpsons", "Alien" }, s.ResultRows.SelectMany(r => r).Select(h => h.Card.Label));
+
+            await Type(s, rig, "sev");
+            await Wait(50);
+            Assert.Equal(new[] { "Severance" }, s.ResultRows.SelectMany(r => r).Select(h => h.Card.Label));
+
+            for (var i = 0; i < 4; i++) s.OnAction(UiAction.Del, false);
+            Assert.False(s.InDownloads); // DEL with nothing typed leaves the tag
+        }
+
+        [AvaloniaFact]
+        public async Task A_big_library_shows_a_page_of_downloads_at_a_time_and_more_on_the_way_down()
+        {
+            var rig = Build();
+            for (var i = 0; i < 100; i++) rig.World.Jellyfin.Items.Add(CatalogueTests.Item($"f{i}", $"Film {i}"));
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            s.EnterDownloads();
+            await Wait(50);
+            Assert.Equal(48, s.ResultRows.Sum(r => r.Count));
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false);
+            for (var i = 0; i < 11; i++) s.OnAction(UiAction.Down, false);
+            Assert.True(s.ResultRows.Sum(r => r.Count) > 48);
+            Assert.NotNull(s.LitElement);
         }
     }
 }

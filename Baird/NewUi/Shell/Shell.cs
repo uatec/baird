@@ -19,7 +19,9 @@ namespace Baird.NewUi.Shell
         Func<PageRef, IScreen> CreatePage,
         Func<OverlayRef, IScreen> CreateOverlay,
         Func<UiAction, bool, bool> VideoAction,
-        Func<string> BackToVideoLabel);
+        Func<string> BackToVideoLabel,
+        // A digit nothing on screen wanted: starts a channel number (null: digits are not special).
+        Func<int, bool>? ChannelNumber = null);
 
     /// <summary>
     /// The new UI's layer stack and global keys (ported from the prototype's app.js):
@@ -33,7 +35,7 @@ namespace Baird.NewUi.Shell
         private static readonly Dictionary<Place, string> TabLabels = new() { [Place.Home] = "Home", [Place.LiveTv] = "Live TV", [Place.Search] = "Search", [Place.Settings] = "Settings" };
 
         private readonly ShellDeps _d;
-        public Panel Stage { get; } = new() { Width = 1920, Height = 1080, ClipToBounds = true };
+        public Panel Stage { get; } = new() { Width = T.W, Height = T.H, ClipToBounds = true };
         private readonly Panel _placeHost = new();
         private readonly Panel _pageHost = new();
         private readonly Panel _overlayHost = new();
@@ -116,6 +118,19 @@ namespace Baird.NewUi.Shell
             clock.Start();
             _clock.Text = DateTime.Now.ToString("HH:mm");
             Render();
+        }
+
+        /// <summary>
+        /// Interface size: lay the interface out on a stage of 1920/scale × 1080/scale, which the Viewbox fits to the window, so a smaller
+        /// size gives smaller components and room for more of them. Screens that aren't showing are rebuilt at the new size when next visited.
+        /// </summary>
+        public void SetStageScale(double scale)
+        {
+            var (w, h) = (T.W, T.H);
+            T.SetScale(scale);
+            if (T.W == w && T.H == h) return;
+            Stage.Width = T.W; Stage.Height = T.H;
+            foreach (var k in _places.Where(kv => !_placeHost.Children.Contains(kv.Value.View)).Select(kv => kv.Key).ToList()) _places.Remove(k);
         }
 
         public IScreen PlaceScreen(Place p)
@@ -297,23 +312,38 @@ namespace Baird.NewUi.Shell
                 if (a == UiAction.Left && i > 0) { nav.SetPlace(Tabs[i - 1]); return; }
                 if (a == UiAction.Right && i < Tabs.Length - 1) { nav.SetPlace(Tabs[i + 1]); return; }
                 if (a is UiAction.Down or UiAction.Ok) { TabFocus = false; PlaceScreen(st.Place).OnFocusIn(); Render(); return; }
-                if (a == UiAction.Back) { if (st.Place != Place.Home) nav.SetPlace(Place.Home); return; }
+                if (a == UiAction.Back)
+                {
+                    if (st.Place != Place.Home) nav.SetPlace(Place.Home);
+                    else if (st.Video != null) { TabFocus = false; nav.ToVideo(); } // Home ⇄ what's playing
+                    return;
+                }
                 if (a is UiAction.Left or UiAction.Right or UiAction.Up) return;
             }
 
             var screen = ActiveScreen;
             var handled = screen != null ? screen.OnAction(a, repeat) : _d.VideoAction(a, repeat);
             if (handled) return;
+            // A digit nothing here uses (Search types them, the Guide jumps with them, a code box takes them) is a channel number, on
+            // any screen and not only while watching. An open menu or dialog is not interrupted.
+            if (InputMap.DigitOf(a) is { } digit && st.Overlay == null && _d.ChannelNumber?.Invoke(digit) == true) return;
             // Over the video, Pg±, digits and ⏮/⏭ keep their meaning whatever overlay is up.
             if (st.Overlay != null && st.Video != null && st.AtVideo && st.Pages.Count == 0
                 && (a is UiAction.PageUp or UiAction.PageDown or UiAction.Prev or UiAction.Next || InputMap.DigitOf(a) != null)
                 && _d.VideoAction(a, repeat)) return;
+            // Home while something plays: Back returns to it (and Back from the video comes Home, lit on it).
+            if (onPlace && a == UiAction.Back && st.Place == Place.Home && st.Video != null) { nav.ToVideo(); return; }
             if (onPlace && (a == UiAction.Up || a == UiAction.Back))
             {
                 // ▴ off the top of a place's content, or Back from inside it, lights its tab.
                 TabFocus = true; PlaceScreen(st.Place).OnFocusOut(); Render(); return;
             }
-            if (a == UiAction.Back) nav.Back();
+            if (a == UiAction.Back)
+            {
+                var fromVideo = st.Video != null && st.AtVideo && st.Pages.Count == 0 && st.Overlay == null;
+                nav.Back();
+                if (fromVideo) { TabFocus = false; if (PlaceScreen(Place.Home) is HomeScreen home) home.Reset(); }
+            }
             else if (a == UiAction.PlayPause) _d.VideoAction(a, repeat);
         }
 

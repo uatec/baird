@@ -21,8 +21,8 @@ namespace Baird.NewUi.Adapters
     {
         public const string NoInfoTitle = "No programme information";
         /// <summary>How far the guide reaches: the prototype's 3 h back is moot (TvHeadend only lists from now on).</summary>
-        public static readonly TimeSpan Ahead = TimeSpan.FromHours(26);
-        private const int Limit = 80; // a day of a busy channel is ~40 programmes
+        public static readonly TimeSpan Ahead = TimeSpan.FromHours(48);
+        private const int Limit = 160; // two days of a busy channel is ~80 programmes
 
         private readonly HomeData _home;
         private readonly IEpgService _epg;
@@ -46,6 +46,7 @@ namespace Baird.NewUi.Adapters
 
         public async Task<GuideModel> LoadAsync(DateTimeOffset now)
         {
+            _epg.RequestGrab(); // opening the guide: top the schedule up from the tuner if nobody is watching
             if (_last is { } last && now >= last.At && now - last.At < Fresh && WindowStartFor(now) == last.Model.Start) return last.Model;
             var model = await FetchAsync(now).ConfigureAwait(false);
             if (model.Channels.Count > 0) _last = (now, model);

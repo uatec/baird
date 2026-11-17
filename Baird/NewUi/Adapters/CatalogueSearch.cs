@@ -185,7 +185,9 @@ namespace Baird.NewUi.Adapters
             {
                 var now = DateTimeOffset.UtcNow;
                 foreach (var old in _shared.Where(e => e.Value.Task.IsCompleted && now - e.Value.At > SharedFor).Select(e => e.Key).ToList()) _shared.Remove(old);
-                if (!_shared.TryGetValue(key, out entry!) || entry.Task.IsCanceled)
+                // A search that failed or timed out (null) is not worth remembering: Jellyfin is slow when cold, and a page opened then
+                // would say "not in your library" for two minutes. Only answers are shared.
+                if (!_shared.TryGetValue(key, out entry!) || entry.Task.IsCanceled || (entry.Task.IsCompletedSuccessfully && entry.Task.Result == null))
                 {
                     var cts = new CancellationTokenSource();
                     entry = new Shared { Cts = cts, At = now, Task = RunSourceAsync(p, q, cts.Token) };
@@ -226,6 +228,22 @@ namespace Baird.NewUi.Adapters
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return null; }
             catch (Exception ex) { Console.WriteLine($"[CatalogueSearch] {p.Name} search failed: {ex.Message}"); }
             return null;
+        }
+
+        /// <summary>
+        /// The film or series a programme on air is, found by its name in the library, on the streaming services and in Seerr
+        /// (the guide doesn't say which it is). An entry with an episode title is an episode of a series, so a series wins; else
+        /// the best match. Null when nothing has that name.
+        /// </summary>
+        public async Task<CatalogueTitle?> FindProgrammeAsync(Programme programme, IReadOnlyList<Channel> channels, DateTimeOffset now, CancellationToken ct = default)
+        {
+            var results = await SearchAsync(programme.Title, channels, now, null, ct).ConfigureAwait(false);
+            var wanted = SearchRelevance.Normalize(programme.Title);
+            var same = (results.Top is { Title: { } top } ? new[] { top } : Array.Empty<CatalogueTitle>())
+                .Concat(results.Titles.Where(h => h.Title != null).Select(h => h.Title!))
+                .Where(t => t.Kind != TitleKind.Episode && SearchRelevance.Normalize(t.Name) == wanted)
+                .ToList();
+            return (string.IsNullOrWhiteSpace(programme.Subtitle) ? null : same.FirstOrDefault(t => t.Kind == TitleKind.Series)) ?? same.FirstOrDefault();
         }
 
         // ------------------------------------------------------------------ the search
@@ -332,6 +350,91 @@ namespace Baird.NewUi.Adapters
                 : new[] { titleHits.FirstOrDefault(), chanHits.FirstOrDefault(h => h.Score >= 55) }.Where(h => h != null).OrderByDescending(h => h!.Score).FirstOrDefault()
                   ?? onTv.FirstOrDefault(h => h.Card.Badge == "live") ?? onTv.FirstOrDefault();
             return new SearchResults(q, top, titleHits.Where(h => h != top).ToList(), chanHits.Where(h => h != top).ToList(), onTv.Where(h => h != top).ToList(), pending);
+        }
+
+        // ------------------------------------------------------------------ downloads
+        private (DateTimeOffset At, IReadOnlyList<SearchHit> Hits)? _downloads;
+        private static readonly TimeSpan DownloadsFor = TimeSpan.FromMinutes(2);
+
+        /// <summary>
+        /// Search's Downloads tag: what's been requested in Seerr and isn't here yet (newest request first), then
+        /// everything in Jellyfin (newest added first), filtered by what's typed. Read once and kept for a couple of minutes.
+        /// </summary>
+        public async Task<IReadOnlyList<SearchHit>> DownloadsAsync(string query, CancellationToken ct = default)
+        {
+            var all = _downloads is { } d && DateTimeOffset.UtcNow - d.At <= DownloadsFor ? d.Hits : await ReadDownloadsAsync(ct).ConfigureAwait(false);
+            var q = query.Trim();
+            if (q.Length == 0) return all;
+            var nq = SearchRelevance.Normalize(q);
+            return all.Where(h => WordsMatch(q, h.Card.Label) || SearchRelevance.Normalize(h.Card.Label).Contains(nq, StringComparison.Ordinal)).ToList();
+        }
+
+        /// <summary>A requested title's card says where it's got to and which part (as Home's Downloads row does).</summary>
+        private static HomeCard WithProgress(HomeCard card, JellyseerrRequest r, IReadOnlyDictionary<(string Type, int Tmdb), IReadOnlyList<int>> asked)
+        {
+            var view = HomeData.Describe(r, asked.TryGetValue((r.MediaType, r.TmdbId), out var seasons) ? seasons : Array.Empty<int>(), DateTime.Now);
+            return card with { Badge = view.Badge, Progress = view.Progress ?? card.Progress, Sublabel = view.Scope.Length > 0 ? view.Scope : card.Sublabel };
+        }
+
+        /// <summary>Read Downloads afresh next time (something was deleted).</summary>
+        public void ForgetDownloads()
+        {
+            _downloads = null;
+            lock (_shared) _shared.Clear(); // searches remembered for a couple of minutes would still show it
+        }
+
+        private async Task<IReadOnlyList<SearchHit>> ReadDownloadsAsync(CancellationToken ct)
+        {
+            var asked = _seerr == null ? Task.FromResult(Enumerable.Empty<JellyseerrRequest>())
+                : Within(c => _seerr.GetRequestsAsync(c), Enumerable.Empty<JellyseerrRequest>(), "Seerr requests", ct);
+            var libraries = _data.Providers.OfType<IMediaLibrary>()
+                .Select(l => Within(c => l.GetNewestAsync(c), Enumerable.Empty<MediaItemData>(), "Library listing", ct)).ToList();
+            await Task.WhenAll(libraries.Cast<Task>().Append(asked)).ConfigureAwait(false);
+
+            // The library, newest first: one title per film or series (a dictionary, not Group's pairwise matching: it's thousands).
+            var titles = new List<CatalogueTitle>();
+            var byName = new Dictionary<(TitleKind, string), int>();
+            var items = _data.UnifyAndHydrate(libraries.SelectMany(l => l.Result).Select(m => new MediaItemViewModel(m)));
+            foreach (var m in items)
+            {
+                if (m.IsLive || m.Type is MediaType.Channel or MediaType.Audio || string.IsNullOrWhiteSpace(m.Name)) continue;
+                var kind = m.Type is MediaType.Brand or MediaType.Folder ? TitleKind.Series : TitleKind.Film;
+                var key = (kind, SearchRelevance.Normalize(m.Name));
+                if (byName.ContainsKey(key)) continue;
+                byName[key] = titles.Count;
+                titles.Add(new CatalogueTitle($"{kind}:{key.Item2}:{YearOf(m.Details)}:{m.Id}", kind, m.Name, YearOf(m.Details),
+                    string.IsNullOrEmpty(m.ImageUrl) ? null : m.ImageUrl, string.IsNullOrWhiteSpace(m.Synopsis) ? null : m.Synopsis, new[] { SourceOf(m) }));
+            }
+
+            // Requests: one per title, newest first. Ones that have arrived are their Jellyfin copy; the rest go first.
+            static DateTime When(string s) => DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var d) ? d : DateTime.MinValue;
+            var askedSeasons = HomeData.RequestedSeasonsByTitle(asked.Result);
+            var waiting = new List<SearchHit>();
+            var requestOf = new Dictionary<int, JellyseerrRequest>();
+            foreach (var r in asked.Result.Where(r => r.MediaInfoStatus is not (6 or 7)).OrderByDescending(r => When(r.CreatedAt)).DistinctBy(r => (r.MediaType, r.TmdbId)))
+            {
+                var kind = r.MediaType == "tv" ? TitleKind.Series : r.MediaType == "movie" ? TitleKind.Film : (TitleKind?)null;
+                if (kind == null || string.IsNullOrWhiteSpace(r.Title)) continue;
+                var seerr = new SeerrRef(r.TmdbId, r.MediaType, r.MediaInfoStatus == 0 ? 1 : r.MediaInfoStatus);
+                if (byName.TryGetValue((kind.Value, SearchRelevance.Normalize(r.Title)), out var i))
+                {
+                    titles[i] = titles[i] with { Seerr = seerr };
+                    if (r.MediaInfoStatus == 4) requestOf[i] = r; // partly here: say which seasons, and what's downloading
+                    continue;
+                }
+                if (r.MediaInfoStatus == 5) continue; // here, under another name: Jellyfin's copy is already listed
+                var t = new CatalogueTitle($"tmdb:{r.MediaType}:{r.TmdbId}", kind.Value, r.Title, null,
+                    r.PosterPath is { Length: > 0 } p ? $"https://image.tmdb.org/t/p/w500{p}" : null, null, Array.Empty<TitleSource>(), seerr);
+                waiting.Add(new SearchHit(HitKind.Title, WithProgress(CardOf(t), r, askedSeasons), t));
+            }
+            var library = titles.Select((t, i) =>
+            {
+                var card = CardOf(t);
+                return new SearchHit(HitKind.Title, requestOf.TryGetValue(i, out var r) ? WithProgress(card, r, askedSeasons) : card, t);
+            });
+            IReadOnlyList<SearchHit> hits = waiting.Concat(library).ToList();
+            _downloads = (DateTimeOffset.UtcNow, hits);
+            return hits;
         }
 
         // ------------------------------------------------------------------ the guide

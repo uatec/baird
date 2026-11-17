@@ -37,7 +37,7 @@ namespace Baird.NewUi.Screens
         private readonly NewUiContext _ctx;
         private CatalogueTitle _title;
         private ShowDetails? _details;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080, Background = Brushes.Black };
+        private readonly Panel _root = new() { Background = Brushes.Black };
         private readonly Panel _art = new();
         private readonly Panel _content = new();
         private readonly StackPanel _body = new() { Width = 1000, Spacing = 0, Margin = new Thickness(T.SafeX, 96, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
@@ -87,6 +87,8 @@ namespace Baird.NewUi.Screens
         public ShowPage(NewUiContext ctx, CatalogueTitle title)
         {
             _ctx = ctx; _title = title; _focusId = title.FocusItemId;
+            _onLibraryChanged = () => OnUi(() => { if (!_life.IsCancellationRequested) Loaded = LoadAsync(fresh: true); });
+            _ctx.LibraryChanged += _onLibraryChanged; // an episode deleted: its card goes
             _root.Children.Add(_art);
             _root.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F5000000"), 0), new GradientStop(Color.Parse("#C0000000"), 0.45), new GradientStop(Color.Parse("#40000000"), 0.8) } } });
             _root.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F0000000"), 0), new GradientStop(Color.Parse("#80000000"), 0.4), new GradientStop(Colors.Transparent, 0.7) } } });
@@ -310,7 +312,7 @@ namespace Baird.NewUi.Screens
             };
             var src = e.Source;
             return new HomeCard(CardKind.Episode, src?.ItemId ?? $"{_title.Key}:{e.Code}", e.Label, sub.Length > 0 ? sub : null, e.ImageUrl,
-                e.Watched ? 1 : src?.Progress, badge, src?.Service ?? "", src?.Via ?? PlayVia.None, src?.StreamUrl, src?.Resume ?? TimeSpan.Zero, Synopsis: e.Synopsis);
+                e.Watched ? 1 : src?.Progress, badge, src?.Service ?? "", src?.Via ?? PlayVia.None, src?.StreamUrl, src?.Resume ?? TimeSpan.Zero, Synopsis: e.Synopsis, Show: _title.Name);
         }
 
         private HomeCard FilmCard(TitleSource b) =>
@@ -358,6 +360,17 @@ namespace Baird.NewUi.Screens
                 var on = _ctx.Shows.InWatchlist(t);
                 list.Add(new(on ? "In watchlist" : "Watchlist", on ? Icon.Check : Icon.Plus, false, ToggleWatchlist));
             }
+            // A film in Jellyfin can be deleted from the server here too (it asks first; Seerr's record goes with it).
+            if (t.Kind == TitleKind.Film && t.Best is { Service: "Jellyfin" } jf && _ctx.Deleter is { } deleter
+                && FilmCard(jf) with { Title = t } is var card && deleter.CanDelete(card))
+                list.Add(new("Delete…", null, false, () => ItemActions.ConfirmDelete(_ctx, deleter, card)));
+            // A download in progress (nothing of it in the library yet) can be dropped without waiting for it to finish.
+            if (t.Seerr is { Status: 2 or 3 } sr && t.Sources.Count == 0 && _ctx.Deleter is { } discarder
+                && (t.Kind == TitleKind.Film ? d.FilmState == SeasonState.Requested
+                    : d.Seasons.Any(s => s.State == SeasonState.Requested) && d.Seasons.All(s => s.State is not (SeasonState.Available or SeasonState.Partial)))
+                && new HomeCard(t.Kind == TitleKind.Film ? CardKind.Film : CardKind.Series, $"tmdb:{sr.MediaType}:{sr.TmdbId}", t.Name, null, t.ImageUrl, null, null, "Seerr", PlayVia.None, Title: t) is var asked
+                && discarder.CanDiscard(asked))
+                list.Add(new("Discard download…", null, false, () => ItemActions.ConfirmDiscard(_ctx, discarder, asked)));
             if (list.Count == 0) list.Add(new("Not available", null, false, () => _ctx.Toast($"{t.Name} isn't streaming anywhere Baird knows, and Seerr doesn't know it.")));
             return list;
         }
@@ -410,7 +423,8 @@ namespace Baird.NewUi.Screens
             {
                 var (ok, message) = await _ctx.Shows.RequestAsync(_details, seasons, _life.Token);
                 OnUi(() => _ctx.Toast(message));
-                if (ok) { Loaded = LoadAsync(fresh: true); await Loaded; }
+                // Everything that lists requests (Home's Downloads, Search's, this page) reads them again, at once.
+                if (ok) { OnUi(_ctx.RaiseLibraryChanged); await Loaded; }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { Console.WriteLine($"[ShowPage] Request failed: {ex.Message}"); }
@@ -431,7 +445,7 @@ namespace Baird.NewUi.Screens
             if (_tabEls.Count == 0) { _tabScroll = 0; _tabs.RenderTransform = Motion.None; return; }
             var widths = _tabEls.Select(t => { if (t.DesiredSize.Width <= 0) t.Measure(Size.Infinity); return t.DesiredSize.Width; }).ToList();
             var focus = _rows[_pos.Row] == RowKind.Seasons ? _pos.Col : _season;
-            _tabScroll = StripScroll(widths, TabSpacing, focus, _tabScroll, 1920 - 2 * T.SafeX, 20);
+            _tabScroll = StripScroll(widths, TabSpacing, focus, _tabScroll, T.W - 2 * T.SafeX, 20);
             _tabs.RenderTransform = TransformOperations.Parse($"translate({-_tabScroll}px, 0px)");
         }
 
@@ -509,7 +523,7 @@ namespace Baird.NewUi.Screens
             if (_details == null)
             {
                 if (_failure != null && a is UiAction.Ok or UiAction.PlayPause) { Retry(); return true; }
-                return a is not (UiAction.Back or UiAction.Up);
+                return a is not (UiAction.Back or UiAction.Up) && InputMap.DigitOf(a) == null; // digits are channel numbers: not ours to swallow
             }
             switch (a)
             {
@@ -587,7 +601,8 @@ namespace Baird.NewUi.Screens
         }
 
         public void OnShow() { if (_details != null) Draw(); }
-        public void Destroy() { _life.Cancel(); _poll?.Dispose(); }
+        private readonly Action _onLibraryChanged;
+        public void Destroy() { _life.Cancel(); _poll?.Dispose(); _ctx.LibraryChanged -= _onLibraryChanged; }
     }
 
     /// <summary>A lit-able pill button with an icon (the show page's actions).</summary>

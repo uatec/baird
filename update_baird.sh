@@ -3,7 +3,7 @@
 #
 #   1. brew update; exit if the installed version is already the latest.
 #   2. Skip a version that was previously rolled back (until a newer one ships).
-#   3. Defer if the TV looks busy (audio stream / high CPU), unless inside the
+#   3. Defer if the TV looks busy (Baird's own idle/active state in ~/.baird/state; for an older Baird, audio stream / high CPU), unless inside the
 #      upgrade window (03:00-06:00 local) or FORCE=1.
 #   4. brew upgrade, keeping the previous keg (HOMEBREW_NO_INSTALL_CLEANUP).
 #   5. Run the new install_service.sh, then watch baird.service for
@@ -140,13 +140,32 @@ baird_cpu_pct() {
     echo $(((t2 - t1) * 100 / (ticks * secs)))
 }
 
+# Baird says whether anyone could be watching: ~/.baird/state holds "idle" (screensaver up, or the TV in standby) or
+# "active". Prints that word, or nothing when there is no file (a Baird from before it wrote one).
+baird_reported_state() {
+    local f="${BAIRD_STATE_FILE:-$HOME/.baird/state}" word=""
+    [[ -r "$f" ]] && read -r word <"$f"
+    [[ "$word" == "idle" || "$word" == "active" ]] && echo "$word"
+    return 0
+}
+
 # Returns 0 (busy) if something looks like it is playing; logs why.
 tv_is_busy() {
-    local pid cpu
+    local pid cpu state
     pid="$(svc_prop MainPID)"
     if [[ -z "$pid" || "$pid" == "0" ]]; then
         return 1 # app not running: nothing to interrupt
     fi
+    # Baird knows best: its screensaver (10 idle minutes in a menu; 3 hours with a stream, after a "Still watching?") is "idle".
+    state="$(baird_reported_state)"
+    if [[ "$state" == "idle" ]]; then
+        info "Playback check: Baird reports idle (screensaver up or TV in standby)."
+        return 1
+    elif [[ "$state" == "active" ]]; then
+        info "Playback check: Baird reports it is in use."
+        return 0
+    fi
+    # No state file: an older Baird. Infer from the outside.
     if baird_audio_stream_active "$pid"; then
         info "Playback check: baird (pid $pid) has an active audio stream."
         return 0

@@ -10,8 +10,17 @@ namespace Baird.Tests.NewUi
     {
         private static MediaItemData Episode(string source, string? seriesId, string? seriesName) => new()
         {
-            Id = "ep", Name = "Pilot", Details = "S1:E1", ImageUrl = "", IsLive = false, Source = source, Type = MediaType.Video,
-            Synopsis = "", Subtitle = "", SeriesId = seriesId, SeriesName = seriesName,
+            Id = "ep",
+            Name = "Pilot",
+            Details = "S1:E1",
+            ImageUrl = "",
+            IsLive = false,
+            Source = source,
+            Type = MediaType.Video,
+            Synopsis = "",
+            Subtitle = "",
+            SeriesId = seriesId,
+            SeriesName = seriesName,
         };
 
         [Fact]

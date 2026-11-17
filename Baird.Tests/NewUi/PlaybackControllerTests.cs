@@ -18,6 +18,7 @@ namespace Baird.Tests.NewUi
             public PlaybackState State { get; set; } = PlaybackState.Idle;
             public double TimePositionSeconds { get; set; }
             public double DurationSeconds { get; set; }
+            public bool IsAudioOnly { get; set; }
             public event EventHandler? FileLoaded;
             public event EventHandler? StreamEnded;
             public event EventHandler<bool>? PauseStateChanged;
@@ -76,6 +77,20 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void A_stream_with_no_picture_is_audio_only_until_something_else_plays()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("701")); t.Advance(PlaybackController.TuneDebounce + TimeSpan.FromMilliseconds(1));
+            Assert.False(c.IsAudioOnly); // not known until it has loaded
+            e.IsAudioOnly = true; e.Loaded();
+            Assert.True(c.IsAudioOnly);
+            c.PlayLive(Ch("101"));
+            Assert.False(c.IsAudioOnly); // the new channel starts as a TV one
+            e.IsAudioOnly = false; t.Advance(PlaybackController.TuneDebounce + TimeSpan.FromMilliseconds(1)); e.Loaded();
+            Assert.False(c.IsAudioOnly);
+        }
+
+        [Fact]
         public void Load_timeout_retries_then_fails()
         {
             var (c, e, t, _) = Build();
@@ -101,6 +116,20 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void The_stream_is_only_announced_as_changing_once_the_tuner_is_asked()
+        {
+            var (c, e, t, _) = Build();
+            var started = 0;
+            c.Started += () => started++;
+            c.PlayLive(Ch("101")); t.Advance(TimeSpan.FromMilliseconds(100));
+            c.PlayLive(Ch("102"));
+            Assert.Equal(0, started);                       // flicking past: the picture stays as it is
+            t.Advance(PlaybackController.TuneDebounce + TimeSpan.FromMilliseconds(1));
+            Assert.Equal(1, started);
+            Assert.Single(e.Plays);
+        }
+
+        [Fact]
         public void Pausing_live_tv_counts_time_behind_live_and_seeking_forward_reduces_it()
         {
             var (c, e, t, _) = Build();
@@ -115,22 +144,64 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void Pausing_live_tv_is_like_rewinding_a_second_per_second_and_resuming_does_not_make_it_jump()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("101")); t.Advance(TimeSpan.FromSeconds(1)); e.Loaded();
+            Assert.Equal(TimeSpan.Zero, c.EffectiveBehindLive);          // at live
+            c.TogglePause(); t.Advance(TimeSpan.FromSeconds(40));
+            Assert.Equal(TimeSpan.FromSeconds(40), c.EffectiveBehindLive); // paused: already 40 s behind, though BehindLive is only settled on resume
+            t.Advance(TimeSpan.FromSeconds(20));
+            Assert.Equal(TimeSpan.FromSeconds(60), c.EffectiveBehindLive);
+            c.TogglePause();
+            Assert.Equal(TimeSpan.FromSeconds(60), c.EffectiveBehindLive); // resumed: no jump
+            t.Advance(TimeSpan.FromSeconds(30));
+            Assert.Equal(TimeSpan.FromSeconds(60), c.EffectiveBehindLive); // playing: stays as far behind
+            c.SeekRelative(TimeSpan.FromSeconds(-30));
+            Assert.Equal(TimeSpan.FromSeconds(90), c.EffectiveBehindLive); // rewinding adds to it
+        }
+
+        [Fact]
         public void Switching_items_saves_progress_of_the_one_left_once()
         {
-            var (c, e, _, saved) = Build();
+            var (c, e, t, saved) = Build();
             c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
             e.TimePositionSeconds = 300; e.Duration(3000);
+            t.Advance(PlaybackController.WatchedAfter); saved.Clear();
             c.PlayItem("film1", "http://jf/film1", TimeSpan.Zero, "Casper");
             Assert.Equal(new[] { ("ep1", TimeSpan.FromSeconds(300)) }, saved);
         }
 
         [Fact]
-        public void Under_ten_seconds_is_not_saved()
+        public void Under_a_minute_is_not_saved()
         {
-            var (c, e, _, saved) = Build();
+            var (c, e, t, saved) = Build();
             c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
-            e.TimePositionSeconds = 5; c.Stop();
+            e.TimePositionSeconds = 40; t.Advance(TimeSpan.FromSeconds(59)); c.Stop();
             Assert.Empty(saved);
+        }
+
+        [Fact]
+        public void A_minute_of_a_video_is_saved_as_the_minute_passes_and_again_on_leaving()
+        {
+            var (c, e, t, saved) = Build();
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
+            e.TimePositionSeconds = 60; t.Advance(PlaybackController.WatchedAfter);
+            Assert.Equal(new[] { ("ep1", TimeSpan.FromSeconds(60)) }, saved);
+            e.TimePositionSeconds = 300; c.Stop();
+            Assert.Equal(new[] { ("ep1", TimeSpan.FromSeconds(60)), ("ep1", TimeSpan.FromSeconds(300)) }, saved);
+        }
+
+        [Fact]
+        public void A_channel_rested_on_for_a_minute_is_saved_but_flicking_past_is_not()
+        {
+            var (c, e, t, saved) = Build();
+            c.PlayLive(Ch("1")); t.Advance(PlaybackController.TuneDebounce); e.Loaded();
+            t.Advance(TimeSpan.FromSeconds(5));
+            c.PlayLive(Ch("2")); t.Advance(PlaybackController.TuneDebounce); e.Loaded();
+            Assert.Empty(saved);
+            t.Advance(PlaybackController.WatchedAfter);
+            Assert.Equal(new[] { "ch2" }, saved.Select(s => s.Item1));
         }
 
         [Fact]
@@ -214,6 +285,85 @@ namespace Baird.Tests.NewUi
             nf.Fail("Netflix asked for a verification code.");
             Assert.Equal("Netflix asked for a verification code.", c.Failure);
             Assert.False(c.IsLoading);
+        }
+
+        [Fact]
+        public void A_live_channel_that_never_loads_reports_it_once_retries_run_out()
+        {
+            var (c, _, t, _) = Build();
+            var failed = new List<string>();
+            c.LiveLoadFailed += n => failed.Add(n.ItemId);
+            c.PlayLive(Ch("101"));
+            t.Advance(PlaybackController.TuneDebounce);
+            for (var i = 0; i < PlaybackController.MaxRetries; i++)
+            {
+                t.Advance(PlaybackController.LoadTimeout);
+                Assert.Empty(failed);
+            }
+            t.Advance(PlaybackController.LoadTimeout);
+            Assert.Equal(new[] { "ch101" }, failed);
+            Assert.NotNull(c.Failure);
+        }
+
+        [Fact]
+        public void A_video_that_never_loads_is_not_a_tuner_problem()
+        {
+            var (c, _, t, _) = Build();
+            var raised = false;
+            c.LiveLoadFailed += _ => raised = true;
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki");
+            for (var i = 0; i <= PlaybackController.MaxRetries; i++) t.Advance(PlaybackController.LoadTimeout);
+            Assert.NotNull(c.Failure);
+            Assert.False(raised);
+        }
+
+        [Fact]
+        public void Parked_live_pauses_then_stops_after_the_grace_and_retunes_on_return()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("1")); t.Advance(PlaybackController.TuneDebounce); e.Loaded();
+            c.Park();
+            Assert.Contains("pause", e.Calls);
+            t.Advance(TimeSpan.FromSeconds(4));
+            Assert.DoesNotContain("stop", e.Calls);
+            t.Advance(TimeSpan.FromSeconds(2));
+            Assert.Contains("stop", e.Calls);
+            Assert.True(c.Released);
+            Assert.NotNull(c.Current);
+            e.Ended(); // the stop must not look like a dropped stream
+            Assert.Single(e.Plays);
+            c.Unpark();
+            Assert.Equal(2, e.Plays.Count);
+            Assert.Equal(("http://tvh/1", (double?)null), e.Plays[1]);
+            Assert.False(c.Released);
+        }
+
+        [Fact]
+        public void Coming_back_within_the_grace_resumes_and_a_live_channel_jumps_to_now()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayLive(Ch("1")); t.Advance(PlaybackController.TuneDebounce); e.Loaded();
+            c.Park();
+            t.Advance(TimeSpan.FromSeconds(3));
+            c.Unpark();
+            Assert.Contains("resume", e.Calls);
+            Assert.Contains("rel 3", e.Calls);
+            Assert.Equal(TimeSpan.Zero, c.BehindLive);
+            t.Advance(TimeSpan.FromSeconds(10));
+            Assert.DoesNotContain("stop", e.Calls);
+            Assert.Single(e.Plays);
+        }
+
+        [Fact]
+        public void Parked_video_resumes_where_it_was_after_being_released()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
+            e.TimePositionSeconds = 754;
+            c.Park(); t.Advance(PlaybackController.ParkGrace);
+            Assert.Contains("stop", e.Calls);
+            c.Unpark();
+            Assert.Equal(("http://jf/ep1", (double?)754), e.Plays[1]);
         }
     }
 }

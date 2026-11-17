@@ -21,8 +21,9 @@ namespace Baird.NewUi.Core
     /// <summary>
     /// The spatial model, ported from the prototype (spikes/ux-redesign-prototype/js/nav.js): the video is the ground
     /// floor, a place (tab) is the bottom page, pages stack above it (or above the video), and one overlay can sit on top.
-    /// Back retraces the journey: overlay → closes; page → pops; bare video → the pages it was started from;
-    /// a place other than Home → Home.
+    /// Back: overlay → closes; page → pops; bare video → Home (what's playing is its first card); Home, while
+    /// something plays → the video again (so Back alternates between the two); a place other than Home → Home.
+    /// Stop still returns to the pages the video was started from.
     /// </summary>
     public sealed class Navigator
     {
@@ -84,8 +85,9 @@ namespace Baird.NewUi.Core
         {
             if (_overlay != null) _overlay = null;
             else if (_pages.Count > 0) _pages.RemoveAt(_pages.Count - 1);
-            else if (_video != null && _atVideo) { _atVideo = false; _pages = _originPages; _originPages = new(); }
+            else if (_video != null && _atVideo) { _atVideo = false; _place = Place.Home; _originPages = new(); }
             else if (_place != Place.Home) _place = Place.Home;
+            else if (_video != null) _atVideo = true;
             else return;
             Raise();
         }

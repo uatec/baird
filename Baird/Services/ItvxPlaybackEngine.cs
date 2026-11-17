@@ -41,6 +41,8 @@ namespace Baird.Services
         private bool _failedRaised;
         private bool _paused;
         private bool _advert;
+        private int _skipAttempts;
+        private DateTime _lastSkipAt;
         private bool _ownsBrowser;
         private double _position;
         private double _duration;
@@ -77,6 +79,23 @@ namespace Baird.Services
         public bool IsAdvertPlaying => _advert;
         /// <summary>Jump each advert to its end (on by default; Baird:ItvxSkipAdverts=false keeps them).</summary>
         public bool SkipAdverts { get; set; } = true;
+        /// <summary>
+        /// Jumping an advert to its end only works once or twice: if ITVX plays it again, jumping on every poll makes the picture loop
+        /// half a second and glitch forward (seen on the Pi, 2026-11-15). So an advert is jumped at most <see cref="MaxSkipsPerAdvert"/>
+        /// times, <see cref="SkipRetry"/> apart, and then left to play.
+        /// </summary>
+        public TimeSpan SkipRetry { get; set; } = TimeSpan.FromSeconds(3);
+        public int MaxSkipsPerAdvert { get; set; } = 3;
+
+        private bool SkipNow(bool advertPlaying)
+        {
+            if (!SkipAdverts || !advertPlaying) { if (!advertPlaying) _skipAttempts = 0; return false; }
+            var now = DateTime.UtcNow;
+            if (_skipAttempts >= MaxSkipsPerAdvert || (_skipAttempts > 0 && now - _lastSkipAt < SkipRetry)) return false;
+            _skipAttempts++;
+            _lastSkipAt = now;
+            return true;
+        }
         private string? _lastAudio;
 
         public void Play(string url, double? startSeconds = null) => _ = PlayAsync(url); // ITVX resumes at its own place
@@ -92,6 +111,7 @@ namespace Baird.Services
             _badPolls = 0;
             _paused = false;
             _advert = false;
+            _skipAttempts = 0;
             _pageId = null;
             Volatile.Write(ref _position, 0);
             Volatile.Write(ref _duration, 0);
@@ -330,7 +350,7 @@ namespace Baird.Services
             // Sound: say what the page's audio is whenever it changes (diagnosis), and make it audible; skip adverts if asked.
             var audio = $"{(state.Muted ? "muted" : "not muted")}, volume {state.Volume:0.00}{(state.UnmuteButton ? ", ITVX shows Unmute" : "")}";
             if (audio != _lastAudio) { _lastAudio = audio; Console.WriteLine($"[ItvxEngine] Audio: {audio}."); }
-            var skip = SkipAdverts && state.AdvertPlaying;
+            var skip = SkipNow(state.AdvertPlaying);
             if (state.Muted || state.Volume < 0.99 || state.UnmuteButton || skip)
             {
                 try
