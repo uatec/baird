@@ -74,7 +74,7 @@ namespace Baird.NewUi
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.ShowStore = new DiskShowStore(DiskShowStore.DefaultFolder, timers);
-            _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
+            _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search, store: _ctx.ShowStore);
             _ctx.Deleter = new Deletion(services.Data, services.Seerr, _ctx.Search);
             // Netflix searches in the one shared browser: while another service plays there, say so instead of silently missing it.
             _ctx.SearchNote = () => services.Netflix is { } nf && nf.Hub.ActivePlayback is { } busy && nf.DirectSearchWorks != true
