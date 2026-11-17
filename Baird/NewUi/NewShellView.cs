@@ -73,6 +73,7 @@ namespace Baird.NewUi
             var home = new HomeData(services.Data, services.Epg, services.Seerr, new ProgrammeArt(services.Seerr, ProgrammeArt.DefaultPath)) { HiddenPath = HomeData.DefaultHiddenPath };
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
+            _ctx.ShowStore = new DiskShowStore(DiskShowStore.DefaultFolder, timers);
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search);
             _ctx.Deleter = new Deletion(services.Data, services.Seerr, _ctx.Search);
             // Netflix searches in the one shared browser: while another service plays there, say so instead of silently missing it.

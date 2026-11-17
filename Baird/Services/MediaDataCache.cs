@@ -67,7 +67,7 @@ namespace Baird.Services
             };
         }
 
-        private static string Scrub(string url)
+        internal static string Scrub(string url)
         {
             var tokenized = SecretRedactor.Tokenize(url);
             return ApiKeyParam.Replace(tokenized, $"$1{{{{secret:{JellyfinService.AccessTokenSecretName}}}}}");
