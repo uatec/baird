@@ -145,16 +145,28 @@ namespace Baird.NewUi.Screens
             _getLayout = getGuideLayout; _setLayout = setGuideLayout; _options = options;
             _interface = new ListRow("Interface", "New  ·  ◂ ▸ to switch to Classic");
             _size = new ListRow("Interface size", $"‹  {_scale * 100:0}%  ›");
-            var rows = new List<ListRow> { _interface, _size };
-            var groups = new Dictionary<ListRow, string> { [_interface] = "Picture and sound" };
+            var rows = new List<ListRow>();
+            var groups = new Dictionary<ListRow, string>();
+            // About Baird: version and update, restart Baird.
+            _updates = updates;
+            if (updates != null) { rows.Add(_update = new ListRow("Baird version", $"{updates.Current} · checking…")); _ = CheckAsync(); }
+            else if (options?.About != null) rows.Add(_update = new ListRow("Baird version", options.About));
+            if (options?.RestartBaird != null) rows.Add(_restartBaird = new ListRow("Restart Baird", "OK to restart"));
+            if (rows.Count > 0) groups[rows[0]] = "About Baird";
+            // About this system: waiting OS updates, restart the device.
+            var systemStart = rows.Count;
+            if (options?.SystemUpdates != null) { rows.Add(_systemUpdates = new ListRow("System updates", "checking…")); _ = CheckSystemAsync(); }
+            if (options?.RestartDevice != null) rows.Add(_restartDevice = new ListRow("Restart device", "OK to restart"));
+            if (rows.Count > systemStart) groups[rows[systemStart]] = "About this system";
+            var pictureStart = rows.Count;
+            rows.Add(_interface); rows.Add(_size);
+            groups[_interface] = "Picture and sound";
             if (_getLayout != null && _setLayout != null) rows.Add(_layout = new ListRow("Guide layout", LayoutText(_getLayout())));
             if (options != null)
             {
                 rows.Add(_subtitles = new ListRow("Subtitles by default", OnOff(options.GetSubtitles())));
                 rows.Add(_autoplay = new ListRow("Play the next episode automatically", OnOff(options.GetAutoplay())));
             }
-            _updates = updates;
-            if (updates != null) { rows.Add(_update = new ListRow("Software update", $"{updates.Current} · checking…")); _ = CheckAsync(); }
             if (options?.Sources != null)
             {
                 foreach (var name in options.SourceNames)
@@ -165,18 +177,13 @@ namespace Baird.NewUi.Screens
                     rows.Add(row);
                 }
             }
-            if (options?.About != null)
-            {
-                rows.Add(_about = new ListRow("About Baird", options.About));
-                groups[_update ?? _about] = "About";
-            }
-            else if (_update != null) groups[_update] = "About";
             SetRows(rows, groups);
             if (options?.Sources != null) Loaded = RefreshSourcesAsync();
         }
 
         private readonly SettingsOptions? _options;
-        private readonly ListRow? _subtitles, _autoplay, _about;
+        private readonly ListRow? _subtitles, _autoplay, _restartBaird, _systemUpdates, _restartDevice;
+        private bool _confirmDevice;
         private readonly Dictionary<string, ListRow> _sources = new();
         public Task Loaded { get; private set; } = Task.CompletedTask;
         public IReadOnlyList<(string Label, string Value)> RowTexts => Rows.Select(r => (r.LabelText, r.ValueText)).ToList();
@@ -219,6 +226,13 @@ namespace Baird.NewUi.Screens
             else SetUpdate($"{_updates.Current} · up to date · OK to check again");
         }
 
+        private async System.Threading.Tasks.Task CheckSystemAsync()
+        {
+            var n = await _options!.SystemUpdates!();
+            var text = n == null ? "couldn't check · OK to try again" : n == 0 ? "up to date" : n == 1 ? "1 update waiting" : $"{n} updates waiting";
+            if (Dispatcher.UIThread.CheckAccess()) _systemUpdates!.Value = text; else Dispatcher.UIThread.Post(() => _systemUpdates!.Value = text);
+        }
+
         private static string LayoutText(Model.GuideLayout l) => l == Model.GuideLayout.Columns ? "‹  Channels across  ›" : "‹  Channels down  ›";
 
         public override void OnShow()
@@ -242,19 +256,28 @@ namespace Baird.NewUi.Screens
                 return true;
             }
             var lit = Index < Rows.Count ? Rows[Index] : null;
+            if (a == UiAction.Ok && lit != null && lit == _restartBaird) { lit.Value = "Restarting…"; _options!.RestartBaird!(); return true; }
+            if (a == UiAction.Ok && lit != null && lit == _systemUpdates) { lit.Value = "checking…"; _ = CheckSystemAsync(); return true; }
+            if (lit != null && lit == _restartDevice && a == UiAction.Ok)
+            {
+                if (!_confirmDevice) { _confirmDevice = true; lit.Value = "Press OK again to restart the device"; }
+                else { lit.Value = "Restarting the device…"; _options!.RestartDevice!(); }
+                return true;
+            }
+            if (_confirmDevice && _restartDevice != null && a != UiAction.Ok) { _confirmDevice = false; _restartDevice.Value = "OK to restart"; }
             if (lit != null && (lit == _subtitles || lit == _autoplay) && a is UiAction.Left or UiAction.Right or UiAction.Ok)
             {
                 if (lit == _subtitles) { var on = !_options!.GetSubtitles(); _options.SetSubtitles(on); lit.Value = OnOff(on); }
                 else { var on = !_options!.GetAutoplay(); _options.SetAutoplay(on); lit.Value = OnOff(on); }
                 return true;
             }
-            if (Index == 0 && a is UiAction.Left or UiAction.Right or UiAction.Ok)
+            if (lit == _interface && a is UiAction.Left or UiAction.Right or UiAction.Ok)
             {
                 _interface.Value = "Switching to Classic… Baird restarts";
                 _setModeAndRestart(_getMode() == UiMode.New ? UiMode.Classic : UiMode.New);
                 return true;
             }
-            if (Index == 1 && a is UiAction.Left or UiAction.Right)
+            if (lit == _size && a is UiAction.Left or UiAction.Right)
             {
                 _scale = Math.Clamp(Math.Round(_scale + (a == UiAction.Left ? -0.1 : 0.1), 1), 0.8, 1.3);
                 _size.Value = $"‹  {_scale * 100:0}%  ›";
@@ -277,7 +300,8 @@ namespace Baird.NewUi.Screens
     /// write ~/.baird/config.ini), the sources' status rows (refreshed each time Settings is shown), and About.
     /// </summary>
     public sealed record SettingsOptions(Func<bool> GetSubtitles, Action<bool> SetSubtitles, Func<bool> GetAutoplay, Action<bool> SetAutoplay,
-        Func<Task<IReadOnlyList<SourceStatus>>>? Sources = null, IReadOnlyList<string>? SourceRows = null, string? About = null)
+        Func<Task<IReadOnlyList<SourceStatus>>>? Sources = null, IReadOnlyList<string>? SourceRows = null, string? About = null,
+        Action? RestartBaird = null, Func<Task<int?>>? SystemUpdates = null, Action? RestartDevice = null)
     {
         public static readonly string[] DefaultSourceRows = { "Freesat (TvHeadend)", "Jellyfin", "Seerr requests", "Netflix", "Disney+" };
         public IReadOnlyList<string> SourceNames => SourceRows ?? DefaultSourceRows;

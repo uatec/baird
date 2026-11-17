@@ -55,7 +55,7 @@ namespace Baird.Tests.NewUi
             await Settle();
             Assert.Contains("v0.0.253", s.UpdateText);
             Assert.Contains("v0.0.255", s.UpdateText);
-            s.OnAction(UiAction.Down, false); s.OnAction(UiAction.Down, false);
+            
             s.OnAction(UiAction.Ok, false);
             Assert.Single(runner.Started);
             Assert.Contains("Updating to v0.0.255", s.UpdateText);
@@ -70,7 +70,7 @@ namespace Baird.Tests.NewUi
             var s = Settings(Service("v0.0.253", runner));
             await Settle();
             Assert.Contains("up to date", s.UpdateText);
-            s.OnAction(UiAction.Down, false); s.OnAction(UiAction.Down, false);
+            
             s.OnAction(UiAction.Ok, false);
             await Settle();
             Assert.Empty(runner.Started);

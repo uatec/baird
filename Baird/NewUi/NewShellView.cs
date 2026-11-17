@@ -107,6 +107,7 @@ namespace Baird.NewUi
             _ctx.Autoplay = Flag(config["Baird:Autoplay"]);
             playback.SubtitlesDefault = Flag(config["Baird:Subtitles"]);
             var updates = UpdateService.ForThisMachine(config);
+            var system = SystemService.ForThisMachine();
             var sourceStatus = SourceStatusReader.For(services, () => _ctx.Channels.Count, !string.IsNullOrEmpty(config["JELLYSEERR_API_KEY"]), () => DateTimeOffset.Now);
             var settingsOptions = new SettingsOptions(
                 () => playback.SubtitlesDefault,
@@ -114,7 +115,10 @@ namespace Baird.NewUi
                 () => _ctx.Autoplay,
                 v => { _ctx.Autoplay = v; IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "Autoplay", v ? "true" : "false"); },
                 () => sourceStatus.ReadAsync(),
-                About: $"{updates.Current} · new interface");
+                About: $"{updates.Current} · new interface",
+                RestartBaird: () => AppRestarter.ForThisProcess().Restart(),
+                SystemUpdates: () => system.CountUpdatesAsync(),
+                RestartDevice: () => system.Reboot());
             var videoActions = new VideoActions(_ctx, timers);
             var ident = new TuneIdent();
             _ctx.CycleAudio = () => router.ActiveBrowser == null ? mpv.CycleAudio() : null;

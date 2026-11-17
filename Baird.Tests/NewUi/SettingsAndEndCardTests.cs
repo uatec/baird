@@ -61,8 +61,28 @@ namespace Baird.Tests.NewUi
             Dispatcher.UIThread.RunJobs();
             Assert.Contains(("Jellyfin", "Connected"), s.RowTexts);
             Assert.Contains(("Netflix", "Checking…"), s.RowTexts); // not reported (yet): says so, never a guess
-            Assert.Contains(("About Baird", "1.2.3 · new interface"), s.RowTexts);
-            GoTo(s, "About Baird"); // the last row is reachable (the list scrolls)
+            Assert.Contains(("Baird version", "1.2.3 · new interface"), s.RowTexts);
+            Assert.Equal("Baird version", s.RowTexts[0].Label); // About sits at the top
+            GoTo(s, "Netflix"); // the last row is reachable (the list scrolls)
+        }
+
+        [AvaloniaFact]
+        public async Task About_sections_lead_and_restarts_work_with_the_device_one_confirming()
+        {
+            var restarted = new List<string>();
+            var options = new SettingsOptions(() => true, _ => { }, () => true, _ => { },
+                About: "1.2.3 · new interface", RestartBaird: () => restarted.Add("baird"),
+                SystemUpdates: () => Task.FromResult<int?>(7), RestartDevice: () => restarted.Add("device"));
+            var s = new SettingsScreen(() => UiMode.New, _ => { }, 1.0, _ => { }, options: options);
+            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(new[] { "Baird version", "Restart Baird", "System updates", "Restart device" }, s.RowTexts.Take(4).Select(r => r.Label));
+            Assert.Contains(("System updates", "7 updates waiting"), s.RowTexts);
+            GoTo(s, "Restart Baird"); s.OnAction(UiAction.Ok, false);
+            GoTo(s, "Restart device"); s.OnAction(UiAction.Ok, false);
+            Assert.Equal(new[] { "baird" }, restarted); // the device waits for a second OK
+            s.OnAction(UiAction.Ok, false);
+            Assert.Equal(new[] { "baird", "device" }, restarted);
         }
 
         private sealed class CountingSeerr : IJellyseerrService
