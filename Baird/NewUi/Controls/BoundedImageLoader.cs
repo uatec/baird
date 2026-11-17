@@ -38,8 +38,23 @@ namespace Baird.NewUi.Controls
         private readonly Dictionary<string, DateTime> _failedAt = new();
         private readonly Func<DateTime> _now;
 
-        public BoundedImageLoader(long budgetBytes = DefaultBudgetBytes, Func<DateTime>? now = null)
+        private readonly IDiskImageStore? _disk;
+        private readonly List<Task> _writes = new();
+
+        /// <summary>Completes when the background disk writes started so far are done (tests wait on this instead of sleeping).</summary>
+        public Task WritesDoneAsync()
         {
+            Task[] pending;
+            lock (_writes) { pending = _writes.ToArray(); _writes.Clear(); }
+            return Task.WhenAll(pending);
+        }
+
+        private readonly Func<string, Task<byte[]?>> _download;
+
+        public BoundedImageLoader(long budgetBytes = DefaultBudgetBytes, Func<DateTime>? now = null, IDiskImageStore? disk = null, Func<string, Task<byte[]?>>? download = null)
+        {
+            _disk = disk;
+            _download = download ?? (async url => await LoadDataFromExternalAsync(url).ConfigureAwait(false));
             _cache = new ByteBudgetLru<Bitmap>(budgetBytes, b => (long)b.PixelSize.Width * b.PixelSize.Height * 4);
             _now = now ?? (() => DateTime.UtcNow);
         }
@@ -47,7 +62,9 @@ namespace Baird.NewUi.Controls
         /// <summary>Make this the loader every AsyncImageLoader control and Baird's own artwork use.</summary>
         public static void Install()
         {
-            var loader = new BoundedImageLoader();
+            var disk = new DiskImageStore();
+            var loader = new BoundedImageLoader(disk: disk);
+            _ = Task.Run(disk.Trim);   // the folder may already be over budget from a run that was cut short
             Current = loader;
             global::AsyncImageLoader.ImageLoader.AsyncImageLoader = loader;
         }
@@ -92,8 +109,32 @@ namespace Baird.NewUi.Controls
         protected override async Task<Bitmap?> LoadAsync(string url)
         {
             if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return await base.LoadAsync(url).ConfigureAwait(false);
-            var bytes = await LoadDataFromExternalAsync(url).ConfigureAwait(false);
+            if (_disk != null)
+            {
+                var cached = await Task.Run(() => _disk.TryRead(url, out var b) ? b : null).ConfigureAwait(false);
+                if (cached != null)
+                {
+                    try { return Decode(cached); }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Images] Cached copy of {Shorten(url)} is unreadable ({ex.GetType().Name}); fetching again");
+                        _disk.Remove(url);
+                    }
+                }
+            }
+            var bytes = await _download(url).ConfigureAwait(false);
             if (bytes == null || bytes.Length == 0) return null;
+            var bmp = Decode(bytes);
+            if (_disk != null)   // after the picture is decoded, never in its way
+            {
+                var write = Task.Run(() => _disk.Write(url, bytes));
+                lock (_writes) _writes.Add(write);
+            }
+            return bmp;
+        }
+
+        private static Bitmap Decode(byte[] bytes)
+        {
             using var stream = new System.IO.MemoryStream(bytes);
             return Bitmap.DecodeToHeight(stream, MaxDecodedHeight, BitmapInterpolationMode.MediumQuality);
         }
