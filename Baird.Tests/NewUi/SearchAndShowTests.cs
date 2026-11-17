@@ -408,6 +408,15 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public void A_missing_season_reads_as_a_dash_not_words_while_the_library_is_checking()
+        {
+            var season = new Season(1, "Season 1", SeasonState.Missing, null, Array.Empty<Episode>());
+            var tab = new SeasonTab(season, checking: true);
+            var state = (TextBlock)((StackPanel)tab.Child!).Children[1];
+            Assert.Equal("–", state.Text);
+        }
+
+        [AvaloniaFact]
         public async Task A_show_page_opened_while_the_library_is_checking_says_so_then_offers_play()
         {
             var (rig, jf) = SlowRig();

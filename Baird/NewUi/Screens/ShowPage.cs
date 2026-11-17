@@ -601,7 +601,7 @@ namespace Baird.NewUi.Screens
             CornerRadius = new CornerRadius(18); Padding = new Thickness(22, 8);
             RenderTransformOrigin = RelativePoint.Center;
             _name = new TextBlock { Text = s.Label, FontSize = 24, FontWeight = FontWeight.SemiBold };
-            _state = new TextBlock { Text = checking && s.State == SeasonState.Missing ? "Checking…" : s.StateLabel, FontSize = 18, FontWeight = FontWeight.SemiBold };
+            _state = new TextBlock { Text = checking && s.State == SeasonState.Missing ? ShowDetails.Checking : s.StateLabel, FontSize = 18, FontWeight = FontWeight.SemiBold };
             Child = new StackPanel { Children = { _name, _state } };
             Motion.Animate(this, T.Fast);
             Paint();
