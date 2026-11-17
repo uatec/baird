@@ -46,7 +46,7 @@ namespace Baird.NewUi.Adapters
             {
                 Netflix = netflix;
                 providers.Add(new NetflixProvider(netflix));
-                netflix.Start(TimeSpan.FromSeconds(10));
+                netflix.Start(StartupDelays.Netflix);
                 engines.Add(new NetflixPlaybackEngine(netflix, () => new NetflixPlaybackFlow(netflix.Browser, netflixCredentials) { LogBrowserToJournal = false }));
             }
 
@@ -57,14 +57,14 @@ namespace Baird.NewUi.Adapters
             {
                 Disney = disney;
                 providers.Add(new DisneyProvider(disney));
-                disney.Start(TimeSpan.FromSeconds(30));
+                disney.Start(StartupDelays.Disney);
                 engines.Add(new DisneyPlaybackEngine(disney, () => new DisneyPlaybackFlow(disney) { UseBairdHud = true }));
             }
 
             var channel4 = new Channel4Service(netflix.Hub, new Channel4Catalogue());
             channel4.Log += m => Console.WriteLine($"[Channel4Service] {m}");
             providers.Add(new Channel4Provider(channel4.Catalogue));
-            engines.Add(new Channel4PlaybackEngine(channel4));
+            engines.Add(new Channel4PlaybackEngine(channel4) { SkipAdverts = !string.Equals(config["Baird:Channel4SkipAdverts"], "false", StringComparison.OrdinalIgnoreCase) });
 
             var itvx = new ItvxService(netflix.Hub, new ItvxCatalogue(), ItvxCredentials.FromConfiguration(config));
             itvx.Log += m => Console.WriteLine($"[ItvxService] {m}");

@@ -45,7 +45,7 @@ namespace Baird.Tests.NewUi
 
         private static async Task Settle() { for (var i = 0; i < 20; i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(10); } }
 
-        private static SettingsScreen Settings(UpdateService updates) => new(() => UiMode.New, _ => { }, 1.0, _ => { }, updates: updates);
+        private static SettingsScreen Settings(UpdateService updates) => new(1.0, _ => { }, updates: updates);
 
         [AvaloniaFact]
         public async Task Settings_shows_this_version_and_the_newer_one_and_ok_updates()
@@ -55,7 +55,7 @@ namespace Baird.Tests.NewUi
             await Settle();
             Assert.Contains("v0.0.253", s.UpdateText);
             Assert.Contains("v0.0.255", s.UpdateText);
-            s.OnAction(UiAction.Down, false); s.OnAction(UiAction.Down, false);
+
             s.OnAction(UiAction.Ok, false);
             Assert.Single(runner.Started);
             Assert.Contains("Updating to v0.0.255", s.UpdateText);
@@ -70,7 +70,7 @@ namespace Baird.Tests.NewUi
             var s = Settings(Service("v0.0.253", runner));
             await Settle();
             Assert.Contains("up to date", s.UpdateText);
-            s.OnAction(UiAction.Down, false); s.OnAction(UiAction.Down, false);
+
             s.OnAction(UiAction.Ok, false);
             await Settle();
             Assert.Empty(runner.Started);

@@ -65,4 +65,22 @@ namespace Baird.Tests.Services
             Assert.Null(BbcIPlayerStreamResolver.ParseBestHlsUrl("""{"result":"selectionunavailable"}"""));
         }
     }
+
+    /// <summary>iPlayer is asked about every id Baird knows; only BBC programme ids are its business.</summary>
+    public class BbcIPlayerIdTests
+    {
+        [Theory]
+        [InlineData("b006q2x0", true)]
+        [InlineData("m001z6w8", true)]
+        [InlineData("p0f1x2yz", true)]
+        [InlineData("netflix:81009946", false)]
+        [InlineData("disney:ep:7a1389f2-c391-4b2c-aa3c-2e862cc79c68", false)]
+        [InlineData("itvx:the-bay/10_0001", false)]
+        [InlineData("yt:channel/UCSZ5XEGmglFy6DVVJM-5SFQ", false)]
+        [InlineData("f86b74a893a73c4671146bf33076c286", false)]   // a Jellyfin or TvHeadend id
+        [InlineData("qN9GRs0XOu0", false)]                          // a YouTube video
+        [InlineData("", false)]
+        public void Only_a_bbc_programme_id_is_one_of_iplayers(string id, bool expected) =>
+            Assert.Equal(expected, BbcIPlayerService.IsPid(id));
+    }
 }

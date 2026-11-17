@@ -22,6 +22,7 @@ namespace Baird.Tests.NewUi
         private sealed class Saved
         {
             public bool Subs = true, Autoplay = true;
+            public int SaverMinutes = 10;
             public readonly List<string> Writes = new();
         }
 
@@ -31,8 +32,27 @@ namespace Baird.Tests.NewUi
             var options = new SettingsOptions(() => saved.Subs, v => { saved.Subs = v; saved.Writes.Add($"Subtitles={v}"); },
                 () => saved.Autoplay, v => { saved.Autoplay = v; saved.Writes.Add($"Autoplay={v}"); },
                 sources ?? (() => Task.FromResult<IReadOnlyList<SourceStatus>>(new[] { new SourceStatus("Jellyfin", "Connected", SourceHealth.Ok) })),
-                About: "1.2.3 · new interface");
-            return (new SettingsScreen(() => UiMode.New, _ => { }, 1.0, _ => { }, options: options), saved);
+                About: "1.2.3 · new interface",
+                GetScreensaverMinutes: () => saved.SaverMinutes, SetScreensaverMinutes: m => { saved.SaverMinutes = m; saved.Writes.Add($"ScreensaverMinutes={m}"); });
+            return (new SettingsScreen(1.0, _ => { }, options: options), saved);
+        }
+
+        [AvaloniaFact]
+        public void Screensaver_row_steps_through_the_delays_and_saves_each()
+        {
+            var (s, saved) = Settings();
+            GoTo(s, "Screensaver in menus after");
+            Assert.Contains(("Screensaver in menus after", "‹  10 minutes  ›"), s.RowTexts);
+            s.OnAction(UiAction.Right, false);
+            Assert.Equal(15, saved.SaverMinutes);
+            s.OnAction(UiAction.Left, false);
+            s.OnAction(UiAction.Left, false);
+            Assert.Equal(5, saved.SaverMinutes);
+            s.OnAction(UiAction.Left, false);
+            Assert.Equal(0, saved.SaverMinutes);
+            Assert.Contains(("Screensaver in menus after", "‹  Never  ›"), s.RowTexts);
+            s.OnAction(UiAction.Right, false);
+            Assert.Equal(5, saved.SaverMinutes);
         }
 
         private static void GoTo(SettingsScreen s, string label)
@@ -61,8 +81,28 @@ namespace Baird.Tests.NewUi
             Dispatcher.UIThread.RunJobs();
             Assert.Contains(("Jellyfin", "Connected"), s.RowTexts);
             Assert.Contains(("Netflix", "Checking…"), s.RowTexts); // not reported (yet): says so, never a guess
-            Assert.Contains(("About Baird", "1.2.3 · new interface"), s.RowTexts);
-            GoTo(s, "About Baird"); // the last row is reachable (the list scrolls)
+            Assert.Contains(("Baird version", "1.2.3 · new interface"), s.RowTexts);
+            Assert.Equal("Baird version", s.RowTexts[0].Label); // About sits at the top
+            GoTo(s, "Netflix"); // the last row is reachable (the list scrolls)
+        }
+
+        [AvaloniaFact]
+        public async Task About_sections_lead_and_restarts_work_with_the_device_one_confirming()
+        {
+            var restarted = new List<string>();
+            var options = new SettingsOptions(() => true, _ => { }, () => true, _ => { },
+                About: "1.2.3 · new interface", RestartBaird: () => restarted.Add("baird"),
+                SystemUpdates: () => Task.FromResult<int?>(7), RestartDevice: () => restarted.Add("device"));
+            var s = new SettingsScreen(1.0, _ => { }, options: options);
+            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(new[] { "Baird version", "Restart Baird", "System updates", "Restart device" }, s.RowTexts.Take(4).Select(r => r.Label));
+            Assert.Contains(("System updates", "7 updates waiting"), s.RowTexts);
+            GoTo(s, "Restart Baird"); s.OnAction(UiAction.Ok, false);
+            GoTo(s, "Restart device"); s.OnAction(UiAction.Ok, false);
+            Assert.Equal(new[] { "baird" }, restarted); // the device waits for a second OK
+            s.OnAction(UiAction.Ok, false);
+            Assert.Equal(new[] { "baird", "device" }, restarted);
         }
 
         private sealed class CountingSeerr : IJellyseerrService

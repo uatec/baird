@@ -136,6 +136,9 @@ namespace Baird.Services
             state.OtherVideoPlaying ||
             (programmeSeconds > 0 && state.Duration > 0 && state.Duration < Math.Min(AdvertMaxSeconds, programmeSeconds * 0.5));
 
+        /// <summary>JS that jumps a playing advert (the video that is not the programme) to its end. Returns "skipped" or null.</summary>
+        public const string SkipAdvertScript = "(function() { " + FindVideos + @" if (ad && isFinite(ad.duration) && ad.duration > 0 && ad.currentTime < ad.duration - 0.5) { ad.currentTime = ad.duration - 0.1; return 'skipped'; } return null; })()";
+
         /// <summary>
         /// JS that presses the page's Play button (an on-demand page does not always start the video by itself; measured on the Pi:
         /// signed in, the page showed "Play" and no video until it was pressed). A script click works on it. Returns "clicked" or null.

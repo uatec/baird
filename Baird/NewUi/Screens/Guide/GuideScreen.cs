@@ -34,7 +34,7 @@ namespace Baird.NewUi.Screens
         private readonly NewUiContext _ctx;
         private readonly Func<DateTimeOffset, Task<GuideModel>> _load;
         private readonly ITimers _timers;
-        private readonly Panel _root = new() { Width = 1920, Height = 1080, Background = Brushes.Transparent };
+        private readonly Panel _root = new() { Background = Brushes.Transparent };
         private readonly GuideHeader _header = new();
         private GuideGridView _grid;
         private readonly GuideActions _actions = new();

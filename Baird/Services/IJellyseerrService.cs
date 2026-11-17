@@ -33,10 +33,25 @@ namespace Baird.Services
         /// </summary>
         Task<JellyseerrRequestResponse> RequestSeasonsAsync(int mediaId, string mediaType, IReadOnlyList<int>? seasons, CancellationToken cancellationToken = default) =>
             CreateRequestAsync(mediaId, mediaType, cancellationToken);
+
+        /// <summary>
+        /// Delete a title from the server: Radarr/Sonarr remove it and its files (so nothing fetches it again), then Seerr
+        /// forgets it (so it can be requested again). Ok when it's gone or Seerr never had it.
+        /// </summary>
+        Task<(bool Ok, string Message)> RemoveMediaAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default) =>
+            Task.FromResult((false, "Seerr can't delete."));
+
+        /// <summary>
+        /// Cancel a title's requests that haven't arrived (a download in progress, or one still waiting for approval): Seerr
+        /// drops the requests, Radarr/Sonarr are told to remove it where they have it, and Seerr forgets the title so it can be
+        /// requested again. Nothing in Jellyfin is touched.
+        /// </summary>
+        Task<(bool Ok, string Message)> DiscardRequestAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default) =>
+            Task.FromResult((false, "Seerr can't cancel requests."));
     }
 
-    /// <summary>Seerr's state of one title. Status: 1 unknown, 2 pending, 3 processing, 4 partly available, 5 available.</summary>
-    public sealed record JellyseerrMediaStatus(int Status, IReadOnlyList<JellyseerrSeason> Seasons, IReadOnlyList<JellyseerrDownload> Downloads)
+    /// <summary>Seerr's state of one title (with TMDB's description of it, when Seerr has one). Status: 1 unknown, 2 pending, 3 processing, 4 partly available, 5 available.</summary>
+    public sealed record JellyseerrMediaStatus(int Status, IReadOnlyList<JellyseerrSeason> Seasons, IReadOnlyList<JellyseerrDownload> Downloads, string? Overview = null)
     {
         /// <summary>Overall download progress (0–1) of what's downloading, optionally only one season or one episode.</summary>
         public double? Progress(int? season = null, int? episode = null)
@@ -84,6 +99,13 @@ namespace Baird.Services
         public string UpdatedAt { get; set; } = string.Empty;
         public int MediaInfoStatus { get; set; } // Same as search result
         public double? DownloadProgress { get; set; } // null = no data, 0-100 = real % from Radarr/Sonarr
+        public int MediaId { get; set; } // Seerr's media id (not TMDB's)
+        public string? ReleaseDate { get; set; } // a film's release date, or a series' first air date (yyyy-MM-dd)
+        public IReadOnlyList<JellyseerrSeason> Seasons { get; set; } = System.Array.Empty<JellyseerrSeason>();
+        /// <summary>The seasons this request asked for (empty for a film, or when Seerr doesn't say). A series can be requested in pieces.</summary>
+        public IReadOnlyList<int> RequestedSeasons { get; set; } = System.Array.Empty<int>();
+        /// <summary>The episodes (or film) Radarr/Sonarr is downloading now.</summary>
+        public IReadOnlyList<JellyseerrDownload> Downloads { get; set; } = System.Array.Empty<JellyseerrDownload>();
         public bool IsAvailable => MediaInfoStatus == 5 || MediaInfoStatus == 4;
     }
 
