@@ -51,7 +51,13 @@ namespace Baird.Tests.NewUi
             public int ChildrenCalls;
             public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Interlocked.Increment(ref ChildrenCalls) > 0 && HangChildren ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task
                 : Task.FromResult<IEnumerable<MediaItemData>>(Children.TryGetValue(id, out var c) ? c : new List<MediaItemData>());
-            public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult(Items.Concat(Children.Values.SelectMany(c => c)).FirstOrDefault(i => i.Id == id));
+            /// <summary>How many times <see cref="GetItemAsync"/> was called (the lookup that can start stream resolution, e.g. yt-dlp).</summary>
+            public int ItemCalls;
+            public Task<MediaItemData?> GetItemAsync(string id)
+            {
+                Interlocked.Increment(ref ItemCalls);
+                return Task.FromResult(Items.Concat(Children.Values.SelectMany(c => c)).FirstOrDefault(i => i.Id == id));
+            }
         }
 
         /// <summary>A library that can list everything it has, newest first (Items are in that order), as Jellyfin can.</summary>
