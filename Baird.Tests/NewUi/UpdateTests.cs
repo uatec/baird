@@ -45,7 +45,7 @@ namespace Baird.Tests.NewUi
 
         private static async Task Settle() { for (var i = 0; i < 20; i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(10); } }
 
-        private static SettingsScreen Settings(UpdateService updates) => new(() => UiMode.New, _ => { }, 1.0, _ => { }, updates: updates);
+        private static SettingsScreen Settings(UpdateService updates) => new(1.0, _ => { }, updates: updates);
 
         [AvaloniaFact]
         public async Task Settings_shows_this_version_and_the_newer_one_and_ok_updates()

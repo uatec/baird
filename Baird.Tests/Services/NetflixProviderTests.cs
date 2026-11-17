@@ -128,7 +128,8 @@ namespace Baird.Tests.Services
         [Fact]
         public async Task SeriesPage_OffersPlayNextEpisodeWithTheWatchUrl()
         {
-            var provider = new NetflixProvider(Session(new MockCdpBrowserService()));
+            // Not signed in, so Netflix cannot be asked: the series falls back to the one entry (the wait is cut short for the test).
+            var provider = new NetflixProvider(Session(new MockCdpBrowserService())) { AskTimeout = TimeSpan.FromMilliseconds(300) };
 
             var children = (await provider.GetChildrenAsync("netflix:80107103")).ToList();
 

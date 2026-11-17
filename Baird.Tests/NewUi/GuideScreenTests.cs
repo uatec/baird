@@ -404,7 +404,8 @@ namespace Baird.Tests.NewUi
             Assert.False(GuideScreen.ShowsPreview(nav.State, playing: false));
             nav.Play(new VideoRef("live", "ch1"));
             Assert.False(GuideScreen.ShowsPreview(nav.State, playing: true));
-            nav.Back();
+            nav.Back(); // Home, with what's playing
+            nav.SetPlace(Place.LiveTv);
             Assert.True(GuideScreen.ShowsPreview(nav.State, playing: true));
             nav.SetPlace(Place.Home);
             Assert.False(GuideScreen.ShowsPreview(nav.State, playing: true));
@@ -422,7 +423,7 @@ namespace Baird.Tests.NewUi
         {
             var layout = GuideLayout.Rows;
             var set = new List<GuideLayout>();
-            var s = new SettingsScreen(() => UiMode.New, _ => { }, 1.0, _ => { }, () => layout, l => { layout = l; set.Add(l); });
+            var s = new SettingsScreen(1.0, _ => { }, () => layout, l => { layout = l; set.Add(l); });
             s.OnAction(UiAction.Down, false);
             s.OnAction(UiAction.Down, false);
             s.OnAction(UiAction.Right, false);

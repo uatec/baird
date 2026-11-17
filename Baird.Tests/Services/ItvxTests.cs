@@ -478,6 +478,20 @@ namespace Baird.Tests.Services
         }
 
         [Fact]
+        public async Task An_advert_that_plays_again_is_jumped_only_a_few_times_not_on_every_poll()
+        {
+            var (b, _, engine) = Engine();
+            b.States.Enqueue(FakeItvxBrowser.State(Episode, signedIn: true, playButton: true));
+            b.States.Enqueue(FakeItvxBrowser.State(Episode, signedIn: true, video: true, paused: true, duration: 4990.8, advert: true, advertTime: 0.3));
+            b.LastState = FakeItvxBrowser.State(Episode, signedIn: true, video: true, paused: true, duration: 4990.8, advert: true, advertTime: 1.3);
+            engine.SkipAdverts = true;
+            engine.SkipRetry = TimeSpan.FromHours(1);
+            await engine.PlayAsync(Episode);
+            for (var i = 0; i < 6; i++) await engine.PollOnceAsync();
+            Assert.Single(b.ControlScripts, x => x.Contains("__bairdItvxAudio") && x.Contains("(true)"));
+        }
+
+        [Fact]
         public async Task An_advert_counts_as_playing_and_leaves_the_position_alone()
         {
             var (b, _, engine) = Engine();

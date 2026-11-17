@@ -335,11 +335,97 @@ namespace Baird.Tests.NewUi
             keys.OnAction(UiAction.PageUp, false);
             Assert.Equal(Bbc2, rig.Ctx.Playback.Current!.Channel);
             Assert.Equal("channels", rig.Ctx.Nav.State.Overlay?.Name);
-            var list = new ChannelList(rig.Ctx, rig.Timers);
+            var list = new ChannelList(rig.Ctx, rig.Timers, rig.Ctx.Nav.State.Overlay!.Params);
             Assert.Equal(Bbc2, list.Lit);
             list.OnAction(UiAction.PageUp, false);                   // again, with the strip up: tunes at once
             Assert.Equal(C4, rig.Ctx.Playback.Current!.Channel);
             Assert.Equal(C4, list.Lit);
+        }
+
+        [AvaloniaFact]
+        public void Channel_up_opens_the_strip_on_the_channel_you_were_on_so_the_move_shows()
+        {
+            var rig = HomeScreenTests.Context();
+            rig.Ctx.Channels = new[] { Bbc1, Bbc2, C4 };
+            rig.Ctx.PlayLive(Bbc1);
+            new VideoActions(rig.Ctx, rig.Timers).OnAction(UiAction.PageUp, false);
+            var list = new ChannelList(rig.Ctx, rig.Timers, rig.Ctx.Nav.State.Overlay!.Params);
+            Assert.Equal(Bbc1, list.OpenedOn); // drawn there first, then the highlight slides on
+            Assert.Equal(Bbc2, list.Lit);
+        }
+
+        [AvaloniaFact]
+        public void The_strip_says_a_channel_is_tuning_until_its_picture_arrives()
+        {
+            var (list, rig) = Watching(Bbc1);
+            rig.Engine.Loaded();
+            new Avalonia.Controls.Window { Width = 1920, Height = 1080, Content = list.View }.Show();
+            Assert.Equal("watching", list.RowOf("ch1")!.Status);
+            list.OnAction(UiAction.PageUp, false);
+            Assert.Equal("tuning…", list.RowOf("ch2")!.Status);
+            Assert.Null(list.RowOf("ch1")!.Status);
+            rig.Timers.Advance(PlaybackController.TuneDebounce);
+            rig.Engine.Loaded();
+            Assert.Equal("watching", list.RowOf("ch2")!.Status);
+            list.Destroy();
+        }
+
+        // ---- the live bar: its right end is live; the playhead sits there and moves back as you rewind or pause ----
+        private static Programme OnAirSince(DateTimeOffset now, int minutesAgo) =>
+            new("p", "ch1", "News", null, null, now.AddMinutes(-minutesAgo), now.AddMinutes(30 - minutesAgo));
+
+        [Fact]
+        public void At_live_the_playhead_is_at_the_right_end_whatever_the_programme_progress()
+        {
+            var now = DateTimeOffset.UtcNow;
+            Assert.Equal(1.0, InfoBar.LiveScale(TimeSpan.Zero, OnAirSince(now, 25), now).Fraction);   // late in the programme
+            Assert.Equal(1.0, InfoBar.LiveScale(TimeSpan.Zero, OnAirSince(now, 0), now).Fraction);    // at its very start
+            Assert.Equal(1.0, InfoBar.LiveScale(TimeSpan.Zero, null, now).Fraction);                   // no programme information
+        }
+
+        [Fact]
+        public void Going_behind_live_moves_the_playhead_left_on_a_scale_of_the_programme_so_far()
+        {
+            var now = DateTimeOffset.UtcNow;
+            var scale = InfoBar.LiveScale(TimeSpan.FromMinutes(5), OnAirSince(now, 40), now);   // 40 min of the programme, 5 behind
+            Assert.Equal(0.875, scale.Fraction, 3);
+            Assert.Equal(now.AddMinutes(-40), scale.LeftEdge);                                   // the left end is the programme's start
+        }
+
+        [Fact]
+        public void A_programme_that_has_only_just_started_still_has_a_usable_scale_and_never_goes_off_the_left_end()
+        {
+            var now = DateTimeOffset.UtcNow;
+            Assert.Equal(0.9, InfoBar.LiveScale(TimeSpan.FromMinutes(1), OnAirSince(now, 2), now).Fraction, 3); // at least ten minutes wide
+            Assert.Equal(0.0, InfoBar.LiveScale(TimeSpan.FromMinutes(90), OnAirSince(now, 30), now).Fraction, 3); // further back than the programme: the left end
+            Assert.InRange(InfoBar.LiveScale(TimeSpan.FromMinutes(1), null, now).Fraction, 0.9, 1.0);            // no programme: a half-hour scale
+        }
+
+        private static double FilledWidth(InfoBar bar)
+        {
+            var track = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(bar.View).OfType<Avalonia.Controls.Grid>().First(g => g.Height == 8);
+            return ((Avalonia.Controls.Border)track.Children[1]).Width;
+        }
+
+        [AvaloniaFact]
+        public void The_live_bar_is_full_at_live_and_shortens_as_you_rewind_or_pause()
+        {
+            var (bar, rig) = InfoOver(live: true);
+            var full = Baird.NewUi.Theme.T.W - 128 - 88;
+            Assert.Equal(full, FilledWidth(bar), 1);                    // at live: the playhead is at the right end
+
+            bar.OnAction(UiAction.Left, false);                         // rewind 30 s
+            var back = FilledWidth(bar);
+            Assert.True(back < full - 2, $"rewound but the bar is still {back} of {full}");
+            var expected = InfoBar.LiveScale(rig.Ctx.Playback.EffectiveBehindLive, rig.Ctx.Programme, rig.Ctx.Now()).Fraction * full;
+            Assert.Equal(expected, back, 1);
+
+            bar.OnAction(UiAction.Right, false);                        // back to live
+            Assert.Equal(full, FilledWidth(bar), 1);
+            bar.OnAction(UiAction.Ok, false);                           // pause
+            rig.Timers.Advance(TimeSpan.FromSeconds(120));              // two minutes pass, paused
+            bar.OnAction(UiAction.Down, false); bar.OnAction(UiAction.Up, false); // any redraw
+            Assert.True(FilledWidth(bar) < full - 2, "paused for two minutes but the playhead has not moved back");
         }
     }
 }

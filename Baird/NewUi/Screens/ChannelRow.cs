@@ -58,7 +58,8 @@ namespace Baird.NewUi.Screens
         private readonly List<(Border Bar, TextBlock? Label, TimelineSegment Seg)> _bars = new();
         private bool _lit;
 
-        public ChannelRow(Channel ch, IReadOnlyList<Programme> schedule, DateTimeOffset now, bool watching)
+        /// <param name="status">"tuning…" or "watching" for the channel on screen; null for the rest.</param>
+        public ChannelRow(Channel ch, IReadOnlyList<Programme> schedule, DateTimeOffset now, string? status)
         {
             Channel = ch;
             Width = Width0; Height = Height0;
@@ -74,7 +75,8 @@ namespace Baird.NewUi.Screens
             _number = new TextBlock { Text = ch.Number, FontSize = 24, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 8, 0) };
             _name = new TextBlock { Text = ch.Name, FontSize = 24, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 230 };
             _times = new TextBlock { Text = Now is { NoInfo: false } p ? $"   {p.Start.ToLocalTime():HH:mm}–{p.End.ToLocalTime():HH:mm}" : "", FontSize = 19 };
-            _watching = new TextBlock { Text = watching ? "  · watching" : "", FontSize = 19, FontWeight = FontWeight.SemiBold, Foreground = T.Live };
+            _watching = new TextBlock { FontSize = 19, FontWeight = FontWeight.SemiBold, Foreground = T.Live };
+            Status = status;
             _title = new TextBlock { Text = Now is { NoInfo: false } q ? q.Title : "No programme information", FontSize = 26, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 420, Margin = new Thickness(0, 2, 0, 6) };
 
             var timeline = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, Height = 22, ClipToBounds = true, Width = TimelineWidth, HorizontalAlignment = HorizontalAlignment.Left };
@@ -100,7 +102,13 @@ namespace Baird.NewUi.Screens
         }
 
         public bool Lit { get => _lit; set { if (_lit == value) return; _lit = value; Apply(); } }
-        public bool Watching { set => _watching.Text = value ? "  · watching" : ""; }
+        /// <summary>What the channel on screen is doing: "tuning…" until its picture arrives, then "watching".</summary>
+        public string? Status
+        {
+            get => _status;
+            set { _status = value; _watching.Text = value != null ? $"  · {value}" : ""; }
+        }
+        private string? _status;
 
         private void Apply()
         {

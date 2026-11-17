@@ -1030,6 +1030,9 @@ namespace Baird.Controls
             }
         }
 
+        /// <summary>Keeps mpv's demuxer cache small, for a player that stays up for hours (the screensaver). Call before Play.</summary>
+        public void LimitCache() => _mpv?.LimitCache();
+
         public void Play(string url) => StartPlayback(url, null);
 
         public void Play(string url, TimeSpan startTime) => StartPlayback(url, startTime.TotalSeconds);
@@ -1175,7 +1178,9 @@ namespace Baird.Controls
             base.OnOpenGlInit(gl);
 
             // Keep delegate alive
-            _getProcAddress = (ctx, name) => gl.GetProcAddress(name);
+            // mpv 0.40 makes a glFenceSync per frame and, embedded via libmpv, never deletes it. Each one holds a sync_file fd
+            // on Mesa v3d, so the Pi ran out of descriptors in hours. Without the sync functions mpv makes none.
+            _getProcAddress = (ctx, name) => name is "glFenceSync" or "glClientWaitSync" or "glDeleteSync" ? IntPtr.Zero : gl.GetProcAddress(name);
 
             // Get function pointer for the delegate
             IntPtr ptr = Marshal.GetFunctionPointerForDelegate(_getProcAddress);

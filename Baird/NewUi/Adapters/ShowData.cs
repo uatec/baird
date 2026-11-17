@@ -163,6 +163,8 @@ namespace Baird.NewUi.Adapters
             if (t.Seerr == null) t = t with { Seerr = await _search.FindInSeerrAsync(t, ct).ConfigureAwait(false) };
             var status = await StatusAsync(t, ct).ConfigureAwait(false);
             if (status != null && t.Seerr != null) t = t with { Seerr = t.Seerr with { Status = status.Status } };
+            // A card from Downloads or a search hit may carry no description: Seerr (TMDB) has one.
+            if (status?.Overview is { } overview && string.IsNullOrWhiteSpace(t.Synopsis)) t = t with { Synopsis = overview };
 
             var remaining = sources.Select(s => s.Results).ToList();
             var found = new List<MediaItemViewModel>();
@@ -318,6 +320,7 @@ namespace Baird.NewUi.Adapters
             {
                 var r = await _seerr.RequestSeasonsAsync(t.Seerr.TmdbId, t.Seerr.MediaType, wanted, ct).ConfigureAwait(false);
                 if (!r.Success) return (false, $"Seerr didn't take the request: {r.Message}");
+                _search.ForgetDownloads(); // Search's Downloads list was read before this request: read it again
                 var what = wanted == null ? t.Name : $"{t.Name}, {ShowDetails.Label(wanted).ToLowerInvariant()}";
                 return (true, $"Requested {what}. It downloads to Jellyfin and appears in Up next when it's ready.");
             }

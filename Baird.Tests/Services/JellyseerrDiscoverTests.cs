@@ -31,5 +31,25 @@ namespace Baird.Tests.Services
             Assert.Equal("Andor", r.Title);
             Assert.Equal("2022-09-21", r.ReleaseDate);
         }
+
+        [Fact]
+        public void A_request_lists_the_seasons_that_were_asked_for()
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse("{\"seasons\":[{\"seasonNumber\":2,\"status\":1},{\"seasonNumber\":1,\"status\":1},{\"seasonNumber\":0}]}");
+            Assert.Equal(new[] { 1, 2 }, JellyseerrService.RequestedSeasonsOf(doc.RootElement)); // sorted; specials left out
+            using var movie = System.Text.Json.JsonDocument.Parse("{\"id\":1}");
+            Assert.Empty(JellyseerrService.RequestedSeasonsOf(movie.RootElement));
+        }
+
+        [Fact]
+        public void A_titles_media_and_request_ids_are_read_from_its_details()
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse("{\"mediaInfo\":{\"id\":5,\"status\":3,\"requests\":[{\"id\":11},{\"id\":12}]}}");
+            var (media, requests) = JellyseerrService.MediaAndRequestsOf(doc.RootElement)!.Value;
+            Assert.Equal(5, media);
+            Assert.Equal(new[] { 11, 12 }, requests);
+            using var none = System.Text.Json.JsonDocument.Parse("{\"name\":\"x\"}");
+            Assert.Null(JellyseerrService.MediaAndRequestsOf(none.RootElement));
+        }
     }
 }

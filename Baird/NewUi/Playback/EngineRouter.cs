@@ -58,6 +58,7 @@ namespace Baird.NewUi.Playback
         public PlaybackState State => Active.State;
         public double TimePositionSeconds => Active.TimePositionSeconds;
         public double DurationSeconds => Active.DurationSeconds;
+        public bool IsAudioOnly => Active.IsAudioOnly;
 
         private static IDisposable Doing(string what) => Diagnostics.Breadcrumbs.Shared.Doing(what);
 
