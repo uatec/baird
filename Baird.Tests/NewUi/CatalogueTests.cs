@@ -47,7 +47,9 @@ namespace Baird.Tests.NewUi
                 Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => i.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (i.ChannelNumber?.StartsWith(q) ?? false)).ToList());
             /// <summary>Make <see cref="GetChildrenAsync"/> never answer (a hung provider).</summary>
             public bool HangChildren;
-            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => HangChildren ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task
+            /// <summary>How many times <see cref="GetChildrenAsync"/> was called.</summary>
+            public int ChildrenCalls;
+            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Interlocked.Increment(ref ChildrenCalls) > 0 && HangChildren ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task
                 : Task.FromResult<IEnumerable<MediaItemData>>(Children.TryGetValue(id, out var c) ? c : new List<MediaItemData>());
             public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult(Items.Concat(Children.Values.SelectMany(c => c)).FirstOrDefault(i => i.Id == id));
         }
@@ -88,8 +90,10 @@ namespace Baird.Tests.NewUi
             /// <summary>Make <see cref="GetMediaStatusAsync"/> never answer (a hung Seerr).</summary>
             public bool HangStatus;
             public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrRequest>>(Asked);
+            /// <summary>How many times <see cref="GetMediaStatusAsync"/> was called.</summary>
+            public int StatusCalls;
             public Task<JellyseerrMediaStatus?> GetMediaStatusAsync(int tmdbId, string mediaType, CancellationToken ct = default) =>
-                HangStatus ? new TaskCompletionSource<JellyseerrMediaStatus?>().Task : Task.FromResult(Status.TryGetValue(tmdbId, out var s) ? s : null);
+                Interlocked.Increment(ref StatusCalls) > 0 && HangStatus ? new TaskCompletionSource<JellyseerrMediaStatus?>().Task : Task.FromResult(Status.TryGetValue(tmdbId, out var s) ? s : null);
             public readonly Dictionary<(int TmdbId, int Season), JellyseerrSeasonDetails> Seasons = new();
             /// <summary>Make <see cref="GetSeasonAsync"/> never answer.</summary>
             public bool HangSeason;

@@ -32,8 +32,20 @@ namespace Baird.NewUi.Adapters
         /// <summary>How long a page may take to learn everything before it settles for what it has.</summary>
         public TimeSpan Budget { get; }
 
-        public ShowData(IDataService data, IJellyseerrService? seerr, CatalogueSearch search, TimeSpan? pieceTimeout = null, TimeSpan? budget = null)
+        /// <summary>How long what was learnt of availability (Seerr status, a source's seasons) is fresh; after it, it is still served while it is refreshed.</summary>
+        public static readonly TimeSpan AvailabilityFresh = TimeSpan.FromSeconds(60);
+        private readonly StaleCache<JellyseerrMediaStatus?> _statusCache;
+        private readonly StaleCache<IReadOnlyList<LibrarySeason>> _seasonCache;
+        private readonly HashSet<string> _refreshing = new();
+
+        /// <summary>When set, a stale answer's background refresh is handed here (key, work) instead of being run by ShowData itself.</summary>
+        public Action<string, Func<CancellationToken, Task>>? RefreshSink { get; set; }
+
+        public ShowData(IDataService data, IJellyseerrService? seerr, CatalogueSearch search, TimeSpan? pieceTimeout = null, TimeSpan? budget = null, Func<DateTimeOffset>? clock = null)
         {
+            var now = clock ?? (() => DateTimeOffset.UtcNow);
+            _statusCache = new(AvailabilityFresh, now);
+            _seasonCache = new(AvailabilityFresh, now);
             _data = data; _seerr = seerr; _search = search;
             _pieceTimeout = pieceTimeout ?? TimeSpan.FromSeconds(8);
             Budget = budget ?? TimeSpan.FromSeconds(8);
@@ -56,7 +68,43 @@ namespace Baird.NewUi.Adapters
         public static readonly TimeSpan Keep = TimeSpan.FromSeconds(90);
 
         /// <summary>Drop what's been learnt (after a request, or watching something).</summary>
-        public void Forget() { lock (_cache) foreach (var k in _cache.Where(e => e.Value.Task.IsCompleted).Select(e => e.Key).ToList()) _cache.Remove(k); }
+        public void Forget()
+        {
+            _statusCache.Clear(); _seasonCache.Clear();
+            lock (_cache) foreach (var k in _cache.Where(e => e.Value.Task.IsCompleted).Select(e => e.Key).ToList()) _cache.Remove(k);
+        }
+
+        /// <summary>
+        /// Answer from the availability cache: a fresh hit as is; a stale hit at once, with a refresh started in the background;
+        /// otherwise ask. <paramref name="fetch"/> says whether it really answered (a timeout or failure is <c>Ok = false</c> with the
+        /// fallback): only a real answer is kept, so a bad moment is never served back for ever. <paramref name="fresh"/> skips the cache.
+        /// </summary>
+        private async Task<T> CachedAsync<T>(StaleCache<T> cache, string key, bool fresh, Func<CancellationToken, Task<(bool Ok, T Value)>> fetch, CancellationToken ct)
+        {
+            if (!fresh && cache.TryGet(key, out var kept, out var stale))
+            {
+                if (stale) Refresh(key, async c => { var r = await fetch(c).ConfigureAwait(false); if (r.Ok) cache.Put(key, r.Value); });
+                return kept;
+            }
+            var answer = await fetch(ct).ConfigureAwait(false);
+            if (answer.Ok) cache.Put(key, answer.Value);
+            return answer.Value;
+        }
+
+        /// <summary>Refresh one cached answer in the background (at most one per key); never faults anything. The one place that changes when refreshes go through a queue.</summary>
+        private void Refresh(string key, Func<CancellationToken, Task> work)
+        {
+            lock (_refreshing) if (!_refreshing.Add(key)) return;
+            async Task Run(CancellationToken ct)
+            {
+                try { await work(ct).ConfigureAwait(false); }
+                catch (Exception ex) { Console.WriteLine($"[ShowData] Refreshing {key} failed: {ex.Message}"); }
+                finally { lock (_refreshing) _refreshing.Remove(key); }
+            }
+            var sink = RefreshSink;
+            if (sink != null) sink(key, Run);
+            else _ = Task.Run(() => Run(CancellationToken.None));
+        }
 
         /// <summary>Has this title's page already been worked out (or is it being)? (tests)</summary>
         public bool IsKnown(CatalogueTitle t) { lock (_cache) return _cache.ContainsKey(t.Key); }
@@ -83,7 +131,7 @@ namespace Baird.NewUi.Adapters
                         lock (_cache) { entry.Latest = d; listeners = entry.Progress; }
                         listeners?.Invoke(d);
                     }
-                    e.Task = Task.Run(() => ComputeAsync(title, Report, entry.Cts.Token));
+                    e.Task = Task.Run(() => ComputeAsync(title, Report, fresh, entry.Cts.Token));
                     _cache[title.Key] = e;
                 }
                 e.Waiters++;
@@ -180,14 +228,14 @@ namespace Baird.NewUi.Adapters
         /// view at once, marked as still checking the library, then each library source that has it as it answers
         /// (each provider is asked separately; a slow one doesn't hold the others back). Returns the final details.
         /// </summary>
-        private async Task<ShowDetails> ComputeAsync(CatalogueTitle title, Action<ShowDetails>? progress, CancellationToken ct)
+        private async Task<ShowDetails> ComputeAsync(CatalogueTitle title, Action<ShowDetails>? progress, bool fresh, CancellationToken ct)
         {
             var t = title;
             var searching = t.Sources.Count == 0 && t.Kind != TitleKind.Episode;
             var sources = searching ? _search.SearchSources(t.Name, ct) : Array.Empty<(string Source, Task<IReadOnlyList<MediaItemViewModel>?> Results)>();
 
             if (t.Seerr == null) t = t with { Seerr = await _search.FindInSeerrAsync(t, ct).ConfigureAwait(false) };
-            var status = await StatusAsync(t, ct).ConfigureAwait(false);
+            var status = await StatusAsync(t, fresh, ct).ConfigureAwait(false);
             if (status != null && t.Seerr != null) t = t with { Seerr = t.Seerr with { Status = status.Status } };
             // A card from Downloads or a search hit may carry no description: Seerr (TMDB) has one.
             if (status?.Overview is { } overview && string.IsNullOrWhiteSpace(t.Synopsis)) t = t with { Synopsis = overview };
@@ -195,7 +243,7 @@ namespace Baird.NewUi.Adapters
             var remaining = sources.Select(s => s.Results).ToList();
             var found = new List<MediaItemViewModel>();
             var seasonDetails = new Dictionary<int, JellyseerrSeasonDetails>();
-            var details = await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, progress, ct).ConfigureAwait(false);
+            var details = await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, progress, fresh, ct).ConfigureAwait(false);
             progress?.Invoke(details);
             while (remaining.Count > 0)
             {
@@ -207,13 +255,13 @@ namespace Baird.NewUi.Adapters
                 var changed = match != null && !match.Sources.Select(s => s.ItemId).SequenceEqual(t.Sources.Select(s => s.ItemId));
                 if (changed) t = t with { Sources = match!.Sources, ImageUrl = t.ImageUrl ?? match.ImageUrl, Synopsis = t.Synopsis ?? match.Synopsis, Year = t.Year ?? match.Year };
                 if (!changed && remaining.Count > 0) continue;
-                details = changed ? await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, progress, ct).ConfigureAwait(false) : details with { CheckingLibrary = false };
+                details = changed ? await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, progress, fresh, ct).ConfigureAwait(false) : details with { CheckingLibrary = false };
                 progress?.Invoke(details);
             }
             return details;
         }
 
-        private async Task<ShowDetails> ComposeAsync(CatalogueTitle t, JellyseerrMediaStatus? status, bool checking, Dictionary<int, JellyseerrSeasonDetails> seasonDetails, Action<ShowDetails>? early, CancellationToken ct)
+        private async Task<ShowDetails> ComposeAsync(CatalogueTitle t, JellyseerrMediaStatus? status, bool checking, Dictionary<int, JellyseerrSeasonDetails> seasonDetails, Action<ShowDetails>? early, bool fresh, CancellationToken ct)
         {
             if (t.Kind != TitleKind.Series)
             {
@@ -221,7 +269,7 @@ namespace Baird.NewUi.Adapters
                     : status?.Status is 2 or 3 or 4 ? SeasonState.Requested : SeasonState.Missing;
                 return new ShowDetails(t, Array.Empty<Season>(), film, status?.Progress(), checking);
             }
-            var library = await LibrarySeasonsAsync(t, ct).ConfigureAwait(false);
+            var library = await LibrarySeasonsAsync(t, ct, fresh).ConfigureAwait(false);
             var details = new ShowDetails(t, Merge(library, status, t.Best?.Service, seasonDetails), CheckingLibrary: checking);
             // Seerr names the episodes the library lacks: ask for the season the page opens on (bounded, so a hung Seerr can't stall it).
             var i = Prefetcher.OpeningSeason(details);
@@ -237,11 +285,13 @@ namespace Baird.NewUi.Adapters
             return season == null ? details : details with { Seasons = Merge(library, status, t.Best?.Service, seasonDetails) };
         }
 
-        private async Task<JellyseerrMediaStatus?> StatusAsync(CatalogueTitle t, CancellationToken ct)
+        private async Task<JellyseerrMediaStatus?> StatusAsync(CatalogueTitle t, bool fresh, CancellationToken ct)
         {
             if (_seerr == null || t.Seerr == null) return null;
             var seerr = _seerr; var r = t.Seerr;
-            return await Deadline.Within<JellyseerrMediaStatus?>(c => seerr.GetMediaStatusAsync(r.TmdbId, r.MediaType, c), null, _pieceTimeout, "[ShowData] Seerr status", ct).ConfigureAwait(false);
+            // (true, answer) when Seerr answered (even "unknown to me"); the (false, null) fallback marks a timeout or failure, which isn't kept.
+            return await CachedAsync(_statusCache, $"{r.MediaType}:{r.TmdbId}", fresh,
+                c => Deadline.Within<(bool Ok, JellyseerrMediaStatus? Value)>(async c2 => (true, await seerr.GetMediaStatusAsync(r.TmdbId, r.MediaType, c2).ConfigureAwait(false)), (false, null), _pieceTimeout, "[ShowData] Seerr status", c), ct).ConfigureAwait(false);
         }
 
         public sealed record LibrarySeason(int Number, string Label, IReadOnlyList<MediaItemViewModel> Episodes, string? Service = null, string? MoreId = null);
@@ -250,9 +300,9 @@ namespace Baird.NewUi.Adapters
         /// The show's seasons in the library, across its sources (the best source wins a season both have): each source's
         /// season folders, or one season when it lists only episodes.
         /// </summary>
-        public async Task<IReadOnlyList<LibrarySeason>> LibrarySeasonsAsync(CatalogueTitle t, CancellationToken ct = default)
+        public async Task<IReadOnlyList<LibrarySeason>> LibrarySeasonsAsync(CatalogueTitle t, CancellationToken ct = default, bool fresh = false)
         {
-            var perSource = await Task.WhenAll(t.Sources.Select(src => SeasonsFromAsync(t, src, ct))).ConfigureAwait(false);
+            var perSource = await Task.WhenAll(t.Sources.Select(src => CachedAsync(_seasonCache, $"{src.Service}|{src.ItemId}", fresh, c => SeasonsFromAsync(t, src, c), ct))).ConfigureAwait(false);
             var seasons = new List<LibrarySeason>();
             foreach (var list in perSource)
                 foreach (var s in list)
@@ -260,28 +310,38 @@ namespace Baird.NewUi.Adapters
             return seasons.OrderBy(s => s.Number == 0 ? int.MaxValue : s.Number).ToList();
         }
 
-        /// <summary>A provider's children, or nothing when it doesn't answer in time.</summary>
-        private Task<IEnumerable<MediaItemViewModel>> Children(string id, string what, CancellationToken ct) =>
-            Deadline.Within(_ => _data.GetChildrenAsync(id), Enumerable.Empty<MediaItemViewModel>(), _pieceTimeout, $"[ShowData] Listing {what}", ct);
+        /// <summary>A provider's children, or null when it doesn't answer in time (or fails): not the same as answering "none".</summary>
+        private Task<IEnumerable<MediaItemViewModel>?> Children(string id, string what, CancellationToken ct) =>
+            Deadline.Within<IEnumerable<MediaItemViewModel>?>(async _ => await _data.GetChildrenAsync(id).ConfigureAwait(false), null, _pieceTimeout, $"[ShowData] Listing {what}", ct);
 
-        private async Task<IReadOnlyList<LibrarySeason>> SeasonsFromAsync(CatalogueTitle t, TitleSource src, CancellationToken ct)
+        /// <summary>
+        /// One source's seasons. Ok is false when any listing timed out or failed (what's returned is then what could be learnt, and
+        /// isn't worth keeping); a provider that answered with nothing is Ok.
+        /// </summary>
+        private async Task<(bool Ok, IReadOnlyList<LibrarySeason> Value)> SeasonsFromAsync(CatalogueTitle t, TitleSource src, CancellationToken ct)
         {
+            var ok = true;
             try
             {
-                var children = (await Children(src.ItemId, $"{t.Name} from {src.Service}", ct).ConfigureAwait(false)).ToList();
-                if (children.Count == 0) return Array.Empty<LibrarySeason>();
+                var listed = await Children(src.ItemId, $"{t.Name} from {src.Service}", ct).ConfigureAwait(false);
+                if (listed == null) return (false, Array.Empty<LibrarySeason>());
+                var children = listed.ToList();
+                if (children.Count == 0) return (true, Array.Empty<LibrarySeason>());
                 var folders = children.Where(c => c.Type == Baird.Services.MediaType.Brand).ToList();
-                if (folders.Count == 0) return new[] { new LibrarySeason(1, "Season 1", children, src.Service, YouTubeService.NextPageId(src.ItemId, children.Count)) };
-                return await Task.WhenAll(folders.Select(async (f, i) =>
+                if (folders.Count == 0) return (true, new[] { new LibrarySeason(1, "Season 1", children, src.Service, YouTubeService.NextPageId(src.ItemId, children.Count)) });
+                var seasons = await Task.WhenAll(folders.Select(async (f, i) =>
                 {
-                    var eps = (await Children(f.Id, $"{t.Name} {f.Name} from {src.Service}", ct).ConfigureAwait(false)).Where(e => e.Type != Baird.Services.MediaType.Brand).ToList();
+                    var inFolder = await Children(f.Id, $"{t.Name} {f.Name} from {src.Service}", ct).ConfigureAwait(false);
+                    if (inFolder == null) ok = false;
+                    var eps = (inFolder ?? Enumerable.Empty<MediaItemViewModel>()).Where(e => e.Type != Baird.Services.MediaType.Brand).ToList();
                     // A YouTube channel's seasons are its playlists, which have names rather than numbers.
                     if (f.Source == YouTubeService.SourceName) return new LibrarySeason(i + 1, f.Name, eps, src.Service, YouTubeService.NextPageId(f.Id, eps.Count));
                     var n = SeasonNumberOf(f.Name, i + 1);
                     return new LibrarySeason(n, n == 0 ? "Specials" : $"Season {n}", eps, src.Service);
                 })).ConfigureAwait(false);
+                return (ok, seasons);
             }
-            catch (Exception ex) { Console.WriteLine($"[ShowData] Seasons of {t.Name} from {src.Service} failed: {ex.Message}"); return Array.Empty<LibrarySeason>(); }
+            catch (Exception ex) { Console.WriteLine($"[ShowData] Seasons of {t.Name} from {src.Service} failed: {ex.Message}"); return (false, Array.Empty<LibrarySeason>()); }
         }
 
         /// <summary>
