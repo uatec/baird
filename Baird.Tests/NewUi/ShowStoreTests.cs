@@ -168,5 +168,76 @@ namespace Baird.Tests.NewUi
             Assert.False(b.TryGet("k3", out _));
             Assert.True(b.TryGet("k1", out _));
         }
+
+        [Fact]
+        public void A_failed_write_leaves_the_previous_file_intact_and_stray_temp_files_are_not_titles()
+        {
+            var s = Open();
+            s.Put("a", Show("A"));
+            _t.Advance(DiskShowStore.SaveDelay);
+            var fa = Path.Combine(_dir, DiskShowStore.HashOf("a") + ".json");
+            var before = File.ReadAllText(fa);
+            Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
+
+            Directory.CreateDirectory(fa + ".tmp");                  // the temp file can't be written: the write fails part way
+            s.Put("a", Show("A changed"));
+            _t.Advance(DiskShowStore.SaveDelay);
+            Assert.Equal(before, File.ReadAllText(fa));               // the old title is still whole
+            Directory.Delete(fa + ".tmp");
+
+            File.WriteAllText(Path.Combine(_dir, DiskShowStore.HashOf("zz") + ".json.tmp"), "{\"Version\":1,");
+            var b = Open(1);                                          // a stray temp file is cleaned up and does not count as a title
+            Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
+            Assert.True(b.TryGet("a", out _));
+            b.Put("a", Show("A again"));
+            Assert.True(b.TryGet("a", out _));
+        }
+
+        [Fact]
+        public void After_a_restart_the_few_titles_used_recently_outlive_older_untouched_ones()
+        {
+            var a = Open(20);
+            for (var i = 1; i <= 20; i++) a.Put($"k{i}", Show($"T{i}"));
+            _t.Advance(DiskShowStore.SaveDelay);
+            var now = DateTime.UtcNow;
+            for (var i = 1; i <= 20; i++)                             // all last saved just now, k1 oldest
+                File.SetLastWriteTimeUtc(Path.Combine(_dir, DiskShowStore.HashOf($"k{i}") + ".json"), now.AddSeconds(-2).AddMilliseconds(i * 10));
+
+            var b = Open(20);
+            Assert.True(b.TryGet("k1", out _));                       // only two are used, so only two are touched
+            Assert.True(b.TryGet("k2", out _));
+            _t.Advance(DiskShowStore.SaveDelay);
+
+            var c = Open(20);
+            c.Put("n1", Show("N1"));
+            c.Put("n2", Show("N2"));
+            Assert.True(c.TryGet("k1", out _));
+            Assert.True(c.TryGet("k2", out _));
+            Assert.False(c.TryGet("k3", out _));
+            Assert.False(c.TryGet("k4", out _));
+        }
+
+        [Fact]
+        public void Reads_and_puts_are_not_blocked_by_a_save_in_progress()
+        {
+            using var entered = new System.Threading.ManualResetEventSlim();
+            using var release = new System.Threading.ManualResetEventSlim();
+            var s = new DiskShowStore(_dir, _t, 5000, a => _ = System.Threading.Tasks.Task.Run(a));
+            s.BeforeSaveIo = () => { entered.Set(); release.Wait(TimeSpan.FromSeconds(20)); };
+            s.Put("a", Show("A"));
+            _t.Advance(DiskShowStore.SaveDelay);                       // the save starts on another thread and stops at the hook
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+            try
+            {
+                var work = System.Threading.Tasks.Task.Run(() =>
+                {
+                    Assert.True(s.TryGet("a", out _));
+                    s.Put("b", Show("B"));
+                    Assert.True(s.TryGet("b", out _));
+                });
+                Assert.True(work.Wait(TimeSpan.FromSeconds(5)), "TryGet/Put waited for the save's file I/O");
+            }
+            finally { release.Set(); }
+        }
     }
 }

@@ -47,6 +47,7 @@ namespace Baird.NewUi.Adapters
             public StoredShow? Show; // tokenized; null until read from disk
             public string? Json;     // Show serialized, to tell whether a Put changed anything
             public long Used;        // recency: higher is more recent
+            public long Rev;         // bumped by every change or use, so a save knows whether it saw the latest
             public bool Dirty;       // needs writing
             public bool Touched;     // used since the last save (last-write time to bump)
         }
@@ -55,10 +56,15 @@ namespace Baird.NewUi.Adapters
         private readonly ITimers _timers;
         private readonly int _max;
         private readonly Action<Action> _background;
+        // Guards the in-memory state only. File I/O never happens while it is held.
         private readonly object _gate = new();
         private readonly Dictionary<string, Entry> _index = new();
+        private readonly HashSet<string> _toDelete = new();   // files of forgotten titles, deleted by the next save
         private long _clock;
         private IDisposable? _saveTimer;
+
+        /// <summary>Test seam: runs in <see cref="Save"/> after its snapshot, before it touches any file.</summary>
+        internal Action? BeforeSaveIo;
 
         /// <param name="runInBackground">Where the save runs when the timer fires (default: the thread pool; tests run it inline).</param>
         public DiskShowStore(string folder, ITimers timers, int maxTitles = 5000, Action<Action>? runInBackground = null)
@@ -68,7 +74,10 @@ namespace Baird.NewUi.Adapters
             try
             {
                 Directory.CreateDirectory(folder);
-                var files = new DirectoryInfo(folder).EnumerateFiles("*.json")
+                var dir = new DirectoryInfo(folder);
+                foreach (var stray in dir.EnumerateFiles("*.tmp"))   // left by a save that was cut short
+                    try { stray.Delete(); } catch (Exception ex) { Console.WriteLine($"[ShowStore] Can't remove {stray.Name}: {ex.Message}"); }
+                var files = dir.EnumerateFiles("*.json")
                     .Where(f => f.Name.Length == 64 + 5 && f.Name[..64].All(Uri.IsHexDigit))
                     .OrderBy(f => f.LastWriteTimeUtc).ThenBy(f => f.Name, StringComparer.Ordinal);
                 foreach (var f in files)
@@ -87,15 +96,34 @@ namespace Baird.NewUi.Adapters
         {
             show = null;
             var hash = HashOf(key);
+            Entry? entry;
             lock (_gate)
             {
-                if (!_index.TryGetValue(hash, out var entry)) return false;
+                if (!_index.TryGetValue(hash, out entry)) return false;
                 entry.Key = key;
-                if (entry.Show == null && !LoadFromDisk(hash, key, entry)) { Forget(hash); return false; }
-                entry.Used = ++_clock; entry.Touched = true;
-                show = Detokenize(entry.Show);
-                return show != null;
+                if (entry.Show != null) return Use(entry, out show);
             }
+            // Not read yet: read the file without holding the lock.
+            var loaded = ReadFile(hash, key);
+            lock (_gate)
+            {
+                if (!_index.TryGetValue(hash, out var now) || now != entry) return false;   // forgotten meanwhile
+                if (now.Show == null)
+                {
+                    if (loaded == null) { Forget(hash); ScheduleSave(); return false; }
+                    now.Show = loaded.Value.Clean; now.Json = loaded.Value.Json;
+                    if (loaded.Value.Stale) { now.Dirty = true; now.Rev++; }
+                }
+                return Use(now, out show);
+            }
+        }
+
+        private bool Use(Entry entry, out StoredShow? show)
+        {
+            entry.Used = ++_clock; entry.Touched = true; entry.Rev++;
+            ScheduleSave();   // a read counts for recency too
+            show = Detokenize(entry.Show);
+            return show != null;
         }
 
         public void Put(string key, StoredShow show)
@@ -107,37 +135,57 @@ namespace Baird.NewUi.Adapters
             lock (_gate)
             {
                 if (!_index.TryGetValue(hash, out var entry)) _index[hash] = entry = new Entry { Key = key };
-                entry.Key = key; entry.Used = ++_clock; entry.Touched = true;
+                entry.Key = key; entry.Used = ++_clock; entry.Touched = true; entry.Rev++;
                 if (entry.Json != json) { entry.Show = clean; entry.Json = json; entry.Dirty = true; }
                 while (_index.Count > _max)
-                    Forget(_index.MinBy(p => p.Value.Used).Key, deleteFile: true);
+                    Forget(_index.MinBy(p => p.Value.Used).Key);
                 ScheduleSave();
             }
         }
 
-        /// <summary>Writes changed titles and bumps the recency of those only used. Normally runs from the debounce timer.</summary>
+        /// <summary>Writes changed titles, bumps the recency of those only used and deletes forgotten ones. Normally runs from the debounce timer.</summary>
         internal void Save()
         {
+            List<(string Hash, Entry E, long Rev, string? Json, DateTime When)> work;
+            List<string> deletes;
             lock (_gate)
             {
                 _saveTimer = null;
-                var stamp = DateTime.UtcNow.AddSeconds(-_index.Count);
-                var n = 0;
-                foreach (var (hash, e) in _index.Where(p => p.Value.Dirty || p.Value.Touched).OrderBy(p => p.Value.Used).ToList())
-                {
-                    var when = stamp.AddSeconds(n++);   // ascending, so last-write order matches recency after a restart
-                    try
-                    {
-                        Directory.CreateDirectory(_folder);
-                        var path = PathOf(hash);
-                        if (e.Dirty && e.Show != null)
-                            File.WriteAllText(path, JsonSerializer.Serialize(new ShowFile { Version = CurrentVersion, Key = e.Key, Show = e.Show }, ShowStoreJson.Default.ShowFile));
-                        if (File.Exists(path)) File.SetLastWriteTimeUtc(path, when);
-                        e.Dirty = false; e.Touched = false;
-                    }
-                    catch (Exception ex) { Console.WriteLine($"[ShowStore] Can't save to {_folder}: {ex.Message}"); }
-                }
+                // Used titles are stamped from now on, in recency order, so they are newer than every file not touched this time.
+                var stamp = DateTime.UtcNow; var n = 0;
+                work = _index.Where(p => p.Value.Dirty || p.Value.Touched).OrderBy(p => p.Value.Used)
+                    .Select(p => (p.Key, p.Value, p.Value.Rev,
+                        p.Value.Dirty && p.Value.Show != null
+                            ? JsonSerializer.Serialize(new ShowFile { Version = CurrentVersion, Key = p.Value.Key, Show = p.Value.Show }, ShowStoreJson.Default.ShowFile) : null,
+                        stamp.AddMilliseconds(n++))).ToList();
+                deletes = _toDelete.Where(h => !_index.ContainsKey(h)).ToList();   // a title put back since is not deleted
+                _toDelete.Clear();
             }
+            BeforeSaveIo?.Invoke();
+
+            var done = new List<(Entry E, long Rev)>();
+            foreach (var h in deletes)
+                try { File.Delete(PathOf(h)); } catch (Exception ex) { Console.WriteLine($"[ShowStore] Can't delete {h}: {ex.Message}"); }
+            foreach (var (hash, e, rev, json, when) in work)
+            {
+                try
+                {
+                    Directory.CreateDirectory(_folder);
+                    var path = PathOf(hash);
+                    if (json != null)
+                    {
+                        var tmp = path + ".tmp";               // write beside it, then swap in: a cut-short save never leaves half a title
+                        File.WriteAllText(tmp, json);
+                        File.Move(tmp, path, overwrite: true);
+                    }
+                    if (File.Exists(path)) File.SetLastWriteTimeUtc(path, when);
+                    done.Add((e, rev));
+                }
+                catch (Exception ex) { Console.WriteLine($"[ShowStore] Can't save to {_folder}: {ex.Message}"); }
+            }
+            lock (_gate)
+                foreach (var (e, rev) in done)
+                    if (e.Rev == rev) { e.Dirty = false; e.Touched = false; }   // changed again meanwhile: the next save does it
         }
 
         private void ScheduleSave()
@@ -146,27 +194,26 @@ namespace Baird.NewUi.Adapters
             _saveTimer = _timers.After(SaveDelay, () => _background(Save));
         }
 
-        private void Forget(string hash, bool deleteFile = true)
+        // Caller holds the lock. The file goes in the next save, not here.
+        private void Forget(string hash)
         {
             _index.Remove(hash);
-            if (!deleteFile) return;
-            try { File.Delete(PathOf(hash)); } catch (Exception ex) { Console.WriteLine($"[ShowStore] Can't delete {hash}: {ex.Message}"); }
+            _toDelete.Add(hash);
         }
 
-        private bool LoadFromDisk(string hash, string key, Entry entry)
+        private (StoredShow Clean, string Json, bool Stale)? ReadFile(string hash, string key)
         {
             try
             {
                 var text = File.ReadAllText(PathOf(hash));
                 var dto = JsonSerializer.Deserialize(text, ShowStoreJson.Default.ShowFile);
-                if (dto is not { Version: CurrentVersion, Show: { } show } || dto.Key != key) return false;
+                if (dto is not { Version: CurrentVersion, Show: { } show } || dto.Key != key) return null;
                 // A file written by an older version may still hold a raw token: clean it, and write it back.
-                entry.Show = Tokenize(show);
-                entry.Json = JsonSerializer.Serialize(entry.Show, ShowStoreJson.Default.StoredShow);
-                entry.Dirty = entry.Json != JsonSerializer.Serialize(show, ShowStoreJson.Default.StoredShow);
-                return true;
+                var clean = Tokenize(show);
+                var json = JsonSerializer.Serialize(clean, ShowStoreJson.Default.StoredShow);
+                return (clean, json, json != JsonSerializer.Serialize(show, ShowStoreJson.Default.StoredShow));
             }
-            catch (Exception ex) { Console.WriteLine($"[ShowStore] Ignoring unreadable file for {hash[..8]}: {ex.Message}"); return false; }
+            catch (Exception ex) { Console.WriteLine($"[ShowStore] Ignoring unreadable file for {hash[..8]}: {ex.Message}"); return null; }
         }
 
         private static StoredShow Tokenize(StoredShow s) => s with
