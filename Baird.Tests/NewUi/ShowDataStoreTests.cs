@@ -15,7 +15,7 @@ namespace Baird.Tests.NewUi
         private sealed class Clock { public DateTimeOffset Now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero); }
 
         /// <summary>An in-memory store that remembers everything it was handed.</summary>
-        private sealed class MemStore : IShowStore
+        internal sealed class MemStore : IShowStore
         {
             public readonly Dictionary<string, StoredShow> Shows = new();
             public readonly List<(string Key, StoredShow Show)> Puts = new();
@@ -50,7 +50,7 @@ namespace Baird.Tests.NewUi
             (await w.Search.SearchAsync(q, CatalogueTests.Channels, DateTimeOffset.UtcNow)).Top!.Title!;
 
         /// <summary>A kept record: every episode named "n. Stored SxEn", art and synopsis, availability unknown.</summary>
-        private static StoredShow Record(CatalogueTitle t, DateTimeOffset stamp, params int[] episodesPerSeason) =>
+        internal static StoredShow Record(CatalogueTitle t, DateTimeOffset stamp, params int[] episodesPerSeason) =>
             new(t with { Sources = Array.Empty<TitleSource>(), Seerr = t.Seerr is { } r ? r with { Status = 0 } : null, ImageUrl = "http://img/stored", Synopsis = "Stored synopsis" },
                 episodesPerSeason.Select((count, i) => new StoredSeason(i + 1, $"Season {i + 1}",
                     Enumerable.Range(1, count).Select(n => new StoredEpisode(n, $"{n}. Stored S{i + 1}E{n}", null, $"http://img/s{i + 1}e{n}", $"Synopsis S{i + 1}E{n}")).ToList(), count)).ToList(),
@@ -115,8 +115,10 @@ namespace Baird.Tests.NewUi
             rig.W.Seerr.HangStatus = true; rig.W.Seerr.HangSeason = true;
 
             var d = await rig.Shows.DetailsAsync(title); // past the budget with nothing live: the record, not an error
-            Assert.False(d.CheckingLibrary);
+            Assert.True(d.CheckingLibrary);              // as it was: availability still unknown, so still "–"
             Assert.Equal("4. Stored S2E4", d.Seasons[1].Episodes[3].Label);
+            Assert.True((await rig.Shows.DetailsAsync(title, fresh: true)).CheckingLibrary); // the same when asked afresh
+            Assert.Null(await rig.Shows.FollowingAsync(title)); // an unverified record offers nothing to get
 
             Assert.False(await rig.Shows.EnsureFreshAsync(title)); // waits for that compute: it timed out, so nothing is kept
             Assert.Empty(rig.Store.Puts);
@@ -129,7 +131,7 @@ namespace Baird.Tests.NewUi
         {
             var rig = Setup();
             var found = await Find(rig.W, "simpsons");
-            var title = found with { Seerr = null }; // Seerr is found again, and its status asked for
+            var title = found with { Seerr = null }; // like a Jellyfin card: Seerr's entry comes from the record, its status is asked for
             Keep(rig, title, Record(found, rig.Clock.Now - TimeSpan.FromDays(1), 2, 3)); // kept with Seerr's status zeroed
             var putsWhenSeasonAsked = -1; var reportsWhenSeasonAsked = -1;
             var reports = new List<ShowDetails>();
@@ -145,6 +147,30 @@ namespace Baird.Tests.NewUi
             Assert.Equal(new[] { 1, 2, 3, 4 }, put.Show.Seasons.Select(s => s.Number));
             Assert.Equal("1. Simpsons Roasting on an Open Fire", put.Show.Seasons[0].Episodes[0].Label);
             Assert.Equal(rig.Clock.Now, put.Show.Stamp);
+        }
+
+        [Fact]
+        public async Task A_hung_seerr_lookup_never_drops_the_records_seerr_entry()
+        {
+            var w = CatalogueTests.Build();
+            var clock = new Clock();
+            var store = new MemStore();
+            var found = await Find(w, "simpsons");
+            var search = new CatalogueSearch(w.Data, w.Epg, w.Seerr, timeout: TimeSpan.FromMilliseconds(200));
+            var shows = new ShowData(w.Data, w.Seerr, search, TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(5), () => clock.Now, store) { RefreshSink = (_, _) => { } };
+            var card = found with { Seerr = null }; // a Jellyfin card knows nothing of Seerr
+            var kept = Record(found, clock.Now - TimeSpan.FromDays(8), 2, 3, 2, 2); // seasons 3 and 4 known only from Seerr
+            lock (store.Shows) store.Shows[card.Key] = kept;
+            w.Seerr.HangSearch = true;
+            var lookups = w.Seerr.SearchCalls;
+
+            var d = await shows.DetailsAsync(card);
+
+            Assert.Equal(lookups, w.Seerr.SearchCalls); // the record's Seerr entry is used: no lookup
+            Assert.Equal(456, d.Title.Seerr!.TmdbId);
+            Assert.True(store.TryGet(card.Key, out var after));
+            Assert.Equal(456, after!.Title.Seerr!.TmdbId);
+            Assert.Equal(new[] { 1, 2, 3, 4 }, after.Seasons.Select(s => s.Number));
         }
 
         [Fact]

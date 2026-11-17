@@ -139,7 +139,7 @@ namespace Baird.NewUi.Adapters
         /// With a kept record (<see cref="IShowStore"/>) and not <paramref name="fresh"/>, the record is reported first, before anything
         /// is asked (availability unknown: <see cref="ShowDetails.CheckingLibrary"/>, the title's own sources only); the live answers
         /// follow and, once complete, are kept in its place. With a record, running out of budget (or a failed compute) returns what's
-        /// known, never an error.
+        /// known, never an error: the record itself (still checking) when nothing live was reported.
         /// </summary>
         public async Task<ShowDetails> DetailsAsync(CatalogueTitle title, Action<ShowDetails>? progress = null, CancellationToken ct = default, bool fresh = false)
         {
@@ -161,7 +161,12 @@ namespace Baird.NewUi.Adapters
                 latestSeq = e.Seq;
             }
             if (latest != null) deliver?.Invoke(latest, latestSeq);
-            ShowDetails? Known() { lock (_cache) return (e.Latest ?? fromStore) is { } k ? k with { CheckingLibrary = false } : null; }
+            // What to settle for: the record as it is (availability unknown, still "–") while nothing live has been reported, else
+            // the latest live report, taken as final.
+            ShowDetails? Known()
+            {
+                lock (_cache) return e.Seq == 0 ? e.Latest ?? fromStore : e.Latest! with { CheckingLibrary = false };
+            }
             try
             {
                 // A hard budget: when it passes, settle for what's been learnt (or fail if nothing has). The work itself carries on
@@ -232,7 +237,9 @@ namespace Baird.NewUi.Adapters
                 lock (_cache) { entry.Latest = d; seq = ++entry.Seq; listeners = entry.Progress; }
                 listeners?.Invoke(d, seq);
             }
-            entry.Task = Task.Run(() => RunAsync(title, Report, fresh, stored, entry));
+            // A card that knows nothing of Seerr (Jellyfin's) uses the record's entry: no lookup, and a hung one can't lose it. Status is asked afresh.
+            var start = title.Seerr == null && stored?.Title.Seerr is { } kept ? title with { Seerr = kept } : title;
+            entry.Task = Task.Run(() => RunAsync(start, Report, fresh, stored, entry));
             _cache[title.Key] = entry;
             return entry;
         }
@@ -359,6 +366,7 @@ namespace Baird.NewUi.Adapters
         public async Task<HomeCard?> FollowingAsync(CatalogueTitle series, CancellationToken ct = default)
         {
             var d = await DetailsAsync(series, null, ct).ConfigureAwait(false);
+            if (d.CheckingLibrary) return null; // only a kept record, unverified: nothing to offer on it
             // "Resume" is in Up next already; "Play" means nothing was watched or nothing follows the last episode (Next falls back to the first).
             if (d.Next is { } n && n.Label.StartsWith("Resume ", StringComparison.Ordinal)) return null;
             if (d.Next is { } nx && nx.Label.StartsWith("Next ", StringComparison.Ordinal) && nx.Episode.Source is { } s)

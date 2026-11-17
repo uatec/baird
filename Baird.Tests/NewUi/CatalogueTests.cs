@@ -83,7 +83,12 @@ namespace Baird.Tests.NewUi
             public readonly List<JellyseerrSearchResult> Results = new();
             public readonly Dictionary<int, JellyseerrMediaStatus> Status = new();
             public readonly List<(int Id, string Type, IReadOnlyList<int>? Seasons)> Requests = new();
+            /// <summary>Make <see cref="SearchAsync"/> never answer (a hung Seerr lookup).</summary>
+            public bool HangSearch;
+            /// <summary>How many times <see cref="SearchAsync"/> was called.</summary>
+            public int SearchCalls;
             public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string q, int p, CancellationToken ct = default) =>
+                Interlocked.Increment(ref SearchCalls) > 0 && HangSearch ? new TaskCompletionSource<IEnumerable<JellyseerrSearchResult>>().Task :
                 Task.FromResult<IEnumerable<JellyseerrSearchResult>>(Results.Where(r => r.Title.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList());
             public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrSearchResult>>(Results);
             public Task<JellyseerrRequestResponse> CreateRequestAsync(int id, string t, CancellationToken ct = default) => RequestSeasonsAsync(id, t, null, ct);

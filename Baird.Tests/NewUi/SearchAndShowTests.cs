@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Baird.NewUi;
+using Baird.NewUi.Adapters;
 using Baird.NewUi.Controls;
 using Baird.NewUi.Core;
 using Baird.NewUi.Model;
@@ -476,6 +477,37 @@ namespace Baird.Tests.NewUi
             var tab = new SeasonTab(season, checking: true);
             var state = (TextBlock)((StackPanel)tab.Child!).Children[1];
             Assert.Equal("–", state.Text);
+        }
+
+        [AvaloniaFact]
+        public async Task A_card_with_a_source_opened_from_its_record_shows_dashes_for_a_series_and_play_for_a_film()
+        {
+            var rig = Build();
+            var w = rig.World;
+            var series = (await w.Search.SearchAsync("simpsons", CatalogueTests.Channels, DateTimeOffset.UtcNow)).Top!.Title!;
+            var film = (await w.Search.SearchAsync("alien", CatalogueTests.Channels, DateTimeOffset.UtcNow)).Top!.Title!;
+            var store = new ShowDataStoreTests.MemStore();
+            store.Put(series.Key, ShowDataStoreTests.Record(series, DateTimeOffset.UtcNow, 2, 3, 2, 2));
+            store.Put(film.Key, new StoredShow(film with { Sources = Array.Empty<TitleSource>() }, Array.Empty<StoredSeason>(), DateTimeOffset.UtcNow));
+            rig.Ctx.Shows = new Baird.NewUi.Adapters.ShowData(w.Data, w.Seerr, w.Search, TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(300), store: store);
+            w.Jellyfin.HangChildren = true; w.IPlayer.HangChildren = true; w.Seerr.HangStatus = true; w.Seerr.HangSeason = true;
+            Assert.NotEmpty(series.Sources);
+
+            var page = new ShowPage(rig.Ctx, series);
+            Show(page.View);
+            await page.Loaded; // nothing live answers: the record stays up, availability unknown
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("–", page.Details!.Summary);
+            Assert.Equal(new[] { "–" }, page.ButtonLabels); // no Request…, no "Not streaming"
+            page.OnAction(UiAction.Down, false);
+            var tab = (SeasonTab)page.LitElement!;
+            Assert.Equal("–", ((TextBlock)((StackPanel)tab.Child!).Children[1]).Text);
+
+            var filmPage = new ShowPage(rig.Ctx, film);
+            Show(filmPage.View);
+            await filmPage.Loaded;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Play", filmPage.ButtonLabels[0]); // a film card carrying a source plays at once
         }
 
         [AvaloniaFact]

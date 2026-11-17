@@ -68,7 +68,8 @@ namespace Baird.NewUi.Screens
         public bool IsLoading => _details == null && _failure == null && _ctx.Shows != null;
         /// <summary>Set when the page learnt nothing in time: OK tries again.</summary>
         public string? FailureMessage => _failure;
-        private bool Checking => _details?.CheckingLibrary == true && _title.Sources.Count == 0;
+        // A series card's own source doesn't say which seasons are there (a kept record lists them all as unknown); a film's does.
+        private bool Checking => _details?.CheckingLibrary == true && (_title.Sources.Count == 0 || _title.Kind == TitleKind.Series);
 
         public Control View => _root;
         public Task Loaded { get; private set; }

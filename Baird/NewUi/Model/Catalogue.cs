@@ -115,7 +115,7 @@ namespace Baird.NewUi.Model
         {
             get
             {
-                if (CheckingLibrary && Title.Sources.Count == 0) return Checking;
+                if (CheckingLibrary && (Title.Sources.Count == 0 || Title.Kind == TitleKind.Series)) return Checking;
                 if (Title.Kind != TitleKind.Series || Seasons.Count == 0)
                     return Title.Sources.Count > 0 ? Title.Where : FilmState switch
                     {
