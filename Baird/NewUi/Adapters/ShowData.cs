@@ -36,14 +36,20 @@ namespace Baird.NewUi.Adapters
         public static readonly TimeSpan AvailabilityFresh = TimeSpan.FromSeconds(60);
         private readonly StaleCache<JellyseerrMediaStatus?> _statusCache;
         private readonly StaleCache<IReadOnlyList<LibrarySeason>> _seasonCache;
-        private readonly HashSet<string> _refreshing = new();
+        private readonly Dictionary<string, DateTimeOffset> _refreshing = new(); // key -> when its refresh was requested
+        private readonly Func<DateTimeOffset> _clock;
+        /// <summary>A refresh asked for this long ago and never finished is taken to be lost (a sink that dropped it), and may be asked for again.</summary>
+        private static readonly TimeSpan RefreshLost = TimeSpan.FromMinutes(2);
 
-        /// <summary>When set, a stale answer's background refresh is handed here (key, work) instead of being run by ShowData itself.</summary>
+        /// <summary>
+        /// When set, a stale answer's background refresh is handed here (key, work) instead of being run by ShowData itself.
+        /// The sink MUST run the work (it never faults); one that drops it only delays that key's next refresh by two minutes.
+        /// </summary>
         public Action<string, Func<CancellationToken, Task>>? RefreshSink { get; set; }
 
         public ShowData(IDataService data, IJellyseerrService? seerr, CatalogueSearch search, TimeSpan? pieceTimeout = null, TimeSpan? budget = null, Func<DateTimeOffset>? clock = null)
         {
-            var now = clock ?? (() => DateTimeOffset.UtcNow);
+            var now = _clock = clock ?? (() => DateTimeOffset.UtcNow);
             _statusCache = new(AvailabilityFresh, now);
             _seasonCache = new(AvailabilityFresh, now);
             _data = data; _seerr = seerr; _search = search;
@@ -91,10 +97,18 @@ namespace Baird.NewUi.Adapters
             return answer.Value;
         }
 
-        /// <summary>Refresh one cached answer in the background (at most one per key); never faults anything. The one place that changes when refreshes go through a queue.</summary>
+        /// <summary>
+        /// Refresh one cached answer in the background (at most one per key); never faults anything. The one place that changes when refreshes go
+        /// through a queue. A <see cref="RefreshSink"/> must run the work: if it doesn't, the key is free to be asked for again after <see cref="RefreshLost"/>.
+        /// </summary>
         private void Refresh(string key, Func<CancellationToken, Task> work)
         {
-            lock (_refreshing) if (!_refreshing.Add(key)) return;
+            lock (_refreshing)
+            {
+                var asked = _clock();
+                if (_refreshing.TryGetValue(key, out var since) && asked - since < RefreshLost) return;
+                _refreshing[key] = asked;
+            }
             async Task Run(CancellationToken ct)
             {
                 try { await work(ct).ConfigureAwait(false); }

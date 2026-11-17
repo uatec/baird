@@ -130,5 +130,94 @@ namespace Baird.Tests.NewUi
             await shows.LibrarySeasonsAsync(title);
             Assert.True(w.Jellyfin.ChildrenCalls > calls);
         }
+
+        private static async Task RunAll(List<(string Key, Func<CancellationToken, Task> Work)> refreshes, CancellationToken ct = default)
+        {
+            (string Key, Func<CancellationToken, Task> Work)[] taken;
+            lock (refreshes) { taken = refreshes.ToArray(); refreshes.Clear(); }
+            foreach (var r in taken) await r.Work(ct);
+        }
+
+        [Fact]
+        public async Task A_sink_that_never_runs_the_work_is_asked_again_after_two_minutes()
+        {
+            var (_, shows, title, clock, refreshes) = await Setup();
+            await shows.LibrarySeasonsAsync(title);
+            clock.Now += TimeSpan.FromSeconds(61);
+            await shows.LibrarySeasonsAsync(title);
+            var first = refreshes.Count;
+            Assert.True(first > 0);
+
+            clock.Now += TimeSpan.FromSeconds(100); // under 2 minutes since the request: still one per key
+            await shows.LibrarySeasonsAsync(title);
+            Assert.Equal(first, refreshes.Count);
+
+            clock.Now += TimeSpan.FromSeconds(30); // over 2 minutes: the lost refresh is given up on
+            await shows.LibrarySeasonsAsync(title);
+            Assert.Equal(first * 2, refreshes.Count);
+        }
+
+        [Fact]
+        public async Task A_hung_refresh_of_seasons_leaves_the_old_answer()
+        {
+            var (w, shows, title, clock, refreshes) = await Setup();
+            var before = await shows.LibrarySeasonsAsync(title);
+            clock.Now += TimeSpan.FromSeconds(61);
+            await shows.LibrarySeasonsAsync(title);
+            w.Jellyfin.HangChildren = true; w.IPlayer.HangChildren = true;
+            await RunAll(refreshes); // times out after 200 ms
+
+            var after = await shows.LibrarySeasonsAsync(title);
+            Assert.Equal(before.Select(x => (x.Number, x.Episodes.Count)), after.Select(x => (x.Number, x.Episodes.Count)));
+            Assert.NotEmpty(refreshes); // still stale: asks for another refresh
+        }
+
+        [Fact]
+        public async Task A_hung_refresh_of_status_leaves_the_old_answer()
+        {
+            var (w, shows, title, clock, refreshes) = await Setup();
+            var before = await shows.DetailsAsync(title, fresh: true);
+            clock.Now += TimeSpan.FromSeconds(61);
+            await shows.DetailsAsync(title with { Key = "again" });
+            w.Seerr.HangStatus = true;
+            await RunAll(refreshes);
+
+            var after = await shows.DetailsAsync(title with { Key = "third" });
+            Assert.Equal(before.Seasons.Select(x => (x.Number, x.State)), after.Seasons.Select(x => (x.Number, x.State)));
+        }
+
+        [Fact]
+        public async Task A_refresh_that_succeeds_replaces_the_answer_and_makes_it_fresh()
+        {
+            var (w, shows, title, clock, refreshes) = await Setup();
+            await shows.LibrarySeasonsAsync(title);
+            clock.Now += TimeSpan.FromSeconds(61);
+            await shows.LibrarySeasonsAsync(title);
+            w.Jellyfin.Children["simp-s2"].Add(CatalogueTests.Item("s2e2", "Another"));
+            await RunAll(refreshes);
+
+            var calls = w.Jellyfin.ChildrenCalls + w.IPlayer.ChildrenCalls;
+            var after = await shows.LibrarySeasonsAsync(title);
+            Assert.Equal(2, after.First(x => x.Number == 2).Episodes.Count);
+            Assert.Equal(calls, w.Jellyfin.ChildrenCalls + w.IPlayer.ChildrenCalls);
+            Assert.Empty(refreshes);
+        }
+
+        [Fact]
+        public async Task A_refresh_that_throws_leaves_the_answer_and_frees_the_key()
+        {
+            var (w, shows, title, clock, refreshes) = await Setup();
+            var before = await shows.DetailsAsync(title, fresh: true);
+            clock.Now += TimeSpan.FromSeconds(61);
+            await shows.DetailsAsync(title with { Key = "again" });
+            w.Seerr.HangStatus = true;
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel(); // a hung call under a cancelled token rethrows the cancellation: the refresh faults
+            await RunAll(refreshes, cancelled.Token);
+
+            var after = await shows.DetailsAsync(title with { Key = "third" });
+            Assert.Equal(before.Seasons.Select(x => (x.Number, x.State)), after.Seasons.Select(x => (x.Number, x.State)));
+            Assert.Contains(refreshes, r => r.Key.StartsWith("tv:", StringComparison.Ordinal)); // the key was freed: a new stale hit asks again
+        }
     }
 }
