@@ -79,15 +79,15 @@ namespace Baird.NewUi
             // The gate is read on a pool thread, so it only sees values sampled on the UI thread once a second (never libmpv or Navigator directly).
             var gateInputs = new WarmGateInputs();
             var sampler = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            sampler.Tick += async (_, _) =>
+            var avSampler = new AvSampler(async () => (await mpv.SampleAvStatsAsync()) is { } st ? (st.VoDrops ?? 0) + (st.DecoderDrops ?? 0) : null,
+                total => gateInputs.Drops = total);   // read on mpv's command thread; skips a tick while one is pending, never throws
+            sampler.Tick += (_, _) =>
             {
                 var playing = playback.Current != null && !playback.IsPaused && !playback.IsLoading;
                 gateInputs.Playing = playing;
-                // Full-screen playback with Home closed: the video is what's on screen (nav.State.AtVideo), nothing else.
-                gateInputs.FullScreen = playing && nav.State.AtVideo && nav.State.Overlay == null;
-                if (!playing || router.ActiveBrowser != null) return;
-                var st = await mpv.SampleAvStatsAsync();   // read on mpv's command thread, safe from here
-                if (st != null) gateInputs.Drops = (st.VoDrops ?? 0) + (st.DecoderDrops ?? 0);
+                // Full-screen playback with Home closed: only the video on screen (no page or overlay over it).
+                gateInputs.FullScreen = WarmGate.IsFullScreenPlayback(playing, nav.State.AtVideo, nav.State.Overlay != null, nav.State.Pages.Count);
+                if (playing && router.ActiveBrowser == null) _ = avSampler.TickAsync();
             };
             sampler.Start();
             _ctx.Work = new WorkQueue(timers, new WarmGate(() => gateInputs.Playing, () => gateInputs.Drops, () => gateInputs.FullScreen, () => DateTimeOffset.Now));

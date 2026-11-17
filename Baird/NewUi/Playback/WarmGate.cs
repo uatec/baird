@@ -30,6 +30,9 @@ namespace Baird.NewUi.Playback
             _now = now;
         }
 
+        /// <summary>True when only the video is on screen: playing, at the video, with no overlay and no page stacked above it (Home open means not at the video).</summary>
+        public static bool IsFullScreenPlayback(bool playing, bool atVideo, bool overlay, int pages) => playing && atVideo && !overlay && pages == 0;
+
         public WarmMode Mode
         {
             get
