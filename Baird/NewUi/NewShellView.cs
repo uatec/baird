@@ -120,6 +120,7 @@ namespace Baird.NewUi
             _saverMinutes = int.TryParse(config["Baird:ScreensaverMinutes"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var sm) && sm >= 0 ? sm : 10;
             playback.SubtitlesDefault = Flag(config["Baird:Subtitles"]);
             var updates = UpdateService.ForThisMachine(config);
+            var system = SystemService.ForThisMachine();
             var sourceStatus = SourceStatusReader.For(services, () => _ctx.Channels.Count, !string.IsNullOrEmpty(config["JELLYSEERR_API_KEY"]), () => DateTimeOffset.Now);
             // Phones: share a link to "Play on Baird" (an iPhone Shortcut) and it plays here. Settings › Connect a phone pairs one.
             var phonesOn = CastServer.Enabled(config);
@@ -132,6 +133,9 @@ namespace Baird.NewUi
                 v => { _ctx.Autoplay = v; IniSettingWriter.Save(IniSettingWriter.DefaultPath, "Baird", "Autoplay", v ? "true" : "false"); },
                 () => sourceStatus.ReadAsync(),
                 About: updates.Current,
+                RestartBaird: () => AppRestarter.ForThisProcess().Restart(),
+                SystemUpdates: () => system.CountUpdatesAsync(),
+                RestartDevice: () => system.Reboot(),
                 GetScreensaverMinutes: () => _saverMinutes,
                 SetScreensaverMinutes: m =>
                 {
