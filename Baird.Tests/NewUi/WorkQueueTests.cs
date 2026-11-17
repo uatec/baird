@@ -15,6 +15,15 @@ namespace Baird.Tests.NewUi
 
         private sealed class Gate : IWarmGate { public WarmMode Mode { get; set; } = WarmMode.Run; }
 
+        private sealed class ThrowingGate : IWarmGate
+        {
+            public int Throws;
+            public int Reads;
+            public WarmMode Mode { get { Reads++; if (Throws > 0) { Throws--; throw new InvalidOperationException("torn down"); } return WarmMode.Run; } }
+        }
+
+        private sealed class ThrowingTimers : ITimers { public IDisposable After(TimeSpan delay, Action action) => throw new InvalidOperationException("no dispatcher"); }
+
         /// <summary>Records each requested delay; the test fires them by hand. No clock, no sleeping.</summary>
         private sealed class RecordingTimers : ITimers
         {
@@ -243,6 +252,94 @@ namespace Baird.Tests.NewUi
             h.Queue.Urgent(h.Job("z"));
             await h.Queue.Idle.WaitAsync(Wait);
             Assert.Empty(h.Ran);
+        }
+
+        [Fact]
+        public async Task A_gate_that_throws_is_treated_as_Slow_and_the_queue_keeps_going()
+        {
+            var gate = new ThrowingGate { Throws = 1 };
+            var timers = new RecordingTimers();
+            using var q = new WorkQueue(timers, gate);
+            var ran = new List<string>();
+            WorkItem J(string k) => new(k, Rank.Page, _ => { lock (ran) ran.Add(k); return Task.CompletedTask; });
+            q.Submit(new[] { J("a"), J("b") });
+            await q.Idle.WaitAsync(Wait); // the throw reads as Slow, but the first job of a busy period has no gap before it
+            Assert.Equal(new[] { "a", "b" }, ran);
+            gate.Throws = 1;
+            q.Submit(new[] { J("c") });
+            await q.Idle.WaitAsync(Wait);
+            Assert.Equal(new[] { "a", "b", "c" }, ran);
+        }
+
+        [Fact]
+        public async Task A_gate_that_throws_once_does_not_leave_the_worker_dead()
+        {
+            var gate = new ThrowingGate { Throws = 1 };
+            using var q = new WorkQueue(new RecordingTimers(), gate);
+            var ran = new List<string>();
+            WorkItem J(string k) => new(k, Rank.Page, _ => { lock (ran) ran.Add(k); return Task.CompletedTask; });
+            q.Submit(new[] { J("a") });
+            await q.Idle.WaitAsync(Wait);
+            q.Submit(new[] { J("b") });
+            await q.Idle.WaitAsync(Wait);
+            Assert.Equal(new[] { "a", "b" }, ran);
+        }
+
+        [Fact]
+        public async Task Timers_that_throw_do_not_kill_the_worker()
+        {
+            var gate = new Gate { Mode = WarmMode.Slow };
+            using var q = new WorkQueue(new ThrowingTimers(), gate);
+            var ran = new List<string>();
+            WorkItem J(string k) => new(k, Rank.Page, _ => { lock (ran) ran.Add(k); return Task.CompletedTask; });
+            q.Submit(new[] { J("a"), J("b") }); // Slow gap cannot be timed: skipped
+            await q.Idle.WaitAsync(Wait);
+            Assert.Equal(new[] { "a", "b" }, ran);
+            // Paused with broken timers falls back to Task.Delay, and urgent work still wakes it at once.
+            gate.Mode = WarmMode.Paused;
+            q.Submit(new[] { J("c") });
+            q.Urgent(J("u"));
+            await Task.Run(async () => { while (true) { lock (ran) if (ran.Contains("u")) return; await Task.Yield(); } }).WaitAsync(Wait);
+            Assert.DoesNotContain("c", ran);
+        }
+
+        [Fact]
+        public async Task A_submit_during_a_Slow_or_Paused_wait_is_not_stranded()
+        {
+            using var h = new Harness();
+            h.Gate.Mode = WarmMode.Slow;
+            h.Queue.Submit(new[] { h.Job("a"), h.Job("b") });
+            await h.Timers.NextRequest();
+            h.Queue.Submit(new[] { h.Job("c") });
+            h.Timers.FireOldest();
+            await h.Timers.NextRequest(); // gap before b
+            h.Timers.FireOldest();
+            await h.Queue.Idle.WaitAsync(Wait);
+            Assert.Equal(new[] { "a", "c", "b" }, h.Ran);
+
+            h.Gate.Mode = WarmMode.Paused;
+            h.Queue.Submit(new[] { h.Job("d") });
+            await h.Timers.NextRequest();
+            h.Queue.Submit(new[] { h.Job("e") });
+            h.Gate.Mode = WarmMode.Run;
+            h.Timers.FireOldest();
+            await h.Queue.Idle.WaitAsync(Wait);
+            Assert.Equal(new[] { "a", "c", "b", "e", "d" }, h.Ran);
+        }
+
+        [Fact]
+        public async Task An_urgent_during_a_Paused_wait_wakes_the_worker_at_once()
+        {
+            using var h = new Harness();
+            h.Gate.Mode = WarmMode.Paused;
+            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            h.Queue.Submit(new[] { h.Job("a") });
+            await h.Timers.NextRequest();
+            h.Queue.Urgent(new WorkItem("u", Rank.Page, _ => { lock (h.Ran) h.Ran.Add("u"); done.SetResult(); return Task.CompletedTask; }));
+            await done.Task.WaitAsync(Wait); // no timer fired
+            Assert.Equal(new[] { "u" }, h.Ran);
+            await h.Timers.NextRequest(); // back to waiting on the pause for "a"
+            Assert.Equal(new[] { "u" }, h.Ran);
         }
     }
 }

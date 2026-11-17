@@ -167,14 +167,55 @@ namespace Baird.NewUi.Adapters
             }
         }
 
-        private async Task Wait(TimeSpan delay, Task wake)
+        private async Task Wait(TimeSpan delay, Task wake, bool paused)
         {
             var fired = New();
-            using var timer = _timers.After(delay, () => fired.TrySetResult());
-            await Task.WhenAny(fired.Task, wake).ConfigureAwait(false);
+            IDisposable? timer = null;
+            try { timer = _timers.After(delay, () => fired.TrySetResult()); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WorkQueue] timer failed: {ex.GetType().Name}: {ex.Message}");
+                // Slow: skip the gap (jobs still run, just unpaced). Paused: fall back to a plain delay so we never spin.
+                if (!paused) return;
+                timer = null;
+                fired = New();
+                _ = Task.Delay(delay).ContinueWith(_ => fired.TrySetResult(), TaskScheduler.Default);
+            }
+            try { await Task.WhenAny(fired.Task, wake).ConfigureAwait(false); }
+            finally { timer?.Dispose(); }
         }
 
+        /// <summary>A throwing gate (e.g. player state torn down at shutdown) is treated as Slow: keep going, unhurried.</summary>
+        private WarmMode ReadGate()
+        {
+            try { return _gate.Mode; }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WorkQueue] gate failed, treating as Slow: {ex.GetType().Name}: {ex.Message}");
+                return WarmMode.Slow;
+            }
+        }
+
+        /// <summary>Last line of defence: if the loop ever dies unexpectedly, free the worker slot and restart it when work is waiting.</summary>
         private async Task Worker()
+        {
+            try { await WorkerLoop().ConfigureAwait(false); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WorkQueue] worker crashed: {ex.GetType().Name}: {ex.Message}");
+                TaskCompletionSource? idle = null;
+                lock (_lock)
+                {
+                    _workerRunning = false;
+                    _runningKey = null;
+                    if (!_disposed && _queue.Count > 0) { _workerRunning = true; _ = Task.Run(Worker); }
+                    else idle = _idle;
+                }
+                idle?.TrySetResult();
+            }
+        }
+
+        private async Task WorkerLoop()
         {
             var ranBefore = false; // a job has run since the queue last went empty
             var gapPaid = false;
@@ -199,9 +240,9 @@ namespace Baird.NewUi.Adapters
 
                 if (!entry.Urgent)
                 {
-                    var mode = _gate.Mode;
-                    if (mode == WarmMode.Paused) { await Wait(PausedRecheck, wake).ConfigureAwait(false); continue; }
-                    if (mode == WarmMode.Slow && ranBefore && !gapPaid) { await Wait(SlowGap, wake).ConfigureAwait(false); gapPaid = true; continue; }
+                    var mode = ReadGate();
+                    if (mode == WarmMode.Paused) { await Wait(PausedRecheck, wake, true).ConfigureAwait(false); continue; }
+                    if (mode == WarmMode.Slow && ranBefore && !gapPaid) { await Wait(SlowGap, wake, false).ConfigureAwait(false); gapPaid = true; continue; }
                 }
 
                 lock (_lock)
