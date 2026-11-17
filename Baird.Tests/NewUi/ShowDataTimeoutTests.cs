@@ -47,5 +47,31 @@ namespace Baird.Tests.NewUi
             var d = await task;
             Assert.Equal(new[] { 1, 2 }, d.Seasons.Where(s => s.Episodes.Any(e => e.State == EpisodeState.Available)).Select(s => s.Number));
         }
+
+        [Fact]
+        public async Task Nothing_by_the_budget_is_an_error()
+        {
+            var w = CatalogueTests.Build();
+            var shows = new ShowData(w.Data, w.Seerr, w.Search, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(200));
+            var r = await w.Search.SearchAsync("simpsons", CatalogueTests.Channels, DateTimeOffset.UtcNow);
+            w.Jellyfin.HangChildren = true; w.IPlayer.HangChildren = true; w.Seerr.HangStatus = true;
+
+            var sw = Stopwatch.StartNew();
+            await Assert.ThrowsAsync<ShowLoadTimeoutException>(() => shows.DetailsAsync(r.Top!.Title!, fresh: true));
+            Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3));
+        }
+
+        [Fact]
+        public async Task Something_by_the_budget_is_returned_not_an_error()
+        {
+            var w = CatalogueTests.Build();
+            var shows = new ShowData(w.Data, w.Seerr, w.Search, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(300));
+            w.Jellyfin.HangSearch = true; w.IPlayer.HangSearch = true;
+            var severance = ShowData.FromCard(new HomeCard(CardKind.Series, "tmdb:tv:95396", "Severance", "2022", null, null, "get", "Seerr", PlayVia.None));
+
+            var d = await shows.DetailsAsync(severance, fresh: true);
+            Assert.False(d.CheckingLibrary);
+            Assert.Equal(new[] { 1, 2 }, d.Seasons.Select(s => s.Number));
+        }
     }
 }

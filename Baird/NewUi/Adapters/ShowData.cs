@@ -10,6 +10,12 @@ using Baird.ViewModels;
 
 namespace Baird.NewUi.Adapters
 {
+    /// <summary>A show page learnt nothing at all within its budget (nothing to show but an error with a retry).</summary>
+    public sealed class ShowLoadTimeoutException : Exception
+    {
+        public ShowLoadTimeoutException(string title) : base($"{title} didn't load in time") { }
+    }
+
     /// <summary>
     /// A show page's data: finds where a title can be watched (the library) and what Seerr knows of it, reads its seasons
     /// and episodes, merges the two (seasons you have, partly have, have requested, or can request), and makes requests.
@@ -85,7 +91,20 @@ namespace Baird.NewUi.Adapters
                 latest = e.Task.IsCompleted ? null : e.Latest;
             }
             if (latest != null) progress?.Invoke(latest);
-            try { return await e.Task.WaitAsync(ct).ConfigureAwait(false); }
+            try
+            {
+                // A hard budget: when it passes, settle for what's been learnt (or fail if nothing has). The work itself carries on
+                // (a retry joins it); only the waiting stops.
+                var waited = e.Task.WaitAsync(ct);
+                using var stop = new CancellationTokenSource();
+                var first = await Task.WhenAny(waited, Task.Delay(Budget, stop.Token)).ConfigureAwait(false);
+                if (first == waited || e.Task.IsCompletedSuccessfully) { stop.Cancel(); return await waited.ConfigureAwait(false); }
+                ShowDetails? known;
+                lock (_cache) known = e.Latest;
+                if (known != null) return known with { CheckingLibrary = false };
+                Console.WriteLine($"[ShowData] {title.Name}: nothing learnt within {Budget.TotalSeconds:0.#} s");
+                throw new ShowLoadTimeoutException(title.Name);
+            }
             finally
             {
                 lock (_cache)

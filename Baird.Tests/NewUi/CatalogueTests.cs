@@ -41,7 +41,9 @@ namespace Baird.Tests.NewUi
             public readonly Dictionary<string, List<MediaItemData>> Children = new();
             public Library(string name) => Name = name;
             public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => i.IsLive).ToList());
-            public Task<IEnumerable<MediaItemData>> SearchAsync(string q, CancellationToken ct = default) =>
+            /// <summary>Make <see cref="SearchAsync"/> never answer (a hung provider).</summary>
+            public bool HangSearch;
+            public Task<IEnumerable<MediaItemData>> SearchAsync(string q, CancellationToken ct = default) => HangSearch ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task :
                 Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => i.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (i.ChannelNumber?.StartsWith(q) ?? false)).ToList());
             /// <summary>Make <see cref="GetChildrenAsync"/> never answer (a hung provider).</summary>
             public bool HangChildren;
