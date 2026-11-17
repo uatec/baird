@@ -130,7 +130,7 @@ namespace Baird.NewUi
                 return title == null ? null : await _ctx.Shows!.FollowingAsync(title, ct);
             };
             _ctx.OpenGuide = (id, at) => GuideScreen.OpenSchedule(_shell!, nav, id, at);
-            _ctx.Prefetch = new Prefetcher(_ctx.Shows, timers);
+            _ctx.Warm = new Warmer(_ctx.Work, _ctx.Shows, timers);
             var guideData = new GuideData(home, services.Epg);
             _ctx.Reminders = new Reminders(Reminders.DefaultPath, () => DateTimeOffset.Now);
             _ctx.SetGuideLayout(string.Equals(config["Baird:GuideLayout"], "columns", StringComparison.OrdinalIgnoreCase) ? Model.GuideLayout.Columns : Model.GuideLayout.Rows, save: false);

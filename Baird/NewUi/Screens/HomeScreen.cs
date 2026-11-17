@@ -52,6 +52,11 @@ namespace Baird.NewUi.Screens
         private bool _overVideo;
         private string? _heroKey;
         private string? _seenPlaying;
+        private IDisposable? _settle;
+        private string? _warmedFor; // the pages last handed to the warmer (cleared when Home is shown again)
+
+        /// <summary>How long Home must go without a key press (or a change to its rows) before what its cards open is warmed.</summary>
+        public static readonly TimeSpan SettleAfter = TimeSpan.FromSeconds(1);
 
         public Control View => _root;
         public Control? LitElement => _lit && _rowList.Count > 0 && _rowList[_pos.Row].Cards.Count > 0 ? _rowList[_pos.Row].Cards[_pos.Col] : null;
@@ -269,6 +274,7 @@ namespace Baird.NewUi.Screens
             }).ToList();
             _rows.Children.Clear();
             foreach (var r in _rowList) _rows.Children.Add(r.View);
+            Unsettled();
             _pos = (Math.Min(oldPos.Row, Math.Max(0, _rowList.Count - 1)), 0);
             if (litId != null)
             {
@@ -308,7 +314,7 @@ namespace Baird.NewUi.Screens
                 }
                 ((TextBlock)((StackPanel)r.View).Children[0]).Foreground = _lit && i == _pos.Row ? T.Text : T.Text2;
             }
-            _ctx.Prefetch?.Lit((LitElement as Card)?.Data); // a series' page gets ready while its card is lit
+            _ctx.Warm?.Lit((LitElement as Card)?.Data); // a series' page gets ready while its card is lit
             RenderHero();
         }
 
@@ -366,6 +372,7 @@ namespace Baird.NewUi.Screens
 
         public bool OnAction(UiAction a, bool repeat)
         {
+            Unsettled();
             if (_rowList.Count == 0) return a != UiAction.Up && a != UiAction.Back && InputMap.DigitOf(a) == null; // digits are channel numbers: not ours to swallow
             switch (a)
             {
@@ -384,6 +391,7 @@ namespace Baird.NewUi.Screens
                     Layout();
                     return true;
                 case UiAction.Ok or UiAction.PlayPause:
+                    _ctx.Warm?.From(Warmer.TitlesOf(_rowList[_pos.Row].Cards.Select(c => c.Data))); // the page it opens has the row beside it
                     _ctx.Activate(_rowList[_pos.Row].Cards[_pos.Col].Data);
                     return true;
                 case UiAction.HoldOk:
@@ -408,6 +416,31 @@ namespace Baird.NewUi.Screens
             }
             _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync(); _ = RefreshDownloadsAsync(); _ = RefreshServiceRowsAsync();
             Layout();
+            _warmedFor = null; // shown again (back from a page): a new batch, so what's forward of the viewer is warmed first
+            Unsettled();
+        }
+
+        /// <summary>A key press or new rows: (re)start the wait for Home to settle.</summary>
+        private void Unsettled()
+        {
+            _settle?.Dispose();
+            _settle = _ctx.Warm == null ? null : _ctx.Timers.After(SettleAfter, Settled);
+        }
+
+        /// <summary>
+        /// Home has settled: warm the pages its cards open, in row order (one hop; channels and cards that play are skipped). Only while
+        /// Home is what's on screen, and only when those pages changed or Home was shown again.
+        /// </summary>
+        private void Settled()
+        {
+            _settle = null;
+            var st = _ctx.Nav.State;
+            if (_ctx.Warm is not { } warm || st.Place != Place.Home || st.Pages.Count > 0 || (st.Video != null && st.AtVideo)) return;
+            var pages = Warmer.TitlesOf(CurrentRows().SelectMany(r => r.Cards));
+            var signature = string.Join("\n", pages.Select(t => t.Key));
+            if (pages.Count == 0 || signature == _warmedFor) return;
+            _warmedFor = signature;
+            warm.PageOpened("home", pages, Array.Empty<CatalogueTitle>());
         }
         public void OnFocusIn() { _lit = true; Layout(); }
         public void OnFocusOut() { _lit = false; Layout(); }

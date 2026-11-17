@@ -269,7 +269,13 @@ namespace Baird.NewUi.Screens
                 var r = await _ctx.Search.SearchAsync(q, _ctx.Channels, _ctx.Now(),
                     partial => OnUi(() => { if (!cts.IsCancellationRequested && _query.Trim() == q) { _pending = partial.Pending; DrawField(); } }), cts.Token);
                 if (cts.IsCancellationRequested) return;
-                OnUi(() => { if (!cts.IsCancellationRequested && _query.Trim() == q) { _searching = false; _pending = Array.Empty<string>(); Show(r); DrawField(); } });
+                OnUi(() =>
+                {
+                    if (cts.IsCancellationRequested || _query.Trim() != q) return;
+                    _searching = false; _pending = Array.Empty<string>(); Show(r); DrawField();
+                    // The results have settled: warm the pages they open (one hop).
+                    _ctx.Warm?.PageOpened("search", Warmer.TitlesOf(_rows.SelectMany(row => row.Hits).Select(h => h.Card)), Array.Empty<CatalogueTitle>());
+                });
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
@@ -493,7 +499,7 @@ namespace Baird.NewUi.Screens
             _scroll = y;
             _inner.RenderTransform = TransformOperations.Parse($"translate(0px, {y}px)");
             // The lit result's page gets ready while it's lit (artwork too), so opening it draws at once.
-            _ctx.Prefetch?.Lit(_zone == Zone.Results && _rows.Count > 0 ? _rows[_pos.Row].Hits[_pos.Col].Card : null);
+            _ctx.Warm?.Lit(_zone == Zone.Results && _rows.Count > 0 ? _rows[_pos.Row].Hits[_pos.Col].Card : null);
         }
 
         // ------------------------------------------------------------------ keys

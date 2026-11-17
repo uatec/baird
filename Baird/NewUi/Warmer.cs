@@ -121,6 +121,7 @@ namespace Baird.NewUi
             var self = d.Title;
             IReadOnlyList<CatalogueTitle> row;
             lock (_lock) { row = _from ?? Array.Empty<CatalogueTitle>(); _from = null; }
+            _litSeason = null; // a page (re)opened: its season tabs are new to the viewer again
             var siblings = row.Any(t => t.Key == self.Key) ? row.Where(t => t.Key != self.Key).ToList() : new List<CatalogueTitle>();
             var batch = new List<WorkItem> { TitleJob(self, Rank.Page, d) };
             batch.AddRange(SeasonOrder(d).Select(i => SeasonJob(self, d.Seasons[i].Number, Rank.Child)));

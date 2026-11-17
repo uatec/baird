@@ -4,11 +4,19 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Headless.XUnit;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Avalonia.Threading;
 using Baird.Models;
 using Baird.NewUi;
 using Baird.NewUi.Adapters;
+using Baird.NewUi.Controls;
+using Baird.NewUi.Core;
 using Baird.NewUi.Model;
 using Baird.NewUi.Playback;
+using Baird.NewUi.Screens;
 using Baird.Services;
 using Xunit;
 
@@ -39,7 +47,7 @@ namespace Baird.Tests.NewUi
             public readonly CatalogueTests.World W = CatalogueTests.Build();
             public readonly ShowDataStoreTests.MemStore Store = new();
             public readonly Clock Clock = new();
-            public readonly PlaybackControllerTests.FakeTimers Timers = new();
+            public readonly PlaybackControllerTests.FakeTimers Timers;
             public readonly WorkQueue Queue = new(new NoTimers(), new Gate());
             public readonly ShowData Shows;
             public readonly Warmer Warmer;
@@ -48,8 +56,9 @@ namespace Baird.Tests.NewUi
             public int SeasonCalls;
             private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            public Rig()
+            public Rig(PlaybackControllerTests.FakeTimers? timers = null)
             {
+                Timers = timers ?? new();
                 Shows = new ShowData(W.Data, W.Seerr, W.Search, TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(3), () => Clock.Now, Store) { RefreshSink = (_, _) => { } };
                 W.Seerr.OnSeasonEntered = () => Interlocked.Increment(ref SeasonCalls);
                 Warmer = new Warmer(Queue, Shows, Timers, url => { lock (_warmed) _warmed.Add(url); return Task.CompletedTask; });
@@ -152,7 +161,7 @@ namespace Baird.Tests.NewUi
         public async Task A_show_page_warms_the_next_episode_season_first_then_nearest_outward()
         {
             var (rig, d) = await PartlyWatchedSimpsons();
-            using var _ = rig;
+            using var cleanup = rig;
             Assert.Equal(new[] { 1, 2, 0, 3 }, Warmer.SeasonOrder(d)); // indexes: season 2, then 3 and 1 (later first on a tie), then 4
 
             await rig.Block();
@@ -238,7 +247,7 @@ namespace Baird.Tests.NewUi
 
             // A season already named isn't urgent: only its neighbours are warmed.
             var (rig2, simpsons) = await PartlyWatchedSimpsons();
-            using var __ = rig2;
+            using var cleanup2 = rig2;
             rig2.Warmer.Season(simpsons, 0);
             await rig2.Queue.Idle.WaitAsync(Wait);
             Assert.Equal(new[] { (Warmer.KeyOf(simpsons.Title, 2), Rank.Child, false) }, rig2.Queued);
@@ -248,7 +257,7 @@ namespace Baird.Tests.NewUi
         public async Task No_stream_resolution_is_ever_queued()
         {
             var (rig, d) = await PartlyWatchedSimpsons();
-            using var _ = rig;
+            using var cleanup = rig;
             var cards = new[] { Episode("s2e1"), Channel("ch1"), CatalogueSearch.CardOf(d.Title), FromSeerr("tmdb:tv:95396"), CatalogueSearch.CardOf(await Find(rig.W, "alien")) };
             var network = rig.Network();
 
@@ -350,6 +359,138 @@ namespace Baird.Tests.NewUi
             rig.Warmer.Season(d, 0);
             await rig.Queue.Idle.WaitAsync(Wait);
             Assert.Equal(new[] { "http://img/s2e1" }, rig.Warmed);
+        }
+
+        // ------------------------------------------------------------------ the screens hand their pages to the warmer
+
+        /// <summary>A screen context whose show data, search and warmer are the rig's (the warmer's dwell on the context's fake timers).</summary>
+        private static (HomeScreenTests.Rig Screen, Rig Rig) Screens()
+        {
+            var screen = HomeScreenTests.Context();
+            var rig = new Rig(screen.Timers);
+            screen.Ctx.Search = rig.W.Search; screen.Ctx.Shows = rig.Shows; screen.Ctx.Channels = CatalogueTests.Channels; screen.Ctx.Timers = screen.Timers;
+            screen.Ctx.Warm = rig.Warmer;
+            return (screen, rig);
+        }
+
+        [AvaloniaFact]
+        public async Task Home_warms_its_pages_once_it_settles_and_again_when_shown_again()
+        {
+            var (screen, rig) = Screens();
+            using var cleanup = rig;
+            var home = new HomeScreen(screen.Ctx);
+            await home.LoadAsync();
+            Dispatcher.UIThread.RunJobs();
+            home.Build(new (string, string, CardShape, IReadOnlyList<HomeCard>)[]
+            {
+                ("Continue watching", "Continue watching", CardShape.Wide, new[] { Episode("resume-ep"), Series("cw-show") }),
+                ("On now", "On now", CardShape.Wide, new[] { Channel("ch1") }),
+                ("Downloads", "Downloads", CardShape.Poster, new[] { FromSeerr("tmdb:tv:2"), FromSeerr("tmdb:tv:3") }),
+            });
+            var expected = Warmer.TitlesOf(home.CurrentRows().SelectMany(r => r.Cards)).Select(t => Warmer.KeyOf(t)).ToList();
+            Assert.Equal(new[] { "show:Series:cw-show", "show:tmdb:tv:2", "show:tmdb:tv:3" }, expected);
+
+            screen.Timers.Advance(TimeSpan.FromMilliseconds(900));
+            Assert.Empty(rig.Queued);
+            home.OnAction(UiAction.Right, false); // a key: not settled yet
+            screen.Timers.Advance(TimeSpan.FromMilliseconds(900));
+            Assert.DoesNotContain(rig.Queued, q => !q.Urgent);
+            screen.Timers.Advance(TimeSpan.FromMilliseconds(200));
+            Assert.Equal(expected, rig.Queued.Where(q => !q.Urgent).Select(q => q.Key));
+
+            home.OnAction(UiAction.Left, false);
+            screen.Timers.Advance(TimeSpan.FromSeconds(2));
+            Assert.Equal(3, rig.Queued.Count(q => !q.Urgent)); // the same Home, settled again: nothing new to ask
+
+            home.OnShow(); // back on Home: a new batch, so what's forward of the viewer runs first
+            screen.Timers.Advance(TimeSpan.FromSeconds(1));
+            Assert.Equal(expected.Concat(expected), rig.Queued.Where(q => !q.Urgent).Select(q => q.Key));
+
+            // OK on a card: the page it opens has the rest of its row as siblings.
+            home.OnAction(UiAction.Down, false); home.OnAction(UiAction.Down, false); // Downloads, first card
+            home.OnAction(UiAction.Ok, false);
+            var opened = ShowData.FromCard(FromSeerr("tmdb:tv:2"));
+            rig.KeepFresh(opened, 1);
+            rig.Warmer.ShowPageOpened(rig.Shows.Stored(opened)!);
+            Assert.Equal(("show:tmdb:tv:3", Rank.Sibling, false), rig.Queued[^1]);
+            await rig.Queue.Idle.WaitAsync(Wait);
+        }
+
+        [AvaloniaFact]
+        public async Task A_show_page_warms_its_seasons_once_it_has_loaded_and_its_season_tabs()
+        {
+            var (screen, rig) = Screens();
+            using var cleanup = rig;
+            var title = await Find(rig.W, "simpsons");
+            var page = new ShowPage(screen.Ctx, title);
+            await page.Loaded;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(new[] { Warmer.KeyOf(title) }.Concat(new[] { 1, 2, 3, 4 }.Select(n => Warmer.KeyOf(title, n))), rig.Keys);
+
+            page.OnAction(UiAction.Down, false); // onto the season tabs: season 1's neighbours follow
+            Assert.Equal(Warmer.KeyOf(title, 2), rig.Keys[^1]);
+            await rig.Queue.Idle.WaitAsync(Wait);
+        }
+
+        [AvaloniaFact]
+        public async Task Search_warms_its_result_pages_and_hands_the_lit_card_to_the_warmer()
+        {
+            var (screen, rig) = Screens();
+            using var cleanup = rig;
+            var s = new SearchScreen(screen.Ctx);
+            s.SetQuery("simpsons");
+            await s.RunAsync();
+            Dispatcher.UIThread.RunJobs();
+            var pages = Warmer.TitlesOf(s.ResultRows.SelectMany(r => r).Select(h => h.Card)).Select(t => Warmer.KeyOf(t)).ToList();
+            Assert.NotEmpty(pages);
+            Assert.Equal(pages, rig.Queued.Where(q => !q.Urgent).Select(q => q.Key));
+
+            for (var i = 0; i < 12; i++) s.OnAction(UiAction.Right, false);
+            screen.Timers.Advance(Warmer.Delay);
+            await rig.Queue.Idle.WaitAsync(Wait);
+            Assert.Contains(rig.Queued, q => q.Urgent && q.Key == Warmer.KeyOf(s.ResultRows[0][0].Title!));
+            Assert.True(rig.Store.TryGet(s.ResultRows[0][0].Title!.Key, out _));
+        }
+
+        // ------------------------------------------------------------------ what the page shares with the warming (from the old prefetcher)
+
+        [Fact]
+        public async Task The_page_uses_what_was_learnt_and_asks_again_only_when_told()
+        {
+            var w = CatalogueTests.Build();
+            var title = await Find(w, "simpsons");
+            var first = await w.Shows.DetailsAsync(title);
+            Assert.Same(first, await w.Shows.DetailsAsync(title));
+            Assert.NotSame(first, await w.Shows.DetailsAsync(title, fresh: true)); // after a request, or polling a download
+        }
+
+        [Fact]
+        public async Task A_page_opened_while_a_warm_runs_joins_it_and_sees_what_is_known_so_far()
+        {
+            var (search, shows, jf, _) = CatalogueTests.Slow();
+            var loki = ShowData.FromCard(new HomeCard(CardKind.Series, "tmdb:tv:84958", "Loki", "2021", null, null, null, "Seerr", PlayVia.None));
+            using var warmCts = new CancellationTokenSource();
+            var warm = shows.DetailsAsync(loki, null, warmCts.Token);
+            await Task.Delay(150);
+            var seen = new List<ShowDetails>();
+            var page = shows.DetailsAsync(loki, d => { lock (seen) seen.Add(d); });
+            lock (seen) Assert.True(seen.Single().CheckingLibrary); // at once: Seerr's view, still checking the library
+            warmCts.Cancel(); // the warm moves on; the page still wants it, so it carries on
+            jf.Gate.SetResult();
+            var d = await page;
+            Assert.Equal("Play S1 E1", d.Next!.Value.Label);
+            Assert.Equal(1, jf.Searches);
+        }
+
+        [AvaloniaFact]
+        public void Warmed_artwork_is_drawn_at_once_with_no_fade()
+        {
+            ImageCache.Clear();
+            var bmp = new WriteableBitmap(new PixelSize(16, 9), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+            ImageCache.Put("http://img/ready", bmp);
+            var art = new ArtImage("http://img/ready");
+            Assert.Same(bmp, art.Main.Source);
+            Assert.Equal(1, art.Opacity);
         }
     }
 }

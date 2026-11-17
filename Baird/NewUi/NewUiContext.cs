@@ -80,8 +80,8 @@ namespace Baird.NewUi
         public Adapters.WorkQueue? Work { get; set; }
         /// <summary>Show metadata kept between runs (null until wired). Not used by <see cref="Shows"/> yet.</summary>
         public Adapters.IShowStore? ShowStore { get; set; }
-        /// <summary>Prepares the show page of the lit card (null: nothing is prepared).</summary>
-        public Prefetcher? Prefetch { get; set; }
+        /// <summary>Warms what each page links to, one hop, through <see cref="Work"/> (null: nothing is warmed).</summary>
+        public Warmer? Warm { get; set; }
         public ITimers Timers { get; set; } = new DispatcherTimers();
         /// <summary>The viewer's reminders (in memory unless the composition root gives it a file).</summary>
         public Reminders Reminders { get; set; }

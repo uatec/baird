@@ -502,7 +502,7 @@ namespace Baird.NewUi.Adapters
             var library = await LibrarySeasonsAsync(t, ct, fresh, outcome).ConfigureAwait(false);
             var details = new ShowDetails(t, Merge(library, status, t.Best?.Service, seasonDetails), CheckingLibrary: checking);
             // Seerr names the episodes the library lacks: ask for the season the page opens on (bounded, so a hung Seerr can't stall it).
-            var i = Prefetcher.OpeningSeason(details);
+            var i = Warmer.OpeningSeason(details);
             if (i < 0 || _seerr == null || t.Seerr == null) return details;
             var number = details.Seasons[i].Number;
             if (!seasonDetails.TryGetValue(number, out var season))

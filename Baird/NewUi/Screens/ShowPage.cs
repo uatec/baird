@@ -36,6 +36,7 @@ namespace Baird.NewUi.Screens
 
         private readonly NewUiContext _ctx;
         private CatalogueTitle _title;
+        private bool _warmed;
         private ShowDetails? _details;
         private readonly Panel _root = new() { Background = Brushes.Black };
         private readonly Panel _art = new();
@@ -144,7 +145,14 @@ namespace Baird.NewUi.Screens
             {
                 // What Seerr knows shows at once; each library source that has it fills in as it answers.
                 var d = await _ctx.Shows.DetailsAsync(_title, partial => OnUi(() => Apply(partial)), _life.Token, fresh);
-                OnUi(() => Apply(d));
+                OnUi(() =>
+                {
+                    Apply(d);
+                    // Loaded: warm its seasons (the opening one first) and the pages beside it, once.
+                    if (_warmed || _life.IsCancellationRequested) return;
+                    _warmed = true;
+                    _ctx.Warm?.ShowPageOpened(d);
+                });
             }
             catch (OperationCanceledException) { }
             catch (Adapters.ShowLoadTimeoutException)
@@ -476,7 +484,7 @@ namespace Baird.NewUi.Screens
             _epTrack.RenderTransform = TransformOperations.Parse($"translate({-Math.Max(0, col - 1) * EpStep}px, 0px)");
             // The lit item is always wholly on screen: the episodes lift the page up.
             _content.RenderTransform = TransformOperations.Parse($"translate(0px, {(onEps ? -150 : 0)}px)");
-            if (_rows[_pos.Row] == RowKind.Seasons && _details != null) _ctx.Prefetch?.Season(_details, _season); // the seasons either side
+            if (_rows[_pos.Row] == RowKind.Seasons && _details != null) _ctx.Warm?.Season(_details, _season); // this season if it isn't loaded, then those either side
             if (onEps) LoadMore();
         }
 
