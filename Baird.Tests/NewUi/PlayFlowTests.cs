@@ -115,6 +115,17 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void Ok_on_the_video_pauses_at_once_and_shows_the_bar_and_ok_again_plays()
+        {
+            var (keys, rig) = Watching(Bbc1);
+            keys.OnAction(UiAction.Ok, false);
+            Assert.True(rig.Ctx.Playback.IsPaused);
+            Assert.Equal("info", rig.Ctx.Nav.State.Overlay!.Name);
+            keys.OnAction(UiAction.Ok, false);
+            Assert.False(rig.Ctx.Playback.IsPaused);
+        }
+
+        [Fact]
         public void Ok_on_the_video_opens_the_info_bar_and_back_returns_to_where_you_came_from()
         {
             var (keys, rig) = Watching(Bbc1);
