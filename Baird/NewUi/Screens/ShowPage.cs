@@ -59,6 +59,15 @@ namespace Baird.NewUi.Screens
         private string? _focusId; // the episode to land on (from "Open the series" on an episode)
         private bool _loadingMore;
         private (Channel Channel, Programme Programme)? _onTv;
+        private string? _failure;
+        private readonly Avalonia.Labs.Lottie.Lottie _spinner = new(new Uri("avares://Baird/")) { RepeatCount = -1, AutoPlay = true, Stretch = Stretch.Uniform, Width = 90, Height = 90, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 24, 0, 0) };
+        private bool _spinnerLoaded;
+        public const string SpinnerAsset = "avares://Baird/Assets/Lottie/loading-ring.json";
+        public const string FailureText = "Couldn't load this page. Press OK to try again.";
+        /// <summary>Nothing is known of the show yet and nothing has failed: the page shows its spinner.</summary>
+        public bool IsLoading => _details == null && _failure == null && _ctx.Shows != null;
+        /// <summary>Set when the page learnt nothing in time: OK tries again.</summary>
+        public string? FailureMessage => _failure;
         private bool Checking => _details?.CheckingLibrary == true && _title.Sources.Count == 0;
 
         public Control View => _root;
@@ -129,6 +138,7 @@ namespace Baird.NewUi.Screens
         private async Task LoadAsync(bool fresh = false)
         {
             if (_ctx.Shows == null) return;
+            if (fresh && _details == null) OnUi(() => { _failure = null; RenderBody(); });
             try
             {
                 // What Seerr knows shows at once; each library source that has it fills in as it answers.
@@ -136,11 +146,23 @@ namespace Baird.NewUi.Screens
                 OnUi(() => Apply(d));
             }
             catch (OperationCanceledException) { }
+            catch (Adapters.ShowLoadTimeoutException)
+            {
+                // Nothing at all in time: say so, and let OK try again (what's already on the page stays if there is any).
+                OnUi(() => { if (_details != null) return; _failure = FailureText; RenderBody(); });
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"[ShowPage] {_title.Name} failed to load: {ex.Message}");
                 OnUi(() => { _details = new ShowDetails(_title, Array.Empty<Season>()); Rebuild(); });
             }
+        }
+
+        private void Retry()
+        {
+            _failure = null;
+            RenderBody();
+            Loaded = LoadAsync(fresh: true);
         }
 
         private static void OnUi(Action a) { if (Dispatcher.UIThread.CheckAccess()) a(); else Dispatcher.UIThread.Post(a); }
@@ -151,7 +173,7 @@ namespace Baird.NewUi.Screens
             // Choose where to open until the viewer moves (more of the show may arrive as the library answers).
             var first = !_moved;
             if (d.Title.ImageUrl != _title.ImageUrl) SetArt(d.Title.ImageUrl);
-            _details = d; _title = d.Title;
+            _details = d; _title = d.Title; _failure = null;
             if (first && d.Seasons.Count > 0)
             {
                 // Open on the season of the next episode, else the first season with something to watch.
@@ -205,8 +227,21 @@ namespace Baird.NewUi.Screens
                     : t.Kind == TitleKind.Episode ? "Episode" : t.Best?.Duration is { TotalMinutes: > 0 } dur ? $"Film · {(int)dur.TotalHours} h {dur.Minutes} min" : "Film",
             }.Where(x => x != null));
             _body.Children.Add(new TextBlock { Text = meta, FontSize = T.Body, FontWeight = FontWeight.SemiBold, Foreground = T.Text2 });
+            if (_details == null && _failure == null && _ctx.Shows != null)
+            {
+                // Cold: the card's own title, art and synopsis, with a spinner where the answer will be.
+                if (!_spinnerLoaded)
+                {
+                    _spinnerLoaded = true;
+                    try { _spinner.Path = SpinnerAsset; }
+                    catch (Exception ex) { Console.WriteLine($"[ShowPage] The spinner couldn't load: {ex.Message}"); }
+                }
+                _body.Children.Add(_spinner);
+            }
+            else if (_failure != null)
+                _body.Children.Add(new TextBlock { Text = _failure, FontSize = T.Body, FontWeight = FontWeight.SemiBold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, MaxWidth = 940, Margin = new Thickness(0, 24, 0, 0) });
             var where = _details?.Summary ?? (t.Sources.Count == 0 && t.Kind != TitleKind.Episode ? ShowDetails.Checking : t.Where);
-            _body.Children.Add(new StackPanel
+            if (_details != null || (_failure == null && _ctx.Shows == null)) _body.Children.Add(new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 14,
@@ -217,7 +252,7 @@ namespace Baird.NewUi.Screens
                 _body.Children.Add(new TextBlock { Text = syn, FontSize = 27, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.WordEllipsis, MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 16, 0, 0) });
 
             _buttonEls = _details == null
-                ? new() { new PillButton("Loading…", null, false) }
+                ? new()
                 : _buttons.Select(b => new PillButton(b.Label, b.Icon, b.Primary)).ToList();
             _buttonsRow.Children.Clear();
             foreach (var b in _buttonEls) _buttonsRow.Children.Add(b);
@@ -485,7 +520,11 @@ namespace Baird.NewUi.Screens
 
         public bool OnAction(UiAction a, bool repeat)
         {
-            if (_details == null) return a is not (UiAction.Back or UiAction.Up) && InputMap.DigitOf(a) == null; // digits are channel numbers: not ours to swallow
+            if (_details == null)
+            {
+                if (_failure != null && a is UiAction.Ok or UiAction.PlayPause) { Retry(); return true; }
+                return a is not (UiAction.Back or UiAction.Up) && InputMap.DigitOf(a) == null; // digits are channel numbers: not ours to swallow
+            }
             switch (a)
             {
                 case UiAction.Up when _pos.Row == 0: return false;
@@ -616,7 +655,7 @@ namespace Baird.NewUi.Screens
             CornerRadius = new CornerRadius(18); Padding = new Thickness(22, 8);
             RenderTransformOrigin = RelativePoint.Center;
             _name = new TextBlock { Text = s.Label, FontSize = 24, FontWeight = FontWeight.SemiBold };
-            _state = new TextBlock { Text = checking && s.State == SeasonState.Missing ? "Checking…" : s.StateLabel, FontSize = 18, FontWeight = FontWeight.SemiBold };
+            _state = new TextBlock { Text = checking && s.State == SeasonState.Missing ? ShowDetails.Checking : s.StateLabel, FontSize = 18, FontWeight = FontWeight.SemiBold };
             Child = new StackPanel { Children = { _name, _state } };
             Motion.Animate(this, T.Fast);
             Paint();

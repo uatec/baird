@@ -85,7 +85,7 @@ namespace Baird.NewUi.Model
     public sealed record ShowDetails(CatalogueTitle Title, IReadOnlyList<Season> Seasons, SeasonState FilmState = SeasonState.Missing, double? FilmDownload = null,
         bool CheckingLibrary = false)
     {
-        public const string Checking = "Checking your library…";
+        public const string Checking = "–";
 
         public IEnumerable<int> MissingSeasons => Seasons.Where(s => s.State == SeasonState.Missing).Select(s => s.Number);
 

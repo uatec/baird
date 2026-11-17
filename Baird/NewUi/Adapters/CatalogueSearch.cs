@@ -152,21 +152,8 @@ namespace Baird.NewUi.Adapters
             new(CardKind.Channel, c.Id, $"{c.Number}  {c.Name}", p?.Title, c.LogoUrl, p?.ProgressAt(now), "live", "TV", PlayVia.Mpv, c.StreamUrl, Channel: c, Programme: p, Synopsis: p?.Synopsis);
 
         // ------------------------------------------------------------------ asking each source
-        private async Task<T> Within<T>(Func<CancellationToken, Task<T>> call, T fallback, string what, CancellationToken ct)
-        {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            try
-            {
-                var task = call(cts.Token);
-                var done = await Task.WhenAny(task, Task.Delay(_timeout, cts.Token)).ConfigureAwait(false);
-                if (done == task) return await task.ConfigureAwait(false);
-                Console.WriteLine($"[CatalogueSearch] {what} didn't answer within {_timeout.TotalSeconds:0} s");
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-            catch (Exception ex) { Console.WriteLine($"[CatalogueSearch] {what} failed: {ex.Message}"); }
-            finally { cts.Cancel(); }
-            return fallback;
-        }
+        private Task<T> Within<T>(Func<CancellationToken, Task<T>> call, T fallback, string what, CancellationToken ct) =>
+            Deadline.Within(call, fallback, _timeout, $"[CatalogueSearch] {what}", ct);
 
         /// <summary>One provider's search, shared by everyone asking the same thing (the show page reuses the search
         /// screen's), kept for a couple of minutes, and stopped when nobody is waiting for it any more.</summary>
@@ -263,7 +250,7 @@ namespace Baird.NewUi.Adapters
         /// <summary>
         /// Search everything, reporting results as each source answers (<paramref name="progress"/>, in order, from any
         /// thread): Seerr, the guide and fast providers first, slow ones as they come. Until every library source has
-        /// answered or timed out, a title with nothing to play says "Checking your library…". Returns the final results.
+        /// answered or timed out, a title with nothing to play shows "–". Returns the final results.
         /// </summary>
         public async Task<SearchResults> SearchAsync(string query, IReadOnlyList<Channel> channels, DateTimeOffset now, Action<SearchResults>? progress = null, CancellationToken ct = default)
         {

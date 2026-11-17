@@ -236,6 +236,40 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task The_page_shows_a_spinner_then_an_error_with_retry()
+        {
+            var rig = Build();
+            var w = rig.World;
+            var r = await w.Search.SearchAsync("simpsons", CatalogueTests.Channels, DateTimeOffset.UtcNow);
+            rig.Ctx.Shows = new Baird.NewUi.Adapters.ShowData(w.Data, w.Seerr, w.Search, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(200));
+            w.Jellyfin.HangChildren = true; w.IPlayer.HangChildren = true; w.Seerr.HangStatus = true;
+
+            var page = new ShowPage(rig.Ctx, r.Top!.Title!);
+            Show(page.View);
+            // At 0 s: the spinner, over the card's own title; no error yet; nothing to move through.
+            Assert.True(page.IsLoading);
+            Assert.Null(page.FailureMessage);
+            Assert.Null(page.Details);
+
+            await page.Loaded;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(page.IsLoading);
+            Assert.Equal("Couldn't load this page. Press OK to try again.", page.FailureMessage);
+            Assert.Null(page.Details);
+
+            // OK tries again, fresh, and this time everything answers.
+            w.Jellyfin.HangChildren = false; w.IPlayer.HangChildren = false; w.Seerr.HangStatus = false;
+            Assert.True(page.OnAction(UiAction.Ok, false));
+            Assert.True(page.IsLoading);
+            Assert.Null(page.FailureMessage);
+            await page.Loaded;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(page.IsLoading);
+            Assert.NotNull(page.Details);
+            Assert.NotEmpty(page.Details!.Seasons);
+        }
+
+        [AvaloniaFact]
         public async Task Opening_the_series_from_an_episode_lands_on_its_season_and_episode()
         {
             var (first, rig) = await Simpsons();
@@ -420,13 +454,38 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task Unknown_availability_reads_as_a_dash_with_no_words()
+        {
+            var (rig, jf) = SlowRig();
+            var title = Baird.NewUi.Adapters.ShowData.FromCard(new HomeCard(CardKind.Series, "tmdb:tv:84958", "Loki", "2021", null, null, null, "Seerr", PlayVia.None));
+            var seen = new List<ShowDetails>();
+            var run = rig.Ctx.Shows.DetailsAsync(title, d => { lock (seen) seen.Add(d); });
+            await Until(() => { lock (seen) return seen.Count > 0; });
+            ShowDetails first;
+            lock (seen) first = seen.First();
+            Assert.Equal("–", first.Summary);
+            Assert.Equal("–", ShowDetails.Checking);
+            jf.Gate.SetResult();
+            await run;
+        }
+
+        [AvaloniaFact]
+        public void A_missing_season_reads_as_a_dash_not_words_while_the_library_is_checking()
+        {
+            var season = new Season(1, "Season 1", SeasonState.Missing, null, Array.Empty<Episode>());
+            var tab = new SeasonTab(season, checking: true);
+            var state = (TextBlock)((StackPanel)tab.Child!).Children[1];
+            Assert.Equal("–", state.Text);
+        }
+
+        [AvaloniaFact]
         public async Task A_show_page_opened_while_the_library_is_checking_says_so_then_offers_play()
         {
             var (rig, jf) = SlowRig();
             var page = new ShowPage(rig.Ctx, ShowDataFor("tmdb:tv:84958", "Loki", "", CardKind.Series));
             Show(page.View);
             await Until(() => page.Details != null);
-            Assert.Equal(new[] { "Checking your library…" }, page.ButtonLabels);
+            Assert.Equal(new[] { "–" }, page.ButtonLabels);
             jf.Gate.SetResult();
             await page.Loaded;
             Dispatcher.UIThread.RunJobs();

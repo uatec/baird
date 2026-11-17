@@ -41,9 +41,14 @@ namespace Baird.Tests.NewUi
             public readonly Dictionary<string, List<MediaItemData>> Children = new();
             public Library(string name) => Name = name;
             public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => i.IsLive).ToList());
-            public Task<IEnumerable<MediaItemData>> SearchAsync(string q, CancellationToken ct = default) =>
+            /// <summary>Make <see cref="SearchAsync"/> never answer (a hung provider).</summary>
+            public bool HangSearch;
+            public Task<IEnumerable<MediaItemData>> SearchAsync(string q, CancellationToken ct = default) => HangSearch ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task :
                 Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => i.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (i.ChannelNumber?.StartsWith(q) ?? false)).ToList());
-            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Task.FromResult<IEnumerable<MediaItemData>>(Children.TryGetValue(id, out var c) ? c : new List<MediaItemData>());
+            /// <summary>Make <see cref="GetChildrenAsync"/> never answer (a hung provider).</summary>
+            public bool HangChildren;
+            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => HangChildren ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task
+                : Task.FromResult<IEnumerable<MediaItemData>>(Children.TryGetValue(id, out var c) ? c : new List<MediaItemData>());
             public Task<MediaItemData?> GetItemAsync(string id) => Task.FromResult(Items.Concat(Children.Values.SelectMany(c => c)).FirstOrDefault(i => i.Id == id));
         }
 
@@ -80,9 +85,11 @@ namespace Baird.Tests.NewUi
                 Task.FromResult<IEnumerable<JellyseerrSearchResult>>(Results.Where(r => r.Title.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList());
             public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrSearchResult>>(Results);
             public Task<JellyseerrRequestResponse> CreateRequestAsync(int id, string t, CancellationToken ct = default) => RequestSeasonsAsync(id, t, null, ct);
+            /// <summary>Make <see cref="GetMediaStatusAsync"/> never answer (a hung Seerr).</summary>
+            public bool HangStatus;
             public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrRequest>>(Asked);
             public Task<JellyseerrMediaStatus?> GetMediaStatusAsync(int tmdbId, string mediaType, CancellationToken ct = default) =>
-                Task.FromResult(Status.TryGetValue(tmdbId, out var s) ? s : null);
+                HangStatus ? new TaskCompletionSource<JellyseerrMediaStatus?>().Task : Task.FromResult(Status.TryGetValue(tmdbId, out var s) ? s : null);
             public Task<JellyseerrRequestResponse> RequestSeasonsAsync(int id, string type, IReadOnlyList<int>? seasons, CancellationToken ct = default)
             {
                 Requests.Add((id, type, seasons));
@@ -530,7 +537,7 @@ namespace Baird.Tests.NewUi
             lock (updates) early = updates.Last();
             Assert.Contains("Jellyfin", early.Pending);
             var loki = All(early).Single(h => h.Title?.Name == "Loki");
-            Assert.EndsWith("Checking your library…", loki.Card.Sublabel);
+            Assert.EndsWith("–", loki.Card.Sublabel);
             Assert.Null(loki.Card.Badge); // never "not in your library" while the library is still answering
             Assert.Contains(All(early), h => h.Title?.Name == "Loki Odyssey"); // the fast source is already in
 
@@ -577,7 +584,7 @@ namespace Baird.Tests.NewUi
             ShowDetails first;
             lock (seen) first = seen.Last();
             Assert.True(first.CheckingLibrary);
-            Assert.Equal("Checking your library…", first.Summary);
+            Assert.Equal("–", first.Summary);
             jf.Gate.SetResult();
             var d = await run;
             Assert.False(d.CheckingLibrary);
