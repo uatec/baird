@@ -43,6 +43,45 @@ namespace Baird.NewUi.Diagnostics
     }
 
     /// <summary>
+    /// The frames drawn just after a key press, which is when a screen moves: <see cref="Window"/> of them from the first frame after
+    /// the key, as one line (how many, the worst gap, how many gaps were visibly long). An idle UI's frame rate says nothing about
+    /// how smooth a transition is; this does.
+    /// </summary>
+    public sealed class KeyBursts
+    {
+        public static readonly TimeSpan Window = TimeSpan.FromMilliseconds(700);
+        private string? _pending;
+        private string? _key;
+        private TimeSpan _start, _last;
+        private int _frames, _slow;
+        private double _worstMs;
+
+        /// <summary>A key was pressed (any thread). Ignored while the last key's frames are still being counted.</summary>
+        public void Key(string key) { if (_key == null) _pending = key; }
+
+        /// <summary>Feeds one frame time (monotonic); returns the summary when a burst has just ended, otherwise null.</summary>
+        public string? Frame(TimeSpan at)
+        {
+            if (_key == null)
+            {
+                if (_pending == null) return null;
+                _key = _pending; _pending = null;
+                _start = _last = at; _frames = 1; _slow = 0; _worstMs = 0;
+                return null;
+            }
+            var gap = (at - _last).TotalMilliseconds;
+            if (gap > _worstMs) _worstMs = gap;
+            if (gap > FrameStats.SlowMs) _slow++;
+            _last = at; _frames++;
+            if (at - _start < Window) return null;
+            var line = string.Create(CultureInfo.InvariantCulture,
+                $"keyburst {_key} frames={_frames} in {(at - _start).TotalMilliseconds:0}ms worst_gap={_worstMs:0}ms slow(>{FrameStats.SlowMs:0}ms)={_slow}");
+            _key = null;
+            return line;
+        }
+    }
+
+    /// <summary>
     /// Opt-in (BAIRD_FPS_PROBE=true): asks for a frame after every frame and appends the <see cref="FrameStats"/> line every
     /// <see cref="Window"/> to ~/.baird/resources.log, after the key presses and screen changes of that window (so a drop can be matched
     /// to what was being done) and with the busiest threads of this process (is the UI thread the one that is saturated?). It keeps the UI rendering at full rate even when idle, so the figures are the most the UI can do
@@ -61,7 +100,14 @@ namespace Baird.NewUi.Diagnostics
         public FrameProbe(TopLevel top, Func<DateTime> now, Action<string> write, Func<string>? busiest = null) { _top = top; _now = now; _write = write; _busiest = busiest; }
 
         /// <summary>Remembers something that happened (any thread); it is written just before the next frames line.</summary>
-        public void Note(string what) => _events.Enqueue(what);
+        public void Note(string what)
+        {
+            _events.Enqueue(what);
+            var at = what.IndexOf("  key ", StringComparison.Ordinal);
+            if (at >= 0) _bursts.Key(what[(at + 6)..].Trim());
+        }
+
+        private readonly KeyBursts _bursts = new();
 
         public static FrameProbe ForResourcesLog(TopLevel top, Breadcrumbs crumbs)
         {
@@ -96,6 +142,7 @@ namespace Baird.NewUi.Diagnostics
                 batch.Append(_now().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)).Append(' ').Append(line).Append(busy.Length > 0 ? " busiest_threads: " + busy : "");
                 _write(batch.ToString());
             }
+            if (_bursts.Frame(at) is { } burst) _write($"{_now().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)} {burst}");
             _top.RequestAnimationFrame(OnFrame);
         }
     }

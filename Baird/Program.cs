@@ -39,7 +39,7 @@ namespace Baird
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()
-                .LogToTrace(LogEventLevel.Debug) // Ensure Debug level
+                .LogToTrace(LogEventLevel.Warning) // Debug wrote every layout pass and every failed image load (with its stack trace) to the journal
                 .WithInterFont() // Optional, but helps if system fonts are missing
                 .UseReactiveUI();
     }

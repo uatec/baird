@@ -52,7 +52,8 @@ namespace Baird.NewUi
             var surface = new VideoSurface(mpv);
             surface.Renderer += r =>
             {
-                Shell.Motion.Lite = r.Contains("V3D", StringComparison.OrdinalIgnoreCase) || r.Contains("llvmpipe", StringComparison.OrdinalIgnoreCase) || r.Contains("SwiftShader", StringComparison.OrdinalIgnoreCase);
+                // Software rendering only: the Pi 5's V3D is a real GPU, and treating it as weak halved every transition (220 ms for 420), which left a handful of frames.
+                Shell.Motion.Lite = r.Contains("llvmpipe", StringComparison.OrdinalIgnoreCase) || r.Contains("SwiftShader", StringComparison.OrdinalIgnoreCase);
                 Console.WriteLine($"[NewUi] Motion: {(Shell.Motion.Lite ? "lite" : "full")}");
             };
 
