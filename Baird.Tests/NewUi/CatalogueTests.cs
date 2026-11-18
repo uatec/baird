@@ -43,13 +43,18 @@ namespace Baird.Tests.NewUi
             public Task<IEnumerable<MediaItemData>> GetListingAsync() => Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => i.IsLive).ToList());
             /// <summary>Make <see cref="SearchAsync"/> never answer (a hung provider).</summary>
             public bool HangSearch;
-            public Task<IEnumerable<MediaItemData>> SearchAsync(string q, CancellationToken ct = default) => HangSearch ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task :
+            /// <summary>How many times <see cref="SearchAsync"/> was called.</summary>
+            public int SearchCalls;
+            public Task<IEnumerable<MediaItemData>> SearchAsync(string q, CancellationToken ct = default) => Interlocked.Increment(ref SearchCalls) > 0 && HangSearch ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task :
                 Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => i.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (i.ChannelNumber?.StartsWith(q) ?? false)).ToList());
             /// <summary>Make <see cref="GetChildrenAsync"/> never answer (a hung provider).</summary>
             public bool HangChildren;
+            /// <summary>Make <see cref="GetChildrenAsync"/> throw at once (what DataService swallows into "nothing", as for a 503).</summary>
+            public bool ThrowChildren;
             /// <summary>How many times <see cref="GetChildrenAsync"/> was called.</summary>
             public int ChildrenCalls;
-            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Interlocked.Increment(ref ChildrenCalls) > 0 && HangChildren ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task
+            public Task<IEnumerable<MediaItemData>> GetChildrenAsync(string id) => Interlocked.Increment(ref ChildrenCalls) > 0 && ThrowChildren ? Task.FromException<IEnumerable<MediaItemData>>(new System.Net.Http.HttpRequestException("503"))
+                : HangChildren ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task
                 : Task.FromResult<IEnumerable<MediaItemData>>(Children.TryGetValue(id, out var c) ? c : new List<MediaItemData>());
             /// <summary>How many times <see cref="GetItemAsync"/> was called (the lookup that can start stream resolution, e.g. yt-dlp).</summary>
             public int ItemCalls;
@@ -103,8 +108,12 @@ namespace Baird.Tests.NewUi
             public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrRequest>>(Asked);
             /// <summary>How many times <see cref="GetMediaStatusAsync"/> was called.</summary>
             public int StatusCalls;
+            /// <summary>When set, <see cref="GetMediaStatusAsync"/> answers only once it completes (a slow Seerr that does answer).</summary>
+            public TaskCompletionSource? StatusGate;
             public Task<JellyseerrMediaStatus?> GetMediaStatusAsync(int tmdbId, string mediaType, CancellationToken ct = default) =>
-                Interlocked.Increment(ref StatusCalls) > 0 && HangStatus ? new TaskCompletionSource<JellyseerrMediaStatus?>().Task : Task.FromResult(Status.TryGetValue(tmdbId, out var s) ? s : null);
+                Interlocked.Increment(ref StatusCalls) > 0 && HangStatus ? new TaskCompletionSource<JellyseerrMediaStatus?>().Task
+                : StatusGate is { } gate ? gate.Task.ContinueWith(_ => Status.TryGetValue(tmdbId, out var g) ? g : null, TaskScheduler.Default)
+                : Task.FromResult(Status.TryGetValue(tmdbId, out var s) ? s : null);
             public readonly Dictionary<(int TmdbId, int Season), JellyseerrSeasonDetails> Seasons = new();
             /// <summary>Make <see cref="GetSeasonAsync"/> never answer.</summary>
             public bool HangSeason;

@@ -12,10 +12,13 @@ namespace Baird.NewUi
 {
     /// <summary>
     /// Warms what a page links to directly, one hop only, through the <see cref="WorkQueue"/>: each page opened submits one batch
-    /// (its own data, then its children, then its siblings) and a newer batch runs ahead of older ones. A title is warmed by
-    /// refreshing its kept metadata when missing or older than a week (<see cref="ShowData.EnsureFreshAsync"/>: no network for a
-    /// fresh record) and fetching its backdrop and opening season's stills; a season by naming it (<see cref="ShowData.EnsureSeasonAsync"/>)
-    /// and fetching its stills. A warmed title's own links are never queued, and stream resolution is never warmed.
+    /// (its own data, then its children, then its siblings) and a newer batch runs ahead of older ones. A title in a batch is warmed by
+    /// refreshing its kept metadata when missing or older than about a week (<see cref="ShowData.FreshFor"/>; no network for a fresh
+    /// record), never by searching the providers nor listing YouTube or a browser service (<see cref="BatchJob"/>), and its backdrop goes
+    /// to the disk cache only; a season by naming it (<see cref="ShowData.EnsureSeasonAsync"/>) and fetching its stills. Only what is about
+    /// to be on screen is decoded: the lit card, the page's own title, its opening season and those either side, the lit season tab.
+    /// The lit card's page is worked out exactly as the page will (<see cref="ShowData.DetailsAsync"/>), so the page joins it.
+    /// A warmed title's own links are never queued, and stream resolution is never warmed.
     /// Keys: <c>show:{title key}</c> for a title, <c>show:{title key}#season:{n}</c> for one of its seasons.
     /// </summary>
     public sealed class Warmer
@@ -28,7 +31,9 @@ namespace Baird.NewUi
         private readonly WorkQueue _queue;
         private readonly ShowData _shows;
         private readonly ITimers _timers;
-        private readonly Func<string, Task> _warm;
+        private readonly Func<string, Task> _warm;      // fetched and decoded, ready to draw (ImageCache): only what's about to be on screen
+        private readonly Func<string, Task> _warmDisk;  // fetched to the disk cache only, never decoded: everything else
+        private readonly Dictionary<string, long> _generations = new(); // per page (Home, Search): its latest batch
         private readonly object _lock = new();
         private string? _litKey;
         private IDisposable? _pending;
@@ -39,10 +44,19 @@ namespace Baird.NewUi
         /// <summary>Every item handed to the queue (key, rank, urgent): for tests and diagnostics.</summary>
         public event Action<string, Rank, bool>? Queued;
 
-        public Warmer(WorkQueue queue, ShowData shows, ITimers timers, Func<string, Task>? warmImage = null)
+        /// <param name="warmImage">Fetch and decode one image into the <see cref="ImageCache"/> (default <see cref="ImageCache.WarmAsync"/>).</param>
+        /// <param name="warmDisk">Fetch one image's bytes to the disk cache, no decode (default <see cref="ImageCache.WarmDiskAsync"/>).</param>
+        public Warmer(WorkQueue queue, ShowData shows, ITimers timers, Func<string, Task>? warmImage = null, Func<string, Task>? warmDisk = null)
         {
-            _queue = queue; _shows = shows; _timers = timers; _warm = warmImage ?? ImageCache.WarmAsync;
+            _queue = queue; _shows = shows; _timers = timers; _warm = warmImage ?? ImageCache.WarmAsync; _warmDisk = warmDisk ?? ImageCache.WarmDiskAsync;
         }
+
+        /// <summary>
+        /// A title whose source is costly to list in the background: YouTube (every listing is a yt-dlp process) or a service played in
+        /// the browser (its listings drive the one shared browser). Batches never compute these: their pages do, when opened.
+        /// </summary>
+        public static bool CostlyToList(CatalogueTitle t) =>
+            t.Sources.Any(s => s.Service == Baird.Services.YouTubeService.SourceName || HomeData.ViaOf(s.Service) == PlayVia.Browser);
 
         public static string KeyOf(CatalogueTitle t) => "show:" + t.Key;
         public static string KeyOf(CatalogueTitle t, int season) => $"show:{t.Key}#season:{season}";
@@ -101,10 +115,16 @@ namespace Baird.NewUi
         }
 
         /// <summary>A page (Home, Search) was opened or shown again: warm its children, then its siblings, as one new batch.</summary>
+        /// <remarks>
+        /// A page's new batch supersedes its older ones: their jobs still queued do nothing when they come up (a new search's results
+        /// replace the last search's). These are background jobs: see <see cref="BatchJob"/> for what they may cost.
+        /// </remarks>
         public void PageOpened(string pageKey, IReadOnlyList<CatalogueTitle> children, IReadOnlyList<CatalogueTitle> siblings)
         {
-            var batch = children.Select(t => TitleJob(t, Rank.Child, null, stills: false))
-                .Concat(siblings.Select(t => TitleJob(t, Rank.Sibling, null, stills: false))).ToList();
+            long generation;
+            lock (_lock) _generations[pageKey] = generation = _generations.GetValueOrDefault(pageKey) + 1;
+            var batch = children.Select(t => BatchJob(t, Rank.Child, pageKey, generation))
+                .Concat(siblings.Select(t => BatchJob(t, Rank.Sibling, pageKey, generation))).ToList();
             Console.WriteLine($"[Warmer] {pageKey}: {children.Count} children, {siblings.Count} siblings");
             Submit(batch);
         }
@@ -124,8 +144,11 @@ namespace Baird.NewUi
             _litSeason = null; // a page (re)opened: its season tabs are new to the viewer again
             var siblings = row.Any(t => t.Key == self.Key) ? row.Where(t => t.Key != self.Key).ToList() : new List<CatalogueTitle>();
             var batch = new List<WorkItem> { TitleJob(self, Rank.Page, d) };
-            batch.AddRange(SeasonOrder(d).Select(i => SeasonJob(self, d.Seasons[i].Number, Rank.Child)));
-            batch.AddRange(siblings.Select(t => TitleJob(t, Rank.Sibling, null, stills: false)));
+            // Only the opening season and those either side are decoded (the viewer is about to see them); the rest go to disk only, so a
+            // long show (The Simpsons: 33 seasons) can't push the opening season's stills, or Home's posters, out of the image cache.
+            var open = OpeningSeason(d);
+            batch.AddRange(SeasonOrder(d).Select(i => SeasonJob(self, d.Seasons[i].Number, Rank.Child, decode: Math.Abs(i - open) <= 1)));
+            batch.AddRange(siblings.Select(t => BatchJob(t, Rank.Sibling, null, 0)));
             Submit(batch);
         }
 
@@ -143,7 +166,11 @@ namespace Baird.NewUi
             _pending = _timers.After(Delay, () =>
             {
                 var cts = _litCts = new CancellationTokenSource();
-                Urgent(TitleJob(title, Rank.Page, null, cts.Token));
+                // Ahead of everything, unless frames are dropping: then it waits its turn like the page's own data (the season tab, which
+                // the viewer navigates to on a page, stays urgent).
+                var item = LitJob(title, cts.Token);
+                var urgent = _queue.UrgentUnlessPaused(item);
+                Queued?.Invoke(item.Key, item.Rank, urgent);
             });
         }
 
@@ -152,43 +179,74 @@ namespace Baird.NewUi
         {
             if (index < 0 || index >= d.Seasons.Count || _litSeason == (d.Title.Key, index)) return;
             _litSeason = (d.Title.Key, index);
-            if (ShowData.Unnamed(d.Seasons[index])) Urgent(SeasonJob(d.Title, d.Seasons[index].Number, Rank.Page));
+            // The lit tab's season is on screen: decoded. Those either side only reach the disk (a viewer running along 33 tabs would
+            // otherwise decode two seasons of stills per tab).
+            if (ShowData.Unnamed(d.Seasons[index])) Urgent(SeasonJob(d.Title, d.Seasons[index].Number, Rank.Page, decode: true));
             Submit(new[] { index + 1, index - 1 }.Where(i => i >= 0 && i < d.Seasons.Count)
-                .Select(i => SeasonJob(d.Title, d.Seasons[i].Number, Rank.Child)).ToList());
+                .Select(i => SeasonJob(d.Title, d.Seasons[i].Number, Rank.Child, decode: false)).ToList());
         }
 
         // ------------------------------------------------------------------ jobs
 
         /// <summary>
-        /// A title: its kept metadata made fresh (no network when it is), then its backdrop and (unless <paramref name="stills"/> is false) opening season's stills, from the
-        /// details given (a page that has them) or the kept record. Nothing it links to is queued.
+        /// The lit card's page, exactly as the page will ask for it (<see cref="ShowData.DetailsAsync"/>: the live availability too, so
+        /// the page joins it and opens with Play), then its backdrop and opening season's stills, decoded. Dropped when the card is.
         /// </summary>
-        private WorkItem TitleJob(CatalogueTitle t, Rank rank, ShowDetails? known, CancellationToken stop = default, bool stills = true) => new(KeyOf(t), rank, async ct =>
+        private WorkItem LitJob(CatalogueTitle t, CancellationToken stop) => new(KeyOf(t), Rank.Page, async ct =>
         {
             using var both = CancellationTokenSource.CreateLinkedTokenSource(ct, stop);
             try
             {
-                await _shows.EnsureFreshAsync(t, both.Token).ConfigureAwait(false);
-                var d = known ?? _shows.Stored(t);
-                if (stills) { if (d != null) await WarmAsync(UrlsFor(d), both.Token).ConfigureAwait(false); }
-                else if ((d?.Title.ImageUrl ?? t.ImageUrl) is { Length: > 0 } art) await WarmAsync(new[] { art }, both.Token).ConfigureAwait(false); // children and siblings: the backdrop only, so a big Home batch can't churn the image cache
+                var d = await _shows.DetailsAsync(t, null, both.Token).ConfigureAwait(false);
+                await WarmAsync(UrlsFor(d), both.Token, decode: true).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (both.IsCancellationRequested) { }
+            catch (ShowLoadTimeoutException) { } // nothing learnt in time: the page asks again when opened
         });
 
-        /// <summary>One season of a title: named when it's only numbered (Seerr), then its stills.</summary>
-        private WorkItem SeasonJob(CatalogueTitle t, int number, Rank rank) => new(KeyOf(t, number), rank, async ct =>
+        /// <summary>
+        /// A show page's own title: its backdrop and opening season's stills, decoded, from the page's details. No network for its data:
+        /// the page has just worked it out (and kept it when every piece answered; one that failed is asked again when the page is next
+        /// opened, not here). Nothing it links to is queued.
+        /// </summary>
+        private WorkItem TitleJob(CatalogueTitle t, Rank rank, ShowDetails known) => new(KeyOf(t), rank, async ct =>
         {
-            try { await WarmAsync(await _shows.EnsureSeasonAsync(t, number, ct).ConfigureAwait(false), ct).ConfigureAwait(false); }
+            try { await WarmAsync(UrlsFor(known), ct, decode: true).ConfigureAwait(false); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         });
 
-        private async Task WarmAsync(IEnumerable<string> urls, CancellationToken ct)
+        /// <summary>
+        /// A title in a background batch (Home's cards, search results, a page's siblings). Never searches the providers and never lists a
+        /// source that is costly to list (<see cref="CostlyToList"/>: yt-dlp, the browser): a title with no source learns only what Seerr
+        /// knows (<see cref="ShowData.EnsureFreshFromSeerrAsync"/>); one with a source is made fresh from its own source when its record is
+        /// missing or stale (<see cref="ShowData.EnsureFreshAsync"/>). Then its backdrop, to disk only. A job of a superseded batch does nothing.
+        /// </summary>
+        private WorkItem BatchJob(CatalogueTitle t, Rank rank, string? pageKey, long generation) => new(KeyOf(t), rank, async ct =>
         {
+            if (pageKey != null) lock (_lock) if (_generations.GetValueOrDefault(pageKey) != generation) return;
+            try
+            {
+                if (t.Sources.Count == 0) await _shows.EnsureFreshFromSeerrAsync(t, ct).ConfigureAwait(false);
+                else if (!CostlyToList(t)) await _shows.EnsureFreshAsync(t, ct).ConfigureAwait(false);
+                if ((_shows.Stored(t)?.Title.ImageUrl ?? t.ImageUrl) is { Length: > 0 } art) await WarmAsync(new[] { art }, ct, decode: false).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        });
+
+        /// <summary>One season of a title: named when it's only numbered (Seerr), then its stills (decoded, or to disk only).</summary>
+        private WorkItem SeasonJob(CatalogueTitle t, int number, Rank rank, bool decode) => new(KeyOf(t, number), rank, async ct =>
+        {
+            try { await WarmAsync(await _shows.EnsureSeasonAsync(t, number, ct).ConfigureAwait(false), ct, decode).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        });
+
+        private async Task WarmAsync(IEnumerable<string> urls, CancellationToken ct, bool decode)
+        {
+            var warm = decode ? _warm : _warmDisk;
             foreach (var url in urls.Distinct().Take(MaxImages))
             {
                 ct.ThrowIfCancellationRequested();
-                await _warm(url).ConfigureAwait(false); // one at a time: cheap on the Pi
+                await warm(url).ConfigureAwait(false); // one at a time: cheap on the Pi
             }
         }
 

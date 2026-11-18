@@ -76,8 +76,50 @@ namespace Baird.NewUi.Adapters
             public Action<ShowDetails, long>? Progress;
             public int Waiters;
             public volatile bool Stored;                  // its live result was kept in the store
+            public readonly Outcome Outcome = new();      // some piece failed: its answers are no better than the kept record
             public DateTimeOffset At = DateTimeOffset.UtcNow;
         }
+
+        /// <summary>What a warm or background refresh learnt about a title a page may be showing.</summary>
+        public enum ShowChange
+        {
+            /// <summary>Availability (Seerr status, a source's seasons) was refreshed: ask again (the shared answer was dropped).</summary>
+            Availability,
+            /// <summary>Episode names were kept for a season that had only placeholders: re-fill from the store (<see cref="WithKeptNames"/>), no network.</summary>
+            Names,
+        }
+
+        /// <summary>
+        /// Raised (on any thread) only by background writes: a stale answer's refresh completing, or <see cref="EnsureSeasonAsync"/>
+        /// keeping names. Never by a page's own <see cref="DetailsAsync"/>, so a page that re-asks on it never loops.
+        /// </summary>
+        public event Action<string, ShowChange>? Changed;
+
+        private void RaiseChanged(string key, ShowChange change)
+        {
+            // Availability: the shared answer was worked out from what is now out of date, so the next ask starts again (a page joined
+            // to a compute in flight keeps it; only the next ask is affected).
+            if (change == ShowChange.Availability) lock (_cache) _cache.Remove(key);
+            try { Changed?.Invoke(key, change); }
+            catch (Exception ex) { Console.WriteLine($"[ShowData] Telling pages {key} changed failed: {ex.Message}"); }
+        }
+
+        /// <summary>The details with any placeholder episode ("3. Episode 3") filled from the kept record (names kept since they were learnt). No network.</summary>
+        public ShowDetails WithKeptNames(ShowDetails d) => Kept(d.Title) is { } s ? Fill(d, s) : d;
+
+        /// <summary>
+        /// How long one title's kept metadata is fresh for the warming: <see cref="MetadataFresh"/> moved by up to a day either way, by a
+        /// hash of its key that is the same every run, so records kept together don't all go stale (and get refreshed) together.
+        /// </summary>
+        public static TimeSpan FreshFor(string key)
+        {
+            uint h = 2166136261; // FNV-1a: stable across runs (string.GetHashCode is not)
+            foreach (var c in key) { h ^= c; h *= 16777619; }
+            var spread = h / (double)uint.MaxValue * 2 - 1; // -1 .. 1
+            return MetadataFresh + TimeSpan.FromDays(spread);
+        }
+
+        private bool IsFresh(StoredShow s, string key) => _clock() - s.Stamp < FreshFor(key);
         private readonly Dictionary<string, Entry> _cache = new();
         public static readonly TimeSpan Keep = TimeSpan.FromSeconds(90);
 
@@ -93,11 +135,18 @@ namespace Baird.NewUi.Adapters
         /// otherwise ask (a failed answer is told to <paramref name="outcome"/>). <paramref name="fetch"/> says whether it really answered (a timeout or failure is <c>Ok = false</c> with the
         /// fallback): only a real answer is kept, so a bad moment is never served back for ever. <paramref name="fresh"/> skips the cache.
         /// </summary>
-        private async Task<T> CachedAsync<T>(StaleCache<T> cache, string key, bool fresh, Func<CancellationToken, Task<(bool Ok, T Value)>> fetch, CancellationToken ct, Outcome? outcome = null)
+        private async Task<T> CachedAsync<T>(StaleCache<T> cache, string key, bool fresh, Func<CancellationToken, Task<(bool Ok, T Value)>> fetch, CancellationToken ct, Outcome? outcome = null, string? owner = null)
         {
             if (!fresh && cache.TryGet(key, out var kept, out var stale))
             {
-                if (stale) Refresh(key, async c => { var r = await fetch(c).ConfigureAwait(false); if (r.Ok) cache.Put(key, r.Value); });
+                // Refreshed: the page showing the title it was served for is told, so the refreshed answer reaches the screen.
+                if (stale) Refresh(key, async c =>
+                {
+                    var r = await fetch(c).ConfigureAwait(false);
+                    if (!r.Ok) return;
+                    cache.Put(key, r.Value);
+                    if (owner != null) RaiseChanged(owner, ShowChange.Availability);
+                });
                 return kept;
             }
             var answer = await fetch(ct).ConfigureAwait(false);
@@ -141,7 +190,11 @@ namespace Baird.NewUi.Adapters
         /// follow and, once complete, are kept in its place. With a record, running out of budget (or a failed compute) returns what's
         /// known, never an error: the record itself (still checking) when nothing live was reported.
         /// </summary>
-        public async Task<ShowDetails> DetailsAsync(CatalogueTitle title, Action<ShowDetails>? progress = null, CancellationToken ct = default, bool fresh = false)
+        public async Task<ShowDetails> DetailsAsync(CatalogueTitle title, Action<ShowDetails>? progress = null, CancellationToken ct = default, bool fresh = false) =>
+            (await DetailsCoreAsync(title, progress, ct, fresh).ConfigureAwait(false)).Details;
+
+        /// <summary><see cref="DetailsAsync"/>, and whether every piece answered (false: a timeout, a failure, or the budget ran out).</summary>
+        private async Task<(ShowDetails Details, bool Sure)> DetailsCoreAsync(CatalogueTitle title, Action<ShowDetails>? progress, CancellationToken ct, bool fresh)
         {
             var stored = Kept(title);
             var fromStore = stored == null ? null : FromStore(title, stored);
@@ -177,14 +230,19 @@ namespace Baird.NewUi.Adapters
                 if (first == waited || e.Task.IsCompletedSuccessfully)
                 {
                     stop.Cancel();
-                    try { return await waited.ConfigureAwait(false); }
+                    try
+                    {
+                        var d = await waited.ConfigureAwait(false);
+                        // Names Seerr gave a season since (the warming) fill its placeholders: a page reopened shortly after still has them.
+                        return (Kept(title) is { } now ? Fill(d, now) : d, !e.Outcome.Failed);
+                    }
                     catch (Exception ex) when (stored != null && !ct.IsCancellationRequested && Known() is { } kept)
                     {
                         Console.WriteLine($"[ShowData] {title.Name}: {ex.Message} - showing what was kept");
-                        return kept;
+                        return (kept, false);
                     }
                 }
-                if (Known() is { } known) return known;
+                if (Known() is { } known) return (known, false);
                 Console.WriteLine($"[ShowData] {title.Name}: nothing learnt within {Budget.TotalSeconds:0.#} s");
                 throw new ShowLoadTimeoutException(title.Name);
             }
@@ -201,7 +259,7 @@ namespace Baird.NewUi.Adapters
         {
             if (_store == null) return false;
             var stored = Kept(title);
-            if (stored != null && _clock() - stored.Stamp < MetadataFresh) return false;
+            if (stored != null && IsFresh(stored, title.Key)) return false;
             Entry e;
             lock (_cache)
             {
@@ -221,6 +279,39 @@ namespace Baird.NewUi.Adapters
                 return false;
             }
             finally { Leave(e, title, null, ct); }
+        }
+
+        /// <summary>
+        /// For the warming queue, a title that carries no source (a Seerr card): when its kept record is missing or stale
+        /// (<see cref="FreshFor"/>), learn what Seerr alone knows (its status and the opening season's names) and keep that. Never searches
+        /// the providers (YouTube's search is yt-dlp), never lists a library, and never shares the work with a page (a page opened meanwhile
+        /// does its own full compute). Nothing is kept when Seerr fails or answers nothing, or when its answer has fewer seasons than the
+        /// record. Returns whether a record was kept. Never throws but for cancellation of <paramref name="ct"/>.
+        /// </summary>
+        public async Task<bool> EnsureFreshFromSeerrAsync(CatalogueTitle title, CancellationToken ct = default)
+        {
+            if (_store == null || _seerr == null || title.Sources.Count > 0) return false;
+            var stored = Kept(title);
+            if (stored != null && IsFresh(stored, title.Key)) return false;
+            if ((title.Seerr ?? stored?.Title.Seerr) is not { } r) return false;
+            try
+            {
+                var outcome = new Outcome();
+                var t = title with { Seerr = r };
+                var status = await StatusAsync(t, true, ct, outcome).ConfigureAwait(false); // asked afresh: no stale answer, no refresh queued
+                if (status == null || outcome.Failed) return false;
+                t = t with { Seerr = r with { Status = status.Status } };
+                if (status.Overview is { } overview && string.IsNullOrWhiteSpace(t.Synopsis)) t = t with { Synopsis = overview };
+                var d = Fill(await ComposeAsync(t, status, false, new Dictionary<int, JellyseerrSeasonDetails>(), null, true, ct, outcome).ConfigureAwait(false), stored);
+                if (outcome.Failed || ct.IsCancellationRequested || (stored != null && d.Seasons.Count < stored.Seasons.Count)) return false;
+                _store.Put(title.Key, ToStored(d, _clock()));
+                return true;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                Console.WriteLine($"[ShowData] Warming {title.Name} from Seerr failed: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>
@@ -261,7 +352,8 @@ namespace Baird.NewUi.Adapters
             };
             if (filled.Episodes.SequenceEqual(now.Episodes)) return Stills(now);
             try { _store.Put(title.Key, latest with { Seasons = latest.Seasons.Select(s => s == now ? filled : s).ToList() }); }
-            catch (Exception ex) { Console.WriteLine($"[ShowData] Keeping {title.Name} season {seasonNumber} failed: {ex.Message}"); }
+            catch (Exception ex) { Console.WriteLine($"[ShowData] Keeping {title.Name} season {seasonNumber} failed: {ex.Message}"); return Stills(filled); }
+            RaiseChanged(title.Key, ShowChange.Names); // a page showing the placeholders fills them in
             return Stills(filled);
         }
 
@@ -285,14 +377,21 @@ namespace Baird.NewUi.Adapters
         {
             var now = DateTimeOffset.UtcNow;
             foreach (var k in _cache.Where(x => x.Value.Task.IsCompleted && now - x.Value.At > Keep).Select(x => x.Key).ToList()) _cache.Remove(k);
-            if (!renew && _cache.TryGetValue(title.Key, out var e) && !e.Task.IsCanceled && !e.Task.IsFaulted) return e;
+            // A compute that failed somewhere is not shared once done (as a failed availability answer isn't cached): the next ask tries again.
+            if (!renew && _cache.TryGetValue(title.Key, out var e) && !e.Task.IsCanceled && !e.Task.IsFaulted && !(e.Task.IsCompleted && e.Outcome.Failed)) return e;
             var entry = new Entry();
             void Report(ShowDetails d)
             {
                 d = Fill(d, stored);
                 Action<ShowDetails, long>? listeners;
                 long seq;
-                lock (_cache) { entry.Latest = d; seq = ++entry.Seq; listeners = entry.Progress; }
+                lock (_cache)
+                {
+                    // With a kept record, nothing learnt after a piece failed is shown: it could only be worse (a provider that is down
+                    // answers "nothing"), and the page keeps what it has.
+                    if (stored != null && entry.Outcome.Failed) return;
+                    entry.Latest = d; seq = ++entry.Seq; listeners = entry.Progress;
+                }
                 listeners?.Invoke(d, seq);
             }
             // A card that knows nothing of Seerr (Jellyfin's) uses the record's entry: no lookup, and a hung one can't lose it. Status is asked afresh.
@@ -315,11 +414,28 @@ namespace Baird.NewUi.Adapters
             }
         }
 
-        /// <summary>Work out the details live and, when every piece answered, keep them (metadata only) for next time.</summary>
+        /// <summary>
+        /// Work out the details live and, when every piece answered, keep them (metadata only) for next time. With a kept record, a
+        /// compute where some piece failed (timed out, threw, or answered nothing where something must be: see <see cref="StatusAsync"/>
+        /// and <see cref="SeasonsFromAsync"/>) is never kept and never replaces what the page has: it returns the last live report made
+        /// before the failure, else the record unchanged (still checking, "–"). A complete answer with fewer seasons than the record is
+        /// not trusted either: the record, unchanged. With no record, what was learnt is returned as it always was (and not kept).
+        /// </summary>
         private async Task<ShowDetails> RunAsync(CatalogueTitle title, Action<ShowDetails> report, bool fresh, StoredShow? stored, Entry entry)
         {
-            var outcome = new Outcome();
+            var outcome = entry.Outcome;
             var d = Fill(await ComputeAsync(title, report, fresh, entry.Cts.Token, outcome).ConfigureAwait(false), stored);
+            if (stored != null && outcome.Failed)
+            {
+                Console.WriteLine($"[ShowData] {title.Name}: something didn't answer - keeping what was kept");
+                lock (_cache) return entry.Seq > 0 ? entry.Latest! : FromStore(title, stored);
+            }
+            if (stored != null && d.Seasons.Count < stored.Seasons.Count)
+            {
+                Console.WriteLine($"[ShowData] {title.Name}: {d.Seasons.Count} seasons where {stored.Seasons.Count} were kept - keeping the record");
+                outcome.Fail(); // not shared: the next ask tries again
+                return FromStore(title, stored);
+            }
             if (_store != null && !outcome.Failed && !d.CheckingLibrary && !entry.Cts.IsCancellationRequested)
             {
                 try { _store.Put(title.Key, ToStored(d, _clock())); entry.Stored = true; }
@@ -385,7 +501,7 @@ namespace Baird.NewUi.Adapters
                 {
                     if (e.Source != null || e.ImageUrl != null || e.Synopsis != null || e.Label != $"{e.Number}. Episode {e.Number}") return e;
                     var k = kept.Episodes.FirstOrDefault(x => x.Number == e.Number);
-                    if (k == null) return e;
+                    if (k == null || Placeholder(k)) return e; // nothing more kept for it either
                     filled = true;
                     return e with { Label = k.Label, ImageUrl = k.ImageUrl, Synopsis = k.Synopsis };
                 }).ToList();
@@ -423,8 +539,10 @@ namespace Baird.NewUi.Adapters
         /// </summary>
         public async Task<HomeCard?> FollowingAsync(CatalogueTitle series, CancellationToken ct = default)
         {
-            var d = await DetailsAsync(series, null, ct).ConfigureAwait(false);
-            if (d.CheckingLibrary) return null; // only a kept record, unverified: nothing to offer on it
+            var (d, sure) = await DetailsCoreAsync(series, null, ct, false).ConfigureAwait(false);
+            // Only a kept record, unverified, or something didn't answer (Jellyfin not up yet lists nothing, so every episode would look
+            // missing and be offered to "get"): nothing to offer on it.
+            if (d.CheckingLibrary || !sure) return null;
             // "Resume" is in Up next already; "Play" means nothing was watched or nothing follows the last episode (Next falls back to the first).
             if (d.Next is { } n && n.Label.StartsWith("Resume ", StringComparison.Ordinal)) return null;
             if (d.Next is { } nx && nx.Label.StartsWith("Next ", StringComparison.Ordinal) && nx.Episode.Source is { } s)
@@ -464,16 +582,22 @@ namespace Baird.NewUi.Adapters
             var searching = t.Sources.Count == 0 && t.Kind != TitleKind.Episode;
             var sources = searching ? _search.SearchSources(t.Name, ct) : Array.Empty<(string Source, Task<IReadOnlyList<MediaItemViewModel>?> Results)>();
 
-            if (t.Seerr == null) t = t with { Seerr = await _search.FindInSeerrAsync(t, ct).ConfigureAwait(false) };
-            var status = await StatusAsync(t, fresh, ct, outcome).ConfigureAwait(false);
-            if (status != null && t.Seerr != null) t = t with { Seerr = t.Seerr with { Status = status.Status } };
-            // A card from Downloads or a search hit may carry no description: Seerr (TMDB) has one.
-            if (status?.Overview is { } overview && string.IsNullOrWhiteSpace(t.Synopsis)) t = t with { Synopsis = overview };
+            // The library's seasons and Seerr's view are asked at once: a slow Seerr never holds back what the library has (Play).
+            var library = t.Kind == TitleKind.Series && t.Sources.Count > 0 ? LibrarySeasonsAsync(t, ct, fresh, outcome) : null;
+            var seerrView = SeerrViewAsync(t, fresh, ct, outcome);
+            if (library != null && progress != null)
+            {
+                await Task.WhenAny(library, seerrView).ConfigureAwait(false);
+                if (!seerrView.IsCompleted && library.IsCompletedSuccessfully && library.Result.Count > 0)
+                    progress(new ShowDetails(t, Merge(library.Result, null, t.Best?.Service), CheckingLibrary: false)); // Seerr fills in the rest when it answers
+            }
+            var (seen, status) = await seerrView.ConfigureAwait(false);
+            t = seen;
 
             var remaining = sources.Select(s => s.Results).ToList();
             var found = new List<MediaItemViewModel>();
             var seasonDetails = new Dictionary<int, JellyseerrSeasonDetails>();
-            var details = await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, progress, fresh, ct, outcome).ConfigureAwait(false);
+            var details = await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, progress, fresh, ct, outcome, library).ConfigureAwait(false);
             progress?.Invoke(details);
             while (remaining.Count > 0)
             {
@@ -492,7 +616,19 @@ namespace Baird.NewUi.Adapters
             return details;
         }
 
-        private async Task<ShowDetails> ComposeAsync(CatalogueTitle t, JellyseerrMediaStatus? status, bool checking, Dictionary<int, JellyseerrSeasonDetails> seasonDetails, Action<ShowDetails>? early, bool fresh, CancellationToken ct, Outcome? outcome)
+        /// <summary>The title with what Seerr says of it (its entry looked up when the title doesn't carry one, its status, its synopsis), and the status.</summary>
+        private async Task<(CatalogueTitle Title, JellyseerrMediaStatus? Status)> SeerrViewAsync(CatalogueTitle t, bool fresh, CancellationToken ct, Outcome? outcome)
+        {
+            if (t.Seerr == null) t = t with { Seerr = await _search.FindInSeerrAsync(t, ct).ConfigureAwait(false) };
+            var status = await StatusAsync(t, fresh, ct, outcome).ConfigureAwait(false);
+            if (status != null && t.Seerr != null) t = t with { Seerr = t.Seerr with { Status = status.Status } };
+            // A card from Downloads or a search hit may carry no description: Seerr (TMDB) has one.
+            if (status?.Overview is { } overview && string.IsNullOrWhiteSpace(t.Synopsis)) t = t with { Synopsis = overview };
+            return (t, status);
+        }
+
+        private async Task<ShowDetails> ComposeAsync(CatalogueTitle t, JellyseerrMediaStatus? status, bool checking, Dictionary<int, JellyseerrSeasonDetails> seasonDetails, Action<ShowDetails>? early, bool fresh, CancellationToken ct, Outcome? outcome,
+            Task<IReadOnlyList<LibrarySeason>>? asked = null)
         {
             if (t.Kind != TitleKind.Series)
             {
@@ -500,7 +636,7 @@ namespace Baird.NewUi.Adapters
                     : status?.Status is 2 or 3 or 4 ? SeasonState.Requested : SeasonState.Missing;
                 return new ShowDetails(t, Array.Empty<Season>(), film, status?.Progress(), checking);
             }
-            var library = await LibrarySeasonsAsync(t, ct, fresh, outcome).ConfigureAwait(false);
+            var library = asked != null ? await asked.ConfigureAwait(false) : await LibrarySeasonsAsync(t, ct, fresh, outcome).ConfigureAwait(false);
             var details = new ShowDetails(t, Merge(library, status, t.Best?.Service, seasonDetails), CheckingLibrary: checking);
             // Seerr names the episodes the library lacks: ask for the season the page opens on (bounded, so a hung Seerr can't stall it).
             var i = Warmer.OpeningSeason(details);
@@ -523,9 +659,11 @@ namespace Baird.NewUi.Adapters
         {
             if (_seerr == null || t.Seerr == null) return null;
             var seerr = _seerr; var r = t.Seerr;
-            // (true, answer) when Seerr answered (even "unknown to me"); the (false, null) fallback marks a timeout or failure, which isn't kept.
+            // Seerr always has a status for a title it has an entry for (a title nobody asked for is "unknown", status 1): no answer (null) is
+            // how the service reports any failure (it swallows them), so it counts as one, like a timeout. Neither is kept.
             return await CachedAsync(_statusCache, $"{r.MediaType}:{r.TmdbId}", fresh,
-                c => Deadline.Within<(bool Ok, JellyseerrMediaStatus? Value)>(async c2 => (true, await seerr.GetMediaStatusAsync(r.TmdbId, r.MediaType, c2).ConfigureAwait(false)), (false, null), _pieceTimeout, "[ShowData] Seerr status", c), ct, outcome).ConfigureAwait(false);
+                c => Deadline.Within<(bool Ok, JellyseerrMediaStatus? Value)>(async c2 => await seerr.GetMediaStatusAsync(r.TmdbId, r.MediaType, c2).ConfigureAwait(false) is { } s ? (true, s) : (false, null),
+                    (false, null), _pieceTimeout, "[ShowData] Seerr status", c), ct, outcome, t.Key).ConfigureAwait(false);
         }
 
         public sealed record LibrarySeason(int Number, string Label, IReadOnlyList<MediaItemViewModel> Episodes, string? Service = null, string? MoreId = null);
@@ -538,7 +676,22 @@ namespace Baird.NewUi.Adapters
 
         private async Task<IReadOnlyList<LibrarySeason>> LibrarySeasonsAsync(CatalogueTitle t, CancellationToken ct, bool fresh, Outcome? outcome)
         {
-            var perSource = await Task.WhenAll(t.Sources.Select(src => CachedAsync(_seasonCache, $"{src.Service}|{src.ItemId}", fresh, c => SeasonsFromAsync(t, src, c), ct, outcome))).ConfigureAwait(false);
+            var asked = t.Sources.Select(_ => new Outcome()).ToArray();
+            var perSource = await Task.WhenAll(t.Sources.Select((src, i) => CachedAsync(_seasonCache, KeyOf(src), fresh, async c =>
+            {
+                var r = await SeasonsFromAsync(t, src, c).ConfigureAwait(false);
+                // "Nothing" again where nothing was kept (refreshing a source known to have nothing now) is an answer; where something was
+                // kept, it never replaces it.
+                return !r.Ok && ReferenceEquals(r.Value, NothingListed) && _seasonCache.TryGet(KeyOf(src), out var kept, out _) && kept.Count == 0
+                    ? (true, (IReadOnlyList<LibrarySeason>)Array.Empty<LibrarySeason>()) : r;
+            }, ct, asked[i], t.Key))).ConfigureAwait(false);
+            // A source that timed out or failed fails the compute. One that listed nothing (how a provider that is down answers) does
+            // only when no source listed anything: a show on two services may well have nothing on one of them right now (iPlayer), and
+            // then that "nothing" is a real answer, kept like any other (a record is never replaced by fewer seasons in any case).
+            var nothing = Enumerable.Range(0, perSource.Length).Where(i => ReferenceEquals(perSource[i], NothingListed)).ToList();
+            if (Enumerable.Range(0, perSource.Length).Any(i => asked[i].Failed && !nothing.Contains(i))) outcome?.Fail();
+            else if (nothing.Count > 0 && nothing.Count == perSource.Length) outcome?.Fail();
+            else foreach (var i in nothing) _seasonCache.Put(KeyOf(t.Sources[i]), Array.Empty<LibrarySeason>());
             var seasons = new List<LibrarySeason>();
             foreach (var list in perSource)
                 foreach (var s in list)
@@ -546,13 +699,19 @@ namespace Baird.NewUi.Adapters
             return seasons.OrderBy(s => s.Number == 0 ? int.MaxValue : s.Number).ToList();
         }
 
+        private static string KeyOf(TitleSource src) => $"{src.Service}|{src.ItemId}";
+
+        /// <summary>What <see cref="SeasonsFromAsync"/> returns when the show's own listing was empty (told apart from a timeout by reference).</summary>
+        private static readonly IReadOnlyList<LibrarySeason> NothingListed = new List<LibrarySeason>().AsReadOnly();
+
         /// <summary>A provider's children, or null when it doesn't answer in time (or fails): not the same as answering "none".</summary>
         private Task<IEnumerable<MediaItemViewModel>?> Children(string id, string what, CancellationToken ct) =>
             Deadline.Within<IEnumerable<MediaItemViewModel>?>(async _ => await _data.GetChildrenAsync(id).ConfigureAwait(false), null, _pieceTimeout, $"[ShowData] Listing {what}", ct);
 
         /// <summary>
         /// One source's seasons. Ok is false when any listing timed out or failed (what's returned is then what could be learnt, and
-        /// isn't worth keeping); a provider that answered with nothing is Ok.
+        /// isn't worth keeping), and when the show's own listing is empty (<see cref="NothingListed"/>): the providers answer "nothing"
+        /// for every failure (Jellyfin not signed in or restarting, an error swallowed on the way), so it may not be an answer at all.
         /// </summary>
         private async Task<(bool Ok, IReadOnlyList<LibrarySeason> Value)> SeasonsFromAsync(CatalogueTitle t, TitleSource src, CancellationToken ct)
         {
@@ -562,7 +721,11 @@ namespace Baird.NewUi.Adapters
                 var listed = await Children(src.ItemId, $"{t.Name} from {src.Service}", ct).ConfigureAwait(false);
                 if (listed == null) return (false, Array.Empty<LibrarySeason>());
                 var children = listed.ToList();
-                if (children.Count == 0) return (true, Array.Empty<LibrarySeason>());
+                if (children.Count == 0)
+                {
+                    Console.WriteLine($"[ShowData] {src.Service} listed nothing for {t.Name}");
+                    return (false, NothingListed); // not kept as it stands: see LibrarySeasonsAsync
+                }
                 var folders = children.Where(c => c.Type == Baird.Services.MediaType.Brand).ToList();
                 if (folders.Count == 0) return (true, new[] { new LibrarySeason(1, "Season 1", children, src.Service, YouTubeService.NextPageId(src.ItemId, children.Count)) });
                 var seasons = await Task.WhenAll(folders.Select(async (f, i) =>

@@ -351,6 +351,172 @@ namespace Baird.Tests.NewUi
             Assert.Single(rig.Store.Puts);
         }
 
+        // ------------------------------------------------------------------ providers that fail fast (they swallow errors and answer "nothing")
+
+        /// <summary>A Jellyfin card for The Simpsons (Jellyfin and iPlayer sources) with a fresh record of seasons 1–4, watched up to S1E1.</summary>
+        private static async Task<(Rig Rig, CatalogueTitle Title, StoredShow Kept)> SimpsonsKept()
+        {
+            var rig = Setup();
+            var title = await Find(rig.W, "simpsons");
+            rig.W.History.Add(new Baird.Models.HistoryItem { Id = "s1e1", LastPosition = TimeSpan.FromMinutes(22), Duration = TimeSpan.FromMinutes(22), LastWatched = DateTime.Now, IsFinished = true });
+            var kept = Record(title, rig.Clock.Now - TimeSpan.FromDays(1), 2, 3, 2, 2);
+            Keep(rig, title, kept);
+            return (rig, title, kept);
+        }
+
+        private static void AssertNeverBlanked(List<ShowDetails> reports, ShowDetails d, StoredShow kept)
+        {
+            Assert.All(reports, r => Assert.True(r.Seasons.Count >= kept.Seasons.Count, $"a report with {r.Seasons.Count} seasons"));
+            Assert.Equal(kept.Seasons.Select(s => s.Number), d.Seasons.Select(s => s.Number)); // the record, unchanged
+            Assert.True(d.CheckingLibrary);                                                  // still "–": nothing was learnt for sure
+            Assert.Equal("1. Stored S1E1", d.Seasons[0].Episodes[0].Label);
+        }
+
+        [Fact]
+        public async Task Jellyfin_listing_nothing_fast_never_replaces_the_record_nor_blanks_the_page()
+        {
+            var (rig, title, kept) = await SimpsonsKept();
+            rig.W.Jellyfin.Children.Remove("simp"); // not signed in yet / restarting: it answers "nothing" at once
+
+            var reports = new List<ShowDetails>();
+            var d = await rig.Shows.DetailsAsync(title, x => { lock (reports) reports.Add(x); });
+
+            AssertNeverBlanked(reports, d, kept);
+            Assert.Empty(rig.Store.Puts);
+            Assert.True(rig.Store.TryGet(title.Key, out var still));
+            Assert.Same(kept, still);
+            var calls = rig.W.Jellyfin.ChildrenCalls;
+            Assert.Null(await rig.Shows.FollowingAsync(title));      // Up next offers nothing (not "get" for a show you have)
+            Assert.True(rig.W.Jellyfin.ChildrenCalls > calls);       // the "nothing" wasn't kept: asked again
+
+            rig.W.Jellyfin.Children["simp"] = new() { CatalogueTests.Item("simp-s1", "Season 1", type: Baird.Services.MediaType.Brand), CatalogueTests.Item("simp-s2", "Season 2", type: Baird.Services.MediaType.Brand) };
+            var back = await rig.Shows.DetailsAsync(title);           // Jellyfin is back: the live answer, kept
+            Assert.False(back.CheckingLibrary);
+            Assert.Single(rig.Store.Puts);
+        }
+
+        [Fact]
+        public async Task A_provider_error_swallowed_into_nothing_never_replaces_the_record()
+        {
+            var (rig, title, kept) = await SimpsonsKept();
+            rig.W.Jellyfin.ThrowChildren = true; rig.W.IPlayer.ThrowChildren = true; // DataService turns each into "nothing"
+
+            var reports = new List<ShowDetails>();
+            var d = await rig.Shows.DetailsAsync(title, x => { lock (reports) reports.Add(x); });
+
+            AssertNeverBlanked(reports, d, kept);
+            Assert.Empty(rig.Store.Puts);
+            Assert.Null(await rig.Shows.FollowingAsync(title));
+        }
+
+        [Fact]
+        public async Task Seerr_answering_nothing_fast_never_replaces_the_record_nor_its_cache()
+        {
+            var rig = Setup();
+            var title = Severance();
+            var kept = Record(title, rig.Clock.Now - TimeSpan.FromDays(1), 9, 10);
+            Keep(rig, title, kept);
+            rig.W.Seerr.Status.Remove(95396); // Seerr restarting: every call answers null at once
+
+            var reports = new List<ShowDetails>();
+            var d = await rig.Shows.DetailsAsync(title, x => { lock (reports) reports.Add(x); });
+
+            AssertNeverBlanked(reports, d, kept);
+            Assert.Empty(rig.Store.Puts);
+            var calls = rig.W.Seerr.StatusCalls;
+            await rig.Shows.DetailsAsync(title with { Key = "again" }); // a page of its own: the null wasn't cached
+            Assert.True(rig.W.Seerr.StatusCalls > calls);
+            Assert.False(await rig.Shows.EnsureFreshFromSeerrAsync(title with { Key = "cold" })); // nor kept by warming
+            Assert.False(rig.Store.TryGet("cold", out _));
+        }
+
+        [Fact]
+        public async Task A_complete_answer_with_fewer_seasons_than_the_record_is_not_trusted()
+        {
+            var rig = Setup();
+            var title = Severance();
+            var kept = Record(title, rig.Clock.Now - TimeSpan.FromDays(1), 9, 10, 8);
+            Keep(rig, title, kept);
+
+            var d = await rig.Shows.DetailsAsync(title); // Seerr knows two seasons only
+
+            Assert.Equal(new[] { 1, 2, 3 }, d.Seasons.Select(s => s.Number));
+            Assert.True(d.CheckingLibrary);
+            Assert.Empty(rig.Store.Puts);
+        }
+
+        [Fact]
+        public async Task With_nothing_kept_a_failing_provider_is_shown_as_ever_but_never_kept()
+        {
+            var rig = Setup();
+            var title = await Find(rig.W, "simpsons");
+            rig.W.Jellyfin.Children.Remove("simp");
+
+            var d = await rig.Shows.DetailsAsync(title);
+
+            Assert.False(d.CheckingLibrary);                // what was learnt, as before
+            Assert.Equal(new[] { 1, 2, 3, 4 }, d.Seasons.Select(s => s.Number));
+            Assert.Empty(rig.Store.Puts);                   // but not kept: the next page asks again
+            Assert.Null(await rig.Shows.FollowingAsync(title));
+        }
+
+        [Fact]
+        public async Task A_slow_seerr_never_holds_back_the_librarys_seasons_and_play()
+        {
+            var (rig, title, kept) = await SimpsonsKept();
+            rig.W.Seerr.StatusGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var library = new TaskCompletionSource<ShowDetails>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            var task = rig.Shows.DetailsAsync(title, x => { if (!x.CheckingLibrary) library.TrySetResult(x); });
+            var first = await library.Task.WaitAsync(TimeSpan.FromSeconds(5)); // while Seerr hasn't answered
+
+            Assert.Equal("Next S1 E2", first.Next!.Value.Label);
+            Assert.Equal(new[] { 1, 2 }, first.Seasons.Select(s => s.Number));
+            Assert.False(task.IsCompleted);
+            rig.W.Seerr.StatusGate.SetResult();
+            var d = await task;
+            Assert.Equal(new[] { 1, 2, 3, 4 }, d.Seasons.Select(s => s.Number)); // then Seerr's seasons join them
+            Assert.Single(rig.Store.Puts);
+        }
+
+        [Fact]
+        public async Task A_hung_seerr_leaves_the_librarys_seasons_and_play_on_the_page()
+        {
+            var (rig, title, kept) = await SimpsonsKept();
+            rig.W.Seerr.HangStatus = true; // times out after the piece timeout (200 ms here)
+
+            var reports = new List<ShowDetails>();
+            var d = await rig.Shows.DetailsAsync(title, x => { lock (reports) reports.Add(x); });
+
+            Assert.Contains(reports, r => !r.CheckingLibrary && r.Next != null);
+            Assert.False(d.CheckingLibrary);                 // what the library said stays: not back to "–"
+            Assert.Equal("Next S1 E2", d.Next!.Value.Label);
+            Assert.Empty(rig.Store.Puts);                    // but it isn't kept: Seerr never answered
+        }
+
+        [Fact]
+        public void Freshness_is_spread_a_day_either_way_the_same_every_run()
+        {
+            var keys = Enumerable.Range(0, 500).Select(i => $"tmdb:tv:{i}").ToList();
+            var fresh = keys.Select(ShowData.FreshFor).ToList();
+            Assert.All(fresh, f => Assert.InRange(f, ShowData.MetadataFresh - TimeSpan.FromDays(1), ShowData.MetadataFresh + TimeSpan.FromDays(1)));
+            Assert.Equal(fresh, keys.Select(ShowData.FreshFor));           // deterministic
+            Assert.True(fresh.Min() < ShowData.MetadataFresh - TimeSpan.FromHours(12) && fresh.Max() > ShowData.MetadataFresh + TimeSpan.FromHours(12)); // spread out
+            Assert.Equal(ShowData.FreshFor("Series:the simpsons:1989:simp"), ShowData.FreshFor("Series:the simpsons:1989:simp"));
+        }
+
+        [Fact]
+        public async Task EnsureFreshAsync_uses_the_titles_own_spread_freshness()
+        {
+            var rig = Setup();
+            var title = Severance();
+            var fresh = ShowData.FreshFor(title.Key);
+            Keep(rig, title, Record(title, rig.Clock.Now - fresh + TimeSpan.FromMinutes(1), 2, 2));
+            Assert.False(await rig.Shows.EnsureFreshAsync(title));              // a minute inside its own freshness
+            Keep(rig, title, Record(title, rig.Clock.Now - fresh - TimeSpan.FromMinutes(1), 2, 2));
+            Assert.True(await rig.Shows.EnsureFreshAsync(title));               // a minute past it
+        }
+
         [Fact]
         public async Task Secrets_and_sources_never_reach_the_store()
         {

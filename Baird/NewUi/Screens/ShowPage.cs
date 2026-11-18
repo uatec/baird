@@ -30,6 +30,9 @@ namespace Baird.NewUi.Screens
         /// <summary>When the lit episode is this close to the end of a season that has more pages, the next page is fetched.</summary>
         private const int LoadAhead = 8;
         private static readonly TimeSpan Poll = TimeSpan.FromSeconds(30);
+        /// <summary>A page still on "–" when its load settled (something didn't answer in time) asks again this often, this many times.</summary>
+        public static readonly TimeSpan RejoinAfter = TimeSpan.FromSeconds(5);
+        public const int Rejoins = 3;
 
         private sealed record ButtonDef(string Label, string? Icon, bool Primary, Action Run);
         private enum RowKind { Buttons, Seasons, Episodes }
@@ -56,6 +59,11 @@ namespace Baird.NewUi.Screens
         private int _season; // index into Seasons
         private readonly CancellationTokenSource _life = new();
         private IDisposable? _poll;
+        private IDisposable? _rejoin;
+        private int _rejoined;
+        private readonly Adapters.ShowData? _shows;
+        private readonly Action<string, Adapters.ShowData.ShowChange>? _onChanged;
+        private bool _reloading, _reloadAgain;
         private bool _moved;
         private string? _focusId; // the episode to land on (from "Open the series" on an episode)
         private bool _loadingMore;
@@ -91,6 +99,13 @@ namespace Baird.NewUi.Screens
             _ctx = ctx; _title = title; _focusId = title.FocusItemId;
             _onLibraryChanged = () => OnUi(() => { if (!_life.IsCancellationRequested) Loaded = LoadAsync(fresh: true); });
             _ctx.LibraryChanged += _onLibraryChanged; // an episode deleted: its card goes
+            // Warming or a background refresh learnt something new of this title: what's on screen catches up.
+            _shows = _ctx.Shows;
+            if (_shows != null)
+            {
+                _onChanged = (key, change) => OnUi(() => OnShowChanged(key, change));
+                _shows.Changed += _onChanged;
+            }
             _root.Children.Add(_art);
             _root.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F5000000"), 0), new GradientStop(Color.Parse("#C0000000"), 0.45), new GradientStop(Color.Parse("#40000000"), 0.8) } } });
             _root.Children.Add(new Border { Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#F0000000"), 0), new GradientStop(Color.Parse("#80000000"), 0.4), new GradientStop(Colors.Transparent, 0.7) } } });
@@ -137,17 +152,26 @@ namespace Baird.NewUi.Screens
         }
 
         // ------------------------------------------------------------------ data
-        private async Task LoadAsync(bool fresh = false)
+        /// <param name="again">Asked again by the page itself (news of its title, or still "–"): what is on screen is never taken back to
+        /// "–" by it (the kept record it reports first, or an answer that fell back to it).</param>
+        private async Task LoadAsync(bool fresh = false, bool again = false)
         {
             if (_ctx.Shows == null) return;
             if (fresh && _details == null) OnUi(() => { _failure = null; RenderBody(); });
+            bool Backwards(ShowDetails x) => again && x.CheckingLibrary && _details is { CheckingLibrary: false };
             try
             {
                 // What Seerr knows shows at once; each library source that has it fills in as it answers.
-                var d = await _ctx.Shows.DetailsAsync(_title, partial => OnUi(() => Apply(partial)), _life.Token, fresh);
+                var d = await _ctx.Shows.DetailsAsync(_title, partial => OnUi(() => { if (!Backwards(partial)) Apply(partial); }), _life.Token, fresh);
                 OnUi(() =>
                 {
-                    Apply(d);
+                    if (!Backwards(d)) Apply(d);
+                    // Settled still on "–" (the library or Seerr didn't answer within the budget): ask again a few times. The work carries
+                    // on past the budget, so a later ask joins it (or starts again when it failed) and the page catches up.
+                    _rejoin?.Dispose();
+                    _rejoin = null;
+                    if (Checking && _rejoined < Rejoins && !_life.IsCancellationRequested)
+                        _rejoin = _ctx.Timers.After(RejoinAfter, () => { _rejoin = null; _rejoined++; Loaded = LoadAsync(again: true); });
                     // Loaded: warm its seasons (the opening one first) and the pages beside it, once.
                     if (_warmed || _life.IsCancellationRequested) return;
                     _warmed = true;
@@ -164,6 +188,48 @@ namespace Baird.NewUi.Screens
             {
                 Console.WriteLine($"[ShowPage] {_title.Name} failed to load: {ex.Message}");
                 OnUi(() => { _details = new ShowDetails(_title, Array.Empty<Season>()); Rebuild(); });
+            }
+        }
+
+        /// <summary>
+        /// Names kept for a season of this title: filled in from the store (no network). Availability refreshed: asked again (the shared
+        /// answer was dropped), at most one ask at a time, and one more after it when more news arrived meanwhile.
+        /// </summary>
+        private void OnShowChanged(string key, Adapters.ShowData.ShowChange change)
+        {
+            if (_life.IsCancellationRequested || _shows == null || key != _title.Key || _details == null) return;
+            if (change == Adapters.ShowData.ShowChange.Names)
+            {
+                var filled = _shows.WithKeptNames(_details);
+                if (!ReferenceEquals(filled, _details)) Apply(filled);
+                return;
+            }
+            Reload();
+        }
+
+        /// <summary>How many times this page asked again after news of its title (tests).</summary>
+        public int Reloads { get; private set; }
+
+        private void Reload()
+        {
+            if (_reloading) { _reloadAgain = true; return; }
+            _reloading = true;
+            Reloads++;
+            Loaded = ReloadAsync();
+        }
+
+        private async Task ReloadAsync()
+        {
+            try { await LoadAsync(again: true); }
+            finally
+            {
+                OnUi(() =>
+                {
+                    _reloading = false;
+                    if (!_reloadAgain || _life.IsCancellationRequested) return;
+                    _reloadAgain = false;
+                    Reload();
+                });
             }
         }
 
@@ -611,7 +677,11 @@ namespace Baird.NewUi.Screens
 
         public void OnShow() { if (_details != null) Draw(); }
         private readonly Action _onLibraryChanged;
-        public void Destroy() { _life.Cancel(); _poll?.Dispose(); _ctx.LibraryChanged -= _onLibraryChanged; }
+        public void Destroy()
+        {
+            _life.Cancel(); _poll?.Dispose(); _rejoin?.Dispose(); _ctx.LibraryChanged -= _onLibraryChanged;
+            if (_shows != null && _onChanged != null) _shows.Changed -= _onChanged;
+        }
     }
 
     /// <summary>A lit-able pill button with an icon (the show page's actions).</summary>
