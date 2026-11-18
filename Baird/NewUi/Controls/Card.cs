@@ -72,7 +72,7 @@ namespace Baird.NewUi.Controls
                         if (tintFromLogo && img.Source is Avalonia.Media.Imaging.Bitmap logo && BrandColour.Of(logo) is { } brand)
                             fallback.Background = BrandGradient(brand);
                     };
-                    AsyncImageLoader.ImageLoader.SetSource(img, data.ImageUrl);
+                    _ = ImageSource.Set(img, data.ImageUrl);
                     layers.Children.Add(img);
                 }
             }

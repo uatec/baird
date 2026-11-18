@@ -140,7 +140,7 @@ namespace Baird.NewUi.Screens
                     logo.Opacity = 1;
                     if (logo.Source is Avalonia.Media.Imaging.Bitmap bmp && BrandColour.Of(bmp) is { } brand) box.Background = Card.BrandGradient(brand);
                 };
-                AsyncImageLoader.ImageLoader.SetSource(logo, logoUrl);
+                _ = ImageSource.Set(logo, logoUrl);
                 box.Child = logo;
             }
             else box.Child = new TextBlock { Text = ch.Name, FontSize = 16, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, MaxLines = 2, Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Bottom };

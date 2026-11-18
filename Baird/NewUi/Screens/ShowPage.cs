@@ -133,7 +133,7 @@ namespace Baird.NewUi.Screens
             if (ImageCache.TryGet(url, out var cached) && cached != null) { img.Source = cached; img.Opacity = 0.75; Motion.Animate(img, T.Slow); return; }
             Motion.Animate(img, T.Slow);
             img.PropertyChanged += (_, e) => { if (e.Property == Image.SourceProperty && img.Source != null) img.Opacity = 0.75; };
-            AsyncImageLoader.ImageLoader.SetSource(img, url);
+            _ = ImageSource.Set(img, url);
         }
 
         // ------------------------------------------------------------------ data

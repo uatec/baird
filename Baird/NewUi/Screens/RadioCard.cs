@@ -93,7 +93,7 @@ namespace Baird.NewUi.Screens
                 logo.Opacity = 1;
                 if (logo.Source is Avalonia.Media.Imaging.Bitmap bmp && BrandColour.Of(bmp) is { } brand) _logoBox.Background = Card.BrandGradient(brand);
             };
-            AsyncImageLoader.ImageLoader.SetSource(logo, url);
+            _ = ImageSource.Set(logo, url);
             _logoBox.Child = logo;
         }
     }
