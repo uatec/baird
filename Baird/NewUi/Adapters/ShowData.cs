@@ -205,8 +205,9 @@ namespace Baird.NewUi.Adapters
             Entry e;
             lock (_cache)
             {
-                // An answer already worked out is no refresh: ask again unless one is in flight.
-                e = Join(title, false, stored, renew: _cache.TryGetValue(title.Key, out var cur) && cur.Task.IsCompleted);
+                // An answer already worked out is no refresh: ask again unless one is in flight. Asked afresh: never from the availability
+                // cache (a stale answer is never served, so no refresh job is queued ahead of the page being warmed).
+                e = Join(title, true, stored, renew: _cache.TryGetValue(title.Key, out var cur) && cur.Task.IsCompleted);
                 e.Waiters++;
             }
             try

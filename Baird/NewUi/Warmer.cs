@@ -103,8 +103,8 @@ namespace Baird.NewUi
         /// <summary>A page (Home, Search) was opened or shown again: warm its children, then its siblings, as one new batch.</summary>
         public void PageOpened(string pageKey, IReadOnlyList<CatalogueTitle> children, IReadOnlyList<CatalogueTitle> siblings)
         {
-            var batch = children.Select(t => TitleJob(t, Rank.Child, null))
-                .Concat(siblings.Select(t => TitleJob(t, Rank.Sibling, null))).ToList();
+            var batch = children.Select(t => TitleJob(t, Rank.Child, null, stills: false))
+                .Concat(siblings.Select(t => TitleJob(t, Rank.Sibling, null, stills: false))).ToList();
             Console.WriteLine($"[Warmer] {pageKey}: {children.Count} children, {siblings.Count} siblings");
             Submit(batch);
         }
@@ -125,7 +125,7 @@ namespace Baird.NewUi
             var siblings = row.Any(t => t.Key == self.Key) ? row.Where(t => t.Key != self.Key).ToList() : new List<CatalogueTitle>();
             var batch = new List<WorkItem> { TitleJob(self, Rank.Page, d) };
             batch.AddRange(SeasonOrder(d).Select(i => SeasonJob(self, d.Seasons[i].Number, Rank.Child)));
-            batch.AddRange(siblings.Select(t => TitleJob(t, Rank.Sibling, null)));
+            batch.AddRange(siblings.Select(t => TitleJob(t, Rank.Sibling, null, stills: false)));
             Submit(batch);
         }
 
@@ -160,16 +160,18 @@ namespace Baird.NewUi
         // ------------------------------------------------------------------ jobs
 
         /// <summary>
-        /// A title: its kept metadata made fresh (no network when it is), then its backdrop and opening season's stills, from the
+        /// A title: its kept metadata made fresh (no network when it is), then its backdrop and (unless <paramref name="stills"/> is false) opening season's stills, from the
         /// details given (a page that has them) or the kept record. Nothing it links to is queued.
         /// </summary>
-        private WorkItem TitleJob(CatalogueTitle t, Rank rank, ShowDetails? known, CancellationToken stop = default) => new(KeyOf(t), rank, async ct =>
+        private WorkItem TitleJob(CatalogueTitle t, Rank rank, ShowDetails? known, CancellationToken stop = default, bool stills = true) => new(KeyOf(t), rank, async ct =>
         {
             using var both = CancellationTokenSource.CreateLinkedTokenSource(ct, stop);
             try
             {
                 await _shows.EnsureFreshAsync(t, both.Token).ConfigureAwait(false);
-                if ((known ?? _shows.Stored(t)) is { } d) await WarmAsync(UrlsFor(d), both.Token).ConfigureAwait(false);
+                var d = known ?? _shows.Stored(t);
+                if (stills) { if (d != null) await WarmAsync(UrlsFor(d), both.Token).ConfigureAwait(false); }
+                else if ((d?.Title.ImageUrl ?? t.ImageUrl) is { Length: > 0 } art) await WarmAsync(new[] { art }, both.Token).ConfigureAwait(false); // children and siblings: the backdrop only, so a big Home batch can't churn the image cache
             }
             catch (OperationCanceledException) when (both.IsCancellationRequested) { }
         });

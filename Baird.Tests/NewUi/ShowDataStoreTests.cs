@@ -235,6 +235,23 @@ namespace Baird.Tests.NewUi
             Assert.Equal(rig.Clock.Now, second!.Stamp);
         }
 
+        [Fact]
+        public async Task EnsureFreshAsync_never_reads_the_availability_cache_nor_queues_refreshes()
+        {
+            var rig = Setup();
+            var refreshes = new List<string>();
+            rig.Shows.RefreshSink = (k, _) => { lock (refreshes) refreshes.Add(k); };
+            var title = Severance();
+            Assert.True(await rig.Shows.EnsureFreshAsync(title)); // fills the availability cache
+            var status = rig.W.Seerr.StatusCalls;
+
+            rig.Clock.Now += TimeSpan.FromDays(8); // the record and every cached availability answer are stale now
+            Assert.True(await rig.Shows.EnsureFreshAsync(title));
+
+            Assert.True(rig.W.Seerr.StatusCalls > status); // asked itself: no stale answer served
+            lock (refreshes) Assert.Empty(refreshes);       // and nothing handed to the sink
+        }
+
         /// <summary>A kept record whose episodes are only numbered ("n. Episode n", no still, no synopsis), as Merge leaves a Seerr-only season.</summary>
         internal static StoredShow Placeholders(CatalogueTitle t, DateTimeOffset stamp, params int[] episodesPerSeason) =>
             new(t with { Sources = Array.Empty<TitleSource>(), Seerr = t.Seerr is { } r ? r with { Status = 0 } : null },

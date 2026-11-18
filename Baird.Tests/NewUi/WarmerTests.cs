@@ -297,7 +297,6 @@ namespace Baird.Tests.NewUi
             Assert.Equal(network, rig.Network());
             Assert.Empty(rig.Store.Puts);
             Assert.Contains("http://art/lib", rig.Warmed);
-            Assert.Contains("http://img/lib/s1e4", rig.Warmed);
             Assert.Contains("http://img/tmdb:tv:95396/s2e3", rig.Warmed); // a season's stills, from the record
         }
 
@@ -307,9 +306,37 @@ namespace Baird.Tests.NewUi
             using var rig = new Rig();
             var big = ShowData.FromCard(Series("big"));
             rig.KeepFresh(big, 30);
-            rig.Warmer.PageOpened("home", new[] { big }, Array.Empty<CatalogueTitle>());
+            rig.Warmer.Lit(CatalogueSearch.CardOf(big));
+            rig.Timers.Advance(Warmer.Delay);
             await rig.Queue.Idle.WaitAsync(Wait);
             Assert.Equal(Warmer.MaxImages, rig.Warmed.Count);
+        }
+
+        [Fact]
+        public async Task A_home_batch_warms_only_each_titles_backdrop()
+        {
+            using var rig = new Rig();
+            var titles = new[] { "a", "b", "c", "d" }.Select(n => ShowData.FromCard(Series(n))).ToList();
+            foreach (var t in titles) rig.KeepFresh(t, 3, 3); // each has stills
+            await rig.Block();
+            rig.Warmer.PageOpened("home", titles, Array.Empty<CatalogueTitle>());
+            await rig.Drain();
+            Assert.Equal(titles.Select(t => $"http://art/{t.Name}"), rig.Warmed); // exactly one image each, no stills
+        }
+
+        [Fact]
+        public async Task A_show_pages_siblings_warm_only_their_backdrop_but_its_own_title_and_seasons_warm_stills()
+        {
+            var (rig, d) = await PartlyWatchedSimpsons();
+            using var cleanup = rig;
+            var other = ShowData.FromCard(Series("other"));
+            rig.KeepFresh(other, 3);
+            rig.Warmer.From(new[] { d.Title, other });
+            rig.Warmer.ShowPageOpened(d);
+            await rig.Queue.Idle.WaitAsync(Wait);
+            Assert.Contains(rig.Warmed, u => u.StartsWith("http://still/s3", StringComparison.Ordinal)); // a season job: its stills
+            Assert.Contains("http://art/other", rig.Warmed);
+            Assert.DoesNotContain(rig.Warmed, u => u.StartsWith("http://img/other/", StringComparison.Ordinal));
         }
 
         // ------------------------------------------------------------------ the lit card (from the old prefetcher)
