@@ -60,12 +60,12 @@ namespace Baird.Tests.NewUi
         {
             public List<JellyseerrRequest> Requests = new();
             public List<JellyseerrSearchResult> Movies = new(), Tv = new();
-            public bool MoviesThrow;
+            public bool MoviesThrow, RequestsThrow, TvThrow;
             public int Calls;
             public Task<IEnumerable<JellyseerrSearchResult>> GetProviderTrendingAsync(int providerId, string mediaType, CancellationToken ct = default)
             {
                 Interlocked.Increment(ref Calls);
-                if (mediaType == "movie" && MoviesThrow) throw new InvalidOperationException("down");
+                if ((mediaType == "movie" && MoviesThrow) || (mediaType == "tv" && TvThrow)) throw new InvalidOperationException("down");
                 return Task.FromResult<IEnumerable<JellyseerrSearchResult>>(mediaType == "movie" ? Movies : Tv);
             }
             public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string q, int p, CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
@@ -75,7 +75,7 @@ namespace Baird.Tests.NewUi
                 new JellyseerrSearchResult { Id = 8, MediaType = "movie", Title = "Alien", ReleaseDate = "1979-05-25", MediaInfoStatus = 5 },
             });
             public Task<JellyseerrRequestResponse> CreateRequestAsync(int id, string t, CancellationToken ct = default) => Task.FromResult(new JellyseerrRequestResponse());
-            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrRequest>>(Requests);
+            public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => RequestsThrow ? throw new InvalidOperationException("down") : Task.FromResult<IEnumerable<JellyseerrRequest>>(Requests);
         }
 
         internal static (HomeData Home, History History, MockEpgService Epg, IDataService Data) Build(bool withFailing = false, Seerr? seerr = null, Watchlist? watchlist = null)

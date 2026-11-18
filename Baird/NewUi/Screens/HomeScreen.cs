@@ -155,7 +155,8 @@ namespace Baird.NewUi.Screens
             catch (Exception ex) { Console.WriteLine($"[Home] Service rows failed: {ex.Message}"); return; }
             void Apply()
             {
-                _services = all;
+                // A service that answers with nothing (Seerr timed out, an error) keeps the row it has: a failure isn't an empty service.
+                _services = all.Select((cards, i) => cards.Count == 0 && i < _services.Count ? _services[i] : cards).ToList();
                 if (_rowList.Count == 0) return; // the first Build includes them
                 var rows = CurrentRows().Where(r => !HomeData.ServiceRows.Any(sr => sr.Title == r.Title)).ToList();
                 rows.AddRange(ServiceRowsNow().Select(r => (r.Item1, r.Item2, r.Item3, r.Item4)));
@@ -168,7 +169,7 @@ namespace Baird.NewUi.Screens
         public async Task RefreshWatchlistAsync()
         {
             IReadOnlyList<HomeCard> cards;
-            try { cards = await _ctx.Home.WatchlistAsync(); }
+            try { cards = await _ctx.Home.WatchlistOrThrowAsync(); }
             catch (Exception ex) { Console.WriteLine($"[Home] Watchlist refresh failed: {ex.Message}"); return; }
             void Apply()
             {
@@ -192,7 +193,7 @@ namespace Baird.NewUi.Screens
             if (DateTime.UtcNow - _downloadsAt < DownloadsEvery) return;
             _downloadsAt = DateTime.UtcNow;
             IReadOnlyList<HomeCard> cards;
-            try { cards = await _ctx.Home.DownloadsAsync(); }
+            try { cards = await _ctx.Home.DownloadsOrThrowAsync(); }
             catch (Exception ex) { Console.WriteLine($"[Home] Downloads failed: {ex.Message}"); return; }
             void Apply()
             {
@@ -246,6 +247,7 @@ namespace Baird.NewUi.Screens
             var litRow = _rowList.Count > _pos.Row ? _rowList[_pos.Row].Title : null;
             var litId = _rowList.Count > _pos.Row && _rowList[_pos.Row].Cards.Count > _pos.Col ? _rowList[_pos.Row].Cards[_pos.Col].Data.Id : null;
             var oldPos = _pos;
+            var hadRows = _rowList.Count > 0;
             rows = WithNowPlaying(rows);
             // Cards that look the same are kept, not remade: a new card fades its artwork in from nothing, so remaking
             // every card whenever one changed (a programme ending, a download's percentage) made all of Home flicker.
@@ -274,6 +276,10 @@ namespace Baird.NewUi.Screens
             }).ToList();
             _rows.Children.Clear();
             foreach (var r in _rowList) _rows.Children.Add(r.View);
+            // A rebuilt row is new, with no position yet: its transition would slide it in from the top-left corner (a flash of tiles
+            // at the top of the screen). Over rows that were already showing, they are put where they belong without animating.
+            var replacing = hadRows;
+            if (replacing) foreach (var r in _rowList) { r.View.Transitions = null; r.Track.Transitions = null; }
             Unsettled();
             _pos = (Math.Min(oldPos.Row, Math.Max(0, _rowList.Count - 1)), 0);
             if (litId != null)
@@ -286,6 +292,7 @@ namespace Baird.NewUi.Screens
                 else if (_rowList.Count > 0) _pos = (_pos.Row, Math.Min(oldPos.Col, _rowList[_pos.Row].Cards.Count - 1));
             }
             Layout();
+            if (replacing) foreach (var r in _rowList) { Motion.Animate(r.View, Motion.Med); Motion.Animate(r.Track, Motion.Med); }
         }
 
         private void Layout()
@@ -472,7 +479,9 @@ namespace Baird.NewUi.Screens
         private async Task RefreshUpNextAsync()
         {
             if (_rowList.Count == 0 || _rowList[0].Title != "Continue watching") return;
-            var cards = await _ctx.Home.UpNextAsync();
+            IReadOnlyList<HomeCard> cards;
+            try { cards = await _ctx.Home.UpNextOrThrowAsync(); }
+            catch (Exception ex) { Console.WriteLine($"[Home] Continue watching refresh failed: {ex.Message}"); return; } // keep what's shown
             Dispatcher.UIThread.Post(() =>
             {
                 if (_rowList.Count == 0) return;

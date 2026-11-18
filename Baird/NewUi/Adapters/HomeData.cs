@@ -133,7 +133,16 @@ namespace Baird.NewUi.Adapters
         /// </summary>
         public async Task<IReadOnlyList<HomeCard>> UpNextAsync()
         {
-            try
+            try { return await UpNextOrThrowAsync().ConfigureAwait(false); }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Continue watching failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
+        }
+
+        /// <summary>
+        /// Continue watching, or an exception if it couldn't be read. A refresh of what's already on screen uses this: a failure is not
+        /// "nothing to continue", and must not take the row away.
+        /// </summary>
+        public async Task<IReadOnlyList<HomeCard>> UpNextOrThrowAsync()
+        {
             {
                 var items = (await _data.GetContinueWatchingAsync().ConfigureAwait(false))
                     .Where(i => !IsHidden(i.Id, i.History?.LastWatched ?? DateTime.MinValue))
@@ -145,7 +154,6 @@ namespace Baird.NewUi.Adapters
                     list.AddRange(await NextEpisodesAsync(list.Select(x => x.Card.Id).ToHashSet()).ConfigureAwait(false));
                 return list.OrderByDescending(x => x.When).Select(x => x.Card).ToList();
             }
-            catch (Exception ex) { Console.WriteLine($"[HomeData] Continue watching failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
         }
 
         private async Task<IReadOnlyList<(DateTime When, HomeCard Card)>> NextEpisodesAsync(HashSet<string> already)
@@ -168,7 +176,12 @@ namespace Baird.NewUi.Adapters
                     lock (_nextCache) _nextCache[key] = (DateTime.UtcNow, next);
                     return next;
                 }
-                catch (Exception ex) { Console.WriteLine($"[HomeData] Next after {m.Name} failed: {ex.Message}"); return null; }
+                catch (Exception ex)
+                {
+                    // A lookup that timed out says nothing about what's next: keep the last answer (stale) rather than drop the card for a refresh.
+                    Console.WriteLine($"[HomeData] Next after {m.Name} failed: {ex.Message}");
+                    lock (_nextCache) return _nextCache.TryGetValue(key, out var old) ? old.Next : null;
+                }
             })).ConfigureAwait(false);
 
             var result = new List<(DateTime, HomeCard)>();
@@ -247,9 +260,13 @@ namespace Baird.NewUi.Adapters
 
         public async Task<IReadOnlyList<HomeCard>> WatchlistAsync()
         {
-            try { return (await _data.GetWatchlistItemsAsync().ConfigureAwait(false)).Select(ItemCard).ToList(); }
+            try { return await WatchlistOrThrowAsync().ConfigureAwait(false); }
             catch (Exception ex) { Console.WriteLine($"[HomeData] Watchlist failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
         }
+
+        /// <summary>The watchlist, or an exception if it couldn't be read (a refresh keeps what's shown rather than emptying the row).</summary>
+        public async Task<IReadOnlyList<HomeCard>> WatchlistOrThrowAsync() =>
+            (await _data.GetWatchlistItemsAsync().ConfigureAwait(false)).Select(ItemCard).ToList();
 
         /// <summary>Seerr trending: titles you can request (or already have).</summary>
         public async Task<IReadOnlyList<HomeCard>> DiscoverAsync()
@@ -414,8 +431,14 @@ namespace Baird.NewUi.Adapters
         /// </summary>
         public async Task<IReadOnlyList<HomeCard>> DownloadsAsync()
         {
+            try { return await DownloadsOrThrowAsync().ConfigureAwait(false); }
+            catch (Exception ex) { Console.WriteLine($"[HomeData] Downloads failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
+        }
+
+        /// <summary>Downloads, or an exception if Seerr couldn't answer (a refresh keeps what's shown rather than emptying the row).</summary>
+        public async Task<IReadOnlyList<HomeCard>> DownloadsOrThrowAsync()
+        {
             if (_seerr == null) return Array.Empty<HomeCard>();
-            try
             {
                 var cutoff = DateTime.UtcNow - KeepArrivedFor;
                 var requests = (await _seerr.GetRequestsAsync().ConfigureAwait(false)).ToList();
@@ -438,7 +461,6 @@ namespace Baird.NewUi.Adapters
                     })
                     .ToList();
             }
-            catch (Exception ex) { Console.WriteLine($"[HomeData] Downloads failed: {ex.Message}"); return Array.Empty<HomeCard>(); }
         }
     }
 

@@ -327,5 +327,41 @@ namespace Baird.Tests.NewUi
             await Wait(300);
             Assert.Equal(new[] { "Heat", "Severance" }, home.CurrentRows().Single(r => r.Title == "Downloads").Cards.Select(c => c.Label));
         }
+
+        [AvaloniaFact]
+        public async Task A_failed_refresh_leaves_Downloads_where_it_is()
+        {
+            var seerr = new HomeDataTests.Seerr();
+            seerr.Requests.Add(new JellyseerrRequest { Id = 1, Status = 2, TmdbId = 9, MediaType = "tv", Title = "Severance", CreatedAt = DateTime.UtcNow.AddDays(-1).ToString("o"), UpdatedAt = DateTime.UtcNow.ToString("o"), MediaInfoStatus = 2 });
+            var (home, _, _) = await Shown(seerr);
+            await Wait(300);
+            var before = Cards(home.View).ToList();
+            var titles = home.CurrentRows().Select(r => r.Title).ToList();
+
+            seerr.RequestsThrow = true;                     // Seerr times out during a refresh: that is not "no downloads"
+            home.DownloadsEvery = TimeSpan.Zero;
+            home.RefreshInBackground();
+            await Wait(300);
+            Assert.Equal(titles, home.CurrentRows().Select(r => r.Title));
+            Assert.Equal(before, Cards(home.View).ToList()); // nothing was rebuilt
+        }
+
+        [AvaloniaFact]
+        public async Task A_rebuild_puts_rows_in_place_without_sliding_them_in_from_the_corner()
+        {
+            var (home, _, _) = await Shown();
+            await Wait(300);
+            var rows = home.CurrentRows();
+            rows[1] = (rows[1].Title, rows[1].Eyebrow, rows[1].Shape, rows[1].Cards.Take(1).ToList()); // something changed: rows are rebuilt
+            home.Build(rows);                               // read at once: no time for a transition to have moved anything
+            var views = home.View.GetLogicalDescendants().OfType<StackPanel>()
+                .Where(p => p.Children.Count == 2 && p.Children[0] is TextBlock t && rows.Any(r => r.Title == t.Text)).ToList();
+            Assert.NotEmpty(views);
+            foreach (var v in views)
+            {
+                var y = v.RenderTransform?.Value.M32 ?? 0;
+                Assert.True(v.RenderTransform != null && (y != 0 || v.Opacity == 0), $"row {((TextBlock)v.Children[0]).Text} starts at the top-left corner");
+            }
+        }
     }
 }
