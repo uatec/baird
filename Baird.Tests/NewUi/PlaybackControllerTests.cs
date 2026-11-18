@@ -130,6 +130,48 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void Skipping_moves_the_position_at_once_and_it_does_not_bounce_while_the_engine_catches_up()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
+            e.Duration(3000); e.TimePositionSeconds = 600;
+            c.SeekRelative(TimeSpan.FromSeconds(30));
+            Assert.Equal(TimeSpan.FromSeconds(630), c.Position);          // moves on the press, though the engine still says 600
+            e.TimePositionSeconds = 601; t.Advance(TimeSpan.FromMilliseconds(500));
+            Assert.Equal(TimeSpan.FromSeconds(630), c.Position);          // a stale engine report does not pull it back
+            c.SeekRelative(TimeSpan.FromSeconds(30));
+            Assert.Equal(TimeSpan.FromSeconds(660), c.Position);          // a second skip builds on the first, not on the stale position
+            e.TimePositionSeconds = 661;                                  // the seek lands
+            Assert.Equal(TimeSpan.FromSeconds(661), c.Position);          // the engine is believed again
+            e.TimePositionSeconds = 662;
+            Assert.Equal(TimeSpan.FromSeconds(662), c.Position);
+        }
+
+        [Fact]
+        public void A_skip_the_engine_never_reaches_stops_standing_in_for_its_position()
+        {
+            var (c, e, t, _) = Build();
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
+            e.Duration(3000); e.TimePositionSeconds = 600;
+            c.SeekRelative(TimeSpan.FromSeconds(-10));
+            Assert.Equal(TimeSpan.FromSeconds(590), c.Position);
+            t.Advance(PlaybackController.SeekSettle + TimeSpan.FromMilliseconds(1));
+            Assert.Equal(TimeSpan.FromSeconds(600), c.Position);
+        }
+
+        [Fact]
+        public void Skipping_stays_within_the_item()
+        {
+            var (c, e, _, _) = Build();
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Loki"); e.Loaded();
+            e.Duration(100); e.TimePositionSeconds = 10;
+            c.SeekRelative(TimeSpan.FromSeconds(-30));
+            Assert.Equal(TimeSpan.Zero, c.Position);
+            c.SeekRelative(TimeSpan.FromSeconds(120));
+            Assert.Equal(TimeSpan.FromSeconds(100), c.Position);
+        }
+
+        [Fact]
         public void Pausing_live_tv_counts_time_behind_live_and_seeking_forward_reduces_it()
         {
             var (c, e, t, _) = Build();

@@ -62,7 +62,25 @@ namespace Baird.NewUi.Playback
         /// <summary>What loaded is sound only (a radio channel): there is no picture to show.</summary>
         public bool IsAudioOnly { get; private set; }
         public PlaybackState State => _engine.State;
-        public TimeSpan Position => TimeSpan.FromSeconds(Math.Max(0, _engine.TimePositionSeconds));
+        public TimeSpan Position => TimeSpan.FromSeconds(Math.Max(0, ShownPositionSeconds()));
+
+        // A skip is acknowledged at once: the engine only reports its new position once the seek has landed, and until then it
+        // reports the old one (so the playhead would sit still, then snap back, then jump). Until the engine arrives near the
+        // target, or gives up after SeekSettle, the target is the position, and further skips build on it, not on the stale one.
+        private double? _seekTarget;
+        private DateTimeOffset _seekAt;
+        /// <summary>How close the engine's own position must get to a pending skip's target for it to count as landed.</summary>
+        public static readonly TimeSpan SeekLanded = TimeSpan.FromSeconds(4);
+        /// <summary>The longest a skip's target stands in for the engine's position if the engine never gets there.</summary>
+        public static readonly TimeSpan SeekSettle = TimeSpan.FromSeconds(3);
+
+        private double ShownPositionSeconds()
+        {
+            var actual = _engine.TimePositionSeconds;
+            if (_seekTarget is not { } target) return actual;
+            if (Math.Abs(actual - target) <= SeekLanded.TotalSeconds || _now() - _seekAt > SeekSettle) { _seekTarget = null; return actual; }
+            return target;
+        }
         public TimeSpan Duration => TimeSpan.FromSeconds(Math.Max(0, _engine.DurationSeconds));
 
         public event Action? Changed;
@@ -88,7 +106,7 @@ namespace Baird.NewUi.Playback
                     Console.WriteLine($"[Playback] {Current?.Title}: {reason}");
                     Changed?.Invoke();
                 });
-            _engine.FileLoaded += (_, _) => _post(OnLoaded);
+            _engine.FileLoaded += (_, _) => _post(() => { _seekTarget = null; OnLoaded(); });
             _engine.StreamEnded += (_, _) => _post(OnEnded);
             _engine.PauseStateChanged += (_, paused) => _post(() => { IsPaused = paused; Changed?.Invoke(); });
             _engine.DurationChanged += (_, _) => _post(() => Changed?.Invoke());
@@ -122,6 +140,7 @@ namespace Baird.NewUi.Playback
 
         private void Start(string url, double? start)
         {
+            _seekTarget = null;
             _retries = 0; _start = start;
             IsLoading = true;
             _configure?.Invoke(Current?.Kind == "live");
@@ -255,12 +274,21 @@ namespace Baird.NewUi.Playback
                 if (behind < TimeSpan.Zero) { delta += behind; behind = TimeSpan.Zero; }
                 BehindLive = behind;
             }
+            else if (delta != TimeSpan.Zero)
+            {
+                var from = ShownPositionSeconds();
+                var to = from + delta.TotalSeconds;
+                var duration = _engine.DurationSeconds;
+                _seekTarget = Math.Max(0, duration > 0 ? Math.Min(to, duration) : to);
+                _seekAt = _now();
+            }
             if (delta != TimeSpan.Zero) _engine.SeekRelative(delta.TotalSeconds);
             Changed?.Invoke();
         }
 
         public void Stop()
         {
+            _seekTarget = null;
             ClearParked();
             SaveCurrent();
             ResetWatched();
