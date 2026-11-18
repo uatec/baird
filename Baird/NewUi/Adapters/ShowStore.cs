@@ -49,13 +49,23 @@ namespace Baird.NewUi.Adapters
             public long Used;        // recency: higher is more recent
             public long Rev;         // bumped by every change or use, so a save knows whether it saw the latest
             public bool Dirty;       // needs writing
-            public bool Touched;     // used since the last save (last-write time to bump)
+            public bool Touched;     // its file's last-write time is to be bumped by the next save
+            public DateTime Stamped; // when its file's last-write time was last set (as far as is known)
         }
+
+        /// <summary>
+        /// A title used again has its file's last-write time bumped at most this often: recency is kept in memory on every use, but a
+        /// metadata write per read (Home warming reads every card each visit) is a lot for an SD card. Recency after a restart is then
+        /// right to within a day.
+        /// </summary>
+        public static readonly TimeSpan TouchEvery = TimeSpan.FromDays(1);
 
         private readonly string _folder;
         private readonly ITimers _timers;
         private readonly int _max;
         private readonly Action<Action> _background;
+        private readonly Func<DateTime> _now;
+        private readonly Action<string, DateTime> _touch;
         // Guards the in-memory state only. File I/O never happens while it is held.
         private readonly object _gate = new();
         private readonly Dictionary<string, Entry> _index = new();
@@ -67,10 +77,14 @@ namespace Baird.NewUi.Adapters
         internal Action? BeforeSaveIo;
 
         /// <param name="runInBackground">Where the save runs when the timer fires (default: the thread pool; tests run it inline).</param>
-        public DiskShowStore(string folder, ITimers timers, int maxTitles = 5000, Action<Action>? runInBackground = null)
+        /// <param name="now">The clock deciding when a used title's file is touched again (tests).</param>
+        /// <param name="touch">Sets a file's last-write time (tests count it).</param>
+        public DiskShowStore(string folder, ITimers timers, int maxTitles = 5000, Action<Action>? runInBackground = null, Func<DateTime>? now = null, Action<string, DateTime>? touch = null)
         {
             _folder = folder; _timers = timers; _max = maxTitles;
             _background = runInBackground ?? (a => _ = Task.Run(a));
+            _now = now ?? (() => DateTime.UtcNow);
+            _touch = touch ?? File.SetLastWriteTimeUtc;
             try
             {
                 Directory.CreateDirectory(folder);
@@ -81,7 +95,7 @@ namespace Baird.NewUi.Adapters
                     .Where(f => f.Name.Length == 64 + 5 && f.Name[..64].All(Uri.IsHexDigit))
                     .OrderBy(f => f.LastWriteTimeUtc).ThenBy(f => f.Name, StringComparer.Ordinal);
                 foreach (var f in files)
-                    _index[f.Name[..64]] = new Entry { Key = "", Used = ++_clock };
+                    _index[f.Name[..64]] = new Entry { Key = "", Used = ++_clock, Stamped = f.LastWriteTimeUtc };
             }
             catch (Exception ex) { Console.WriteLine($"[ShowStore] Can't read {folder}: {ex.Message} - carrying on without it"); }
         }
@@ -120,10 +134,18 @@ namespace Baird.NewUi.Adapters
 
         private bool Use(Entry entry, out StoredShow? show)
         {
-            entry.Used = ++_clock; entry.Touched = true; entry.Rev++;
-            ScheduleSave();   // a read counts for recency too
+            entry.Used = ++_clock;   // a read counts for recency too: always in memory, on disk at most once a day
+            Touch(entry);
             show = Detokenize(entry.Show);
             return show != null;
+        }
+
+        /// <summary>Caller holds the lock. Marks the title's file to have its last-write time bumped, when that was last done a day or more ago.</summary>
+        private void Touch(Entry entry)
+        {
+            if (entry.Touched || _now() - entry.Stamped < TouchEvery) return;
+            entry.Touched = true; entry.Rev++;
+            ScheduleSave();
         }
 
         public void Put(string key, StoredShow show)
@@ -135,8 +157,9 @@ namespace Baird.NewUi.Adapters
             lock (_gate)
             {
                 if (!_index.TryGetValue(hash, out var entry)) _index[hash] = entry = new Entry { Key = key };
-                entry.Key = key; entry.Used = ++_clock; entry.Touched = true; entry.Rev++;
-                if (entry.Json != json) { entry.Show = clean; entry.Json = json; entry.Dirty = true; }
+                entry.Key = key; entry.Used = ++_clock;
+                if (entry.Json != json) { entry.Show = clean; entry.Json = json; entry.Dirty = true; entry.Rev++; }
+                else Touch(entry);   // the same as kept: no rewrite, and its file touched at most once a day
                 while (_index.Count > _max)
                     Forget(_index.MinBy(p => p.Value.Used).Key);
                 ScheduleSave();
@@ -152,7 +175,7 @@ namespace Baird.NewUi.Adapters
             {
                 _saveTimer = null;
                 // Used titles are stamped from now on, in recency order, so they are newer than every file not touched this time.
-                var stamp = DateTime.UtcNow; var n = 0;
+                var stamp = _now(); var n = 0;
                 work = _index.Where(p => p.Value.Dirty || p.Value.Touched).OrderBy(p => p.Value.Used)
                     .Select(p => (p.Key, p.Value, p.Value.Rev,
                         p.Value.Dirty && p.Value.Show != null
@@ -163,7 +186,7 @@ namespace Baird.NewUi.Adapters
             }
             BeforeSaveIo?.Invoke();
 
-            var done = new List<(Entry E, long Rev)>();
+            var done = new List<(Entry E, long Rev, DateTime When)>();
             foreach (var h in deletes)
                 try { File.Delete(PathOf(h)); } catch (Exception ex) { Console.WriteLine($"[ShowStore] Can't delete {h}: {ex.Message}"); }
             foreach (var (hash, e, rev, json, when) in work)
@@ -178,14 +201,17 @@ namespace Baird.NewUi.Adapters
                         File.WriteAllText(tmp, json);
                         File.Move(tmp, path, overwrite: true);
                     }
-                    if (File.Exists(path)) File.SetLastWriteTimeUtc(path, when);
-                    done.Add((e, rev));
+                    if (File.Exists(path)) _touch(path, when);
+                    done.Add((e, rev, when));
                 }
                 catch (Exception ex) { Console.WriteLine($"[ShowStore] Can't save to {_folder}: {ex.Message}"); }
             }
             lock (_gate)
-                foreach (var (e, rev) in done)
+                foreach (var (e, rev, when) in done)
+                {
+                    e.Stamped = when;
                     if (e.Rev == rev) { e.Dirty = false; e.Touched = false; }   // changed again meanwhile: the next save does it
+                }
         }
 
         private void ScheduleSave()

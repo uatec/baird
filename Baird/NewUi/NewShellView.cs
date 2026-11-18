@@ -84,7 +84,8 @@ namespace Baird.NewUi
             sampler.Tick += (_, _) =>
             {
                 var playing = playback.Current != null && !playback.IsPaused && !playback.IsLoading;
-                gateInputs.Playing = playing;
+                // A stream loading (a channel change) is the player's busiest moment: the gate reads it as playing (Slow), never Run.
+                gateInputs.Playing = WarmGate.BusyPlaying(playback.Current != null, playback.IsPaused, playback.IsLoading);
                 // Full-screen playback with Home closed: only the video on screen (no page or overlay over it).
                 gateInputs.FullScreen = WarmGate.IsFullScreenPlayback(playing, nav.State.AtVideo, nav.State.Overlay != null, nav.State.Pages.Count);
                 if (playing && router.ActiveBrowser == null) _ = avSampler.TickAsync();

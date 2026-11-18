@@ -33,6 +33,13 @@ namespace Baird.NewUi.Playback
         /// <summary>True when only the video is on screen: playing, at the video, with no overlay and no page stacked above it (Home open means not at the video).</summary>
         public static bool IsFullScreenPlayback(bool playing, bool atVideo, bool overlay, int pages) => playing && atVideo && !overlay && pages == 0;
 
+        /// <summary>
+        /// The gate's "playing" input: something is playing or loading, and not paused. A stream that is loading (a channel change) counts:
+        /// it is when the player is busiest, so warming goes Slow rather than Run. A paused video does not (nothing to disturb).
+        /// Only the gate reads it this way; elsewhere loading is not playing.
+        /// </summary>
+        public static bool BusyPlaying(bool current, bool paused, bool loading) => current && (loading || !paused);
+
         public WarmMode Mode
         {
             get

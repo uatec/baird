@@ -48,6 +48,20 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void A_stream_loading_is_slow_and_a_paused_one_runs()
+        {
+            // The shell's input: a channel change (loading) is the player's busiest moment, so warming is paced, never unpaced.
+            var i = new Inputs { Playing = WarmGate.BusyPlaying(current: true, paused: false, loading: true) };
+            i.FullScreen = WarmGate.IsFullScreenPlayback(playing: false, atVideo: true, overlay: false, pages: 0); // loading isn't "only the video"
+            Assert.Equal(WarmMode.Slow, i.Gate().Mode);
+
+            i.Playing = WarmGate.BusyPlaying(current: true, paused: true, loading: false); // paused: nothing to disturb
+            Assert.Equal(WarmMode.Run, i.Gate().Mode);
+            Assert.False(WarmGate.BusyPlaying(current: false, paused: false, loading: false));
+            Assert.True(WarmGate.BusyPlaying(current: true, paused: false, loading: false));
+        }
+
+        [Fact]
         public void Home_closed_during_fullscreen_playback_pauses()
         {
             var i = new Inputs { Playing = true, FullScreen = true };

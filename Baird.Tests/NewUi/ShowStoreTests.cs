@@ -200,8 +200,8 @@ namespace Baird.Tests.NewUi
             for (var i = 1; i <= 20; i++) a.Put($"k{i}", Show($"T{i}"));
             _t.Advance(DiskShowStore.SaveDelay);
             var now = DateTime.UtcNow;
-            for (var i = 1; i <= 20; i++)                             // all last saved just now, k1 oldest
-                File.SetLastWriteTimeUtc(Path.Combine(_dir, DiskShowStore.HashOf($"k{i}") + ".json"), now.AddSeconds(-2).AddMilliseconds(i * 10));
+            for (var i = 1; i <= 20; i++)                             // all last saved two days ago (so a use touches them again), k1 oldest
+                File.SetLastWriteTimeUtc(Path.Combine(_dir, DiskShowStore.HashOf($"k{i}") + ".json"), now.AddDays(-2).AddMilliseconds(i * 10));
 
             var b = Open(20);
             Assert.True(b.TryGet("k1", out _));                       // only two are used, so only two are touched
@@ -215,6 +215,54 @@ namespace Baird.Tests.NewUi
             Assert.True(c.TryGet("k2", out _));
             Assert.False(c.TryGet("k3", out _));
             Assert.False(c.TryGet("k4", out _));
+        }
+
+        [Fact]
+        public void Reads_within_a_day_touch_no_file_and_a_read_a_day_later_does()
+        {
+            var clock = DateTime.UtcNow;
+            var a = Open();
+            a.Put("a", Show("A")); a.Put("b", Show("B"));
+            _t.Advance(DiskShowStore.SaveDelay);                     // written
+
+            var touches = new System.Collections.Generic.List<string>();
+            var s = new DiskShowStore(_dir, _t, 5000, x => x(), () => clock, (path, _) => touches.Add(Path.GetFileName(path)));
+            for (var i = 0; i < 50; i++) { Assert.True(s.TryGet("a", out _)); Assert.True(s.TryGet("b", out _)); }
+            s.Put("a", Show("A"));                                    // the same as kept
+            _t.Advance(DiskShowStore.SaveDelay);
+            clock += TimeSpan.FromHours(23);
+            Assert.True(s.TryGet("a", out _));
+            _t.Advance(DiskShowStore.SaveDelay);
+            Assert.Empty(touches);                                    // a hundred reads within a day: no metadata write at all
+
+            clock += TimeSpan.FromHours(2);                           // past a day since its file was written
+            Assert.True(s.TryGet("a", out _)); Assert.True(s.TryGet("a", out _));
+            _t.Advance(DiskShowStore.SaveDelay);
+            Assert.Equal(new[] { DiskShowStore.HashOf("a") + ".json" }, touches); // touched once; b, unread since, not at all
+
+            Assert.True(s.TryGet("a", out _));                       // just touched: not again
+            _t.Advance(DiskShowStore.SaveDelay);
+            Assert.Single(touches);
+        }
+
+        [Fact]
+        public void Eviction_follows_reads_kept_in_memory_even_when_no_file_is_touched()
+        {
+            var clock = DateTime.UtcNow;
+            var touches = 0;
+            var s = new DiskShowStore(_dir, _t, 3, x => x(), () => clock, (_, _) => touches++);
+            s.Put("k1", Show("T1")); s.Put("k2", Show("T2")); s.Put("k3", Show("T3"));
+            _t.Advance(DiskShowStore.SaveDelay);
+            var afterWrite = touches;
+            Assert.True(s.TryGet("k1", out _));                       // k1 used again: k2 is now the least recently used
+            s.Put("k4", Show("T4"));
+            _t.Advance(DiskShowStore.SaveDelay);
+
+            Assert.False(s.TryGet("k2", out _));
+            Assert.True(s.TryGet("k1", out _));
+            Assert.True(s.TryGet("k3", out _));
+            Assert.True(s.TryGet("k4", out _));
+            Assert.Equal(afterWrite + 1, touches);                    // only k4's own write: the reads touched nothing
         }
 
         [Fact]
