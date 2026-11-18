@@ -154,6 +154,26 @@ namespace Baird.Tests.NewUi
         }
 
         [AvaloniaFact]
+        public async Task Warming_to_disk_downloads_once_and_decodes_nothing()
+        {
+            var png = Png();
+            var downloads = 0;
+            var disk = new DiskImageStore(_dir);
+            var loader = new BoundedImageLoader(disk: disk, download: _ => { downloads++; return Task.FromResult<byte[]?>(png); });
+            await loader.WarmDiskAsync(Url);
+            Assert.Equal(1, downloads);
+            Assert.True(disk.Contains(Url));                       // the bytes are on disk...
+            Assert.Equal(0, loader.CachedCountForTests);            // ...and nothing was decoded or kept in memory
+
+            await loader.WarmDiskAsync(Url);                        // already there: no second download
+            Assert.Equal(1, downloads);
+
+            Assert.NotNull(await loader.ProvideImageAsync(Url));    // drawn later: from the disk, decoded only now
+            Assert.Equal(1, downloads);
+            Assert.False(disk.Contains("http://jf/never-fetched.jpg"));
+        }
+
+        [AvaloniaFact]
         public async Task A_cached_file_that_will_not_decode_is_dropped_and_fetched_again()
         {
             var png = Png();

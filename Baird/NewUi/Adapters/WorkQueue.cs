@@ -111,6 +111,18 @@ namespace Baird.NewUi.Adapters
             wake.TrySetResult(); // cut short a Slow/Paused wait: urgent work does not obey the gate
         }
 
+        /// <summary>
+        /// <see cref="Urgent"/>, except while the gate is <see cref="WarmMode.Paused"/> (frames are dropping, or only the video is on
+        /// screen): then the item joins the queue as a batch of its own, at its rank, and waits for the gate like any other. Returns
+        /// whether it went in as urgent. For urgent work that is a guess at what the viewer wants next (a lit card), not a request.
+        /// </summary>
+        public bool UrgentUnlessPaused(WorkItem item)
+        {
+            if (ReadGate() == WarmMode.Paused) { Submit(new[] { item }); return false; }
+            Urgent(item);
+            return true;
+        }
+
         public void Dispose()
         {
             TaskCompletionSource idle, wake;

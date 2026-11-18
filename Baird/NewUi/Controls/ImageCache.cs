@@ -56,6 +56,20 @@ namespace Baird.NewUi.Controls
             catch (Exception ex) { Console.WriteLine($"[ImageCache] {url}: {ex.Message}"); }
         }
 
+        /// <summary>How images are fetched to the disk cache without being decoded (tests replace it).</summary>
+        public static Func<string, Task> FetchToDisk { get; set; } = url => BoundedImageLoader.Current is { } loader ? loader.WarmDiskAsync(url) : Task.CompletedTask;
+
+        /// <summary>
+        /// Fetch one image's bytes to the disk cache, if they aren't there yet: no decode, nothing kept here, so background warming of
+        /// pages the viewer may never open costs a download and a file, never memory or CPU for pictures. Never throws.
+        /// </summary>
+        public static async Task WarmDiskAsync(string url)
+        {
+            if (string.IsNullOrEmpty(url) || Contains(url)) return;
+            try { await FetchToDisk(url).ConfigureAwait(false); }
+            catch (Exception ex) { Console.WriteLine($"[ImageCache] {url}: {ex.Message}"); }
+        }
+
         public static void Clear() { lock (Order) { Order.Clear(); ByUrl.Clear(); } }
     }
 }

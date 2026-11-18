@@ -209,6 +209,33 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public async Task UrgentUnlessPaused_waits_its_turn_while_paused_and_jumps_the_queue_otherwise()
+        {
+            using var h = new Harness();
+            h.Gate.Mode = WarmMode.Paused;
+            Assert.False(h.Queue.UrgentUnlessPaused(h.Job("lit", Rank.Page)));
+            Assert.Equal(WorkQueue.PausedRecheck, await h.Timers.NextRequest()); // held by the gate like any batch
+            Assert.Empty(h.Ran);
+            h.Gate.Mode = WarmMode.Run;
+            h.Timers.FireOldest();
+            await h.Queue.Idle.WaitAsync(Wait);
+            Assert.Equal(new[] { "lit" }, h.Ran);
+
+            using var h2 = new Harness();
+            await h2.Block();
+            h2.Queue.Submit(new[] { h2.Job("a") });
+            Assert.True(h2.Queue.UrgentUnlessPaused(h2.Job("lit", Rank.Page))); // open gate: urgent, ahead of the batch
+            await h2.Drain();
+            Assert.Equal(new[] { "lit", "a" }, h2.Ran);
+
+            using var h3 = new Harness();
+            h3.Gate.Mode = WarmMode.Slow;                                       // video playing, no drops: still urgent
+            Assert.True(h3.Queue.UrgentUnlessPaused(h3.Job("lit", Rank.Page)));
+            await h3.Queue.Idle.WaitAsync(Wait);
+            Assert.Equal(new[] { "lit" }, h3.Ran);
+        }
+
+        [Fact]
         public async Task A_running_job_is_not_cancelled_by_a_new_batch()
         {
             using var h = new Harness();

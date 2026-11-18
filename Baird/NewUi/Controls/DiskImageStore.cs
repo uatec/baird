@@ -11,6 +11,8 @@ namespace Baird.NewUi.Controls
     public interface IDiskImageStore
     {
         bool TryRead(string url, out byte[] bytes);
+        /// <summary>Is the picture stored? (No read, no use recorded: warming asks before it downloads.)</summary>
+        bool Contains(string url);
         void Write(string url, byte[] bytes);
         void Remove(string url);
     }
@@ -88,6 +90,13 @@ namespace Baird.NewUi.Controls
                 Console.WriteLine($"[ImageDisk] Can't read {hash[..8]}: {ex.Message}");
                 return false;
             }
+        }
+
+        public bool Contains(string url)
+        {
+            if (_unusable || string.IsNullOrEmpty(url)) return false;
+            try { return File.Exists(PathOf(HashOf(url))); }
+            catch (Exception) { return false; }
         }
 
         public void Write(string url, byte[] bytes)

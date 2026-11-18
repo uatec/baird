@@ -51,6 +51,9 @@ namespace Baird.NewUi.Controls
 
         internal int PendingWrites { get { lock (_writes) return _writes.Count; } }
 
+        /// <summary>Pictures decoded and kept in memory by this loader (tests).</summary>
+        internal int CachedCountForTests => _cache.Count;
+
         private readonly Func<string, Task<byte[]?>> _download;
 
         public BoundedImageLoader(long budgetBytes = DefaultBudgetBytes, Func<DateTime>? now = null, IDiskImageStore? disk = null, Func<string, Task<byte[]?>>? download = null)
@@ -141,6 +144,29 @@ namespace Baird.NewUi.Controls
                 }
             }
             return bmp;
+        }
+
+        /// <summary>
+        /// Make sure a picture's bytes are in the disk cache, downloading them if not, without decoding them (background warming of pages
+        /// that may never be opened). A picture already decoded, already on disk, or that failed recently costs nothing. Never throws.
+        /// </summary>
+        public async Task WarmDiskAsync(string url)
+        {
+            if (_disk == null || string.IsNullOrEmpty(url) || !url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return;
+            if (_cache.TryGet(url, out _)) return;
+            lock (_failedAt) if (_failedAt.TryGetValue(url, out var when) && _now() - when < FailureMemory) return;
+            try
+            {
+                if (await Task.Run(() => _disk.Contains(url)).ConfigureAwait(false)) return;
+                var bytes = await _download(url).ConfigureAwait(false);
+                if (bytes == null || bytes.Length == 0) { RememberFailure(url); return; }
+                await Task.Run(() => _disk.Write(url, bytes)).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                RememberFailure(url);
+                Console.WriteLine($"[Images] Warming {Shorten(url)} to disk: {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         private static Bitmap Decode(byte[] bytes)
