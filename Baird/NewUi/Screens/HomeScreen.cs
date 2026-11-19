@@ -6,6 +6,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -26,7 +27,7 @@ namespace Baird.NewUi.Screens
     {
         private const double RowTop = 590;
         /// <summary>Diagnostic only (BAIRD_HOME_FX in config.ini, comma separated): switches off what a row change draws, to find what makes it slow on the Pi.
-        /// "noopacity" (rows hide rather than fade), "noclip" (the row above isn't clipped), "nomask" (the backdrop has no gradient mask), "noart" (no backdrop image), "noscrim" (no gradients over it), "noshadow" (cards have no shadow), "novideo" (the video surface is hidden).</summary>
+        /// "noopacity" (rows hide rather than fade), "noclip" (the row above isn't clipped), "nomask" (the backdrop has no gradient mask), "noart" (no backdrop image), "noscrim" (no gradients over it), "noshadow" (cards have no shadow), "novideo" (the video surface is hidden), "smallimg" (pictures decoded 400 px tall), "lowinterp" (pictures drawn with the cheapest filter).</summary>
         public static string Fx { get; set; } = "";
         private static bool Off(string what) => Fx.Contains(what, StringComparison.OrdinalIgnoreCase);
 
@@ -78,6 +79,7 @@ namespace Baird.NewUi.Screens
                 Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#EB000000"), 0), new GradientStop(Color.Parse("#59000000"), 0.42), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.62) } },
             };
             var top = new Border { Height = 300, VerticalAlignment = VerticalAlignment.Top, Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#D0000000"), 0), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1) } } };
+            if (Off("lowinterp")) RenderOptions.SetBitmapInterpolationMode(_root, BitmapInterpolationMode.LowQuality);
             if (Off("noscrim")) { _scrim.IsVisible = false; bottom.IsVisible = false; top.IsVisible = false; }
             _root.Children.Add(_heroArt);
             _root.Children.Add(_scrim);

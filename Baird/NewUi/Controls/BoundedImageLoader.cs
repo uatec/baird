@@ -26,6 +26,8 @@ namespace Baird.NewUi.Controls
 
         /// <summary>Pictures are decoded no taller than the screen: a 2000x3000 poster is 24 MB of pixels, 720x1080 is 3 MB.</summary>
         public const int MaxDecodedHeight = 1080;
+        /// <summary>Diagnostic only (BAIRD_HOME_FX=smallimg): the height pictures are decoded to, instead of <see cref="MaxDecodedHeight"/>.</summary>
+        public static int DecodeHeight { get; set; } = MaxDecodedHeight;
 
         private readonly ConcurrentDictionary<string, int> _requests = new();
 
@@ -172,7 +174,7 @@ namespace Baird.NewUi.Controls
         private static Bitmap Decode(byte[] bytes)
         {
             using var stream = new System.IO.MemoryStream(bytes);
-            return Bitmap.DecodeToHeight(stream, MaxDecodedHeight, BitmapInterpolationMode.MediumQuality);
+            return Bitmap.DecodeToHeight(stream, DecodeHeight, BitmapInterpolationMode.MediumQuality);
         }
 
         private void RememberFailure(string url)

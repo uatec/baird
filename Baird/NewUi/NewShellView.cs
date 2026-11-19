@@ -48,6 +48,7 @@ namespace Baird.NewUi
             _voiceKey = voiceKey;
 
             Screens.HomeScreen.Fx = config["BAIRD_HOME_FX"] ?? "";
+            if (Screens.HomeScreen.Fx.Contains("smallimg", StringComparison.OrdinalIgnoreCase)) Controls.BoundedImageLoader.DecodeHeight = 400;
             Controls.Card.NoShadow = Screens.HomeScreen.Fx.Contains("noshadow", StringComparison.OrdinalIgnoreCase);
             var services = new LegacyServices(config);
             var mpv = new MpvPlayer(services.MpvOverrides);
