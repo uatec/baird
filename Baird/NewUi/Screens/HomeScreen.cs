@@ -377,9 +377,36 @@ namespace Baird.NewUi.Screens
 
             if (key == _heroKey) return;
             _heroKey = key;
-            // Crossfade the backdrop: the new one fades in over the old, which is removed once it's covered.
-            foreach (var old in _heroArt.Children.ToList()) { Motion.Animate(old, T.Slow); old.Opacity = 0; DispatcherTimer.RunOnce(() => _heroArt.Children.Remove(old), T.Slow + TimeSpan.FromMilliseconds(50)); }
-            if (_overVideo || string.IsNullOrEmpty(image) || Off("noart")) return;
+            var over = _overVideo;
+            // The backdrop follows the lit card after a short pause, so a key held down (or the row's own slide) doesn't also crossfade
+            // a full-screen picture on every step.
+            _heroSwap?.Dispose();
+            var delay = FxNumber("herodelay=");
+            if (delay <= 0) SwapBackdrop(image, over);
+            else _heroSwap = DispatcherTimer.RunOnce(() => SwapBackdrop(image, over), TimeSpan.FromMilliseconds(delay));
+        }
+
+        private IDisposable? _heroSwap;
+
+        /// <summary>Diagnostic only: the number after <paramref name="key"/> in <see cref="Fx"/> (0 when absent).</summary>
+        private static int FxNumber(string key)
+        {
+            var at = Fx.IndexOf(key, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return 0;
+            var digits = new string(Fx[(at + key.Length)..].TakeWhile(char.IsDigit).ToArray());
+            return int.TryParse(digits, out var n) ? n : 0;
+        }
+
+        /// <summary>Crossfade the backdrop: the new one fades in over the old, which is removed once it's covered.</summary>
+        private void SwapBackdrop(string? image, bool overVideo)
+        {
+            foreach (var old in _heroArt.Children.ToList())
+            {
+                // The old picture stays whole underneath while the new one fades in over it: one picture blending, not two.
+                if (!Off("heroover")) { Motion.Animate(old, T.Slow); old.Opacity = 0; }
+                DispatcherTimer.RunOnce(() => _heroArt.Children.Remove(old), T.Slow + TimeSpan.FromMilliseconds(50));
+            }
+            if (overVideo || string.IsNullOrEmpty(image) || Off("noart")) return;
             // Shown whole if it's a portrait poster (on the right, over a dimmed fill), never cropped through a face.
             var img = new Baird.NewUi.Controls.ArtImage(image) { OpacityMask = Off("nomask") ? null : new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.92) } } };
             img.Shown += poster => img.Main.Margin = poster ? new Thickness(0, 0, 96, 0) : default;
