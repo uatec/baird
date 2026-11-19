@@ -26,7 +26,7 @@ namespace Baird.NewUi.Screens
     {
         private const double RowTop = 590;
         /// <summary>Diagnostic only (BAIRD_HOME_FX in config.ini, comma separated): switches off what a row change draws, to find what makes it slow on the Pi.
-        /// "noopacity" (rows hide rather than fade), "noclip" (the row above isn't clipped), "nomask" (the backdrop has no gradient mask).</summary>
+        /// "noopacity" (rows hide rather than fade), "noclip" (the row above isn't clipped), "nomask" (the backdrop has no gradient mask), "noart" (no backdrop image), "noscrim" (no gradients over it), "noshadow" (cards have no shadow), "novideo" (the video surface is hidden).</summary>
         public static string Fx { get; set; } = "";
         private static bool Off(string what) => Fx.Contains(what, StringComparison.OrdinalIgnoreCase);
 
@@ -78,6 +78,7 @@ namespace Baird.NewUi.Screens
                 Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 1, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 0, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#EB000000"), 0), new GradientStop(Color.Parse("#59000000"), 0.42), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.62) } },
             };
             var top = new Border { Height = 300, VerticalAlignment = VerticalAlignment.Top, Background = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Color.Parse("#D0000000"), 0), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1) } } };
+            if (Off("noscrim")) { _scrim.IsVisible = false; bottom.IsVisible = false; top.IsVisible = false; }
             _root.Children.Add(_heroArt);
             _root.Children.Add(_scrim);
             _root.Children.Add(bottom);
@@ -376,7 +377,7 @@ namespace Baird.NewUi.Screens
             _heroKey = key;
             // Crossfade the backdrop: the new one fades in over the old, which is removed once it's covered.
             foreach (var old in _heroArt.Children.ToList()) { Motion.Animate(old, T.Slow); old.Opacity = 0; DispatcherTimer.RunOnce(() => _heroArt.Children.Remove(old), T.Slow + TimeSpan.FromMilliseconds(50)); }
-            if (_overVideo || string.IsNullOrEmpty(image)) return;
+            if (_overVideo || string.IsNullOrEmpty(image) || Off("noart")) return;
             // Shown whole if it's a portrait poster (on the right, over a dimmed fill), never cropped through a face.
             var img = new Baird.NewUi.Controls.ArtImage(image) { OpacityMask = Off("nomask") ? null : new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.92) } } };
             img.Shown += poster => img.Main.Margin = poster ? new Thickness(0, 0, 96, 0) : default;

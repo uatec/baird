@@ -48,9 +48,11 @@ namespace Baird.NewUi
             _voiceKey = voiceKey;
 
             Screens.HomeScreen.Fx = config["BAIRD_HOME_FX"] ?? "";
+            Controls.Card.NoShadow = Screens.HomeScreen.Fx.Contains("noshadow", StringComparison.OrdinalIgnoreCase);
             var services = new LegacyServices(config);
             var mpv = new MpvPlayer(services.MpvOverrides);
             var surface = new VideoSurface(mpv);
+            if (Screens.HomeScreen.Fx.Contains("novideo", StringComparison.OrdinalIgnoreCase)) surface.IsVisible = false; // diagnostic: Home with no OpenGL control in the window
             surface.Renderer += r =>
             {
                 // Software rendering only: the Pi 5's V3D is a real GPU, and treating it as weak halved every transition (220 ms for 420), which left a handful of frames.

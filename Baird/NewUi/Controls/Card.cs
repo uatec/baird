@@ -119,7 +119,7 @@ namespace Baird.NewUi.Controls
                 });
             layers.Children.Add(_dim);
 
-            _art = new Border { Width = size.Width, Height = size.Height, CornerRadius = new CornerRadius(T.RCard), ClipToBounds = true, Background = T.CardBack, BoxShadow = T.CardShadow, Child = layers };
+            _art = new Border { Width = size.Width, Height = size.Height, CornerRadius = new CornerRadius(T.RCard), ClipToBounds = true, Background = T.CardBack, BoxShadow = NoShadow ? default : T.CardShadow, Child = layers };
             _ring = new Border { Width = size.Width + 8, Height = size.Height + 8, Margin = new Thickness(-4), CornerRadius = new CornerRadius(T.RCard + 4), BorderBrush = Brushes.White, BorderThickness = new Thickness(4), BoxShadow = T.FocusGlow, Opacity = 0, IsHitTestVisible = false };
             Motion.Animate(_ring, T.Fast);
             var artStack = new Grid();
@@ -137,6 +137,9 @@ namespace Baird.NewUi.Controls
             Motion.Animate(_text, T.Fast);
             Children.Add(_text);
         }
+
+        /// <summary>Diagnostic only (BAIRD_HOME_FX=noshadow): cards drawn without their blurred shadow.</summary>
+        public static bool NoShadow { get; set; }
 
         private readonly Grid _layers;
 
