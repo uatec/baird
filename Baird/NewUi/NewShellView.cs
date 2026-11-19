@@ -47,6 +47,7 @@ namespace Baird.NewUi
             _input = new InputMap(voiceKey);
             _voiceKey = voiceKey;
 
+            Screens.HomeScreen.Fx = config["BAIRD_HOME_FX"] ?? "";
             var services = new LegacyServices(config);
             var mpv = new MpvPlayer(services.MpvOverrides);
             var surface = new VideoSurface(mpv);

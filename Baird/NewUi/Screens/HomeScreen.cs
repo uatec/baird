@@ -25,6 +25,11 @@ namespace Baird.NewUi.Screens
     public sealed class HomeScreen : IScreen
     {
         private const double RowTop = 590;
+        /// <summary>Diagnostic only (BAIRD_HOME_FX in config.ini, comma separated): switches off what a row change draws, to find what makes it slow on the Pi.
+        /// "noopacity" (rows hide rather than fade), "noclip" (the row above isn't clipped), "nomask" (the backdrop has no gradient mask).</summary>
+        public static string Fx { get; set; } = "";
+        private static bool Off(string what) => Fx.Contains(what, StringComparison.OrdinalIgnoreCase);
+
         private const double PeekAbove = 90, PeekGap = 24, PeekOpacity = 0.55; // the sliver of the row above that shows: how tall, how far over the current row, how dim
         private static readonly Dictionary<CardShape, double> RowHeight = new() { [CardShape.Wide] = 412, [CardShape.Poster] = 520 };
         private static readonly Dictionary<CardShape, double> Step = new() { [CardShape.Wide] = 384 + 36, [CardShape.Poster] = 216 + 36 };
@@ -306,9 +311,10 @@ namespace Baird.NewUi.Screens
                 var above = i < _pos.Row;
                 // The row just above peeks in as a dimmed sliver over the current one (as the next row does below), so you can tell there's more above.
                 var peek = i == _pos.Row - 1 && _lit;
-                r.View.Opacity = peek ? PeekOpacity : above ? 0 : 1;
+                if (Off("noopacity")) { r.View.IsVisible = !above || peek; r.View.Opacity = 1; }
+                else r.View.Opacity = peek ? PeekOpacity : above ? 0 : 1;
                 var h = r.View.Bounds.Height > 0 ? r.View.Bounds.Height : RowHeight[r.Shape] - 80;
-                r.View.Clip = peek ? new RectangleGeometry(new Rect(0, Math.Max(0, h - PeekAbove), T.W, PeekAbove)) : null;
+                r.View.Clip = peek && !Off("noclip") ? new RectangleGeometry(new Rect(0, Math.Max(0, h - PeekAbove), T.W, PeekAbove)) : null;
                 r.View.RenderTransform = TransformOperations.Parse($"translate(0px, {(peek ? y - h - PeekGap : above ? RowTop - 200 : y)}px)");
                 if (!above) y += RowHeight[r.Shape];
                 var col = i == _pos.Row ? _pos.Col : (_memory.TryGetValue(i, out var m) ? m : 0);
@@ -372,7 +378,7 @@ namespace Baird.NewUi.Screens
             foreach (var old in _heroArt.Children.ToList()) { Motion.Animate(old, T.Slow); old.Opacity = 0; DispatcherTimer.RunOnce(() => _heroArt.Children.Remove(old), T.Slow + TimeSpan.FromMilliseconds(50)); }
             if (_overVideo || string.IsNullOrEmpty(image)) return;
             // Shown whole if it's a portrait poster (on the right, over a dimmed fill), never cropped through a face.
-            var img = new Baird.NewUi.Controls.ArtImage(image) { OpacityMask = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.92) } } };
+            var img = new Baird.NewUi.Controls.ArtImage(image) { OpacityMask = Off("nomask") ? null : new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative), GradientStops = { new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.92) } } };
             img.Shown += poster => img.Main.Margin = poster ? new Thickness(0, 0, 96, 0) : default;
             _heroArt.Children.Add(img);
         }
