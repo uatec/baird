@@ -24,8 +24,13 @@ namespace Baird.NewUi.Controls
         public static long Decoded, Evicted, Failed, FailedSkipped;
         public static BoundedImageLoader? Current { get; private set; }
 
-        /// <summary>Pictures are decoded no taller than the screen: a 2000x3000 poster is 24 MB of pixels, 720x1080 is 3 MB.</summary>
-        public const int MaxDecodedHeight = 1080;
+        /// <summary>
+        /// Pictures are decoded no taller than this. Cards are drawn a few hundred pixels tall, and the texture of every visible card is
+        /// read again on each frame that moves a row: at 1080 high a picture is 8 MB of pixels (960x540 is 2 MB), and on the Pi that, not
+        /// the layout, left a move between rows at 8 frames in 700 ms. A full-screen backdrop is this picture drawn about twice the size,
+        /// behind the scrims.
+        /// </summary>
+        public const int MaxDecodedHeight = 540;
         /// <summary>Diagnostic only (BAIRD_HOME_FX=smallimg): the height pictures are decoded to, instead of <see cref="MaxDecodedHeight"/>.</summary>
         public static int DecodeHeight { get; set; } = MaxDecodedHeight;
 

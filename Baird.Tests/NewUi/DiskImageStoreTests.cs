@@ -253,5 +253,17 @@ namespace Baird.Tests.NewUi
             await loader.WritesDoneAsync();
             Assert.Equal(0, loader.PendingWrites);
         }
+
+        [AvaloniaFact]
+        public async Task Pictures_are_decoded_no_taller_than_a_card_needs()
+        {
+            using var big = new WriteableBitmap(new PixelSize(1920, 1080), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+            using var ms = new MemoryStream();
+            big.Save(ms);
+            var loader = new BoundedImageLoader(disk: new DiskImageStore(_dir), download: _ => Task.FromResult<byte[]?>(ms.ToArray()));
+            var bmp = await loader.ProvideImageAsync("http://x/pic.jpg");
+            Assert.Equal(BoundedImageLoader.MaxDecodedHeight, bmp!.PixelSize.Height); // 8 MB of texture per card at 1080 high is what left row changes at 8 frames
+            Assert.True(BoundedImageLoader.MaxDecodedHeight <= 540);
+        }
     }
 }
