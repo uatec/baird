@@ -363,5 +363,22 @@ namespace Baird.Tests.NewUi
                 Assert.True(v.RenderTransform != null && (y != 0 || v.Opacity == 0), $"row {((TextBlock)v.Children[0]).Text} starts at the top-left corner");
             }
         }
+
+        [AvaloniaFact]
+        public async Task Going_right_does_not_scroll_the_row_while_the_lit_card_is_still_on_screen()
+        {
+            var (home, _, _) = await Shown();
+            var cards = Enumerable.Range(0, 12).Select(i => new HomeCard(CardKind.Series, $"s{i}", $"Show {i}", null, null, null, null, "Jellyfin: nas", PlayVia.Mpv)).ToList();
+            home.Build(new[] { ("Row", "Row", CardShape.Wide, (IReadOnlyList<HomeCard>)cards) });
+            home.OnShow();
+            double Scrolled() => ((Avalonia.Visual)((Card)home.LitElement!).Parent!).RenderTransform?.Value.M31 ?? 0;
+            Assert.Equal(0, Scrolled());
+            home.OnAction(UiAction.Right, false); home.OnAction(UiAction.Right, false); home.OnAction(UiAction.Right, false); // the fourth card
+            await Task.Delay(700); Dispatcher.UIThread.RunJobs();       // the row's slide has finished (if it were going to slide)
+            Assert.Equal(0, Scrolled());                                // it is well within the screen: before, the row slid from the third card on
+            for (var i = 0; i < 8; i++) home.OnAction(UiAction.Right, false); // the twelfth
+            await Task.Delay(700); Dispatcher.UIThread.RunJobs();
+            Assert.True(Scrolled() < 0);                                // now it has had to move
+        }
     }
 }

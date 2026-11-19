@@ -54,6 +54,9 @@ namespace Baird.NewUi.Screens
         private List<Row> _rowList = new();
         private (int Row, int Col) _pos = (0, 0);
         private readonly Dictionary<int, int> _memory = new();
+        /// <summary>For each row, the first card on screen (see <see cref="FocusMath.ScrollFirst"/>).</summary>
+        private readonly Dictionary<int, int> _first = new();
+        private const double CardGap = 36;
         private bool _lit = true;
         private bool _overVideo;
         private string? _heroKey;
@@ -321,7 +324,10 @@ namespace Baird.NewUi.Screens
                 r.View.RenderTransform = TransformOperations.Parse($"translate(0px, {(peek ? y - h - PeekGap : above ? RowTop - 200 : y)}px)");
                 if (!above) y += RowHeight[r.Shape];
                 var col = i == _pos.Row ? _pos.Col : (_memory.TryGetValue(i, out var m) ? m : 0);
-                r.Track.RenderTransform = TransformOperations.Parse($"translate({-Math.Max(0, col - 1) * Step[r.Shape]}px, 0px)");
+                // The row only scrolls once the lit card would run off the screen, so the whole width can be used.
+                var visible = (int)Math.Floor((T.W - 2 * T.SafeX + CardGap) / Step[r.Shape]);
+                var first = _first[i] = FocusMath.ScrollFirst(_first.GetValueOrDefault(i), col, visible, r.Cards.Count);
+                r.Track.RenderTransform = TransformOperations.Parse($"translate({-first * Step[r.Shape]}px, 0px)");
                 for (var j = 0; j < r.Cards.Count; j++)
                 {
                     var lit = _lit && i == _pos.Row && j == _pos.Col;
@@ -454,7 +460,7 @@ namespace Baird.NewUi.Screens
                 RebuildIfChanged(CurrentRows());
                 // Light what's playing only when it's new to Home; coming back from a page restores where you were.
                 var playing = _ctx.NowPlaying?.Id;
-                if (playing != null && _overVideo && playing != _seenPlaying) { _pos = (0, 0); _memory.Clear(); }
+                if (playing != null && _overVideo && playing != _seenPlaying) { _pos = (0, 0); _memory.Clear(); _first.Clear(); }
                 _seenPlaying = playing;
             }
             _ = RefreshUpNextAsync(); _ = RefreshOnNowAsync(); _ = RefreshDownloadsAsync(); _ = RefreshServiceRowsAsync();
@@ -489,7 +495,7 @@ namespace Baird.NewUi.Screens
         public void OnFocusOut() { _lit = false; Layout(); }
 
         /// <summary>The Home key: back to the first card of Continue watching.</summary>
-        public void Reset() { _pos = (0, 0); _memory.Clear(); _lit = true; Layout(); }
+        public void Reset() { _pos = (0, 0); _memory.Clear(); _first.Clear(); _lit = true; Layout(); }
 
         /// <summary>What's on changes through the day: refresh On now in place (the lit card stays lit).</summary>
         public async Task RefreshOnNowAsync()

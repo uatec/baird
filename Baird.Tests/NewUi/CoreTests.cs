@@ -103,6 +103,26 @@ namespace Baird.Tests.NewUi
     public class FocusMathTests
     {
         [Fact]
+        public void A_row_scrolls_only_when_the_lit_card_would_leave_the_screen()
+        {
+            var first = 0;
+            for (var lit = 0; lit < 4; lit++) { first = FocusMath.ScrollFirst(first, lit, 4, 10); Assert.Equal(0, first); } // four cards fit: lit across the screen, nothing moves
+            first = FocusMath.ScrollFirst(first, 4, 4, 10); Assert.Equal(1, first);   // the fifth: just far enough to show it
+            first = FocusMath.ScrollFirst(first, 5, 4, 10); Assert.Equal(2, first);
+            first = FocusMath.ScrollFirst(first, 4, 4, 10); Assert.Equal(2, first);   // back along: stays put while the lit card is still on screen
+            first = FocusMath.ScrollFirst(first, 2, 4, 10); Assert.Equal(2, first);
+            first = FocusMath.ScrollFirst(first, 1, 4, 10); Assert.Equal(1, first);   // only the card before the first one scrolls it back
+        }
+
+        [Fact]
+        public void A_row_never_scrolls_past_its_last_card_or_when_it_fits()
+        {
+            Assert.Equal(6, FocusMath.ScrollFirst(0, 9, 4, 10));   // the last four are showing, none beyond
+            Assert.Equal(0, FocusMath.ScrollFirst(0, 2, 4, 3));    // a row shorter than the screen never moves
+            Assert.Equal(0, FocusMath.ScrollFirst(5, 0, 4, 3));
+        }
+
+        [Fact]
         public void Rows_remember_columns_and_clamp()
         {
             var rows = new[] { 5, 8, 4 }; var mem = new Dictionary<int, int>(); var p = (0, 3);
