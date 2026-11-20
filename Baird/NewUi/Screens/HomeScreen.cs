@@ -32,6 +32,7 @@ namespace Baird.NewUi.Screens
         private static bool Off(string what) => Fx.Contains(what, StringComparison.OrdinalIgnoreCase);
 
         private const double PeekAbove = 90, PeekGap = 24, PeekOpacity = 0.55; // the sliver of the row above that shows: how tall, how far over the current row, how dim
+        private const double PeekClear = 24, PeekMin = 40; // the sliver keeps this far below the hero's text, and isn't shown at all if less than PeekMin of it would fit
         private static readonly Dictionary<CardShape, double> RowHeight = new() { [CardShape.Wide] = 412, [CardShape.Poster] = 520 };
         private static readonly Dictionary<CardShape, double> Step = new() { [CardShape.Wide] = 384 + 36, [CardShape.Poster] = 216 + 36 };
 
@@ -308,19 +309,22 @@ namespace Baird.NewUi.Screens
 
         private void Layout()
         {
-            if (_rowList.Count == 0) { RenderHero(); return; }
+            RenderHero();
+            if (_rowList.Count == 0) return;
             // Taller poster rows sit higher, so a lit poster (lift, ring, label) is fully on screen.
             var y = _rowList[_pos.Row].Shape == CardShape.Poster ? RowTop - 90 : RowTop;
+            // The sliver of the row above only uses the room between the hero's text and the lit row, so it never runs over the text.
+            var peekRoom = Math.Min(PeekAbove, y - PeekGap - HeroBottom() - PeekClear);
             for (var i = 0; i < _rowList.Count; i++)
             {
                 var r = _rowList[i];
                 var above = i < _pos.Row;
                 // The row just above peeks in as a dimmed sliver over the current one (as the next row does below), so you can tell there's more above.
-                var peek = i == _pos.Row - 1 && _lit;
+                var peek = i == _pos.Row - 1 && _lit && peekRoom >= PeekMin;
                 if (Off("noopacity")) { r.View.IsVisible = !above || peek; r.View.Opacity = 1; }
                 else r.View.Opacity = peek ? PeekOpacity : above ? 0 : 1;
                 var h = r.View.Bounds.Height > 0 ? r.View.Bounds.Height : RowHeight[r.Shape] - 80;
-                r.View.Clip = peek && !Off("noclip") ? new RectangleGeometry(new Rect(0, Math.Max(0, h - PeekAbove), T.W, PeekAbove)) : null;
+                r.View.Clip = peek && !Off("noclip") ? new RectangleGeometry(new Rect(0, Math.Max(0, h - peekRoom), T.W, peekRoom)) : null;
                 r.View.RenderTransform = TransformOperations.Parse($"translate(0px, {(peek ? y - h - PeekGap : above ? RowTop - 200 : y)}px)");
                 if (!above) y += RowHeight[r.Shape];
                 var col = i == _pos.Row ? _pos.Col : (_memory.TryGetValue(i, out var m) ? m : 0);
@@ -337,7 +341,13 @@ namespace Baird.NewUi.Screens
                 ((TextBlock)((StackPanel)r.View).Children[0]).Foreground = _lit && i == _pos.Row ? T.Text : T.Text2;
             }
             _ctx.Warm?.Lit((LitElement as Card)?.Data); // a series' page gets ready while its card is lit
-            RenderHero();
+        }
+
+        /// <summary>Where the hero's text ends, measured now (it was just filled in, so its laid-out bounds may be stale).</summary>
+        private double HeroBottom()
+        {
+            _hero.Measure(new Size(_hero.Width + _hero.Margin.Left, double.PositiveInfinity));
+            return _hero.DesiredSize.Height; // includes the top margin
         }
 
         private void RenderHero()

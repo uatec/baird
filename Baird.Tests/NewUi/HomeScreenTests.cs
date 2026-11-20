@@ -92,7 +92,28 @@ namespace Baird.Tests.NewUi
             {
                 await Wait(700);
                 Assert.Equal(0, rows[0].Opacity);      // two up: out of sight
-                Assert.NotNull(rows[1].Clip);
+                if (rows[1].Opacity > 0) Assert.NotNull(rows[1].Clip); // the row above only peeks where it fits under the hero
+            }
+        }
+
+        [AvaloniaFact]
+        public async Task The_row_above_never_runs_over_the_hero_text()
+        {
+            var (home, _, _) = await Shown();
+            var rows = home.View.GetLogicalDescendants().OfType<Avalonia.Controls.Canvas>().First().Children;
+            var hero = home.View.GetLogicalDescendants().OfType<StackPanel>().First(p => p.Width == 900);
+            for (var row = 1; row < rows.Count; row++)
+            {
+                if (!home.OnAction(UiAction.Down, false)) break;
+                await Wait(700);
+                var heroBottom = hero.TranslatePoint(new Point(0, hero.Bounds.Height), home.View)!.Value.Y;
+                for (var i = 0; i < row; i++)
+                {
+                    if (rows[i].Opacity == 0) continue;
+                    var clipTop = rows[i].Clip?.Bounds.Top ?? 0;
+                    var top = rows[i].TranslatePoint(new Point(0, clipTop), home.View)!.Value.Y;
+                    Assert.True(top >= heroBottom, $"row {i} shows from y={top}, over the hero text that ends at y={heroBottom} (lit row {row})");
+                }
             }
         }
 
