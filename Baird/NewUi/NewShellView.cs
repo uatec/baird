@@ -103,6 +103,8 @@ namespace Baird.NewUi
             {
                 // a stale answer the viewer is looking at; what asks the browser or yt-dlp goes to its own lane
                 RefreshSink = (key, run) => (ShowData.IsCostlyKey(key) ? _ctx.WorkCostly! : _ctx.Work!).Submit(new[] { new WorkItem(key, Rank.Page, run) }),
+                // the seasons of a browser service's show that weren't listed with the first: one at a time, after everything else
+                BackgroundSink = batch => _ctx.WorkCostly!.Submit(batch.Select(w => new WorkItem(w.Key, Rank.Sibling, w.Work)).ToList()),
             };
             _ctx.Deleter = new Deletion(services.Data, services.Seerr, _ctx.Search);
             // Netflix searches in the one shared browser: while another service plays there, say so instead of silently missing it.

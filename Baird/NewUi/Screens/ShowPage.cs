@@ -382,7 +382,7 @@ namespace Baird.NewUi.Screens
             var badge = e.State switch
             {
                 EpisodeState.Requested => e.Download is { } d ? $"dl:{d * 100:0}" : "requested",
-                EpisodeState.Missing => Checking ? null : "missing",
+                EpisodeState.Missing => Checking || _details?.Seasons.FirstOrDefault(x => x.Number == e.Season)?.Pending == true ? null : "missing",
                 _ => e.Watched ? "watched" : null,
             };
             var src = e.Source;

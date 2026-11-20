@@ -38,6 +38,12 @@ namespace Baird.NewUi.Adapters
         private readonly StaleCache<IReadOnlyList<LibrarySeason>> _seasonCache;
         /// <summary>The sources a search of one lane's providers found for a title (key: title|lane): so a page needn't search, and shows what was found at once.</summary>
         private readonly StaleCache<IReadOnlyList<TitleSource>> _foundCache;
+        /// <summary>One season's listing from a source that lists a season at a time (key: source|season folder), served stale and refreshed.</summary>
+        private readonly StaleCache<LibrarySeason> _episodesCache;
+        /// <summary>Each such source's season folders (key: source), so one season can be listed on its own.</summary>
+        private readonly Dictionary<string, IReadOnlyList<SeasonFolder>> _folders = new();
+        /// <summary>The season each title's page last opened on: the one listed first.</summary>
+        private readonly Dictionary<string, int> _opening = new();
         private readonly Dictionary<string, DateTimeOffset> _refreshing = new(); // key -> when its refresh was requested
         private readonly Func<DateTimeOffset> _clock;
         /// <summary>A refresh asked for this long ago and never finished is taken to be lost (a sink that dropped it), and may be asked for again.</summary>
@@ -48,6 +54,13 @@ namespace Baird.NewUi.Adapters
         /// The sink MUST run the work (it never faults); one that drops it only delays that key's next refresh by two minutes.
         /// </summary>
         public Action<string, Func<CancellationToken, Task>>? RefreshSink { get; set; }
+
+        /// <summary>
+        /// When set, the seasons of a show that were not listed with the first (a service that drives the browser lists the season in view and
+        /// leaves the rest for later) are handed here as one batch (key, work), nearest the opening season first, to run one at a time at low
+        /// priority. Without a sink they stay "–" until <see cref="EnsureSeasonListedAsync"/> is asked for one.
+        /// </summary>
+        public Action<IReadOnlyList<(string Key, Func<CancellationToken, Task> Work)>>? BackgroundSink { get; set; }
 
         /// <summary>Metadata kept between runs (names, art, seasons, episodes; never sources or availability), when there is a store.</summary>
         private readonly IShowStore? _store;
@@ -61,6 +74,7 @@ namespace Baird.NewUi.Adapters
             _statusCache = new(AvailabilityFresh, now);
             _seasonCache = new(AvailabilityFresh, now);
             _foundCache = new(AvailabilityFresh, now);
+            _episodesCache = new(AvailabilityFresh, now);
             _data = data; _seerr = seerr; _search = search;
             _pieceTimeout = pieceTimeout ?? TimeSpan.FromSeconds(8);
             Budget = budget ?? TimeSpan.FromSeconds(8);
@@ -129,7 +143,7 @@ namespace Baird.NewUi.Adapters
         /// <summary>Drop what's been learnt (after a request, or watching something).</summary>
         public void Forget()
         {
-            _statusCache.Clear(); _seasonCache.Clear(); _foundCache.Clear();
+            _statusCache.Clear(); _seasonCache.Clear(); _foundCache.Clear(); _episodesCache.Clear();
             lock (_cache) foreach (var k in _cache.Where(e => e.Value.Task.IsCompleted).Select(e => e.Key).ToList()) _cache.Remove(k);
         }
 
@@ -428,6 +442,7 @@ namespace Baird.NewUi.Adapters
         {
             var outcome = entry.Outcome;
             var d = Fill(await ComputeAsync(title, report, fresh, entry.Cts.Token, outcome).ConfigureAwait(false), stored);
+            if (Warmer.OpeningSeason(d) is >= 0 and var open && !d.Seasons[open].Pending) lock (_opening) _opening[title.Key] = d.Seasons[open].Number; // the season to list first next time
             if (stored != null && outcome.Failed)
             {
                 Console.WriteLine($"[ShowData] {title.Name}: something didn't answer - keeping what was kept");
@@ -441,7 +456,7 @@ namespace Baird.NewUi.Adapters
             }
             if (_store != null && !outcome.Failed && !d.CheckingLibrary && !entry.Cts.IsCancellationRequested)
             {
-                try { _store.Put(title.Key, ToStored(d, _clock())); entry.Stored = true; }
+                try { _store.Put(title.Key, ToStored(d, _clock()) with { Opening = OpeningOf(title) ?? stored?.Opening }); entry.Stored = true; }
                 catch (Exception ex) { Console.WriteLine($"[ShowData] Keeping {title.Name} failed: {ex.Message}"); }
             }
             return d;
@@ -784,7 +799,8 @@ namespace Baird.NewUi.Adapters
                     (false, null), _pieceTimeout, "[ShowData] Seerr status", c), ct, outcome, t.Key).ConfigureAwait(false);
         }
 
-        public sealed record LibrarySeason(int Number, string Label, IReadOnlyList<MediaItemViewModel> Episodes, string? Service = null, string? MoreId = null);
+        /// <param name="Pending">The season's folder is known, its episodes are not listed yet (see <see cref="Season.Pending"/>).</param>
+        public sealed record LibrarySeason(int Number, string Label, IReadOnlyList<MediaItemViewModel> Episodes, string? Service = null, string? MoreId = null, bool Pending = false);
 
         /// <summary>
         /// The show's seasons in the library, across its sources (the best source wins a season both have): each source's
@@ -813,7 +829,11 @@ namespace Baird.NewUi.Adapters
             var seasons = new List<LibrarySeason>();
             foreach (var list in perSource)
                 foreach (var s in list)
-                    if (seasons.All(x => x.Number != s.Number)) seasons.Add(s);
+                {
+                    var at = seasons.FindIndex(x => x.Number == s.Number);
+                    if (at < 0) seasons.Add(s);
+                    else if (seasons[at].Pending && !s.Pending) seasons[at] = s; // another source's real listing beats a "–"
+                }
             return seasons.OrderBy(s => s.Number == 0 ? int.MaxValue : s.Number).ToList();
         }
 
@@ -846,6 +866,11 @@ namespace Baird.NewUi.Adapters
                 }
                 var folders = children.Where(c => c.Type == Baird.Services.MediaType.Brand).ToList();
                 if (folders.Count == 0) return (true, new[] { new LibrarySeason(1, "Season 1", children, src.Service, YouTubeService.NextPageId(src.ItemId, children.Count)) });
+                // A service that drives the browser (or yt-dlp) is asked for the season in view; the rest follow one at a time later.
+                if (folders.Count > 1 && IsCostly(src.Service))
+                    return await LazySeasonsAsync(t, src, folders.Select((f, i) => f.Source == YouTubeService.SourceName
+                        ? new SeasonFolder(f.Id, i + 1, f.Name, true)
+                        : SeasonFolderOf(f, i + 1)).ToList(), ct).ConfigureAwait(false);
                 var seasons = await Task.WhenAll(folders.Select(async (f, i) =>
                 {
                     var inFolder = await Children(f.Id, $"{t.Name} {f.Name} from {src.Service}", ct).ConfigureAwait(false);
@@ -859,6 +884,132 @@ namespace Baird.NewUi.Adapters
                 return (ok, seasons);
             }
             catch (Exception ex) { Console.WriteLine($"[ShowData] Seasons of {t.Name} from {src.Service} failed: {ex.Message}"); return (false, Array.Empty<LibrarySeason>()); }
+        }
+
+        /// <summary>One season folder of a source: its id, the season number it stands for, and its name.</summary>
+        private sealed record SeasonFolder(string Id, int Number, string Label, bool YouTube);
+
+        private static SeasonFolder SeasonFolderOf(MediaItemViewModel f, int position)
+        {
+            var n = SeasonNumberOf(f.Name, position);
+            return new SeasonFolder(f.Id, n, n == 0 ? "Specials" : $"Season {n}", false);
+        }
+
+        /// <summary>The season a title's page last opened on (the next episode's), from this run or the kept record; else null.</summary>
+        private int? OpeningOf(CatalogueTitle t)
+        {
+            lock (_opening) if (_opening.TryGetValue(t.Key, out var n)) return n;
+            return Kept(t)?.Opening;
+        }
+
+        /// <summary>
+        /// A source that lists a season at a time: the season in view (the one last opened on, else the first) is listed now, and so is the
+        /// next when the whole of that one is watched (that is where the next episode is); every other season is listed as far as it has been
+        /// before (kept, served stale), else left <see cref="LibrarySeason.Pending"/> and listed later, one at a time, nearest the opening
+        /// season first (<see cref="BackgroundSink"/>). So a page doesn't wait on 37 listings of a browser.
+        /// </summary>
+        private async Task<(bool Ok, IReadOnlyList<LibrarySeason> Value)> LazySeasonsAsync(CatalogueTitle t, TitleSource src, List<SeasonFolder> folders, CancellationToken ct)
+        {
+            var key = KeyOf(src);
+            lock (_folders) _folders[key] = folders;
+            var order = folders.OrderBy(f => f.Number == 0 ? int.MaxValue : f.Number).ToList();
+            var remembered = OpeningOf(t);
+            var active = order.FirstOrDefault(f => f.Number == remembered) ?? order[0];
+            var now = new List<SeasonFolder> { active };
+            var outcome = new Outcome();
+            var listed = new Dictionary<int, LibrarySeason>();
+            var first = await ListSeasonAsync(t, src, active, false, ct, outcome).ConfigureAwait(false);
+            listed[active.Number] = first;
+            // All of it watched: the next episode is in the season after it.
+            var at = order.IndexOf(active);
+            if (first.Episodes.Count > 0 && first.Episodes[^1].History is { IsFinished: true } && at + 1 < order.Count)
+            {
+                var next = order[at + 1];
+                listed[next.Number] = await ListSeasonAsync(t, src, next, false, ct, outcome).ConfigureAwait(false);
+            }
+            var seasons = new List<LibrarySeason>();
+            var pending = new List<SeasonFolder>();
+            foreach (var f in order)
+            {
+                if (listed.TryGetValue(f.Number, out var l)) seasons.Add(l);
+                else if (_episodesCache.TryGet($"{key}|{f.Id}", out var kept, out _)) seasons.Add(kept);
+                else { seasons.Add(new LibrarySeason(f.Number, f.Label, Array.Empty<MediaItemViewModel>(), src.Service, Pending: true)); pending.Add(f); }
+            }
+            ScheduleRest(t, src, pending, active.Number);
+            return (!outcome.Failed, seasons);
+        }
+
+        private Task<LibrarySeason> ListSeasonAsync(CatalogueTitle t, TitleSource src, SeasonFolder f, bool fresh, CancellationToken ct, Outcome? outcome) =>
+            CachedAsync(_episodesCache, $"{KeyOf(src)}|{f.Id}", fresh, async c =>
+            {
+                var inFolder = await Children(f.Id, $"{t.Name} {f.Label} from {src.Service}", c).ConfigureAwait(false);
+                var eps = (inFolder ?? Enumerable.Empty<MediaItemViewModel>()).Where(e => e.Type != Baird.Services.MediaType.Brand).ToList();
+                return (inFolder != null, new LibrarySeason(f.Number, f.Label, eps, src.Service, f.YouTube ? YouTubeService.NextPageId(f.Id, eps.Count) : null));
+            }, ct, outcome, t.Key);
+
+        /// <summary>Hands the seasons not listed yet to the <see cref="BackgroundSink"/>, nearest the opening season first (later before earlier on a tie).</summary>
+        private void ScheduleRest(CatalogueTitle t, TitleSource src, List<SeasonFolder> pending, int active)
+        {
+            var sink = BackgroundSink;
+            if (sink == null || pending.Count == 0) return;
+            var batch = new List<(string, Func<CancellationToken, Task>)>();
+            foreach (var f in pending.OrderBy(f => Math.Abs(f.Number - active)).ThenByDescending(f => f.Number))
+            {
+                var key = $"{KeyOf(src)}|{f.Id}";
+                lock (_refreshing)
+                {
+                    if (_refreshing.TryGetValue(key, out var since) && _clock() - since < RefreshLost) continue;
+                    _refreshing[key] = _clock();
+                }
+                var folder = f;
+                batch.Add((key, async c =>
+                {
+                    try { await ListSeasonIntoAsync(t, src, folder, true, c).ConfigureAwait(false); }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { Console.WriteLine($"[ShowData] Listing {t.Name} {folder.Label} failed: {ex.Message}"); }
+                    finally { lock (_refreshing) _refreshing.Remove(key); }
+                }
+                ));
+            }
+            if (batch.Count > 0) sink(batch);
+        }
+
+        /// <summary>Lists one season of a source and puts it where its page will find it, telling the page (a season that failed to list stays "–").</summary>
+        private async Task ListSeasonIntoAsync(CatalogueTitle t, TitleSource src, SeasonFolder f, bool fresh, CancellationToken ct)
+        {
+            var outcome = new Outcome();
+            var season = await ListSeasonAsync(t, src, f, fresh, ct, outcome).ConfigureAwait(false);
+            if (outcome.Failed) return;
+            // The source's seasons as the page last saw them, with this one in place of its "–".
+            var key = KeyOf(src);
+            if (_seasonCache.TryGet(key, out var kept, out _))
+            {
+                var patched = kept.Where(x => x.Number != season.Number).Append(season).OrderBy(x => x.Number == 0 ? int.MaxValue : x.Number).ToList();
+                _seasonCache.Put(key, patched);
+            }
+            RaiseChanged(t.Key, ShowChange.Availability);
+        }
+
+        /// <summary>
+        /// For the warming queue (and a season tab the viewer lit that is still "–"): lists one season of the title's sources that list a season
+        /// at a time, if it isn't listed yet. Returns whether anything was listed. Never throws but for cancellation of <paramref name="ct"/>.
+        /// </summary>
+        public async Task<bool> EnsureSeasonListedAsync(CatalogueTitle title, int number, CancellationToken ct = default)
+        {
+            var any = false;
+            try
+            {
+                foreach (var src in title.Sources.Where(s => IsCostly(s.Service)))
+                {
+                    IReadOnlyList<SeasonFolder>? folders;
+                    lock (_folders) _folders.TryGetValue(KeyOf(src), out folders);
+                    if (folders?.FirstOrDefault(x => x.Number == number) is not { } f) continue;
+                    if (_episodesCache.TryGet($"{KeyOf(src)}|{f.Id}", out _, out var stale) && !stale) continue;
+                    await ListSeasonIntoAsync(title, src, f, true, ct).ConfigureAwait(false);
+                    any = true;
+                }
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested) { Console.WriteLine($"[ShowData] Listing {title.Name} season {number} failed: {ex.Message}"); }
+            return any;
         }
 
         /// <summary>
@@ -916,7 +1067,10 @@ namespace Baird.NewUi.Adapters
                 }
 
                 var label = lib?.Label ?? (n == 0 ? "Specials" : $"Season {n}");
-                if (lib != null && lib.Episodes.Count > 0)
+                if (lib is { Pending: true })
+                    // The service has it, its episodes aren't listed yet: shown as there, and "–" until they are.
+                    seasons.Add(new Season(n, label, SeasonState.Available, lib.Service ?? service, eps, count > 0 ? count : null, 0, null, null, Pending: true));
+                else if (lib != null && lib.Episodes.Count > 0)
                 {
                     var partial = count > lib.Episodes.Count;
                     seasons.Add(new Season(n, label, partial ? SeasonState.Partial : SeasonState.Available, lib.Service ?? service, eps,
