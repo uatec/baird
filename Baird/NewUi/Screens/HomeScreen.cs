@@ -383,17 +383,41 @@ namespace Baird.NewUi.Screens
             return left > 0 && left < 600 ? $"  ·  {left} min left" : "";
         }
 
+        private const double HeroTitleKeep = 84, HeroTitleMin = 64, HeroClear = 24; // the hero title shrinks to Keep before the synopsis gives way, and no smaller than Min; the space kept between the hero and the lit row's heading
+
+        /// <summary>Where the hero must end: just above the lit row's heading (poster rows sit higher).</summary>
+        private double HeroLimit() => (_rowList.Count == 0 ? T.H : _rowList[_pos.Row].Shape == CardShape.Poster ? RowTop - 90 : RowTop) - HeroClear;
+
         private void SetHero(string key, string? image, string eyebrow, string title, string? meta, string? synopsis)
         {
-            _hero.Children.Clear();
-            _hero.Children.Add(new TextBlock { Text = eyebrow, FontSize = 26, FontWeight = FontWeight.SemiBold, Foreground = eyebrow.StartsWith("●") ? T.Live : T.Text2, Margin = new Thickness(0, 0, 0, 18) });
-            // Tight lines, as in the prototype. Avalonia keeps a short line's headroom above the capitals and trims its foot instead, so the title
-            // isn't clipped to its box (that cut the bottom off the letters) and moves up into the headroom, giving the space back below.
-            var size = title.Length > 22 ? 84 : T.Hero;
-            var lift = size * 0.15;
-            _hero.Children.Add(new TextBlock { Text = title, FontSize = size, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, LineHeight = size * 0.98, ClipToBounds = false, Margin = new Thickness(0, -lift, 0, 22 + lift) });
-            if (!string.IsNullOrEmpty(meta)) _hero.Children.Add(new TextBlock { Text = meta, FontSize = T.Body, FontWeight = FontWeight.SemiBold, Foreground = T.Text, Margin = new Thickness(0, 0, 0, 16) });
-            if (!string.IsNullOrEmpty(synopsis)) _hero.Children.Add(new TextBlock { Text = synopsis, FontSize = T.Body, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.WordEllipsis, MaxWidth = 820, HorizontalAlignment = HorizontalAlignment.Left });
+            // The hero fits above the lit row, and its title takes two lines at most (shrinking, up to a point, then cut short with an ellipsis).
+            var limit = HeroLimit();
+            TextBlock? metaBlock = null, synopsisBlock = null;
+            TextBlock titleBlock = null!;
+            void Build()
+            {
+                _hero.Children.Clear();
+                _hero.Children.Add(new TextBlock { Text = eyebrow, FontSize = 26, FontWeight = FontWeight.SemiBold, Foreground = eyebrow.StartsWith("●") ? T.Live : T.Text2, Margin = new Thickness(0, 0, 0, 18) });
+                _hero.Children.Add(titleBlock);
+                if (metaBlock != null) _hero.Children.Add(metaBlock);
+                if (synopsisBlock != null) _hero.Children.Add(synopsisBlock);
+            }
+            if (!string.IsNullOrEmpty(meta)) metaBlock = new TextBlock { Text = meta, FontSize = T.Body, FontWeight = FontWeight.SemiBold, Foreground = T.Text, Margin = new Thickness(0, 0, 0, 16) };
+            if (!string.IsNullOrEmpty(synopsis)) synopsisBlock = new TextBlock { Text = synopsis, FontSize = T.Body, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.WordEllipsis, MaxWidth = 820, HorizontalAlignment = HorizontalAlignment.Left };
+            // First the width: the largest size at which the title takes two lines at most, or the smallest size cut short to two lines.
+            var size = T.Hero;
+            void Title(string t) { titleBlock = HeroTitle(t, size); Build(); }
+            for (Title(title); TitleLines(titleBlock) > 2 && size - 4 >= HeroTitleMin; ) { size -= 4; Title(title); }
+            if (TitleLines(titleBlock) > 2) Title(TwoLines(title, Title));
+            var text = titleBlock.Text!;
+            // Then the height, giving up the least important first: the title shrinks to HeroTitleKeep, the synopsis loses its lines,
+            // the title shrinks on to HeroTitleMin, and last the meta line goes.
+            bool TooTall() => HeroBottom() > limit;
+            while (TooTall() && size - 4 >= HeroTitleKeep) { size -= 4; Title(text); }
+            if (synopsisBlock != null && TooTall()) { synopsisBlock.MaxLines = 1; Build(); }
+            if (synopsisBlock != null && TooTall()) { synopsisBlock = null; Build(); }
+            while (TooTall() && size - 4 >= HeroTitleMin) { size -= 4; Title(text); }
+            if (metaBlock != null && TooTall()) { metaBlock = null; Build(); }
 
             if (key == _heroKey) return;
             _heroKey = key;
@@ -404,6 +428,38 @@ namespace Baird.NewUi.Screens
             var delay = FxNumber("herodelay=");
             if (delay <= 0) SwapBackdrop(image, over);
             else _heroSwap = DispatcherTimer.RunOnce(() => SwapBackdrop(image, over), TimeSpan.FromMilliseconds(delay));
+        }
+
+        /// <summary>The hero title at a size. Tight lines, as in the prototype: Avalonia keeps a short line's headroom above the capitals and
+        /// trims its foot instead, so the title isn't clipped to its box (that cut the bottom off the letters) and moves up into the headroom,
+        /// giving the space back below.</summary>
+        private static TextBlock HeroTitle(string title, double size, bool ellipsis = false)
+        {
+            var lift = size * 0.15;
+            var tb = new TextBlock { Text = title, FontSize = size, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, LineHeight = size * 0.98, ClipToBounds = false, Margin = new Thickness(0, -lift, 0, 22 + lift) };
+            if (ellipsis) { tb.MaxLines = 2; tb.TextTrimming = TextTrimming.WordEllipsis; }
+            return tb;
+        }
+
+        /// <summary>The title cut short, at a word, with an ellipsis, so it takes two lines. (Avalonia's own trimming only marks a line that
+        /// overflows, not lines dropped after it, so a title cut at a line break would end with no sign it was cut.)</summary>
+        private string TwoLines(string title, Action<string> show)
+        {
+            var words = title.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            for (var n = words.Length - 1; n > 1; n--)
+            {
+                var cut = string.Join(' ', words.Take(n)).TrimEnd(',', ':', ';', '-', '–') + "…";
+                show(cut);
+                if (TitleLines((TextBlock)_hero.Children[1]) <= 2) return cut;
+            }
+            return words[0] + "…";
+        }
+
+        /// <summary>How many lines the title wraps to in the hero (it must have been measured, as part of the hero, first).</summary>
+        private int TitleLines(TextBlock title)
+        {
+            HeroBottom();
+            return (int)Math.Round((title.DesiredSize.Height - title.Margin.Top - title.Margin.Bottom) / title.LineHeight);
         }
 
         private IDisposable? _heroSwap;

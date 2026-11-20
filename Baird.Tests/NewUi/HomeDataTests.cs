@@ -69,11 +69,12 @@ namespace Baird.Tests.NewUi
                 return Task.FromResult<IEnumerable<JellyseerrSearchResult>>(mediaType == "movie" ? Movies : Tv);
             }
             public Task<IEnumerable<JellyseerrSearchResult>> SearchAsync(string q, int p, CancellationToken ct = default) => Task.FromResult(Enumerable.Empty<JellyseerrSearchResult>());
-            public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrSearchResult>>(new[]
+            public List<JellyseerrSearchResult> Trending = new()
             {
                 new JellyseerrSearchResult { Id = 7, MediaType = "tv", Title = "Andor", PosterPath = "/a.jpg", ReleaseDate = "2022-09-21", MediaInfoStatus = 1 },
                 new JellyseerrSearchResult { Id = 8, MediaType = "movie", Title = "Alien", ReleaseDate = "1979-05-25", MediaInfoStatus = 5 },
-            });
+            };
+            public Task<IEnumerable<JellyseerrSearchResult>> GetTrendingAsync(int p, CancellationToken ct = default) => Task.FromResult<IEnumerable<JellyseerrSearchResult>>(Trending);
             public Task<JellyseerrRequestResponse> CreateRequestAsync(int id, string t, CancellationToken ct = default) => Task.FromResult(new JellyseerrRequestResponse());
             public Task<IEnumerable<JellyseerrRequest>> GetRequestsAsync(CancellationToken ct = default) => RequestsThrow ? throw new InvalidOperationException("down") : Task.FromResult<IEnumerable<JellyseerrRequest>>(Requests);
         }
