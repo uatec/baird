@@ -407,7 +407,7 @@ namespace Baird.NewUi.Screens
             // First the width: the largest size at which the title takes two lines at most, or the smallest size cut short to two lines.
             var size = T.Hero;
             void Title(string t) { titleBlock = HeroTitle(t, size); Build(); }
-            for (Title(title); TitleLines(titleBlock) > 2 && size - 4 >= HeroTitleMin; ) { size -= 4; Title(title); }
+            for (Title(title); TitleLines(titleBlock) > 2 && size - 4 >= HeroTitleMin;) { size -= 4; Title(title); }
             if (TitleLines(titleBlock) > 2) Title(TwoLines(title, Title));
             var text = titleBlock.Text!;
             // Then the height, giving up the least important first: the title shrinks to HeroTitleKeep, the synopsis loses its lines,
