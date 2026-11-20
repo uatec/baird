@@ -113,6 +113,7 @@ namespace Baird.Tests.NewUi
                     var clipTop = rows[i].Clip?.Bounds.Top ?? 0;
                     var top = rows[i].TranslatePoint(new Point(0, clipTop), home.View)!.Value.Y;
                     Assert.True(top >= heroBottom, $"row {i} shows from y={top}, over the hero text that ends at y={heroBottom} (lit row {row})");
+                    if (rows[i].Clip is { } clip) Assert.Equal(90, clip.Bounds.Height); // whole or not at all: a part sliver cuts through its labels
                 }
             }
         }
