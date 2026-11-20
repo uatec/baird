@@ -19,7 +19,8 @@ namespace Baird.NewUi.Adapters
     public sealed record StoredSeason(int Number, string Label, IReadOnlyList<StoredEpisode> Episodes, int? EpisodeCount);
 
     /// <summary>A show's descriptive data. The title's sources (stream URLs) and availability are not kept: they are asked for afresh.</summary>
-    public sealed record StoredShow(CatalogueTitle Title, IReadOnlyList<StoredSeason> Seasons, DateTimeOffset Stamp);
+    /// <param name="Opening">The season the page last opened on (the next episode's): a service that lists a season at a time lists this one first.</param>
+    public sealed record StoredShow(CatalogueTitle Title, IReadOnlyList<StoredSeason> Seasons, DateTimeOffset Stamp, int? Opening = null);
 
     /// <summary>Metadata that outlives a run, so a show page can open from what was seen last time.</summary>
     public interface IShowStore

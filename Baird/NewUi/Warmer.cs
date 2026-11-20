@@ -202,6 +202,18 @@ namespace Baird.NewUi
             // The lit tab's season is on screen: decoded. Those either side only reach the disk (a viewer running along 33 tabs would
             // otherwise decode two seasons of stills per tab).
             if (ShowData.Unnamed(d.Seasons[index])) Urgent(SeasonJob(d.Title, d.Seasons[index].Number, Rank.Page, decode: true));
+            // A season tab lit while it is still "–" (a browser service lists the season in view first): listed ahead of the rest of its lane.
+            if (d.Seasons[index].Pending && _costly != null)
+            {
+                var title = d.Title; var number = d.Seasons[index].Number;
+                var list = new WorkItem($"costly:list:{title.Key}#{number}", Rank.Page, async ct =>
+                {
+                    try { await _shows.EnsureSeasonListedAsync(title, number, ct).ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+                });
+                Queued?.Invoke(list.Key, list.Rank, true);
+                _costly.Urgent(list);
+            }
             Submit(new[] { index + 1, index - 1 }.Where(i => i >= 0 && i < d.Seasons.Count)
                 .Select(i => SeasonJob(d.Title, d.Seasons[i].Number, Rank.Child, decode: false)).ToList());
         }
