@@ -590,9 +590,13 @@ namespace Baird.NewUi.Adapters
 
         /// <summary>Whether a refresh key (a source's seasons "service|id", or a title's found sources "found:title|lane") belongs to the costly lane.</summary>
         public static bool IsCostlyKey(string key) =>
-            key.StartsWith("found:", StringComparison.Ordinal) ? key.EndsWith("|" + WarmLane.Costly, StringComparison.Ordinal) : IsCostly(key.Split('|')[0]);
+            key.StartsWith("found:", StringComparison.Ordinal) ? !key.EndsWith("|" + WarmLane.Cheap, StringComparison.Ordinal) : IsCostly(key.Split('|')[0]);
 
-        public enum WarmLane { Cheap, Costly }
+        /// <summary>Cheap: plain HTTP providers. Costly: the services played in the browser (warmed one job at a time). YouTube: every request is a yt-dlp process: never warmed, only asked when a page opens.</summary>
+        public enum WarmLane { Cheap, Costly, YouTube }
+
+        public static WarmLane LaneOf(string service) =>
+            service == YouTubeService.SourceName ? WarmLane.YouTube : HomeData.ViaOf(service) == PlayVia.Browser ? WarmLane.Costly : WarmLane.Cheap;
 
         private static string FoundKey(CatalogueTitle t, WarmLane lane) => $"found:{t.Key}|{lane}";
 
@@ -605,8 +609,7 @@ namespace Baird.NewUi.Adapters
         {
             var key = FoundKey(t, lane);
             if (_foundCache.TryGet(key, out var kept, out var stale) && !stale) return kept;
-            var costly = lane == WarmLane.Costly;
-            var asked = _search.SearchSources(t.Name, ct, name => IsCostly(name) == costly);
+            var asked = _search.SearchSources(t.Name, ct, name => LaneOf(name) == lane);
             await Task.WhenAll(asked.Select(a => a.Results)).ConfigureAwait(false);
             var items = new List<MediaItemViewModel>();
             foreach (var a in asked)
@@ -630,18 +633,17 @@ namespace Baird.NewUi.Adapters
         public async Task<bool> WarmAvailabilityAsync(CatalogueTitle title, WarmLane lane, CancellationToken ct = default)
         {
             if (title.Kind == TitleKind.Episode) return true;
-            var costly = lane == WarmLane.Costly;
             try
             {
                 var outcome = new Outcome();
                 var t = title;
-                if (!costly && _seerr != null)
+                if (lane == WarmLane.Cheap && _seerr != null)
                 {
                     if (t.Seerr == null) t = t with { Seerr = await _search.FindInSeerrAsync(t, ct).ConfigureAwait(false) };
                     if (t.Seerr is { } r && !(_statusCache.TryGet($"{r.MediaType}:{r.TmdbId}", out _, out var statusStale) && !statusStale))
                         await StatusAsync(t, true, ct, outcome).ConfigureAwait(false);
                 }
-                IReadOnlyList<TitleSource>? own = t.Sources.Where(s => IsCostly(s.Service) == costly).ToList();
+                IReadOnlyList<TitleSource>? own = t.Sources.Where(s => LaneOf(s.Service) == lane).ToList();
                 if (t.Sources.Count == 0 && t.Kind != TitleKind.Episode) own = await FoundAsync(t, lane, ct).ConfigureAwait(false);
                 if (own == null) outcome.Fail();
                 else if (t.Kind == TitleKind.Series && own.Count > 0)
@@ -668,7 +670,7 @@ namespace Baird.NewUi.Adapters
             if (searching)
             {
                 var kept = new List<TitleSource>();
-                foreach (var lane in new[] { WarmLane.Cheap, WarmLane.Costly })
+                foreach (var lane in new[] { WarmLane.Cheap, WarmLane.Costly, WarmLane.YouTube })
                 {
                     var key = FoundKey(t, lane);
                     if (!fresh && _foundCache.TryGet(key, out var f, out var stale))
@@ -685,7 +687,7 @@ namespace Baird.NewUi.Adapters
                 if (kept.Count > 0) t = t with { Sources = kept.DistinctBy(x => x.ItemId).ToList() };
             }
             var sources = missing.Count > 0
-                ? _search.SearchSources(t.Name, ct, name => missing.Contains(IsCostly(name) ? WarmLane.Costly : WarmLane.Cheap))
+                ? _search.SearchSources(t.Name, ct, name => missing.Contains(LaneOf(name)))
                 : Array.Empty<(string Source, Task<IReadOnlyList<MediaItemViewModel>?> Results)>();
 
             // The library's seasons and Seerr's view are asked at once: a slow Seerr never holds back what the library has (Play).
@@ -723,7 +725,7 @@ namespace Baird.NewUi.Adapters
             // A lane whose providers all answered is kept for the next page (and the warming), where "none" is an answer too.
             foreach (var lane in missing)
             {
-                var laneSources = searched.Where(x => (IsCostly(x.Source) ? WarmLane.Costly : WarmLane.Cheap) == lane).ToList();
+                var laneSources = searched.Where(x => LaneOf(x.Source) == lane).ToList();
                 if (laneSources.Any(x => !(x.Results.IsCompletedSuccessfully && x.Results.Result != null))) continue;
                 var items = laneSources.SelectMany(x => x.Results.Result!).ToList();
                 var m = CatalogueSearch.Group(items, Array.Empty<JellyseerrSearchResult>()).Titles.FirstOrDefault(x => CatalogueSearch.Matches(x, t));

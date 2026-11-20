@@ -48,6 +48,8 @@ namespace Baird.Tests.NewUi
             public readonly WorkQueue? Costly;
             /// <summary>A provider played in the browser ("ITVX"), when the rig has the costly lane.</summary>
             public readonly CatalogueTests.Library? Browser;
+            /// <summary>YouTube (every request is a yt-dlp process), when the rig has the costly lane: the warming must never touch it.</summary>
+            public readonly CatalogueTests.Library? YouTube;
             public readonly ShowDataStoreTests.MemStore Store = new();
             public readonly Clock Clock = new();
             public readonly PlaybackControllerTests.FakeTimers Timers;
@@ -64,7 +66,8 @@ namespace Baird.Tests.NewUi
             public Rig(PlaybackControllerTests.FakeTimers? timers = null, bool costlyLane = false)
             {
                 Browser = costlyLane ? new CatalogueTests.Library(ItvxProvider.SourceName) : null;
-                W = Browser == null ? CatalogueTests.Build() : CatalogueTests.Build(Browser);
+                YouTube = costlyLane ? new CatalogueTests.Library(YouTubeService.SourceName) : null;
+                W = Browser == null ? CatalogueTests.Build() : CatalogueTests.Build(Browser, YouTube!);
                 Timers = timers ?? new();
                 Queue = new(new NoTimers(), Gate);
                 Costly = costlyLane ? new(new NoTimers(), Gate) : null;
@@ -804,5 +807,28 @@ namespace Baird.Tests.NewUi
             Assert.True(rig.Costly!.Pending > 0);
             Assert.Equal(1, rig.Browser.SearchCalls);                // asked once, by the costly job
         }
+
+        [Fact]
+        public async Task YouTube_is_never_searched_or_listed_by_the_warming_in_either_lane()
+        {
+            using var rig = new Rig(costlyLane: true);
+            rig.Browser!.Items.Add(CatalogueTests.Item("itvx-sev", "Severance", source: ItvxProvider.SourceName, type: MediaType.Brand));
+            var severance = new CatalogueTitle("tmdb:tv:95396", TitleKind.Series, "Severance", null, null, null, Array.Empty<TitleSource>(), new SeerrRef(95396, "tv", 1));
+            var channel = new CatalogueTitle("Series:yt:channel/UC1", TitleKind.Series, "A channel", null, "http://yt/art", null,
+                new[] { new TitleSource(YouTubeService.SourceName, "yt:channel/UC1", PlayVia.Mpv) });
+
+            rig.Warmer.PageOpened("home", new[] { severance, channel }, Array.Empty<CatalogueTitle>());
+            rig.Warmer.Lit(HomeCardOf(channel));
+            rig.Timers.Advance(Warmer.Delay);
+            await rig.Queue.Idle.WaitAsync(Wait);
+            await rig.Costly!.Idle.WaitAsync(Wait);
+
+            Assert.True(rig.Browser.SearchCalls > 0);                // the browser's providers were searched, in their lane
+            Assert.Equal(0, rig.YouTube!.SearchCalls);               // yt-dlp: no search
+            Assert.Equal(0, rig.YouTube.ItemCalls);                  // no lookups (what starts yt-dlp for a YouTube id)
+            Assert.False(rig.Store.TryGet(channel.Key, out _));      // the channel was never listed: its page works it out when opened
+        }
+
+        private static HomeCard HomeCardOf(CatalogueTitle t) => CatalogueSearch.CardOf(t);
     }
 }

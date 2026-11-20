@@ -62,8 +62,12 @@ namespace Baird.NewUi
         public static bool CostlyToList(CatalogueTitle t) =>
             t.Sources.Any(s => s.Service == Baird.Services.YouTubeService.SourceName || HomeData.ViaOf(s.Service) == PlayVia.Browser);
 
-        /// <summary>Does a title's availability need the costly lane: it has no source (the browser's providers are searched too) or a costly one.</summary>
-        public static bool NeedsCostly(CatalogueTitle t) => t.Sources.Count == 0 || CostlyToList(t);
+        /// <summary>Does a title's availability need the costly lane (the browser's services): it has no source (those providers are searched too) or one of them.
+        /// YouTube (yt-dlp) is never warmed.</summary>
+        public static bool NeedsCostly(CatalogueTitle t) => t.Sources.Count == 0 || t.Sources.Any(s => ShowData.LaneOf(s.Service) == ShowData.WarmLane.Costly);
+
+        /// <summary>Nothing here may list the title's own source (none, or YouTube's or a browser service's): the cheap lane learns what Seerr and the cheap sources say.</summary>
+        private static bool CheapOnly(CatalogueTitle t) => t.Sources.Count == 0 || CostlyToList(t);
 
         public static string KeyOf(CatalogueTitle t) => "show:" + t.Key;
         private static string CostlyKeyOf(CatalogueTitle t) => "costly:" + KeyOf(t);
@@ -214,7 +218,7 @@ namespace Baird.NewUi
             try
             {
                 ShowDetails? d;
-                if (NeedsCostly(t))
+                if (CheapOnly(t))
                 {
                     // No source, or one that drives the browser or yt-dlp: that part is the costly lane's (CostlyJob), and nothing here waits
                     // on it. What Seerr knows and the cheap sources say is enough to have the page opening populated.
