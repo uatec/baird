@@ -174,8 +174,8 @@ namespace Baird.NewUi.Adapters
         /// Ask every library provider separately. Each task answers with that provider's results, or null when it
         /// failed or didn't answer within the timeout (slow ones don't hold the others back).
         /// </summary>
-        public IReadOnlyList<(string Source, Task<IReadOnlyList<MediaItemViewModel>?> Results)> SearchSources(string query, CancellationToken ct = default) =>
-            _data.Providers.Select(p => (p.Name, SearchSourceAsync(p, query.Trim(), ct))).ToList();
+        public IReadOnlyList<(string Source, Task<IReadOnlyList<MediaItemViewModel>?> Results)> SearchSources(string query, CancellationToken ct = default, Func<string, bool>? only = null) =>
+            _data.Providers.Where(p => only == null || only(p.Name)).Select(p => (p.Name, SearchSourceAsync(p, query.Trim(), ct))).ToList();
 
         private async Task<IReadOnlyList<MediaItemViewModel>?> SearchSourceAsync(IMediaProvider p, string q, CancellationToken ct)
         {

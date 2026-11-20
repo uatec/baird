@@ -78,6 +78,8 @@ namespace Baird.NewUi
         public ShowData? Shows { get; set; }
         /// <summary>The queue for background data work (show refreshes; warming later), paced by the warm gate. Null until wired.</summary>
         public Adapters.WorkQueue? Work { get; set; }
+        /// <summary>The second lane for background work that drives the browser or yt-dlp, so it never holds up <see cref="Work"/>.</summary>
+        public Adapters.WorkQueue? WorkCostly { get; set; }
         /// <summary>Show metadata kept between runs (null until wired). Not used by <see cref="Shows"/> yet.</summary>
         public Adapters.IShowStore? ShowStore { get; set; }
         /// <summary>Warms what each page links to, one hop, through <see cref="Work"/> (null: nothing is warmed).</summary>

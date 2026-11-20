@@ -66,6 +66,9 @@ namespace Baird.NewUi.Adapters
             _capacity = Math.Max(1, capacity);
         }
 
+        /// <summary>How many jobs are waiting or running right now (for the debug overlay).</summary>
+        public int Pending { get { lock (_lock) return _queue.Count + (_runningKey != null ? 1 : 0); } }
+
         /// <summary>Completes when nothing is queued and nothing is running. A fresh pending task appears whenever work arrives.</summary>
         public Task Idle { get { lock (_lock) return _idle.Task; } }
 

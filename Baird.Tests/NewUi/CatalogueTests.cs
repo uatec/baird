@@ -153,7 +153,7 @@ namespace Baird.Tests.NewUi
         /// The Simpsons: seasons 1–2 on Jellyfin (season 2 has 1 of its 3 episodes), also on iPlayer; Seerr knows 4 seasons,
         /// season 3 downloading (40%). Severance: only in Seerr. Alien: a film on Jellyfin and in Seerr. Channel 4 airs The Simpsons.
         /// </summary>
-        internal static World Build()
+        internal static World Build(params Library[] extra)
         {
             var jf = new NewestFirstLibrary("Jellyfin");
             jf.Items.Add(Item("simp", "The Simpsons", type: MediaType.Brand, details: "1989"));
@@ -183,7 +183,7 @@ namespace Baird.Tests.NewUi
             seerr.Status[95396] = new JellyseerrMediaStatus(1, new[] { new JellyseerrSeason(1, 9, 1), new JellyseerrSeason(2, 10, 1) }, Array.Empty<JellyseerrDownload>());
 
             var history = new NoHistory();
-            var data = new DataService(new List<IMediaProvider> { tv, jf, ip }, history, new NoWatchlist(), new MediaItemCache(), new MockMediaDataCache());
+            var data = new DataService(new List<IMediaProvider> { tv, jf, ip }.Concat(extra).ToList(), history, new NoWatchlist(), new MediaItemCache(), new MockMediaDataCache());
             var epg = new MockEpgService();
             var now = DateTimeOffset.UtcNow;
             epg.MockSchedules["ch4"] = new List<EpgProgram>

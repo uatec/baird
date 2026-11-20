@@ -44,7 +44,10 @@ namespace Baird.Tests.NewUi
 
         private sealed class Rig : IDisposable
         {
-            public readonly CatalogueTests.World W = CatalogueTests.Build();
+            public readonly CatalogueTests.World W;
+            public readonly WorkQueue? Costly;
+            /// <summary>A provider played in the browser ("ITVX"), when the rig has the costly lane.</summary>
+            public readonly CatalogueTests.Library? Browser;
             public readonly ShowDataStoreTests.MemStore Store = new();
             public readonly Clock Clock = new();
             public readonly PlaybackControllerTests.FakeTimers Timers;
@@ -58,14 +61,17 @@ namespace Baird.Tests.NewUi
             public int SeasonCalls;
             private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            public Rig(PlaybackControllerTests.FakeTimers? timers = null)
+            public Rig(PlaybackControllerTests.FakeTimers? timers = null, bool costlyLane = false)
             {
+                Browser = costlyLane ? new CatalogueTests.Library(ItvxProvider.SourceName) : null;
+                W = Browser == null ? CatalogueTests.Build() : CatalogueTests.Build(Browser);
                 Timers = timers ?? new();
                 Queue = new(new NoTimers(), Gate);
+                Costly = costlyLane ? new(new NoTimers(), Gate) : null;
                 Shows = new ShowData(W.Data, W.Seerr, W.Search, TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(3), () => Clock.Now, Store) { RefreshSink = (_, _) => { } };
                 W.Seerr.OnSeasonEntered = () => Interlocked.Increment(ref SeasonCalls);
                 Warmer = new Warmer(Queue, Shows, Timers, url => { lock (_warmed) _warmed.Add(url); return Task.CompletedTask; },
-                    url => { lock (_disk) _disk.Add(url); return Task.CompletedTask; });
+                    url => { lock (_disk) _disk.Add(url); return Task.CompletedTask; }, Costly);
                 Warmer.Queued += (k, r, u) => { lock (_queued) _queued.Add((k, r, u)); };
             }
 
@@ -103,7 +109,7 @@ namespace Baird.Tests.NewUi
                 Store.Puts.Clear();
             }
 
-            public void Dispose() { _release.TrySetResult(); Queue.Dispose(); }
+            public void Dispose() { _release.TrySetResult(); Queue.Dispose(); Costly?.Dispose(); }
         }
 
         private static HomeCard Series(string id) => new(CardKind.Series, id, id, null, null, null, null, "Jellyfin: nas", PlayVia.Mpv);
@@ -289,7 +295,7 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
-        public async Task A_fresh_record_costs_no_network()
+        public async Task A_fresh_record_costs_no_metadata_network_and_availability_is_asked_once_while_it_is_fresh()
         {
             using var rig = new Rig();
             var severance = ShowData.FromCard(FromSeerr("tmdb:tv:95396"));
@@ -301,13 +307,40 @@ namespace Baird.Tests.NewUi
             rig.Warmer.PageOpened("home", new[] { severance, library }, Array.Empty<CatalogueTitle>());
             rig.Warmer.ShowPageOpened(rig.Shows.Stored(severance)!);
             rig.Warmer.Season(rig.Shows.Stored(severance)!, 1);
-            await rig.Queue.Idle.WaitAsync(Wait); // (the lit card asks for live availability: see A_lit_card_primes_the_page_it_opens)
+            await rig.Queue.Idle.WaitAsync(Wait);
 
-            Assert.Equal(network, rig.Network());
-            Assert.Equal(0, rig.Searches);
+            var after = rig.Network();
+            Assert.Equal(network.Item3, after.Item3);                // no Seerr season: the record has the names
+            Assert.Equal(network.Item5, after.Item5);                // no item lookups
             Assert.Empty(rig.Store.Puts);
             Assert.Contains("http://art/lib", rig.DiskWarmed);
             Assert.Contains("http://img/tmdb:tv:95396/s2e3", rig.Warmed); // a season's stills, from the record
+        }
+
+        [Fact]
+        public async Task Availability_is_warmed_for_a_title_with_a_fresh_record_and_asked_again_only_once_it_is_no_longer_fresh()
+        {
+            var rig0 = new Rig();
+            using var rig = rig0;
+            var severance = ShowData.FromCard(FromSeerr("tmdb:tv:95396"));
+            rig.KeepFresh(severance, 2, 3);
+            var before = rig.Network();
+
+            rig.Warmer.PageOpened("home", new[] { severance }, Array.Empty<CatalogueTitle>());
+            await rig.Queue.Idle.WaitAsync(Wait);
+            var asked = rig.Network();
+            Assert.True(asked.Item1 > before.Item1);                 // Seerr's status, though the record is fresh
+            Assert.True(rig.Searches > 0);                           // and where the cheap providers have it
+
+            rig.Warmer.PageOpened("home", new[] { severance }, Array.Empty<CatalogueTitle>());
+            await rig.Queue.Idle.WaitAsync(Wait);
+            Assert.Equal(asked, rig.Network());                      // fresh: not asked again
+            Assert.Empty(rig.Store.Puts);
+
+            rig.Clock.Now += ShowData.AvailabilityFresh + TimeSpan.FromSeconds(1);   // a minute on
+            rig.Warmer.PageOpened("home", new[] { severance }, Array.Empty<CatalogueTitle>());
+            await rig.Queue.Idle.WaitAsync(Wait);
+            Assert.True(rig.Network().Item1 > asked.Item1);          // asked again
         }
 
         [Fact]
@@ -336,7 +369,7 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
-        public async Task A_home_batch_of_seerr_cards_never_searches_the_providers_nor_lists_a_youtube_channel()
+        public async Task A_home_batch_of_seerr_cards_searches_only_the_cheap_providers_and_never_lists_a_youtube_channel()
         {
             using var rig = new Rig();
             // Trending on Home: Seerr cards with no source and nothing kept (a cold store), and a YouTube channel.
@@ -350,7 +383,7 @@ namespace Baird.Tests.NewUi
             rig.Warmer.PageOpened("home", seerrCards.Append(channel).ToList(), Array.Empty<CatalogueTitle>());
             await rig.Drain();
 
-            Assert.Equal(0, rig.Searches);                                                   // no provider search (YouTube's is yt-dlp)
+            Assert.True(rig.Searches > 0);                                                   // the cheap providers are searched (where is it available?); YouTube's and the browser's never are, here
             Assert.Equal(children, rig.W.Jellyfin.ChildrenCalls + rig.W.IPlayer.ChildrenCalls); // no listing at all, the channel's included
             Assert.True(rig.Store.TryGet(seerrCards[0].Key, out var severance));             // Seerr's view of it is kept for next time
             Assert.Equal(new[] { 1, 2 }, severance!.Seasons.Select(s => s.Number));
@@ -713,6 +746,63 @@ namespace Baird.Tests.NewUi
             var art = new ArtImage("http://img/ready");
             Assert.Same(bmp, art.Main.Source);
             Assert.Equal(1, art.Opacity);
+        }
+
+        // ---- the two lanes: what drives the browser never holds up the rest
+
+        [Fact]
+        public async Task A_browser_providers_search_is_the_costly_lanes_and_never_holds_up_the_cheap_one()
+        {
+            using var rig = new Rig(costlyLane: true);
+            rig.Browser!.HangSearch = true;                          // the browser's providers are slow, or stuck
+            var severance = ShowData.FromCard(FromSeerr("tmdb:tv:95396"));
+            var simpsons = ShowData.FromCard(FromSeerr("tmdb:tv:456"));
+            rig.Warmer.PageOpened("home", new[] { severance, simpsons }, Array.Empty<CatalogueTitle>());
+            await rig.Queue.Idle.WaitAsync(Wait);                    // the cheap lane finishes at once
+            Assert.True(rig.Store.TryGet(severance.Key, out _));      // with what Seerr knows kept
+            Assert.True(rig.Costly!.Pending > 0);                    // while the browser's work is still going (one job at a time)
+            Assert.Equal(0, rig.W.Jellyfin.ItemCalls);
+        }
+
+        [Fact]
+        public async Task What_the_costly_lane_found_is_used_by_the_page_without_asking_the_browser_again_even_when_stale()
+        {
+            using var rig = new Rig(costlyLane: true);
+            rig.Browser!.Items.Add(CatalogueTests.Item("itvx-sev", "Severance", source: ItvxProvider.SourceName, type: MediaType.Brand));
+            rig.Browser.Children["itvx-sev"] = new() { CatalogueTests.Item("itvx-sev-s1", "Series 1", source: ItvxProvider.SourceName, type: MediaType.Brand) };
+            rig.Browser.Children["itvx-sev-s1"] = new() { CatalogueTests.Item("itvx-sev-e1", "Good News About Hell", source: ItvxProvider.SourceName) };
+            var severance = new CatalogueTitle("tmdb:tv:95396", TitleKind.Series, "Severance", null, null, null, Array.Empty<TitleSource>(), new SeerrRef(95396, "tv", 1));
+
+            rig.Warmer.PageOpened("home", new[] { severance }, Array.Empty<CatalogueTitle>());
+            await rig.Queue.Idle.WaitAsync(Wait);
+            await rig.Costly!.Idle.WaitAsync(Wait);
+            var searched = rig.Browser.SearchCalls;
+            var listed = rig.Browser.ChildrenCalls;
+            Assert.True(searched > 0);
+
+            var d = await rig.Shows.DetailsAsync(severance);          // the page opens
+            Assert.True(d.Title.Sources.Any(s => s.Service == ItvxProvider.SourceName), $"sources=[{string.Join(",", d.Title.Sources.Select(x => x.Service + ":" + x.ItemId))}] searched={searched} listed={listed}");
+            Assert.Equal(searched, rig.Browser.SearchCalls);          // the browser wasn't searched again
+            Assert.Equal(listed, rig.Browser.ChildrenCalls);          // nor its seasons listed again
+
+            rig.Clock.Now += ShowData.AvailabilityFresh * 5;          // long after: stale, still used at once (and refreshed in the background)
+            var later = await rig.Shows.DetailsAsync(severance, fresh: false);
+            Assert.Contains(later.Title.Sources, s => s.Service == ItvxProvider.SourceName);
+            Assert.Equal(searched, rig.Browser.SearchCalls);
+        }
+
+        [Fact]
+        public async Task A_lit_card_with_no_source_leaves_its_browser_search_to_the_costly_lane()
+        {
+            using var rig = new Rig(costlyLane: true);
+            rig.Browser!.HangSearch = true;
+            var severance = ShowData.FromCard(FromSeerr("tmdb:tv:95396"));
+            rig.Warmer.Lit(FromSeerr("tmdb:tv:95396"));
+            rig.Timers.Advance(Warmer.Delay);
+            await rig.Queue.Idle.WaitAsync(Wait);                    // nothing in the cheap lane waits on the browser
+            Assert.True(rig.Store.TryGet(severance.Key, out _));
+            Assert.True(rig.Costly!.Pending > 0);
+            Assert.Equal(1, rig.Browser.SearchCalls);                // asked once, by the costly job
         }
     }
 }

@@ -29,6 +29,8 @@ namespace Baird.NewUi
         public const int MaxImages = 12;
 
         private readonly WorkQueue _queue;
+        /// <summary>The costly lane (browser services, YouTube): one job at a time of its own, so it never holds up <see cref="_queue"/>. Null: it isn't warmed.</summary>
+        private readonly WorkQueue? _costly;
         private readonly ShowData _shows;
         private readonly ITimers _timers;
         private readonly Func<string, Task> _warm;      // fetched and decoded, ready to draw (ImageCache): only what's about to be on screen
@@ -46,8 +48,10 @@ namespace Baird.NewUi
 
         /// <param name="warmImage">Fetch and decode one image into the <see cref="ImageCache"/> (default <see cref="ImageCache.WarmAsync"/>).</param>
         /// <param name="warmDisk">Fetch one image's bytes to the disk cache, no decode (default <see cref="ImageCache.WarmDiskAsync"/>).</param>
-        public Warmer(WorkQueue queue, ShowData shows, ITimers timers, Func<string, Task>? warmImage = null, Func<string, Task>? warmDisk = null)
+        /// <param name="costly">The lane for work that drives the browser or yt-dlp (<see cref="ShowData.IsCostly"/>); without one that availability isn't warmed.</param>
+        public Warmer(WorkQueue queue, ShowData shows, ITimers timers, Func<string, Task>? warmImage = null, Func<string, Task>? warmDisk = null, WorkQueue? costly = null)
         {
+            _costly = costly;
             _queue = queue; _shows = shows; _timers = timers; _warm = warmImage ?? ImageCache.WarmAsync; _warmDisk = warmDisk ?? ImageCache.WarmDiskAsync;
         }
 
@@ -58,7 +62,11 @@ namespace Baird.NewUi
         public static bool CostlyToList(CatalogueTitle t) =>
             t.Sources.Any(s => s.Service == Baird.Services.YouTubeService.SourceName || HomeData.ViaOf(s.Service) == PlayVia.Browser);
 
+        /// <summary>Does a title's availability need the costly lane: it has no source (the browser's providers are searched too) or a costly one.</summary>
+        public static bool NeedsCostly(CatalogueTitle t) => t.Sources.Count == 0 || CostlyToList(t);
+
         public static string KeyOf(CatalogueTitle t) => "show:" + t.Key;
+        private static string CostlyKeyOf(CatalogueTitle t) => "costly:" + KeyOf(t);
         public static string KeyOf(CatalogueTitle t, int season) => $"show:{t.Key}#season:{season}";
 
         /// <summary>Does OK on this card open a show page (worth warming)?</summary>
@@ -127,6 +135,8 @@ namespace Baird.NewUi
                 .Concat(siblings.Select(t => BatchJob(t, Rank.Sibling, pageKey, generation))).ToList();
             Console.WriteLine($"[Warmer] {pageKey}: {children.Count} children, {siblings.Count} siblings");
             Submit(batch);
+            SubmitCostly(children.Where(NeedsCostly).Select(t => CostlyJob(t, Rank.Child, pageKey, generation))
+                .Concat(siblings.Where(NeedsCostly).Select(t => CostlyJob(t, Rank.Sibling, pageKey, generation))).ToList());
         }
 
         /// <summary>The viewer is opening a page from this row (its other pages are the new page's siblings).</summary>
@@ -150,6 +160,7 @@ namespace Baird.NewUi
             batch.AddRange(SeasonOrder(d).Select(i => SeasonJob(self, d.Seasons[i].Number, Rank.Child, decode: Math.Abs(i - open) <= 1)));
             batch.AddRange(siblings.Select(t => BatchJob(t, Rank.Sibling, null, 0)));
             Submit(batch);
+            SubmitCostly(siblings.Where(NeedsCostly).Select(t => CostlyJob(t, Rank.Sibling, null, 0)).ToList());
         }
 
         /// <summary>The lit card changed (null: nothing worth warming is lit). Once lit for <see cref="Delay"/>, its page is warmed ahead of everything.</summary>
@@ -171,6 +182,11 @@ namespace Baird.NewUi
                 var item = LitJob(title, cts.Token);
                 var urgent = _queue.UrgentUnlessPaused(item);
                 Queued?.Invoke(item.Key, item.Rank, urgent);
+                if (_costly != null && NeedsCostly(title))
+                {
+                    var costly = CostlyJob(title, Rank.Page, null, 0, cts.Token);
+                    Queued?.Invoke(costly.Key, costly.Rank, _costly.UrgentUnlessPaused(costly));
+                }
             });
         }
 
@@ -197,11 +213,38 @@ namespace Baird.NewUi
             using var both = CancellationTokenSource.CreateLinkedTokenSource(ct, stop);
             try
             {
-                var d = await _shows.DetailsAsync(t, null, both.Token).ConfigureAwait(false);
-                await WarmAsync(UrlsFor(d), both.Token, decode: true).ConfigureAwait(false);
+                ShowDetails? d;
+                if (NeedsCostly(t))
+                {
+                    // No source, or one that drives the browser or yt-dlp: that part is the costly lane's (CostlyJob), and nothing here waits
+                    // on it. What Seerr knows and the cheap sources say is enough to have the page opening populated.
+                    if (t.Sources.Count == 0) await _shows.EnsureFreshFromSeerrAsync(t, both.Token).ConfigureAwait(false);
+                    await _shows.WarmAvailabilityAsync(t, ShowData.WarmLane.Cheap, both.Token).ConfigureAwait(false);
+                    d = _shows.Stored(t);
+                }
+                else d = await _shows.DetailsAsync(t, null, both.Token).ConfigureAwait(false);
+                if (d != null) await WarmAsync(UrlsFor(d), both.Token, decode: true).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (both.IsCancellationRequested) { }
             catch (ShowLoadTimeoutException) { } // nothing learnt in time: the page asks again when opened
+        });
+
+        /// <summary>
+        /// A title's availability from the services that drive the browser or yt-dlp, in the costly lane (one job at a time, never in the
+        /// way of the cheap one): a title with one of those as its source is made fresh from it (its seasons are listed); one with no
+        /// source has those providers searched for it (<see cref="ShowData.WarmAvailabilityAsync"/>). What is learnt waits in the
+        /// availability caches (60 s fresh, then served stale while refreshed), so its page doesn't ask the browser itself.
+        /// </summary>
+        private WorkItem CostlyJob(CatalogueTitle t, Rank rank, string? pageKey, long generation, CancellationToken? stop = null) => new(CostlyKeyOf(t), rank, async ct =>
+        {
+            if (pageKey != null) lock (_lock) if (_generations.GetValueOrDefault(pageKey) != generation) return;
+            using var both = CancellationTokenSource.CreateLinkedTokenSource(ct, stop ?? CancellationToken.None);
+            try
+            {
+                if (t.Sources.Count > 0) await _shows.EnsureFreshAsync(t, both.Token).ConfigureAwait(false);
+                else await _shows.WarmAvailabilityAsync(t, ShowData.WarmLane.Costly, both.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (both.IsCancellationRequested) { }
         });
 
         /// <summary>
@@ -228,6 +271,7 @@ namespace Baird.NewUi
             {
                 if (t.Sources.Count == 0) await _shows.EnsureFreshFromSeerrAsync(t, ct).ConfigureAwait(false);
                 else if (!CostlyToList(t)) await _shows.EnsureFreshAsync(t, ct).ConfigureAwait(false);
+                await _shows.WarmAvailabilityAsync(t, ShowData.WarmLane.Cheap, ct).ConfigureAwait(false); // where the cheap sources have it
                 if ((_shows.Stored(t)?.Title.ImageUrl ?? t.ImageUrl) is { Length: > 0 } art) await WarmAsync(new[] { art }, ct, decode: false).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
@@ -256,6 +300,16 @@ namespace Baird.NewUi
             foreach (var item in batch) Queued?.Invoke(item.Key, item.Rank, false);
             _queue.Submit(batch);
         }
+
+        private void SubmitCostly(IReadOnlyList<WorkItem> batch)
+        {
+            if (_costly == null || batch.Count == 0) return;
+            foreach (var item in batch) Queued?.Invoke(item.Key, item.Rank, false);
+            _costly.Submit(batch);
+        }
+
+        /// <summary>Background jobs waiting or running, across both lanes (the debug overlay).</summary>
+        public int Pending => _queue.Pending + (_costly?.Pending ?? 0);
 
         private void Urgent(WorkItem item)
         {

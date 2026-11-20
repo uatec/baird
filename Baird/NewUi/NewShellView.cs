@@ -96,10 +96,13 @@ namespace Baird.NewUi
                 if (playing && router.ActiveBrowser == null) _ = avSampler.TickAsync();
             };
             sampler.Start();
-            _ctx.Work = new WorkQueue(timers, new WarmGate(() => gateInputs.Playing, () => gateInputs.Drops, () => gateInputs.FullScreen, () => DateTimeOffset.Now));
+            var warmGate = new WarmGate(() => gateInputs.Playing, () => gateInputs.Drops, () => gateInputs.FullScreen, () => DateTimeOffset.Now);
+            _ctx.Work = new WorkQueue(timers, warmGate);
+            _ctx.WorkCostly = new WorkQueue(timers, warmGate);   // the browser's and yt-dlp's work: one job at a time, apart from the rest
             _ctx.Shows = new ShowData(services.Data, services.Seerr, _ctx.Search, store: _ctx.ShowStore)
             {
-                RefreshSink = (key, run) => _ctx.Work.Submit(new[] { new WorkItem(key, Rank.Page, run) }),   // a stale answer the viewer is looking at
+                // a stale answer the viewer is looking at; what asks the browser or yt-dlp goes to its own lane
+                RefreshSink = (key, run) => (ShowData.IsCostlyKey(key) ? _ctx.WorkCostly! : _ctx.Work!).Submit(new[] { new WorkItem(key, Rank.Page, run) }),
             };
             _ctx.Deleter = new Deletion(services.Data, services.Seerr, _ctx.Search);
             // Netflix searches in the one shared browser: while another service plays there, say so instead of silently missing it.
@@ -136,7 +139,8 @@ namespace Baird.NewUi
                 return title == null ? null : await _ctx.Shows!.FollowingAsync(title, ct);
             };
             _ctx.OpenGuide = (id, at) => GuideScreen.OpenSchedule(_shell!, nav, id, at);
-            _ctx.Warm = new Warmer(_ctx.Work, _ctx.Shows, timers);
+            _ctx.Warm = new Warmer(_ctx.Work, _ctx.Shows, timers, costly: _ctx.WorkCostly);
+            var queueOverlay = bool.TryParse(config["BAIRD_QUEUE_OVERLAY"], out var qo) && qo;
             var guideData = new GuideData(home, services.Epg);
             _ctx.Reminders = new Reminders(Reminders.DefaultPath, () => DateTimeOffset.Now);
             _ctx.SetGuideLayout(string.Equals(config["Baird:GuideLayout"], "columns", StringComparison.OrdinalIgnoreCase) ? Model.GuideLayout.Columns : Model.GuideLayout.Rows, save: false);
@@ -448,6 +452,7 @@ namespace Baird.NewUi
             new Avalonia.Threading.DispatcherTimer(TimeSpan.FromMinutes(1), DispatcherPriority.Background, (_, _) => guard.Check()).Start();
             if (bool.TryParse(config["BAIRD_FPS_PROBE"], out var fpsProbe) && fpsProbe)
                 AttachedToVisualTree += (_, e) => Diagnostics.FrameProbe.ForResourcesLog(TopLevel.GetTopLevel(this)!, crumbs).Start();   // opt-in: UI fps every 5 s with the keys/screens and busiest threads, once on screen
+            if (queueOverlay) _shell!.ShowDebug(() => $"⇣ {(_ctx.Work?.Pending ?? 0) + (_ctx.WorkCostly?.Pending ?? 0)}");   // BAIRD_QUEUE_OVERLAY=true: how many background jobs are queued
             _cec = services.Cec;
             _life = new TvLifecycle(services.Cec, new PlaybackPausable(playback), saver, timers, () => DateTime.UtcNow, a => Dispatcher.UIThread.Post(a),
                 inputLock: bool.TryParse(config["BAIRD_ENABLE_INPUT_LOCK"], out var lockOn) && lockOn, stillWatching, new FileIdleState());

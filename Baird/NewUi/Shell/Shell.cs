@@ -46,6 +46,17 @@ namespace Baird.NewUi.Shell
         private readonly TextBlock _toastText = new() { FontSize = 26, FontWeight = FontWeight.SemiBold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, MaxWidth = 1300 };
         private readonly TextBlock _clock = new() { FontSize = 28, FontWeight = FontWeight.SemiBold, Foreground = T.Text2, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 46, T.SafeX, 0) };
 
+        /// <summary>Under the clock, a small debug line (the number of background jobs queued); empty when the overlay is off.</summary>
+        private readonly TextBlock _debug = new() { FontSize = 22, FontWeight = FontWeight.SemiBold, Foreground = T.Text2, Opacity = 0.7, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 86, T.SafeX, 0), IsHitTestVisible = false };
+
+        /// <summary>Starts showing <paramref name="line"/> under the clock, asked for four times a second (null text = nothing).</summary>
+        public void ShowDebug(Func<string?> line)
+        {
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            timer.Tick += (_, _) => _debug.Text = line() ?? "";
+            timer.Start();
+        }
+
         private readonly Dictionary<Place, IScreen> _places = new();
         private readonly Dictionary<PageRef, IScreen> _pages = new(ReferenceEqualityComparer.Instance);
         private IScreen? _overlay;
@@ -105,6 +116,7 @@ namespace Baird.NewUi.Shell
             Stage.Children.Add(_tabBar);
             Stage.Children.Add(_backChip);
             Stage.Children.Add(_clock);
+            Stage.Children.Add(_debug);
             Stage.Children.Add(_overlayHost);
             Stage.Children.Add(_toast);
 
@@ -273,7 +285,7 @@ namespace Baird.NewUi.Shell
                 _backChip.RenderTransform = backTo != null ? Motion.None : Avalonia.Media.Transformation.TransformOperations.Parse("translate(-16px, 0px)");
                 if (backTo != null) _backChipText.Text = $"Back to {backTo}";
             }
-            _clock.IsVisible = !(st.Video != null && st.AtVideo && page == null);
+            _clock.IsVisible = _debug.IsVisible = !(st.Video != null && st.AtVideo && page == null);
             // With the tab bar lit, the place's content steps back.
             _placeHost.Opacity = TabFocus && placeVisible ? 0.75 : 1;
         }

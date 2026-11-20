@@ -47,6 +47,22 @@ namespace Baird.Tests.NewUi
             private sealed class Noop : IDisposable { public void Dispose() { } }
         }
 
+        [Fact]
+        public async Task Pending_counts_what_is_running_and_what_waits_and_falls_back_to_zero()
+        {
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var q = new WorkQueue(new ThrowingTimers(), new Gate());
+            Assert.Equal(0, q.Pending);
+            q.Submit(new[] { new WorkItem("a", Rank.Page, async ct => { started.TrySetResult(); await release.Task.WaitAsync(ct); }) });
+            await started.Task.WaitAsync(Wait);
+            q.Submit(new[] { new WorkItem("b", Rank.Child, _ => Task.CompletedTask), new WorkItem("c", Rank.Child, _ => Task.CompletedTask) });
+            Assert.Equal(3, q.Pending);                       // one running, two waiting
+            release.SetResult();
+            await q.Idle.WaitAsync(Wait);
+            Assert.Equal(0, q.Pending);
+        }
+
         private sealed class Harness : IDisposable
         {
             public readonly Gate Gate = new();
