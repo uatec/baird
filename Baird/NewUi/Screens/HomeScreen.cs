@@ -387,7 +387,11 @@ namespace Baird.NewUi.Screens
         {
             _hero.Children.Clear();
             _hero.Children.Add(new TextBlock { Text = eyebrow, FontSize = 26, FontWeight = FontWeight.SemiBold, Foreground = eyebrow.StartsWith("●") ? T.Live : T.Text2, Margin = new Thickness(0, 0, 0, 18) });
-            _hero.Children.Add(new TextBlock { Text = title, FontSize = title.Length > 22 ? 84 : T.Hero, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, LineHeight = (title.Length > 22 ? 84 : T.Hero) * 0.98, Margin = new Thickness(0, 0, 0, 22) });
+            // Tight lines, as in the prototype. Avalonia keeps a short line's headroom above the capitals and trims its foot instead, so the title
+            // isn't clipped to its box (that cut the bottom off the letters) and moves up into the headroom, giving the space back below.
+            var size = title.Length > 22 ? 84 : T.Hero;
+            var lift = size * 0.15;
+            _hero.Children.Add(new TextBlock { Text = title, FontSize = size, FontWeight = FontWeight.Bold, Foreground = T.Text, TextWrapping = TextWrapping.Wrap, LineHeight = size * 0.98, ClipToBounds = false, Margin = new Thickness(0, -lift, 0, 22 + lift) });
             if (!string.IsNullOrEmpty(meta)) _hero.Children.Add(new TextBlock { Text = meta, FontSize = T.Body, FontWeight = FontWeight.SemiBold, Foreground = T.Text, Margin = new Thickness(0, 0, 0, 16) });
             if (!string.IsNullOrEmpty(synopsis)) _hero.Children.Add(new TextBlock { Text = synopsis, FontSize = T.Body, Foreground = T.Text2, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.WordEllipsis, MaxWidth = 820, HorizontalAlignment = HorizontalAlignment.Left });
 
