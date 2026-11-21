@@ -82,7 +82,7 @@ jobs:
 
       - name: Add the signed iPhone Shortcut
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: shortcut
           path: publish/linux-arm64
