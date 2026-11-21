@@ -843,8 +843,9 @@ namespace Baird.NewUi.Adapters
         private static readonly IReadOnlyList<LibrarySeason> NothingListed = new List<LibrarySeason>().AsReadOnly();
 
         /// <summary>A provider's children, or null when it doesn't answer in time (or fails): not the same as answering "none".</summary>
-        private Task<IEnumerable<MediaItemViewModel>?> Children(string id, string what, CancellationToken ct) =>
-            Deadline.Within<IEnumerable<MediaItemViewModel>?>(async _ => await _data.GetChildrenAsync(id).ConfigureAwait(false), null, _pieceTimeout, $"[ShowData] Listing {what}", ct);
+        /// <param name="show">The show being listed: its name goes on episodes that name it only by id.</param>
+        private Task<IEnumerable<MediaItemViewModel>?> Children(string id, CatalogueTitle show, string what, CancellationToken ct) =>
+            Deadline.Within<IEnumerable<MediaItemViewModel>?>(async _ => await _data.GetChildrenAsync(id, show.Name).ConfigureAwait(false), null, _pieceTimeout, $"[ShowData] Listing {what}", ct);
 
         /// <summary>
         /// One source's seasons. Ok is false when any listing timed out or failed (what's returned is then what could be learnt, and
@@ -856,7 +857,7 @@ namespace Baird.NewUi.Adapters
             var ok = true;
             try
             {
-                var listed = await Children(src.ItemId, $"{t.Name} from {src.Service}", ct).ConfigureAwait(false);
+                var listed = await Children(src.ItemId, t, $"{t.Name} from {src.Service}", ct).ConfigureAwait(false);
                 if (listed == null) return (false, Array.Empty<LibrarySeason>());
                 var children = listed.ToList();
                 if (children.Count == 0)
@@ -873,7 +874,7 @@ namespace Baird.NewUi.Adapters
                         : SeasonFolderOf(f, i + 1)).ToList(), ct).ConfigureAwait(false);
                 var seasons = await Task.WhenAll(folders.Select(async (f, i) =>
                 {
-                    var inFolder = await Children(f.Id, $"{t.Name} {f.Name} from {src.Service}", ct).ConfigureAwait(false);
+                    var inFolder = await Children(f.Id, t, $"{t.Name} {f.Name} from {src.Service}", ct).ConfigureAwait(false);
                     if (inFolder == null) ok = false;
                     var eps = (inFolder ?? Enumerable.Empty<MediaItemViewModel>()).Where(e => e.Type != Baird.Services.MediaType.Brand).ToList();
                     // A YouTube channel's seasons are its playlists, which have names rather than numbers.
@@ -942,7 +943,7 @@ namespace Baird.NewUi.Adapters
         private Task<LibrarySeason> ListSeasonAsync(CatalogueTitle t, TitleSource src, SeasonFolder f, bool fresh, CancellationToken ct, Outcome? outcome) =>
             CachedAsync(_episodesCache, $"{KeyOf(src)}|{f.Id}", fresh, async c =>
             {
-                var inFolder = await Children(f.Id, $"{t.Name} {f.Label} from {src.Service}", c).ConfigureAwait(false);
+                var inFolder = await Children(f.Id, t, $"{t.Name} {f.Label} from {src.Service}", c).ConfigureAwait(false);
                 var eps = (inFolder ?? Enumerable.Empty<MediaItemViewModel>()).Where(e => e.Type != Baird.Services.MediaType.Brand).ToList();
                 return (inFolder != null, new LibrarySeason(f.Number, f.Label, eps, src.Service, f.YouTube ? YouTubeService.NextPageId(f.Id, eps.Count) : null));
             }, ct, outcome, t.Key);

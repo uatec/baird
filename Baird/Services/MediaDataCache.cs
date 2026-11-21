@@ -29,6 +29,9 @@ namespace Baird.Services
         /// Stores media data in the cache and schedules a background save to disk.
         /// </summary>
         void Put(MediaItemData data);
+
+        /// <summary>Everything cached (as stored: secrets stay as placeholders). For one-off repairs of what older versions cached.</summary>
+        IReadOnlyList<MediaItemData> All();
     }
 
     public class JsonMediaDataCache : IMediaDataCache
@@ -108,6 +111,8 @@ namespace Baird.Services
             }
             return true;
         }
+
+        public IReadOnlyList<MediaItemData> All() => _cache.Values.ToList();
 
         public void Put(MediaItemData data)
         {

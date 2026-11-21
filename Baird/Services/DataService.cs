@@ -15,7 +15,13 @@ namespace Baird.Services
         Task<IEnumerable<MediaItemViewModel>> SearchAsync(string query, CancellationToken cancellationToken = default);
         Task<IEnumerable<MediaItemViewModel>> GetContinueWatchingAsync();
         Task<IEnumerable<MediaItemViewModel>> GetHistoryItemsAsync();
-        Task<IEnumerable<MediaItemViewModel>> GetChildrenAsync(string id);
+        /// <param name="seriesName">The show being listed, when known: its name goes on any episode that names the show only by id (Netflix's).</param>
+        Task<IEnumerable<MediaItemViewModel>> GetChildrenAsync(string id, string? seriesName = null);
+        /// <summary>
+        /// Puts show names (keyed by the show's id in its provider) on cached episodes that name their show only by id, as Netflix's did
+        /// before listings filled them in (such an episode showed on Home as a film). Returns how many it named; history is refreshed if any.
+        /// </summary>
+        int NameSeries(IReadOnlyDictionary<string, string> namesById);
         Task<MediaItemViewModel?> GetItemAsync(string id); // Might be needed if not present in listings
         Task UpsertHistoryAsync(MediaItemViewModel item, TimeSpan position, TimeSpan duration);
         HistoryItem? GetHistory(string id);
@@ -164,15 +170,40 @@ namespace Baird.Services
             return results.Where(x => x != null)!;
         }
 
-        public async Task<IEnumerable<MediaItemViewModel>> GetChildrenAsync(string id)
+        public async Task<IEnumerable<MediaItemViewModel>> GetChildrenAsync(string id, string? seriesName = null)
         {
             var tasks = _providers.Select(p => FromProvider(p, "children", () => p.GetChildrenAsync(id)));
             var results = await Task.WhenAll(tasks);
-            var allData = results.SelectMany(x => x).ToList();
+            var allData = results.SelectMany(x => x).Select(d => NamedSeries(d, seriesName)).ToList();
             foreach (var data in allData)
+            {
                 _mediaDataCache.Put(data);
+                // An episode already on screen (Continue watching) learns its show's name too: the one shown is the one kept below.
+                if (!string.IsNullOrEmpty(data.SeriesName) && _cache.TryGet(data.Id, out var shown) && string.IsNullOrEmpty(shown!.Data.SeriesName))
+                    shown.UpdateData(shown.Data with { SeriesId = data.SeriesId, SeriesName = data.SeriesName });
+            }
             var items = allData.Select(data => new MediaItemViewModel(data)).ToList();
             return UnifyAndHydrate(items);
+        }
+
+        /// <summary>An episode that names its show only by id gets the name of the show it was listed under.</summary>
+        private static MediaItemData NamedSeries(MediaItemData d, string? seriesName) =>
+            !string.IsNullOrEmpty(d.SeriesId) && string.IsNullOrEmpty(d.SeriesName) && !string.IsNullOrWhiteSpace(seriesName) ? d with { SeriesName = seriesName } : d;
+
+        public int NameSeries(IReadOnlyDictionary<string, string> namesById)
+        {
+            var named = 0;
+            foreach (var d in _mediaDataCache.All())
+                if (!string.IsNullOrEmpty(d.SeriesId) && string.IsNullOrEmpty(d.SeriesName) && namesById.TryGetValue(d.SeriesId, out var name)
+                    && _mediaDataCache.TryGet(d.Id, out var live) && live != null)
+                {
+                    var fixedData = live with { SeriesName = name };
+                    _mediaDataCache.Put(fixedData);
+                    if (_cache.TryGet(d.Id, out var shown)) shown!.UpdateData(fixedData);   // what's already on screen too
+                    named++;
+                }
+            if (named > 0) HistoryUpdated?.Invoke(this, EventArgs.Empty);
+            return named;
         }
 
         public async Task UpsertHistoryAsync(MediaItemViewModel item, TimeSpan position, TimeSpan duration)
