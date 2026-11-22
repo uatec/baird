@@ -172,6 +172,17 @@ namespace Baird.Tests.NewUi
         }
 
         [Fact]
+        public void An_episode_that_plays_to_the_end_is_saved_as_watched_though_the_engine_has_forgotten_its_length_by_then()
+        {
+            var (c, e, t, saved) = Build();
+            c.PlayItem("ep1", "http://jf/ep1", TimeSpan.Zero, "Bears"); e.Loaded();
+            e.Duration(1500); e.TimePositionSeconds = 1499;
+            e.TimePositionSeconds = 0; e.DurationSeconds = 0;       // what the engine says once the stream has ended
+            e.Ended();
+            Assert.Equal(("ep1", TimeSpan.FromSeconds(1500)), saved.Single());   // not 0 of 0, which left every such episode in Continue watching
+        }
+
+        [Fact]
         public void Pausing_live_tv_counts_time_behind_live_and_seeking_forward_reduces_it()
         {
             var (c, e, t, _) = Build();

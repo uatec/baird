@@ -131,7 +131,8 @@ namespace Baird.Services
             var found = new List<MediaItemViewModel>();
             for (var i = 0; i < unfinished.Count && found.Count < ContinueWatchingMax; i += LookupBatch)
                 found.AddRange((await HydrateHistoryItems(unfinished.Skip(i).Take(LookupBatch)).ConfigureAwait(false))
-                    .Where(m => m.History is not { IsFinished: true } || m.IsLive || m.Type == MediaType.Channel));
+                    // A video with no position at all has nothing to continue: older runs saved every episode that played to the end that way.
+                    .Where(m => m.IsLive || m.Type == MediaType.Channel || m.History is { IsFinished: false, LastPosition.Ticks: > 0 }));
 
             return UnifyAndHydrate(found.Take(ContinueWatchingMax));
         }

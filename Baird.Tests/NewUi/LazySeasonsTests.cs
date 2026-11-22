@@ -115,5 +115,35 @@ namespace Baird.Tests.NewUi
             await rig.Shows.DetailsAsync(rig.Title);
             Assert.Equal(1, rig.Store.Shows[rig.Title.Key].Opening);
         }
+
+        [Fact]
+        public void Episodes_carry_the_number_the_service_gave_them_not_their_position_in_its_listing()
+        {
+            // Jellyfin lists two of a season's three episodes (the first isn't there): by position they were 1 and 2.
+            var e2 = new Baird.ViewModels.MediaItemViewModel(CatalogueTests.Item("e2", "We Bare Bears", details: "S1 E2", subtitle: "Food Truck/Chloe"));
+            var e3 = new Baird.ViewModels.MediaItemViewModel(CatalogueTests.Item("e3", "We Bare Bears", details: "S1 E3", subtitle: "Pandas Date/Everyday Bears"));
+            var library = new[] { new ShowData.LibrarySeason(1, "Season 1", new[] { e2, e3 }, "Jellyfin") };
+            var status = new JellyseerrMediaStatus(5, new[] { new JellyseerrSeason(1, 3, 5) }, Array.Empty<JellyseerrDownload>());
+
+            var season = ShowData.Merge(library, status, "Jellyfin").Single();
+
+            Assert.Equal(new[] { 1, 2, 3 }, season.Episodes.Select(x => x.Number));
+            Assert.Equal(EpisodeState.Missing, season.Episodes[0].State);        // the one that isn't there is the first, not the last
+            Assert.Equal("2. Food Truck/Chloe", season.Episodes[1].Label);
+            Assert.Equal("3. Pandas Date/Everyday Bears", season.Episodes[2].Label);
+            Assert.Equal("S1 E3", season.Episodes[2].Code);                    // what Continue watching calls it
+        }
+
+        [Fact]
+        public void A_playing_episode_is_headed_by_its_show_with_the_code_and_title_under_it_as_in_continue_watching()
+        {
+            var card = new HomeCard(CardKind.Episode, "e3", "3. Pandas Date/Everyday Bears", "23 min", null, null, null, "Jellyfin", PlayVia.Mpv, Show: "We Bare Bears", Code: "S1 E3");
+            var now = card.AsEpisodeOfItsShow();
+            Assert.Equal("We Bare Bears", now.Label);
+            Assert.Equal("S1 E3 \u00B7 Pandas Date/Everyday Bears", now.Sublabel);
+            Assert.Same(card.Title, now.Title);
+            var film = new HomeCard(CardKind.Film, "f", "Alien", "1979", null, null, null, "Jellyfin", PlayVia.Mpv);
+            Assert.Same(film, film.AsEpisodeOfItsShow());                         // anything else is left as it is
+        }
     }
 }

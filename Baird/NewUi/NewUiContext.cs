@@ -157,7 +157,7 @@ namespace Baird.NewUi
             if (cur?.ItemId == card.Id && !Nav.State.AtVideo) { Nav.ToVideo(); return; }
             var from = PlaceLabel();
             Playback.PlayItem(card.Id, card.StreamUrl!, card.Resume, card.Label);
-            _nowPlaying = card with { Badge = "playing", Progress = null };
+            _nowPlaying = card.AsEpisodeOfItsShow() with { Badge = "playing", Progress = null };
             if (card.Kind == CardKind.Episode && !Following.Any(c => c.Id == card.Id) && FindFollowing != null) _ = FindFollowingAsync(card);
             Starting?.Invoke(card);
             Nav.Play(new VideoRef("vod", card.Id));

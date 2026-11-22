@@ -1027,6 +1027,12 @@ namespace Baird.NewUi.Adapters
             return (episodes, fresh.Count == 0 ? null : YouTubeService.NextPageId(season.MoreId, page.Count));
         }
 
+        private static readonly Regex EpisodeCode = new(@"^S\d+[ :]E(\d+)$", RegexOptions.Compiled);
+
+        /// <summary>The episode number the service gave an episode ("S1 E3" → 3), or null when it gave none.</summary>
+        private static int? RealNumberOf(MediaItemViewModel m) =>
+            EpisodeCode.Match(m.Details ?? "") is { Success: true } c && int.TryParse(c.Groups[1].Value, out var n) && n > 0 ? n : null;
+
         private static Episode EpisodeOf(MediaItemViewModel m, int season, int number)
         {
             var src = CatalogueSearch.SourceOf(m);
@@ -1056,15 +1062,27 @@ namespace Baird.NewUi.Adapters
                 EpisodeState Pending(int ep) => onTheWay ? EpisodeState.Requested : EpisodeState.Missing;
                 double? Dl(int ep) => onTheWay ? status?.Progress(n, ep) ?? status?.Progress(n) : null;
                 var eps = new List<Episode>();
-                if (lib != null) eps.AddRange(lib.Episodes.Select((m, i) => EpisodeOf(m, n, i + 1)));
+                if (lib != null)
+                {
+                    // The service's own episode numbers (Jellyfin's "S1 E3") when every episode has one: a listing that lacks the first
+                    // episode, or is in another order, would otherwise be numbered by position, and "episode 3" here would be another
+                    // episode than the one Continue watching calls S1 E3.
+                    var real = lib.Episodes.Select(RealNumberOf).ToList();
+                    if (lib.Episodes.Count > 0 && real.All(x => x != null) && real.Distinct().Count() == real.Count)
+                        eps.AddRange(lib.Episodes.Zip(real, (m, r) => (m, r: r!.Value)).OrderBy(x => x.r).Select(x => EpisodeOf(x.m, n, x.r)));
+                    else eps.AddRange(lib.Episodes.Select((m, i) => EpisodeOf(m, n, i + 1)));
+                }
                 var count = seerr?.EpisodeCount ?? 0;
                 var named = seasonDetails != null && seasonDetails.TryGetValue(n, out var sd) ? sd.Episodes : null;
-                for (var e = eps.Count + 1; e <= count; e++)
+                var have = eps.Select(x => x.Number).ToHashSet();
+                for (var e = 1; e <= count; e++)
                 {
+                    if (have.Contains(e)) continue;
                     var info = named?.FirstOrDefault(x => x.Number == e);
                     var name = string.IsNullOrWhiteSpace(info?.Name) ? $"Episode {e}" : info!.Name;
                     eps.Add(new Episode(n, e, $"{e}. {name}", null, info?.StillUrl, Pending(e), Download: Dl(e), Synopsis: info?.Overview));
                 }
+                if (have.Count > 0 && eps.Count > have.Count) eps = eps.OrderBy(x => x.Number).ToList();
 
                 var label = lib?.Label ?? (n == 0 ? "Specials" : $"Season {n}");
                 if (lib is { Pending: true })

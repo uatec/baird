@@ -150,5 +150,23 @@ namespace Baird.Tests.Services
 
             Assert.Equal(new[] { "itv1" }, row.Select(r => r.Id));
         }
+
+        [Fact]
+        public async Task A_video_saved_with_no_position_and_no_length_is_not_offered_to_continue()
+        {
+            var (svc, p, h, _) = Make();
+            var now = new DateTime(2026, 11, 22, 13, 0, 0);
+            h.Items = new List<HistoryItem>
+            {
+                new() { Id = "half", LastWatched = now, Duration = TimeSpan.FromMinutes(23), LastPosition = TimeSpan.FromMinutes(5) },        // really part-way
+                new() { Id = "played-on", LastWatched = now.AddMinutes(-12), Duration = TimeSpan.Zero, LastPosition = TimeSpan.Zero },       // an episode that played to the end and moved on
+                new() { Id = "played-on-2", LastWatched = now.AddMinutes(-24), Duration = TimeSpan.Zero, LastPosition = TimeSpan.Zero },
+            };
+            p.Answer = id => Data(id);
+
+            var row = (await svc.GetContinueWatchingAsync()).ToList();
+
+            Assert.Equal(new[] { "half" }, row.Select(r => r.Id));
+        }
     }
 }

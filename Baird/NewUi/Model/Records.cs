@@ -28,10 +28,19 @@ namespace Baird.NewUi.Model
     public sealed record HomeCard(
         CardKind Kind, string Id, string Label, string? Sublabel, string? ImageUrl, double? Progress, string? Badge,
         string Source, PlayVia Via, string? StreamUrl = null, TimeSpan Resume = default, Channel? Channel = null, Programme? Programme = null,
-        string? Synopsis = null, CatalogueTitle? Title = null, string? Show = null, CatalogueTitle? Series = null)
+        string? Synopsis = null, CatalogueTitle? Title = null, string? Show = null, CatalogueTitle? Series = null, string? Code = null)
     {
         /// <summary>What to call it while it loads: an episode under its show's name ("The Simpsons"), else its own.</summary>
         public string Heading => Kind == CardKind.Episode && Show is { Length: > 0 } s ? s : Label;
+
+        /// <summary>
+        /// The card as Home shows an episode that is playing or was played: headed by its show, with "S1 E3 · Title" under it (the order
+        /// Continue watching uses), where a show page's card is the episode's own "3. Title". Other cards as they are.
+        /// </summary>
+        public HomeCard AsEpisodeOfItsShow() =>
+            Kind == CardKind.Episode && Show is { Length: > 0 } show && Code is { Length: > 0 } code
+                ? this with { Label = show, Sublabel = $"{code} \u00B7 {System.Text.RegularExpressions.Regex.Replace(Label, @"^\d+\.\s*", "")}" }
+                : this;
 
         /// <summary>The line under <see cref="Heading"/>: the episode's own title, when the heading is the show's.</summary>
         public string? Subheading => Heading != Label ? Label : null;

@@ -37,6 +37,8 @@ namespace Baird.NewUi.Playback
         private readonly Action<bool>? _configure;
 
         private IDisposable? _loadTimer, _tuneTimer, _watchTimer;
+        /// <summary>The longest length the engine has reported for what plays: at the end of a stream the engine has already forgotten it.</summary>
+        private TimeSpan _lastDuration;
         private bool _watched;
         private int _retries;
         private double? _start;
@@ -109,7 +111,7 @@ namespace Baird.NewUi.Playback
             _engine.FileLoaded += (_, _) => _post(() => { _seekTarget = null; OnLoaded(); });
             _engine.StreamEnded += (_, _) => _post(OnEnded);
             _engine.PauseStateChanged += (_, paused) => _post(() => { IsPaused = paused; Changed?.Invoke(); });
-            _engine.DurationChanged += (_, _) => _post(() => Changed?.Invoke());
+            _engine.DurationChanged += (_, d) => _post(() => { if (d > 0) _lastDuration = TimeSpan.FromSeconds(d); Changed?.Invoke(); });
         }
 
         /// <summary>Tune a channel. The ident can show it immediately; the tuner gets the channel you rest on.</summary>
@@ -140,7 +142,7 @@ namespace Baird.NewUi.Playback
 
         private void Start(string url, double? start)
         {
-            _seekTarget = null;
+            _seekTarget = null; _lastDuration = TimeSpan.Zero;
             _retries = 0; _start = start;
             IsLoading = true;
             _configure?.Invoke(Current?.Kind == "live");
@@ -209,7 +211,7 @@ namespace Baird.NewUi.Playback
                 return;
             }
             _watched = true; // played to the end: it counts, however short
-            SaveCurrent();
+            if (!_saved) { _saved = true; PersistEnded(); }
             Ended?.Invoke();
         }
 
@@ -370,6 +372,18 @@ namespace Baird.NewUi.Playback
         {
             if (Current == null || _save == null) return;
             _save(Current.ItemId, Position, Current.Kind == "live" ? TimeSpan.Zero : Duration);
+        }
+
+        /// <summary>
+        /// Played to the end: written as watched all the way through. By now the engine has let go of the position and the length (both read 0),
+        /// and an entry saved with neither counted as "continue watching" for ever, one for every episode that played on to the next.
+        /// </summary>
+        private void PersistEnded()
+        {
+            if (Current == null || _save == null) return;
+            var length = Duration > TimeSpan.Zero ? Duration : _lastDuration;
+            if (length <= TimeSpan.Zero) { Persist(); return; }
+            _save(Current.ItemId, length, length);
         }
 
         /// <summary>On leaving: update history, but only for something watched long enough (it was written when the minute passed).</summary>
