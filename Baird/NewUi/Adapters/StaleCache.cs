@@ -27,6 +27,17 @@ namespace Baird.NewUi.Adapters
             return false;
         }
 
+        /// <summary>The kept value for the key and how long ago it was kept (whatever the fresh period). False when nothing is kept.</summary>
+        public bool TryGetAge(string key, out T value, out TimeSpan age)
+        {
+            lock (_items)
+            {
+                if (_items.TryGetValue(key, out var e)) { value = e.Value; age = _now() - e.At; return true; }
+            }
+            value = default!; age = default;
+            return false;
+        }
+
         /// <summary>Keep the value (replacing any), as fresh as of now.</summary>
         public void Put(string key, T value) { lock (_items) _items[key] = (value, _now()); }
 

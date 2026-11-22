@@ -145,5 +145,23 @@ namespace Baird.Tests.NewUi
             var film = new HomeCard(CardKind.Film, "f", "Alien", "1979", null, null, null, "Jellyfin", PlayVia.Mpv);
             Assert.Same(film, film.AsEpisodeOfItsShow());                         // anything else is left as it is
         }
+
+        [Fact]
+        public async Task One_browser_provider_that_is_down_does_not_cost_the_others_their_answers()
+        {
+            var itvx = new CatalogueTests.Library(ItvxProvider.SourceName);
+            itvx.Items.Add(CatalogueTests.Item("itvx-sev", "Severance", source: ItvxProvider.SourceName, type: MediaType.Brand));
+            var channel4 = new CatalogueTests.Library(Channel4Provider.SourceName) { ThrowSearch = true };   // always fails: before, that kept nothing for any title
+            var w = CatalogueTests.Build(itvx, channel4);
+            var title = new CatalogueTitle("tmdb:tv:95396", TitleKind.Series, "Severance", null, null, null, Array.Empty<TitleSource>(), new SeerrRef(95396, "tv", 1));
+
+            await w.Shows.WarmAvailabilityAsync(title, ShowData.WarmLane.Costly);
+            var searched = itvx.SearchCalls;
+            Assert.True(searched > 0);
+
+            var d = await w.Shows.DetailsAsync(title);                       // the page opens
+            Assert.Contains(d.Title.Sources, s => s.Service == ItvxProvider.SourceName);
+            Assert.Equal(searched, itvx.SearchCalls);                         // ITVX's answer was kept, though Channel 4's never came
+        }
     }
 }

@@ -603,9 +603,9 @@ namespace Baird.NewUi.Adapters
         /// </summary>
         public static bool IsCostly(string service) => service == YouTubeService.SourceName || HomeData.ViaOf(service) == PlayVia.Browser;
 
-        /// <summary>Whether a refresh key (a source's seasons "service|id", or a title's found sources "found:title|lane") belongs to the costly lane.</summary>
+        /// <summary>Whether a refresh key (a source's seasons "service|id", or a provider's answer for a title "found:title|provider") belongs to the costly lane.</summary>
         public static bool IsCostlyKey(string key) =>
-            key.StartsWith("found:", StringComparison.Ordinal) ? !key.EndsWith("|" + WarmLane.Cheap, StringComparison.Ordinal) : IsCostly(key.Split('|')[0]);
+            key.StartsWith("found:", StringComparison.Ordinal) ? IsCostly(key[(key.LastIndexOf('|') + 1)..]) : IsCostly(key.Split('|')[0]);
 
         /// <summary>Cheap: plain HTTP providers. Costly: the services played in the browser (warmed one job at a time). YouTube: every request is a yt-dlp process: never warmed, only asked when a page opens.</summary>
         public enum WarmLane { Cheap, Costly, YouTube }
@@ -613,29 +613,59 @@ namespace Baird.NewUi.Adapters
         public static WarmLane LaneOf(string service) =>
             service == YouTubeService.SourceName ? WarmLane.YouTube : HomeData.ViaOf(service) == PlayVia.Browser ? WarmLane.Costly : WarmLane.Cheap;
 
-        private static string FoundKey(CatalogueTitle t, WarmLane lane) => $"found:{t.Key}|{lane}";
+        /// <summary>How old a provider's answer about a title may be before the warming asks that provider again.</summary>
+        public static readonly TimeSpan WarmFoundFor = TimeSpan.FromMinutes(10);
+
+        private static string FoundKey(CatalogueTitle t, string provider) => $"found:{t.Key}|{provider}";
 
         /// <summary>
-        /// The sources a search of one lane's providers finds for a title (null when a provider didn't answer: nothing is kept then). A
-        /// fresh answer is reused; otherwise the providers are searched and a complete answer, even "none", is kept (served stale for
-        /// ever, refreshed when asked for again).
+        /// What one provider says of a title: its sources for it (none when it hasn't got it), kept per provider (served stale for ever,
+        /// refreshed when asked for again). Not answered (null) when it timed out or failed: nothing is kept, so one flaky provider
+        /// never costs the others' answers.
         /// </summary>
-        private async Task<IReadOnlyList<TitleSource>?> FoundAsync(CatalogueTitle t, WarmLane lane, CancellationToken ct)
+        private async Task<IReadOnlyList<TitleSource>?> AskProviderAsync(CatalogueTitle t, string provider, CancellationToken ct)
         {
-            var key = FoundKey(t, lane);
-            if (_foundCache.TryGet(key, out var kept, out var stale) && !stale) return kept;
-            var asked = _search.SearchSources(t.Name, ct, name => LaneOf(name) == lane);
-            await Task.WhenAll(asked.Select(a => a.Results)).ConfigureAwait(false);
-            var items = new List<MediaItemViewModel>();
-            foreach (var a in asked)
-            {
-                if (a.Results.IsCompletedSuccessfully && a.Results.Result is { } r) items.AddRange(r);
-                else return null; // one that didn't answer may have had it
-            }
-            var match = CatalogueSearch.Group(items, Array.Empty<JellyseerrSearchResult>()).Titles.FirstOrDefault(x => CatalogueSearch.Matches(x, t));
-            IReadOnlyList<TitleSource> found = match?.Sources ?? Array.Empty<TitleSource>();
-            _foundCache.Put(key, found);
+            var asked = _search.SearchSources(t.Name, ct, name => name == provider);
+            if (asked.Count == 0) return Array.Empty<TitleSource>();
+            await asked[0].Results.ConfigureAwait(false);
+            if (!(asked[0].Results.IsCompletedSuccessfully && asked[0].Results.Result is { } items)) return null;
+            var found = SourcesFrom(items, t);
+            _foundCache.Put(FoundKey(t, provider), found);
             return found;
+        }
+
+        private static IReadOnlyList<TitleSource> SourcesFrom(IEnumerable<MediaItemViewModel> items, CatalogueTitle t) =>
+            CatalogueSearch.Group(items.ToList(), Array.Empty<JellyseerrSearchResult>()).Titles.FirstOrDefault(x => CatalogueSearch.Matches(x, t))?.Sources
+            ?? (IReadOnlyList<TitleSource>)Array.Empty<TitleSource>();
+
+        /// <summary>
+        /// The sources the providers of one lane have for a title: each provider's answer is reused while fresh and asked for when it isn't
+        /// (a stale one stands in for a provider that doesn't answer now). Complete is false when some provider answered nothing at all,
+        /// stale or fresh.
+        /// </summary>
+        private async Task<(IReadOnlyList<TitleSource> Sources, bool Complete)> FoundAsync(CatalogueTitle t, WarmLane lane, CancellationToken ct)
+        {
+            var found = new List<TitleSource>();
+            var ask = new List<(string Provider, IReadOnlyList<TitleSource>? Old)>();
+            foreach (var name in _data.Providers.Select(p => p.Name).Where(n => LaneOf(n) == lane))
+            {
+                // Which services carry a title changes rarely: the warming asks again only when the answer is older than WarmFoundFor
+                // (a page shows a stale one at once and refreshes it), so it doesn't spend its time re-asking the browser what it just said.
+                if (_foundCache.TryGetAge(FoundKey(t, name), out var kept, out var age))
+                {
+                    if (age < WarmFoundFor) found.AddRange(kept); else ask.Add((name, kept));
+                }
+                else ask.Add((name, null));
+            }
+            var answers = await Task.WhenAll(ask.Select(a => AskProviderAsync(t, a.Provider, ct))).ConfigureAwait(false);
+            var complete = true;
+            for (var i = 0; i < ask.Count; i++)
+            {
+                if (answers[i] is { } now) found.AddRange(now);
+                else if (ask[i].Old is { } old) found.AddRange(old);
+                else complete = false;
+            }
+            return (found, complete);
         }
 
         /// <summary>
@@ -658,12 +688,16 @@ namespace Baird.NewUi.Adapters
                     if (t.Seerr is { } r && !(_statusCache.TryGet($"{r.MediaType}:{r.TmdbId}", out _, out var statusStale) && !statusStale))
                         await StatusAsync(t, true, ct, outcome).ConfigureAwait(false);
                 }
-                IReadOnlyList<TitleSource>? own = t.Sources.Where(s => LaneOf(s.Service) == lane).ToList();
-                if (t.Sources.Count == 0 && t.Kind != TitleKind.Episode) own = await FoundAsync(t, lane, ct).ConfigureAwait(false);
-                if (own == null) outcome.Fail();
-                else if (t.Kind == TitleKind.Series && own.Count > 0)
+                IReadOnlyList<TitleSource> own = t.Sources.Where(s => LaneOf(s.Service) == lane).ToList();
+                if (t.Sources.Count == 0 && t.Kind != TitleKind.Episode)
                 {
-                    var fresh = own.Any(s => !(_seasonCache.TryGet(KeyOf(s), out _, out var stale) && !stale));
+                    var (sources, complete) = await FoundAsync(t, lane, ct).ConfigureAwait(false);
+                    own = sources;
+                    if (!complete) outcome.Fail();
+                }
+                if (t.Kind == TitleKind.Series && own.Count > 0)
+                {
+                    var fresh = own.Any(s => !(_seasonCache.TryGetAge(KeyOf(s), out _, out var age) && age < WarmFoundFor));
                     if (fresh) await LibrarySeasonsAsync(t with { Sources = own }, ct, true, outcome).ConfigureAwait(false);
                 }
                 return !outcome.Failed;
@@ -681,28 +715,28 @@ namespace Baird.NewUi.Adapters
             var searching = t.Sources.Count == 0 && t.Kind != TitleKind.Episode;
             // What the warming (or an earlier page) found is used at once, stale or not (a stale answer is refreshed in the background);
             // only a lane never searched is searched now, so a page doesn't wait on the browser's providers when they were asked already.
-            var missing = new List<WarmLane>();
+            var missing = new List<string>();
             if (searching)
             {
                 var kept = new List<TitleSource>();
-                foreach (var lane in new[] { WarmLane.Cheap, WarmLane.Costly, WarmLane.YouTube })
+                foreach (var name in _data.Providers.Select(p => p.Name))
                 {
-                    var key = FoundKey(t, lane);
+                    var key = FoundKey(t, name);
                     if (!fresh && _foundCache.TryGet(key, out var f, out var stale))
                     {
                         kept.AddRange(f);
                         if (stale)
                         {
-                            var owner = t; var l = lane;
-                            Refresh(key, async c => { if (await FoundAsync(owner, l, c).ConfigureAwait(false) is not null) RaiseChanged(owner.Key, ShowChange.Availability); });
+                            var owner = t; var provider = name;
+                            Refresh(key, async c => { if (await AskProviderAsync(owner, provider, c).ConfigureAwait(false) is not null) RaiseChanged(owner.Key, ShowChange.Availability); });
                         }
                     }
-                    else missing.Add(lane);
+                    else missing.Add(name);
                 }
                 if (kept.Count > 0) t = t with { Sources = kept.DistinctBy(x => x.ItemId).ToList() };
             }
             var sources = missing.Count > 0
-                ? _search.SearchSources(t.Name, ct, name => missing.Contains(LaneOf(name)))
+                ? _search.SearchSources(t.Name, ct, missing.Contains)
                 : Array.Empty<(string Source, Task<IReadOnlyList<MediaItemViewModel>?> Results)>();
 
             // The library's seasons and Seerr's view are asked at once: a slow Seerr never holds back what the library has (Play).
@@ -737,15 +771,10 @@ namespace Baird.NewUi.Adapters
                 details = changed ? await ComposeAsync(t, status, remaining.Count > 0, seasonDetails, progress, fresh, ct, outcome).ConfigureAwait(false) : details with { CheckingLibrary = false };
                 progress?.Invoke(details);
             }
-            // A lane whose providers all answered is kept for the next page (and the warming), where "none" is an answer too.
-            foreach (var lane in missing)
-            {
-                var laneSources = searched.Where(x => LaneOf(x.Source) == lane).ToList();
-                if (laneSources.Any(x => !(x.Results.IsCompletedSuccessfully && x.Results.Result != null))) continue;
-                var items = laneSources.SelectMany(x => x.Results.Result!).ToList();
-                var m = CatalogueSearch.Group(items, Array.Empty<JellyseerrSearchResult>()).Titles.FirstOrDefault(x => CatalogueSearch.Matches(x, t));
-                _foundCache.Put(FoundKey(t, lane), m?.Sources ?? Array.Empty<TitleSource>());
-            }
+            // Each provider that answered is kept for the next page (and the warming), where "none" is an answer too.
+            foreach (var x in searched)
+                if (x.Results.IsCompletedSuccessfully && x.Results.Result is { } answered)
+                    _foundCache.Put(FoundKey(t, x.Source), SourcesFrom(answered, t));
             return details;
         }
 

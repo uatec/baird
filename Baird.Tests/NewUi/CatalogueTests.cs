@@ -45,7 +45,9 @@ namespace Baird.Tests.NewUi
             public bool HangSearch;
             /// <summary>How many times <see cref="SearchAsync"/> was called.</summary>
             public int SearchCalls;
-            public Task<IEnumerable<MediaItemData>> SearchAsync(string q, CancellationToken ct = default) => Interlocked.Increment(ref SearchCalls) > 0 && HangSearch ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task :
+            /// <summary>Make <see cref="SearchAsync"/> fail at once (a provider that is down).</summary>
+            public bool ThrowSearch;
+            public Task<IEnumerable<MediaItemData>> SearchAsync(string q, CancellationToken ct = default) => Interlocked.Increment(ref SearchCalls) > 0 && ThrowSearch ? Task.FromException<IEnumerable<MediaItemData>>(new InvalidOperationException("down")) : HangSearch ? new TaskCompletionSource<IEnumerable<MediaItemData>>().Task :
                 Task.FromResult<IEnumerable<MediaItemData>>(Items.Where(i => i.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (i.ChannelNumber?.StartsWith(q) ?? false)).ToList());
             /// <summary>Make <see cref="GetChildrenAsync"/> never answer (a hung provider).</summary>
             public bool HangChildren;
