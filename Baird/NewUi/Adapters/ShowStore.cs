@@ -27,6 +27,16 @@ namespace Baird.NewUi.Adapters
     {
         bool TryGet(string key, out StoredShow? show);
         void Put(string key, StoredShow show);
+
+        /// <summary>
+        /// The names of the shows kept, by the id their provider gave them (shows found by a search are keyed by it, see
+        /// <see cref="SourceIdOf"/>; Seerr's are keyed by TMDB id and have none). Reads every kept title: a one-off, off the UI thread.
+        /// </summary>
+        IReadOnlyDictionary<string, string> SeriesNamesById() => new Dictionary<string, string>();
+
+        /// <summary>"Series:{name}:{year}:{id}" → the id (which may hold colons itself, "netflix:81678020"); null for any other key.</summary>
+        static string? SourceIdOf(string key) =>
+            key.Split(':', 4) is ["Series", _, var year, { Length: > 0 } id] && (year.Length == 0 || int.TryParse(year, out _)) ? id : null;
     }
 
     /// <summary>
@@ -226,6 +236,26 @@ namespace Baird.NewUi.Adapters
         {
             _index.Remove(hash);
             _toDelete.Add(hash);
+        }
+
+        public IReadOnlyDictionary<string, string> SeriesNamesById()
+        {
+            List<string> hashes;
+            lock (_gate) hashes = _index.Keys.ToList();
+            var names = new Dictionary<string, string>();
+            foreach (var hash in hashes)
+            {
+                try
+                {
+                    var dto = JsonSerializer.Deserialize(File.ReadAllText(PathOf(hash)), ShowStoreJson.Default.ShowFile);
+                    if (dto is { Version: CurrentVersion, Key: { } key, Show.Title: { Kind: TitleKind.Series, Name: { Length: > 0 } name } }
+                        && IShowStore.SourceIdOf(key) is { } id)
+                        names[id] = name;
+                }
+                catch (FileNotFoundException) { }   // only in memory so far, or forgotten meanwhile
+                catch (Exception ex) { Console.WriteLine($"[ShowStore] Ignoring unreadable file for {hash[..8]}: {ex.Message}"); }
+            }
+            return names;
         }
 
         private (StoredShow Clean, string Json, bool Stale)? ReadFile(string hash, string key)

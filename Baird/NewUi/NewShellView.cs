@@ -80,6 +80,20 @@ namespace Baird.NewUi
             _ctx = new NewUiContext(nav, playback, home, () => DateTimeOffset.Now) { Timers = timers };
             _ctx.Search = new CatalogueSearch(services.Data, services.Epg, services.Seerr, new SearchHistoryService());
             _ctx.ShowStore = new DiskShowStore(DiskShowStore.DefaultFolder, timers);
+            // Netflix's episodes used to be cached naming their show only by id, so Home showed them as films with no page to open. Pages
+            // kept of those shows know the names: a one-off pass puts them on (listings name them from now on, see ShowData.Children).
+            var showStore = _ctx.ShowStore;
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var named = services.Data.NameSeries(showStore.SeriesNamesById());
+                    if (named == 0) return;
+                    Console.WriteLine($"[Shell] Named the show of {named} cached episodes");
+                    Dispatcher.UIThread.Post(() => _ctx.RaiseUpNextChanged());   // Continue watching shows them as episodes now
+                }
+                catch (Exception ex) { Console.WriteLine($"[Shell] Naming cached episodes' shows failed: {ex.Message}"); }
+            });
             // Background data work (refreshes now, warming later) goes through one queue that backs off while video plays.
             // The gate is read on a pool thread, so it only sees values sampled on the UI thread once a second (never libmpv or Navigator directly).
             var gateInputs = new WarmGateInputs();

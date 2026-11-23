@@ -92,8 +92,61 @@ namespace Baird.Tests.NewUi
             {
                 await Wait(700);
                 Assert.Equal(0, rows[0].Opacity);      // two up: out of sight
-                Assert.NotNull(rows[1].Clip);
+                if (rows[1].Opacity > 0) Assert.NotNull(rows[1].Clip); // the row above only peeks where it fits under the hero
             }
+        }
+
+        [AvaloniaFact]
+        public async Task The_row_above_never_runs_over_the_hero_text()
+        {
+            var (home, _, _) = await Shown();
+            var rows = home.View.GetLogicalDescendants().OfType<Avalonia.Controls.Canvas>().First().Children;
+            var hero = home.View.GetLogicalDescendants().OfType<StackPanel>().First(p => p.Width == 900);
+            for (var row = 1; row < rows.Count; row++)
+            {
+                if (!home.OnAction(UiAction.Down, false)) break;
+                await Wait(700);
+                var heroBottom = hero.TranslatePoint(new Point(0, hero.Bounds.Height), home.View)!.Value.Y;
+                for (var i = 0; i < row; i++)
+                {
+                    if (rows[i].Opacity == 0) continue;
+                    var clipTop = rows[i].Clip?.Bounds.Top ?? 0;
+                    var top = rows[i].TranslatePoint(new Point(0, clipTop), home.View)!.Value.Y;
+                    Assert.True(top >= heroBottom, $"row {i} shows from y={top}, over the hero text that ends at y={heroBottom} (lit row {row})");
+                    if (rows[i].Clip is { } clip) Assert.Equal(90, clip.Bounds.Height); // whole or not at all: a part sliver cuts through its labels
+                }
+            }
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Andor")]
+        [InlineData("The Hunger Games: Sunrise on the Reaping")]
+        [InlineData("The Lord of the Rings: The Fellowship of the Ring, Extended Edition with Appendices and Commentary")]
+        public async Task The_hero_fits_above_the_lit_row_with_a_title_of_two_lines_at_most(string title)
+        {
+            var seerr = new HomeDataTests.Seerr();
+            seerr.Trending[0].Title = title;
+            seerr.Trending[0].Overview = string.Concat(Enumerable.Repeat("A long account of what happens, at some length. ", 12));
+            var (home, _, _) = await Shown(seerr);
+            var rows = home.View.GetLogicalDescendants().OfType<Avalonia.Controls.Canvas>().First().Children;
+            var hero = home.View.GetLogicalDescendants().OfType<StackPanel>().First(p => p.Width == 900);
+            while (((Card)home.LitElement!).Data.Label != title) Assert.True(home.OnAction(UiAction.Down, false), "the card never lit");
+            await Wait(700);
+            var lit = rows.First(r => r.Opacity == 1);
+            var heading = lit.TranslatePoint(new Point(0, 0), home.View)!.Value.Y;
+            var heroBottom = hero.TranslatePoint(new Point(0, hero.Bounds.Height), home.View)!.Value.Y;
+            Assert.True(heroBottom <= heading - 20, $"the hero ends at y={heroBottom}, the lit row's heading starts at y={heading}");
+            var titleBlock = (TextBlock)hero.Children[1];
+            Assert.InRange(titleBlock.FontSize, 64, 112);
+            if (titleBlock.Text != title) // cut short: at a word, marked, at the smallest size
+            {
+                Assert.EndsWith("…", titleBlock.Text);
+                Assert.StartsWith(titleBlock.Text!.TrimEnd('…'), title);
+                Assert.Equal(64, titleBlock.FontSize);
+            }
+            Assert.True(Math.Round(titleBlock.Bounds.Height / titleBlock.LineHeight) <= 2, $"title {titleBlock.Bounds.Height} high at {titleBlock.LineHeight} a line");
+            if (title == "Andor") Assert.Equal(112, titleBlock.FontSize); // a short title keeps its full size
+            if (title.StartsWith("The Hunger")) Assert.Equal(title, titleBlock.Text);
         }
 
         [AvaloniaFact]

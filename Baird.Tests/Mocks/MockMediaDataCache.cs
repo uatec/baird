@@ -14,5 +14,7 @@ namespace Baird.Tests.Mocks
         public bool TryGet(string id, out MediaItemData? data) => _data.TryGetValue(id, out data);
 
         public void Put(MediaItemData data) => _data[data.Id] = data;
+
+        public IReadOnlyList<MediaItemData> All() => new List<MediaItemData>(_data.Values);
     }
 }
