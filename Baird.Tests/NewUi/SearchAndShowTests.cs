@@ -90,6 +90,39 @@ namespace Baird.Tests.NewUi
             Assert.Equal("Alien", s.ResultRows[0][0].Title!.Name);
         }
 
+        [AvaloniaFact]
+        public async Task Moving_across_the_keyboard_between_letters_puts_the_search_off_as_typing_does()
+        {
+            var rig = Build();
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            TypeLetter(s, 'a'); TypeLetter(s, 'l');
+            // From one letter to the next is ten presses of the arrows, a third of a second each: three seconds, longer than the pause.
+            for (var i = 0; i < 10; i++) { s.OnAction(UiAction.Right, false); rig.Home.Timers.Advance(TimeSpan.FromMilliseconds(300)); }
+            await Task.Delay(50); Dispatcher.UIThread.RunJobs();
+            Assert.False(s.IsSearching);
+            Assert.DoesNotContain(s.ResultRows.SelectMany(r => r), h => h.Kind == HitKind.Title);   // not started halfway through the word
+            rig.Home.Timers.Advance(SearchScreen.Debounce);                       // a real pause after the last key
+            await s.RunAsync();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Alien", s.ResultRows[0][0].Title!.Name);
+        }
+
+        [AvaloniaFact]
+        public void Channels_are_the_first_row_of_the_results()
+        {
+            var rig = Build();
+            var s = new SearchScreen(rig.Ctx);
+            Show(s.View);
+            TypeLetter(s, 'x');
+            HomeCard C(string id, string label) => new(CardKind.Film, id, label, null, null, null, null, "TV", PlayVia.Mpv);
+            var title = new SearchHit(HitKind.Title, C("t", "Film"), new CatalogueTitle("t", TitleKind.Film, "Film", null, null, null, Array.Empty<TitleSource>()));
+            var channel = new SearchHit(HitKind.Channel, C("c", "BBC One"));
+            s.Show(new SearchResults("x", title, new[] { title }, new[] { channel }, Array.Empty<SearchHit>(), Array.Empty<string>()));
+            Assert.Equal(HitKind.Channel, s.ResultRows[0][0].Kind);               // the rarest thing there is to find
+            Assert.Equal(HitKind.Title, s.ResultRows[1][0].Kind);
+        }
+
         [Fact]
         public void The_search_waits_two_seconds_after_the_last_key_because_remote_typing_is_slow()
         {

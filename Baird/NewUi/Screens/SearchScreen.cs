@@ -78,6 +78,8 @@ namespace Baird.NewUi.Screens
         private string _query = "";
         private string _shownQuery = "\0";
         private IDisposable? _debounce;
+        /// <summary>The query has changed and its search hasn't started: every key (moving across the keyboard too) puts the search off again.</summary>
+        private bool _searchPending;
         private CancellationTokenSource? _cts;
         private bool _searching;
         private double _scroll;
@@ -218,6 +220,12 @@ namespace Baird.NewUi.Screens
         private void Changed()
         {
             DrawField();
+            _searchPending = true;
+            Rearm();
+        }
+
+        private void Rearm()
+        {
             _debounce?.Dispose();
             _debounce = _timers.After(Debounce, () => _ = RunAsync());
         }
@@ -254,6 +262,7 @@ namespace Baird.NewUi.Screens
         /// <summary>Runs the search for the current query (the debounce has passed); results are drawn once, when every source has answered or timed out. Tests await it.</summary>
         public async Task RunAsync()
         {
+            _searchPending = false;
             var q = _query.Trim();
             _cts?.Cancel();
             if (_inDownloads) { await RunDownloadsAsync(q); return; }
@@ -313,7 +322,7 @@ namespace Baird.NewUi.Screens
         private static void OnUi(Action a) { if (Dispatcher.UIThread.CheckAccess()) a(); else Dispatcher.UIThread.Post(a); }
 
         private SearchResults _results = SearchResults.Empty;
-        private void Show(SearchResults r) { _results = r; Build(); }
+        internal void Show(SearchResults r) { _results = r; Build(); }
 
         /// <summary>Who a hit is, across updates (a title keeps its identity as more sources for it arrive).</summary>
         private static string KeyOf(SearchHit h) => h.Title is { } t
@@ -344,9 +353,10 @@ namespace Baird.NewUi.Screens
             }
             else
             {
+                // Channels first: the rarest thing there is to find (a few hundred, against everything in the libraries).
+                if (_results.Channels.Count > 0) sections.Add(("Channels", Shape.Wide, _results.Channels.Take(9).ToList()));
                 if (_results.Top != null) sections.Add(("Top result", Shape.Top, new() { _results.Top }));
                 if (_results.Titles.Count > 0) sections.Add(("Shows and films", Shape.Poster, _results.Titles.Take(24).ToList()));
-                if (_results.Channels.Count > 0) sections.Add(("Channels", Shape.Wide, _results.Channels.Take(9).ToList()));
                 if (_results.OnTv.Count > 0) sections.Add(("On TV", Shape.Wide, _results.OnTv.Take(9).ToList()));
             }
             _shownQuery = _inDownloads ? "\u0001downloads:" + _dlFor : _results.Query.Length > 0 ? _results.Query : q.Length == 0 ? "" : _shownQuery;
@@ -506,6 +516,9 @@ namespace Baird.NewUi.Screens
         public bool OnAction(UiAction a, bool repeat)
         {
             if (_zone == Zone.None) _zone = Zone.Keyboard;
+            // Still typing: getting from one letter to the next across the keyboard is up to ten presses, and searching halfway through the
+            // word is no use to anyone. Any key puts the search off for another pause.
+            if (_searchPending) Rearm();
             if (InputMap.DigitOf(a) is { } d) { Type(d.ToString()); return true; }
             switch (a)
             {
